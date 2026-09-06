@@ -348,6 +348,41 @@ static inline bool                dsParseQuotedUnlimfsDirect(DS *restrict in, fs
 static inline bool                dsParseQuotedUnlimfsBufferre(DS *restrict in, fs *restrict dst) {
     return dsParseQuotedLimitedfs(in, dst, 0L, true);
 }
+/**
+ * @brief IParse escaped sequences from a @ref DS stream.
+ *
+ * This function scans the input stream for a quoted string. It handles 
+ * standard escape sequences:
+ * - @code \n @endcode -> newline
+ * - @code \r @endcode -> carriage return
+ * - @code \t @endcode -> tab
+ * - @code \\ @endcode -> backslash
+ * - @code \" @endcode -> double quote
+ *
+ * @details
+ * The function implements a transactional parsing approach:
+ * <ol>
+ *   <li>It saves the current position of the input stream.</li>
+ *   <li>It parses the quoted content, decoding escape sequences.</li>
+ *   <li>If a parsing error occurs (e.g., invalid escape, missing 
+ *       closing quote, or buffer overflow), the input stream position 
+ *       is restored to its original state via @ref dsRestorepos.</li>
+ * </ol>
+ *
+ * @param[in]  in           Pointer to the source @ref DS stream.
+ * @param[in,out] dst       Pointer to the destination character buffer.
+ * @param[in]  dst_capacity The maximum number of characters the buffer 
+ *                          can hold (excluding the null terminator).
+ *
+ * @return The number of decoded characters written to @p dst (excluding 
+ *         the quotes), or 0 if a parsing error occurred.
+ *
+ * @note This function automatically adds a null terminator ('\0') at 
+ *       @code dst[len] @endcode upon successful parsing.
+ * @warning This function modifies the input stream position.
+ */
+extern bool                        
+dsParseQuotedLimitString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer);
 
 // ------------------------ PRINTERS/CHECKERS ---------------------------------------
 

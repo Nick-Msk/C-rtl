@@ -196,84 +196,50 @@ dsHelperParseUnsigned(const char *restrict str, unsigned *restrict pival, size_t
     return true;
 }
 
-/**
- * @brief Internal helper to parse escaped sequences from a @ref DS stream.
- *
- * This function scans the input stream for a quoted string. It handles 
- * standard escape sequences:
- * - @code \n @endcode -> newline
- * - @code \r @endcode -> carriage return
- * - @code \t @endcode -> tab
- * - @code \\ @endcode -> backslash
- * - @code \" @endcode -> double quote
- *
- * @details
- * The function implements a transactional parsing approach:
- * <ol>
- *   <li>It saves the current position of the input stream.</li>
- *   <li>It parses the quoted content, decoding escape sequences.</li>
- *   <li>If a parsing error occurs (e.g., invalid escape, missing 
- *       closing quote, or buffer overflow), the input stream position 
- *       is restored to its original state via @ref dsRestorepos.</li>
- * </ol>
- *
- * @param[in]  in           Pointer to the source @ref DS stream.
- * @param[in,out] dst       Pointer to the destination character buffer.
- * @param[in]  dst_capacity The maximum number of characters the buffer 
- *                          can hold (excluding the null terminator).
- *
- * @return The number of decoded characters written to @p dst (excluding 
- *         the quotes), or 0 if a parsing error occurred.
- *
- * @note This function automatically adds a null terminator ('\0') at 
- *       @code dst[len] @endcode upon successful parsing.
- * @warning This function modifies the input stream position.
- */
-typedef void (*extend_func) ();
 
-static bool
-dsHelperParseEscapedString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len) {
+// bool
+// dsHelperParseEscapedString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len) {
     
-    size_t      pos = dsSavepos(in);                       // запоминаем позицию
-    bool        error = false;
-    size_t      len = 0;
+//     size_t      pos = dsSavepos(in);                       // запоминаем позицию
+//     bool        error = false;
+//     size_t      len = 0;
 
-    if (dst_capacity == 0)
-        return userraise(false, ERR_WRONG_INPUT_PARAMETERS, "capacity can't be 0");
+//     if (dst_capacity == 0)
+//         return userraise(false, ERR_WRONG_INPUT_PARAMETERS, "capacity can't be 0");
 
-    int c = dsgetc(in);
-    if (c != '"')
-        error = true;
+//     int c = dsgetc(in);
+//     if (c != '"')
+//         error = true;
 
-    while (!error && (c = dsgetc(in)) != EOF && c != '"') {
+//     while (!error && (c = dsgetc(in)) != EOF && c != '"') {
 
-        if (c == '\\') {
-            if (!dsgetcEscaped(in, &c)) {
-                error = true; // Ошибка, если после '\' ничего нет или неизвестный символ
-                break;
-            }
-        }
-        if (len + 1 >= dst_capacity) {
-            error = true;             // never shoud be here if normal serialization 
-            logsimple("WARN: len + 1 > dst_capacity (%zu)", dst_capacity);
-        } else 
-            dst[len++] = (unsigned char) c;
-    }
-    if (c != '"')
-        error = true;
+//         if (c == '\\') {
+//             if (!dsgetcEscaped(in, &c)) {
+//                 error = true; // Ошибка, если после '\' ничего нет или неизвестный символ
+//                 break;
+//             }
+//         }
+//         if (len + 1 >= dst_capacity) {
+//             error = true;             // never shoud be here if normal serialization 
+//             logsimple("WARN: len + 1 > dst_capacity (%zu)", dst_capacity);
+//         } else 
+//             dst[len++] = (unsigned char) c;
+//     }
+//     if (c != '"')
+//         error = true;
 
-    if (out_len)
-        *out_len = len;
-    dst[len] = '\0';        // must setup \0 even of error
+//     if (out_len)
+//         *out_len = len;
+//     dst[len] = '\0';        // must setup \0 even of error
 
-    if (error) {
-        dsRestorepos(in, pos);                 // rollback only if error
-        return userraise(false, ERR_UNABLE_PARSE_DATA, 
-            "Unable to parse quoted line!");
-    }            
+//     if (error) {
+//         dsRestorepos(in, pos);                 // rollback only if error
+//         return userraise(false, ERR_UNABLE_PARSE_DATA, 
+//             "Unable to parse quoted line!");
+//     }            
 
-    return true;
-}
+//     return true;
+// }
 
 /*
  * Core engine for parsing quoted strings.
@@ -283,6 +249,8 @@ static bool
 ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned char begin, unsigned char end) {
     invraisecode(in != NULL && out != NULL, ERR_NULLABLE_PTR, 
         "Null pointers %p %p", in, out);
+    invraisecode(out->type == DS_STR || out->type == DS_FS, ERR_UNSUPPORTED_TYPE,
+        "Not suppoted type for out: %d/%s", out->type, DSTypeName(out->type) );
 
     bool        error = false;
     size_t      pos = dsSavepos(in);
@@ -307,6 +275,8 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
             error = true;
         }
     }
+    dsputc(EOF, out);      // out is DS_FS or DS_STR
+
     if (!error && c != end)
         error = true;
 
@@ -554,7 +524,8 @@ bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
     return true;
 }
 
-bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
+bool                      
+dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
@@ -573,50 +544,43 @@ bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict d
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
     }
     dsReleaseFs(dst, &outtmp);   
-    if (use_buffer) {
-        // fs_cpy(dst, *buf);
+    if (use_buffer)
         fs_free(buf);
-    }
 
     return true;
 }
-// // unlimited quoted line
-// // TODO: remove that old impl
-// bool                       dsParseQuotedUnlimfsDirect(DS *restrict in, fs *restrict dst/* , bool use_buffer */) {
-//     if (in == NULL || dst == NULL || !fs_alloc(dst))
-//         return userraiseint(ERR_NULL_INPUT, 
-//             "Null input or non-allocatable fs ds %p fs %p/%s", in, dst, dst ? bool_str(fs_alloc(dst)): "");
 
-//     size_t      pos = dsSavepos(in);                       // запоминаем позицию
-//     bool        error = false;
-//     size_t      len = 0;
+bool 
+dsParseQuotedLimitedString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer) {
+    if (in == NULL || dst == NULL || dst_capacity == 0)
+        return userraise(false, ERR_NULL_INPUT, 
+            "Null input or zero capacity %p %p %zu", in, dst, dst_capacity);
 
-//     int         c = dsgetc(in);
-//     if (c != '"')
-//         error = true;
+    fs      tmp = (fs) {.v = dst, .len = dst_capacity - 1, .sz = dst_capacity, .flags = FS_FLAG_LOCAL};   // static
+    if (use_buffer)
+        tmp = fsinit(dst_capacity);    // alloc with final \0
 
-//     while (!error && (c = dsgetc(in)) != EOF && c != '"') {
+    fs     *buf = &tmp;
+    
+    // create DS wrapper
+    DS outtmp = dsCreatefs(buf);
 
-//         if (c == '\\') {
-//             if (!dsgetcEscaped(in, &c))
-//                 error = true; // Ошибка, если после '\' ничего нет или неизвестный символ
-//         }
-//         if (!error)
-//             elem(*dst, len++) = (unsigned char) c;   // allocation if required
-//     }
-//     if (c != '"')
-//         error = true;
+    // exec core
+    bool res = ds_parse_quoted_core(in, &outtmp, dst_capacity, '"', '"');
+    if (!res) {
+        dsFree(&outtmp);
+        return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
+    }
+    if (out_len)
+        *out_len = dsGetpos(&outtmp);   // фактически записанная длина
 
-//     fs_setlen(dst, len);
+    if (use_buffer) {
+        memcpy(dst, outtmp.s.v, dsGetpos(&outtmp) + 1);
+        dsFree(&outtmp);
+    }   
 
-//     if (error) {
-//         dsRestorepos(in, pos);                 // rollback only if error
-//         return userraise(false, ERR_UNABLE_PARSE_DATA, 
-//             "Unable to parse quoted line!");
-//     }
-
-//     return true;
-// }
+    return res;
+}
 
 // -------------------------------------- fs adapters ------------------------------------------------
 // ------------------------------- NOTE: no call to fs.c from here -----------------------------------
@@ -937,6 +901,7 @@ tf_ds_scanf(const char *name)
         DS ds = dsCreatefs(&s);
         dsputc('A', &ds);
         dsputc('B', &ds);
+        dsputc(EOF, &ds);
         ds.pos = 0;
         char ch1, ch2;
         int ret = dsScanf(&ds, "%c%c", &ch1, &ch2);
@@ -3845,9 +3810,9 @@ tf15_ds_parse_quoted_core(const char *name)
     test_sub("subtest %d: out DS_STR with capacity", ++subnum);
     {
         const char *input = "\"test\"";
-        DS in = dsCreateconst(input);
-        char buf[10] = {0};
-        DS out = dsCreatestrCap(buf, sizeof(buf));
+        DS          in = dsCreateconst(input);
+        char        buf[5] = {'1', '2', '3', '4', '5'};
+        DS          out = dsCreatestrCap(buf, sizeof(buf));
 
         bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
         test_validatefree(
@@ -3855,6 +3820,10 @@ tf15_ds_parse_quoted_core(const char *name)
             (dsFree(&in), dsFree(&out)),
             "expected pos=4, got %zu", out.pos
         );
+        
+        DSTECHPRINT(out);
+        printf("11111111: '%s'\n", buf);
+
         test_validatefree(
             strcmp(buf, "test") == 0,
             (dsFree(&in), dsFree(&out)),
