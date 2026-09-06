@@ -560,7 +560,8 @@ bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict d
         return userraiseint(ERR_NULL_INPUT, "%p %p", in, dst);
 
     // TODO: use_buffer
-    fs_resize(dst, maxlen);
+    if (maxlen > 0)
+        fs_resize(dst, maxlen);     // not necessary but for opt
     fs_setlen(dst, 0);  // WA until normal fs_cmp/fs_cmpstr
 
     DS      buf = dsCreatefs(dst);
@@ -575,6 +576,7 @@ bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict d
     return true;
 }
 // unlimited quoted line
+// TODO: remove that old impl
 bool                       dsParseQuotedUnlimfs(DS *restrict in, fs *restrict dst/* , bool use_buffer */) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, 
@@ -584,7 +586,7 @@ bool                       dsParseQuotedUnlimfs(DS *restrict in, fs *restrict ds
     bool        error = false;
     size_t      len = 0;
 
-    int c = dsgetc(in);
+    int         c = dsgetc(in);
     if (c != '"')
         error = true;
 
