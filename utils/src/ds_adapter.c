@@ -4649,7 +4649,7 @@ tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
                           fscmp(dst, FSLITERAL("original")) == 0,
                           (dsFree(&in), fsfree(dst)),
                           "dst must remain unchanged");
-        test_validatefree(dsGetpos(&in) == saved_pos,
+        test_validatefree( (size_t) dsGetpos(&in) == saved_pos,
                           (dsFree(&in), fsfree(dst)),
                           "in.pos not restored");
 
@@ -4794,6 +4794,51 @@ tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
             test_validate(true, "correctly raised error");
         }
         dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+        /* 19. DS_CONSTSTR: несколько строк подряд через массив */
+    test_sub("subtest %d: multiple sequential strings (array)", ++subnum);
+    {
+        const char *input = "\"first\"\"second\"\"third\"";
+        DS in = dsCreateconst(input);
+        fs dst[3] = { fscopy("original"), fscopy("original"), fscopy("original") };
+        const char *expected[] = { "first", "second", "third" };
+        bool all_ok = true;
+
+        for (int i = 0; i < 3; i++) {
+            bool res = dsParseQuotedUnlimfsBufferre(&in, &dst[i]);
+            if (!res || dst[i].len != strlen(expected[i]) ||
+                fscmp(dst[i], FSLITERAL(expected[i])) != 0) {
+                all_ok = false;
+                break;
+            }
+        }
+
+        test_validatefree(all_ok,
+                          (dsFree(&in), fsfree(dst[0]), fsfree(dst[1]), fsfree(dst[2])),
+                          "mismatch during sequential parsing");
+
+        // проверяем, что позиция в конце
+        test_validatefree(in.pos == strlen(input),
+                          (dsFree(&in), fsfree(dst[0]), fsfree(dst[1]), fsfree(dst[2])),
+                          "in.pos expected %zu, got %zu", strlen(input), in.pos);
+
+        // попытка прочитать ещё раз должна вернуть false и не менять dst
+        fs dst4 = fscopy("original");
+        size_t saved_len = dst4.len;
+        size_t saved_pos = in.pos;
+        bool res4 = dsParseQuotedUnlimfsBufferre(&in, &dst4);
+        test_validatefree(!res4 &&
+                          dst4.len == saved_len &&
+                          fscmp(dst4, FSLITERAL("original")) == 0 &&
+                          in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst[0]), fsfree(dst[1]), fsfree(dst[2]), fsfree(dst4)),
+                          "expected EOF or error after all strings");
+
+        dsFree(&in);
+        fsfreeall(dst + 0, dst + 1, dst + 2, &dst4);
+        
         fs_alloc_check(true);
     }
 
