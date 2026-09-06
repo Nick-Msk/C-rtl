@@ -125,18 +125,18 @@ fs                                       fs_move(fs *orig){
     *orig = FS();
     return tmp; // logsimpleret(tmp, "fs moved %d: %p", tmp.sz, tmp.v);
 }
-// normal move, only FS_FLAG_ALLOC
+// normal move, now ANY types!
 fs                                      *fs_moveto(fs *dst, fs *src) {
-     if (!fs_alloc(dst) || !fs_alloc(src) )
+    /*if (!fs_alloc(dst) || !fs_alloc(src) )
         userraiseint(ERR_FS_NOT_ALLOC_FLAG,
             "Unable to move not allocated fs type src[%d/%s], dst[%d/%s]", 
                 src->flags, fs_flag_str(src->flags),
-                dst->flags, fs_flag_str(dst->flags) ); 
+                dst->flags, fs_flag_str(dst->flags) ); */
 
     if (dst != src) {    
         fs_free(dst);
         *dst = *src;
-        *src = FS();
+        *src = FSDEFUNCT;
     }
     return dst;
 }
@@ -630,7 +630,7 @@ fs                                      fs_clone(const fs *s){
 // destructor, macro wrapper will be
 // free fs string and fs body if FS_FLAG_BODYALLOC
 void                                    fs_free(fs *s){
-    if (!s || fs_static(s))     // don't modify literals!
+    if (!s || fs_static(s) || fs_defunct(s))     // don't modify literals!
         return;
     bool  bdllloc = fs_bodyalloc(s);  // flags based
     if (fs_alloc(s) )    // actualy alloc must be a flag, but not statememnt TODO:

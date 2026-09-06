@@ -22,7 +22,8 @@
 // ------------------- TYPES -----------------------
 
 typedef enum  {
-               FS_FLAG_ALLOC        = 0x10     // standard allocation
+               FS_FLAG_DEFUNCT      = 0x0
+             , FS_FLAG_ALLOC        = 0x10     // standard allocation
              , FS_FLAG_STATIC       = 0x1
              , FS_FLAG_CONST        = 0x2     // Not user for now
              , FS_FLAG_LOCAL        = 0x4
@@ -92,6 +93,14 @@ static inline bool          fs_bodyalloc(const fs *s){
     return fs_flag_bodyalloc(s->flags);
 }
 
+static inline bool          fs_flag_defunct(FS_FLAGS fl){
+    return fl & FS_FLAG_DEFUNCT;
+}
+
+static inline bool          fs_defunct(const fs *s){
+    return s && fs_flag_defunct(s->flags);
+}
+
 // ------------- CONSTRUCTOTS/DESTRUCTORS ----------
 
 /**
@@ -143,6 +152,7 @@ extern long                  fs_vsprintf_position(fs *restrict s, size_t pos, co
 #define             FSINITSTATIC(...)  (fs){.sz = 1, .len = 0, .flags = FS_FLAG_STATIC, .v = "", ##__VA_ARGS__}
 
 #define             FS(...)   (fs){.sz = 0, .len = 0, .flags = FS_FLAG_ALLOC, .v = 0, ##__VA_ARGS__}
+#define             FSDEFUNCT FS(.flags = FS_FLAG_DEFUNCT)
 
 #define             fsfree(s) fs_free(&(s))
 
