@@ -555,25 +555,28 @@ bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
 }
 
 bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
-    if (in == NULL || dst == NULL)
-        return userraiseint(ERR_NULL_INPUT, "%p %p", in, dst);
+    if (in == NULL || dst == NULL || !fs_alloc(dst))
+        return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
-    fs  *buf = fs_init_or_use(use_buffer ? dst: NULL);
+    fs      tmp = FS(); // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
+    fs     *buf = use_buffer ? &tmp : dst;
 
     if (maxlen > 0)
         fs_resize(buf, maxlen);     // not necessary but for opt
     fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
 
-    DS      outtmp = dsCreatefs(dst);
+    DS      outtmp = dsCreatefs(buf);
 
     bool res = ds_parse_quoted_core(in, &outtmp, maxlen, '"', '"');
     if (!res) {
         dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
     }
-    dsReleaseFs(buf, &outtmp);      // real dst or buf
-    if (use_buffer)
+    dsReleaseFs(dst, &outtmp);   
+    if (use_buffer) {
+        // fs_cpy(dst, *buf);
         fs_free(buf);
+    }
 
     return true;
 }
@@ -3936,6 +3939,281 @@ tf15_ds_parse_quoted_core(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseQuotedLimitedfsBuffered (maxlen > 0) -------------------------
+static TestStatus
+tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. DS_CONSTSTR: успех, maxlen больше длины */
+    test_sub("subtest %d: DS_CONSTSTR success (maxlen > len)", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfs(&in, &dst, 10, true);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. DS_CONSTSTR: успех, точное совпадение maxlen == длина */
+    test_sub("subtest %d: DS_CONSTSTR success (maxlen == len)", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 5 + 1);    // 5 + 1 для '\0'
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("hello")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. DS_CONSTSTR: превышение maxlen, dst не изменён */
+    test_sub("subtest %d: DS_CONSTSTR maxlen exceeded, dst unchanged", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false, got true");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. DS_CONSTSTR: пустая строка с maxlen > 0 */
+    test_sub("subtest %d: DS_CONSTSTR empty string, maxlen > 0", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 0, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. DS_STR: успех, maxlen больше длины */
+    test_sub("subtest %d: DS_STR success", ++subnum);
+    {
+        char input[] = "\"world\"";
+        DS in = dsCreatestr(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("world")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. DS_STR: превышение maxlen, dst не изменён */
+    test_sub("subtest %d: DS_STR maxlen exceeded, dst unchanged", ++subnum);
+    {
+        char input[] = "\"world\"";
+        DS in = dsCreatestr(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. DS_FS: успех, maxlen больше длины */
+    test_sub("subtest %d: DS_FS success", ++subnum);
+    {
+        fs input_fs = fscopy("\"from fs\"");
+        DS in = dsCreatefs(&input_fs);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        test_validatefree(res && dst.len == 7,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 7, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("from fs")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 8. DS_FS: превышение maxlen, dst не изменён */
+    test_sub("subtest %d: DS_FS maxlen exceeded, dst unchanged", ++subnum);
+    {
+        fs input_fs = fscopy("\"from fs\"");
+        DS in = dsCreatefs(&input_fs);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 9. DS_FILE: успех, maxlen больше длины */
+    test_sub("subtest %d: DS_FILE success", ++subnum);
+    {
+        const char *path = "res/ds_adapter/dsParseQuotedLimitedfsBuffered_file_success.txt";
+        FILE *fp = fopen(path, "w");
+        test_validate(fp != NULL, "failed to create test file");
+        fputs("\"file ok\"", fp);
+        fclose(fp);
+
+        DS in = dsCreateFilename(path, "r");
+        test_validatefree(in.type == DS_FILE, (dsFree(&in)), "failed to open DS_FILE");
+
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        test_validatefree(res && dst.len == 7,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 7, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("file ok")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 10. DS_FILE: превышение maxlen, dst не изменён */
+    test_sub("subtest %d: DS_FILE maxlen exceeded, dst unchanged", ++subnum);
+    {
+        const char *path = "res/ds_adapter/dsParseQuotedLimitedfsBuffered_file_error.txt";
+        FILE *fp = fopen(path, "w");
+        test_validate(fp != NULL, "failed to create test file");
+        fputs("\"file ok\"", fp);   // содержимое корректное, но мы дадим маленький maxlen
+        fclose(fp);
+
+        DS in = dsCreateFilename(path, "r");
+        test_validatefree(in.type == DS_FILE, (dsFree(&in)), "failed to open DS_FILE");
+
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = dsGetpos(&in);
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree( (size_t) dsGetpos(&in) == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 11. NULL in */
+    test_sub("subtest %d: NULL in raises error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseQuotedLimitedfsBuffered(NULL, &dst, 10);
+            test_validatefree(false, fsfree(dst), "must raise error");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 12. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        if (!try()) {
+            dsParseQuotedLimitedfsBuffered(&in, NULL, 10);
+            test_validate(false, "must raise error");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -3943,21 +4221,22 @@ main( /*int argc, char *argv[] */ )
     logsimpleinit("Start");
 
     testenginestd(
-        TESTADD(tf_ds_printf,               "dsPrintf() simple tests")
-      , TESTADD(tf_ds_scanf,                "dsScanf() simple tests")
-      , TESTADD(tf_ds_scanf_printf,         "dsScanf() and dsPrintf() combined tests")
-      , TESTADD(tf_ds_parsers,              "dsParse<type> simple tests")
-      , TESTADD(tf5_fs_dstechprint,         "fs_dstechprint simple test")
-      , TESTADD(tf6_fs_dswrite,             "fs_dswrite simple test")
-      , TESTADD(tf7_fs_dsserialize_full,    "fs_dsserialize full test (all edges)")
-      , TESTADD(tf8_ds_parse_quoted_line,   "dsParseQuotedLimitedfsDirect simple test")
-      , TESTADD(tf9_fs_ds_DS_STR_roundtrip, "fs_dsserialize/fs_dsload() DS_STR round-trip test")
-      , TESTADD(tf10_fs_ds_CONST_roundtrip, "fs_dsload() with DS_CONSTSTR round-trip and errors")
-      , TESTADD(tf11_fs_ds_FS_roundtrip,    "fs_dsload() with DS_FS round-trip and errors")
-      , TESTADD(tf12_fs_ds_FILE_roundtrip,  "fs_dsload() with DS_FILE round-trip and errors")
-      , TESTADD(tf13_ds_release_fs,         "dsReleaseFs() simple test")
-      , TESTADD(tf14_ds_parse_quoted_unlim, "dsParseQuotedUnlimfsDirect() simple test")
-      , TESTADD(tf15_ds_parse_quoted_core,  "ds_parse_quoted_core() simple test")
+        TESTADD(tf_ds_printf,                               "dsPrintf() simple tests")
+      , TESTADD(tf_ds_scanf,                                "dsScanf() simple tests")
+      , TESTADD(tf_ds_scanf_printf,                         "dsScanf() and dsPrintf() combined tests")
+      , TESTADD(tf_ds_parsers,                              "dsParse<type> simple tests")
+      , TESTADD(tf5_fs_dstechprint,                         "fs_dstechprint simple test")
+      , TESTADD(tf6_fs_dswrite,                             "fs_dswrite simple test")
+      , TESTADD(tf7_fs_dsserialize_full,                    "fs_dsserialize full test (all edges)")
+      , TESTADD(tf8_ds_parse_quoted_line,                   "dsParseQuotedLimitedfsDirect simple test")
+      , TESTADD(tf9_fs_ds_DS_STR_roundtrip,                 "fs_dsserialize/fs_dsload() DS_STR round-trip test")
+      , TESTADD(tf10_fs_ds_CONST_roundtrip,                 "fs_dsload() with DS_CONSTSTR round-trip and errors")
+      , TESTADD(tf11_fs_ds_FS_roundtrip,                    "fs_dsload() with DS_FS round-trip and errors")
+      , TESTADD(tf12_fs_ds_FILE_roundtrip,                  "fs_dsload() with DS_FILE round-trip and errors")
+      , TESTADD(tf13_ds_release_fs,                         "dsReleaseFs() simple test")
+      , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
+      , TESTADD(tf15_ds_parse_quoted_core,                  "ds_parse_quoted_core() simple test")
+      , TESTADD(tf16_ds_parse_quoted_limitedfs_buffered,    "dsParseQuotedLimitedfs with limit and buffer tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
