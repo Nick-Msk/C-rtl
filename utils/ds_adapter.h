@@ -333,20 +333,20 @@ extern bool                         dsParseV64(DS *restrict pds, value64 *restri
  * @warning If parsing fails, the input @ref DS stream is rolled back to its 
  *          original position, and the function returns 0.
  */
-extern bool                       dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer);
+extern bool                       dsParseQuotedLimfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer);
 
-static inline bool                dsParseQuotedLimitedfsDirect(DS *restrict in, fs *restrict dst, size_t maxlen) {
-    return dsParseQuotedLimitedfs(in, dst, maxlen, false);
+static inline bool                dsParseQuotedLimfsDirect(DS *restrict in, fs *restrict dst, size_t maxlen) {
+    return dsParseQuotedLimfs(in, dst, maxlen, false);
 }
-static inline bool                dsParseQuotedLimitedfsBuffered(DS *restrict in, fs *restrict dst, size_t maxlen) {
-    return dsParseQuotedLimitedfs(in, dst, maxlen, true);
+static inline bool                dsParseQuotedLimfsBuffered(DS *restrict in, fs *restrict dst, size_t maxlen) {
+    return dsParseQuotedLimfs(in, dst, maxlen, true);
 }
 
 static inline bool                dsParseQuotedUnlimfsDirect(DS *restrict in, fs *restrict dst) {
-    return dsParseQuotedLimitedfs(in, dst, 0L, false);
+    return dsParseQuotedLimfs(in, dst, 0L, false);
 }
 static inline bool                dsParseQuotedUnlimfsBufferre(DS *restrict in, fs *restrict dst) {
-    return dsParseQuotedLimitedfs(in, dst, 0L, true);
+    return dsParseQuotedLimfs(in, dst, 0L, true);
 }
 /**
  * @brief IParse escaped sequences from a @ref DS stream.
@@ -381,8 +381,16 @@ static inline bool                dsParseQuotedUnlimfsBufferre(DS *restrict in, 
  *       @code dst[len] @endcode upon successful parsing.
  * @warning This function modifies the input stream position.
  */
-extern bool                        
-dsParseQuotedLimitString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer);
+extern bool                         dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer);
+
+static inline bool                  dsParseQuotedLimStringBuffer(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len) {
+    return dsParseQuotedLimString(in, dst, dst_capacity, out_len, true);
+}
+
+static inline bool                  dsParseQuotedLimStringDirect(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len) {
+    return dsParseQuotedLimString(in, dst, dst_capacity, out_len, false);
+}
+
 
 // ------------------------ PRINTERS/CHECKERS ---------------------------------------
 

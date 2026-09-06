@@ -525,7 +525,7 @@ bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
 }
 
 bool                      
-dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
+dsParseQuotedLimfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
@@ -551,7 +551,7 @@ dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool us
 }
 
 bool 
-dsParseQuotedLimitedString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer) {
+dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity, size_t *restrict out_len, bool use_buffer) {
     if (in == NULL || dst == NULL || dst_capacity == 0)
         return userraise(false, ERR_NULL_INPUT, 
             "Null input or zero capacity %p %p %zu", in, dst, dst_capacity);
@@ -655,7 +655,7 @@ long                           fs_dsload(DS *restrict in, fs *restrict dst, bool
     if (use_buffer) {
         fs buf = FS();
 
-        if (!dsParseQuotedLimitedfsDirect(in, &buf, expected_len + 1) ) {
+        if (!dsParseQuotedLimfsDirect(in, &buf, expected_len + 1) ) {
             dsRestorepos(in, pos);
             fsfree(buf);
             return userraise(-1L, ERR_WRONG_INPUT_FORMAT,
@@ -674,7 +674,7 @@ long                           fs_dsload(DS *restrict in, fs *restrict dst, bool
     } else {
         fs_setlen(dst, 0);
 
-        if (!dsParseQuotedLimitedfsDirect(in, dst, expected_len + 1) ) {
+        if (!dsParseQuotedLimfsDirect(in, dst, expected_len + 1) ) {
             dsRestorepos(in, pos);
             return userraise(-1L, ERR_WRONG_INPUT_FORMAT,
                             "Wrong quoted line");
@@ -1754,7 +1754,7 @@ tf7_fs_dsserialize_full(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ------------------------- TEST dsParseQuotedLimitedfsDirect -------------------------
+// ------------------------- TEST dsParseQuotedLimfsDirect -------------------------
 static TestStatus
 tf8_ds_parse_quoted_line(const char *name)
 {
@@ -1768,7 +1768,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 16);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 16);
         test_validatefree(
             res,
             fsfree(dst),
@@ -1798,7 +1798,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             res,
             fsfree(dst),
@@ -1825,7 +1825,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
         
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 20);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 20);
         test_validatefree(
             res && dst.len == 11,
             (dsFree(&ds), fsfree(dst)),
@@ -1850,7 +1850,7 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = FS();
         size_t saved = dsGetpos(&ds);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             !res,
             fsfree(dst),
@@ -1878,7 +1878,7 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = fsinit(8);
         size_t saved = dsGetpos(&ds);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             !res,
             fsfree(dst),
@@ -1901,7 +1901,7 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = fsinit(8);
         size_t saved = dsGetpos(&ds);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             !res,
             fsfree(dst),
@@ -1924,7 +1924,7 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = fsinit(3);   // ёмкость 2 байта, нужно 5
         size_t saved = dsGetpos(&ds);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 3);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 3);
         test_validatefree(
             !res,
             fsfree(dst),
@@ -1949,14 +1949,14 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = fsinit(8);
 
         if (!try()) {
-            dsParseQuotedLimitedfsDirect(NULL, &dst, 8);
+            dsParseQuotedLimfsDirect(NULL, &dst, 8);
             test_validatefree(false, fsfree(dst), "must raise error for NULL DS");
         } else {
             test_validatefree(true, fsfree(dst), "correctly raised error");
         }
 
         if (!try()) {
-            dsParseQuotedLimitedfsDirect(&ds, NULL, 8);
+            dsParseQuotedLimfsDirect(&ds, NULL, 8);
             test_validatefree(false, fsfree(dst), "must raise error for NULL fs");
         } else {
             test_validatefree(true, fsfree(dst), "correctly raised error");
@@ -1973,7 +1973,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 16);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 16);
         test_validatefree(
             res,
             fsfree(dst),
@@ -1995,7 +1995,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 16);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 16);
         test_validatefree(
             res,
             fsfree(dst),
@@ -2017,7 +2017,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 16);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 16);
         test_validatefree(
             res,
             fsfree(dst),
@@ -2039,7 +2039,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = fsinit(8);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             res,
             fsfree(dst),
@@ -2061,7 +2061,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = fsinit(8);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 8);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 8);
         test_validatefree(
             res,
             fsfree(dst),
@@ -2083,7 +2083,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = fsinit(32);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 32);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 32);
         test_validatefree(
             res,
             fsfree(dst),
@@ -2111,7 +2111,7 @@ tf8_ds_parse_quoted_line(const char *name)
         fs dst = fsinit(16);
         size_t saved = dsGetpos(&ds);
 
-        bool res = dsParseQuotedLimitedfsDirect(&ds, &dst, 16);
+        bool res = dsParseQuotedLimfsDirect(&ds, &dst, 16);
         test_validatefree(
             !res,
             fsfree(dst),
@@ -2134,7 +2134,7 @@ tf8_ds_parse_quoted_line(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfs(&in, &dst, 2, false);
+        bool res = dsParseQuotedLimfs(&in, &dst, 2, false);
         test_validatefree(res && dst.len == 1,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 1");
@@ -3927,7 +3927,7 @@ tf15_ds_parse_quoted_core(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ------------------------- TEST dsParseQuotedLimitedfsBuffered (maxlen > 0) -------------------------
+// ------------------------- TEST dsParseQuotedLimfsBuffered (maxlen > 0) -------------------------
 static TestStatus
 tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
 {
@@ -3941,7 +3941,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfs(&in, &dst, 10, true);
+        bool res = dsParseQuotedLimfs(&in, &dst, 10, true);
         test_validatefree(res && dst.len == 5,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 5, got %zu", dst.len);
@@ -3961,7 +3961,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 5 + 1);    // 5 + 1 для '\0'
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 5 + 1);    // 5 + 1 для '\0'
         test_validatefree(res && dst.len == 5,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 5, got %zu", dst.len);
@@ -3983,7 +3983,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = in.pos;
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 3);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected false, got true");
@@ -4007,7 +4007,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 1);
         test_validatefree(res && dst.len == 0,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 0, got %zu", dst.len);
@@ -4027,7 +4027,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreatestr(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 10);
         test_validatefree(res && dst.len == 5,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 5, got %zu", dst.len);
@@ -4049,7 +4049,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = in.pos;
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 3);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected false");
@@ -4073,7 +4073,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreatefs(&input_fs);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 10);
         test_validatefree(res && dst.len == 7,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 7, got %zu", dst.len);
@@ -4095,7 +4095,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = in.pos;
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 3);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected false");
@@ -4126,7 +4126,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
 
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 10);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 10);
         test_validatefree(res && dst.len == 7,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 7, got %zu", dst.len);
@@ -4155,7 +4155,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = dsGetpos(&in);
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 3);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected false");
@@ -4177,7 +4177,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
     {
         fs dst = FS();
         if (!try()) {
-            dsParseQuotedLimitedfsBuffered(NULL, &dst, 10);
+            dsParseQuotedLimfsBuffered(NULL, &dst, 10);
             test_validatefree(false, fsfree(dst), "must raise error");
         } else {
             test_validatefree(true, fsfree(dst), "correctly raised error");
@@ -4190,7 +4190,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
     {
         DS in = dsCreateconst("\"test\"");
         if (!try()) {
-            dsParseQuotedLimitedfsBuffered(&in, NULL, 10);
+            dsParseQuotedLimfsBuffered(&in, NULL, 10);
             test_validate(false, "must raise error");
         } else {
             test_validate(true, "correctly raised error");
@@ -4206,7 +4206,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 1);
         test_validatefree(res && dst.len == 0,
                           (dsFree(&in), fsfree(dst)),
                           "expected empty success, got res=%d len=%zu", res, dst.len);
@@ -4226,7 +4226,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 2);
         test_validatefree(res && dst.len == 1,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 1, got %zu", dst.len);
@@ -4248,7 +4248,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = in.pos;
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 1);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected error, got true");
@@ -4274,7 +4274,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         size_t saved_len = dst.len;
         size_t saved_pos = in.pos;
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 2);
         test_validatefree(!res,
                           (dsFree(&in), fsfree(dst)),
                           "expected error");
@@ -4298,7 +4298,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreateconst(input);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 3);
         test_validatefree(res && dst.len == 2,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 2, got %zu", dst.len);
@@ -4318,7 +4318,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreatefs(&input_fs);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 1);
         test_validatefree(res && dst.len == 0,
                           (dsFree(&in), fsfree(dst)),
                           "expected empty success");
@@ -4338,7 +4338,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         DS in = dsCreatefs(&input_fs);
         fs dst = fscopy("original");
 
-        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        bool res = dsParseQuotedLimfsBuffered(&in, &dst, 2);
         test_validatefree(res && dst.len == 1,
                           (dsFree(&in), fsfree(dst)),
                           "expected len 1");
@@ -4814,6 +4814,262 @@ tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseQuotedLimStringDirect (прямой режим) -------------------------
+static TestStatus
+tf20_ds_parse_quoted_limit_string_direct(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Успех: простая строка, буфер достаточного размера */
+    test_sub("subtest %d: simple string, buffer enough", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));   // заполняем ненулевыми
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 5,
+                          (dsFree(&in)),
+                          "expected success and out_len=5, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "hello") == 0,
+                          (dsFree(&in)),
+                          "content mismatch: got '%s'", dst);
+        test_validatefree(in.pos == strlen(input),
+                          (dsFree(&in)),
+                          "in.pos expected %zu, got %zu", strlen(input), in.pos);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Успех: пустая строка */
+    test_sub("subtest %d: empty string", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 0,
+                          (dsFree(&in)),
+                          "expected success and out_len=0, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "") == 0,
+                          (dsFree(&in)),
+                          "expected empty, got '%s'", dst);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Успех: escape-последовательности */
+    test_sub("subtest %d: escaped string", ++subnum);
+    {
+        const char *input = "\"a\\\"b\\\\c\\nd\\te\\rf\"";
+        DS in = dsCreateconst(input);
+        char dst[20];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 11,
+                          (dsFree(&in)),
+                          "expected out_len=11, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "a\"b\\c\nd\te\rf") == 0,
+                          (dsFree(&in)),
+                          "content mismatch: got '%s'", dst);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Ошибка: нет открывающей кавычки, позиция восстановлена */
+    test_sub("subtest %d: missing begin, pos restored", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false, got true");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored: expected %zu, got %zu", saved_pos, in.pos);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Ошибка: буфер слишком мал (maxlen меньше строки) */
+    test_sub("subtest %d: buffer too small", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        char dst[3];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false, got true");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Ошибка: некорректный escape, позиция восстановлена */
+    test_sub("subtest %d: invalid escape", ++subnum);
+    {
+        const char *input = "\"\\x\"";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Успех: DS_STR как источник */
+    test_sub("subtest %d: input DS_STR", ++subnum);
+    {
+        char input[] = "\"world\"";
+        DS in = dsCreatestr(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 5,
+                          (dsFree(&in)),
+                          "expected out_len=5, got %zu", out_len);
+        test_validatefree(strcmp(dst, "world") == 0,
+                          (dsFree(&in)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Успех: DS_FS как источник */
+    test_sub("subtest %d: input DS_FS", ++subnum);
+    {
+        fs input_fs = fscopy("\"from fs\"");
+        DS in = dsCreatefs(&input_fs);
+        char dst[16];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 7,
+                          (dsFree(&in)),
+                          "expected out_len=7, got %zu", out_len);
+        test_validatefree(strcmp(dst, "from fs") == 0,
+                          (dsFree(&in)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Успех: DS_FILE как источник */
+    test_sub("subtest %d: input DS_FILE", ++subnum);
+    {
+        const char *path = "res/ds_adapter/dsParseQuotedLimitStringDirect_file.txt";
+        FILE *fp = fopen(path, "w");
+        test_validate(fp != NULL, "failed to create test file");
+        fputs("\"from file\"", fp);
+        fclose(fp);
+
+        DS in = dsCreateFilename(path, "r");
+        test_validatefree(in.type == DS_FILE, (dsFree(&in)), "failed to open DS_FILE");
+
+        char dst[16];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringDirect(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 9,
+                          (dsFree(&in)),
+                          "expected out_len=9, got %zu", out_len);
+        test_validatefree(strcmp(dst, "from file") == 0,
+                          (dsFree(&in)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 10. NULL in */
+    test_sub("subtest %d: NULL in raises error", ++subnum);
+    {
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        if (!try()) {
+            dsParseQuotedLimStringDirect(NULL, dst, sizeof(dst), NULL);
+            test_validate(false, "must raise error for NULL in");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 11. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        if (!try()) {
+            dsParseQuotedLimStringDirect(&in, NULL, 10, NULL);
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 12. dst_capacity = 0 */
+    test_sub("subtest %d: zero capacity raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        char dst[1];
+        memset(dst, 'x', sizeof(dst));
+        if (!try()) {
+            dsParseQuotedLimStringDirect(&in, dst, 0, NULL);
+            test_validate(false, "must raise error for zero capacity");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -4828,7 +5084,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf5_fs_dstechprint,                         "fs_dstechprint simple test")
       , TESTADD(tf6_fs_dswrite,                             "fs_dswrite simple test")
       , TESTADD(tf7_fs_dsserialize_full,                    "fs_dsserialize full test (all edges)")
-      , TESTADD(tf8_ds_parse_quoted_line,                   "dsParseQuotedLimitedfsDirect simple test")
+      , TESTADD(tf8_ds_parse_quoted_line,                   "dsParseQuotedLimfsDirect simple test")
       , TESTADD(tf9_fs_ds_DS_STR_roundtrip,                 "fs_dsserialize/fs_dsload() DS_STR round-trip test")
       , TESTADD(tf10_fs_ds_CONST_roundtrip,                 "fs_dsload() with DS_CONSTSTR round-trip and errors")
       , TESTADD(tf11_fs_ds_FS_roundtrip,                    "fs_dsload() with DS_FS round-trip and errors")
@@ -4836,8 +5092,9 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf13_ds_release_fs,                         "dsReleaseFs() simple test")
       , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf15_ds_parse_quoted_core,                  "ds_parse_quoted_core() simple test")
-      , TESTADD(tf16_ds_parse_quoted_limitedfs_buffered,    "dsParseQuotedLimitedfs with limit and buffer tests")
-      , TESTADD(tf17_ds_parse_quoted_unlimitedfs_buffered,  "dsParseQuotedLimitedfs unlimit and buffer tests")
+      , TESTADD(tf16_ds_parse_quoted_limitedfs_buffered,    "dsParseQuotedLimfs() with limit and buffer tests")
+      , TESTADD(tf17_ds_parse_quoted_unlimitedfs_buffered,  "dsParseQuotedLimfs() unlimit and buffer tests")
+      , TESTADD(tf20_ds_parse_quoted_limit_string_direct,   "dsParseQuotedLimStringDirect() tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
