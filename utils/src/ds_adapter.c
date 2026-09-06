@@ -556,7 +556,7 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
         return userraise(false, ERR_NULL_INPUT, 
             "Null input or zero capacity %p %p %zu", in, dst, dst_capacity);
 
-    fs      tmp = (fs) {.v = dst, .len = dst_capacity - 1, .sz = dst_capacity, .flags = FS_FLAG_LOCAL};   // static
+    fs      tmp = (fs) {.v = dst, .len = dst_capacity - 1, .sz = dst_capacity, .flags = FS_FLAG_STATIC};   // static
     if (use_buffer)
         tmp = fsinit(dst_capacity);    // alloc with final \0
 
@@ -3929,7 +3929,7 @@ tf15_ds_parse_quoted_core(const char *name)
 
 // ------------------------- TEST dsParseQuotedLimfsBuffered (maxlen > 0) -------------------------
 static TestStatus
-tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
+tf16_ds_parse_quoted_limfs_buffered(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
@@ -4356,7 +4356,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
 
 // ------------------------- TEST dsParseQuotedUnlimfsBufferre (безлимитный буферизованный режим) -------------------------
 static TestStatus
-tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
+tf17_ds_parse_quoted_unlimfs_buffered(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
@@ -4816,7 +4816,7 @@ tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
 
 // ------------------------- TEST dsParseQuotedLimStringDirect (прямой режим) -------------------------
 static TestStatus
-tf20_ds_parse_quoted_limit_string_direct(const char *name)
+tf18_ds_parse_quoted_lim_string_direct(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
@@ -5070,6 +5070,280 @@ tf20_ds_parse_quoted_limit_string_direct(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseQuotedLimStringBuffer (буферизованный режим) -------------------------
+static TestStatus
+tf19_ds_parse_quoted_lim_string_buffer(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Успех: простая строка, буфер достаточного размера */
+    test_sub("subtest %d: simple string, buffer enough", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));   // заполняем ненулевыми для проверки терминатора
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 5,
+                          (dsFree(&in)),
+                          "expected success and out_len=5, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "hello") == 0,
+                          (dsFree(&in)),
+                          "content mismatch: got '%s'", dst);
+        test_validatefree(in.pos == strlen(input),
+                          (dsFree(&in)),
+                          "in.pos expected %zu, got %zu", strlen(input), in.pos);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Успех: пустая строка */
+    test_sub("subtest %d: empty string", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        char dst[5];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 0,
+                          (dsFree(&in)),
+                          "expected success and out_len=0, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "") == 0,
+                          (dsFree(&in)),
+                          "expected empty, got '%s'", dst);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Успех: escape-последовательности */
+    test_sub("subtest %d: escaped string", ++subnum);
+    {
+        const char *input = "\"a\\\"b\\\\c\\nd\\te\\rf\"";
+        DS in = dsCreateconst(input);
+        char dst[20];
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 11,
+                          (dsFree(&in)),
+                          "expected out_len=11, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "a\"b\\c\nd\te\rf") == 0,
+                          (dsFree(&in)),
+                          "content mismatch: got '%s'", dst);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Успех: граничный размер — строка длиной capacity-1 */
+    test_sub("subtest %d: exact fit (len == capacity-1)", ++subnum);
+    {
+        const char *input = "\"hello\"";   // 5 символов
+        DS in = dsCreateconst(input);
+        char dst[6];                        // capacity = 6, значит строка может быть 5 символов
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 5,
+                          (dsFree(&in)),
+                          "expected success and out_len=5, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, "hello") == 0,
+                          (dsFree(&in)),
+                          "content mismatch: got '%s'", dst);
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Ошибка: переполнение (capacity слишком мала) и dst не изменён */
+    test_sub("subtest %d: overflow, dst unchanged", ++subnum);
+    {
+        const char *input = "\"hello\"";   // требует capacity >= 6
+        DS in = dsCreateconst(input);
+        char dst[5];                        // capacity = 5, строка "hello" не влезет (нужно 6)
+        memset(dst, 'y', sizeof(dst));      // заполняем ненулевыми
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+        char saved_dst[5];
+        memcpy(saved_dst, dst, sizeof(dst));
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false, got true");
+        test_validatefree(memcmp(dst, saved_dst, sizeof(dst)) == 0,
+                          (dsFree(&in)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Ошибка: нет открывающей кавычки, dst не изменён */
+    test_sub("subtest %d: missing begin, dst unchanged", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'z', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+        char saved_dst[10];
+        memcpy(saved_dst, dst, sizeof(dst));
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false");
+        test_validatefree(memcmp(dst, saved_dst, sizeof(dst)) == 0,
+                          (dsFree(&in)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Ошибка: нет закрывающей кавычки, dst не изменён */
+    test_sub("subtest %d: missing end, dst unchanged", ++subnum);
+    {
+        const char *input = "\"hello";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'z', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+        char saved_dst[10];
+        memcpy(saved_dst, dst, sizeof(dst));
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false");
+        test_validatefree(memcmp(dst, saved_dst, sizeof(dst)) == 0,
+                          (dsFree(&in)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Ошибка: некорректный escape, dst не изменён */
+    test_sub("subtest %d: invalid escape, dst unchanged", ++subnum);
+    {
+        const char *input = "\"\\x\"";
+        DS in = dsCreateconst(input);
+        char dst[10];
+        memset(dst, 'z', sizeof(dst));
+        size_t out_len = 0;
+        size_t saved_pos = in.pos;
+        char saved_dst[10];
+        memcpy(saved_dst, dst, sizeof(dst));
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(!res,
+                          (dsFree(&in)),
+                          "expected false");
+        test_validatefree(memcmp(dst, saved_dst, sizeof(dst)) == 0,
+                          (dsFree(&in)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Успех: длинная строка в пределах capacity */
+    test_sub("subtest %d: long string", ++subnum);
+    {
+        char longstr[101];
+        memset(longstr, 'a', 100);
+        longstr[100] = '\0';
+        char input[105];
+        snprintf(input, sizeof(input), "\"%s\"", longstr);
+
+        DS in = dsCreateconst(input);
+        char dst[102];   // 101 символ + нуль
+        memset(dst, 'x', sizeof(dst));
+        size_t out_len = 0;
+
+        bool res = dsParseQuotedLimStringBuffer(&in, dst, sizeof(dst), &out_len);
+        test_validatefree(res && out_len == 100,
+                          (dsFree(&in)),
+                          "expected success and out_len=100, got res=%d out_len=%zu", res, out_len);
+        test_validatefree(strcmp(dst, longstr) == 0,
+                          (dsFree(&in)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 10. Ошибка: capacity = 0 */
+    test_sub("subtest %d: zero capacity raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        char dst[1] = {0};
+        if (!try()) {
+            dsParseQuotedLimStringBuffer(&in, dst, 0, NULL);
+            test_validate(false, "must raise error for zero capacity");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 11. NULL in */
+    test_sub("subtest %d: NULL in raises error", ++subnum);
+    {
+        char dst[10];
+        memset(dst, 'x', sizeof(dst));
+        if (!try()) {
+            dsParseQuotedLimStringBuffer(NULL, dst, sizeof(dst), NULL);
+            test_validate(false, "must raise error for NULL in");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 12. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        if (!try()) {
+            dsParseQuotedLimStringBuffer(&in, NULL, 10, NULL);
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -5092,9 +5366,10 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf13_ds_release_fs,                         "dsReleaseFs() simple test")
       , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf15_ds_parse_quoted_core,                  "ds_parse_quoted_core() simple test")
-      , TESTADD(tf16_ds_parse_quoted_limitedfs_buffered,    "dsParseQuotedLimfs() with limit and buffer tests")
-      , TESTADD(tf17_ds_parse_quoted_unlimitedfs_buffered,  "dsParseQuotedLimfs() unlimit and buffer tests")
-      , TESTADD(tf20_ds_parse_quoted_limit_string_direct,   "dsParseQuotedLimStringDirect() tests")
+      , TESTADD(tf16_ds_parse_quoted_limfs_buffered,        "dsParseQuotedLimfs() with limit and buffer tests")
+      , TESTADD(tf17_ds_parse_quoted_unlimfs_buffered,      "dsParseQuotedLimfs() unlimit and buffer tests")
+      , TESTADD(tf18_ds_parse_quoted_lim_string_direct,     "dsParseQuotedLimStringDirect() tests")
+      , TESTADD(tf19_ds_parse_quoted_lim_string_buffer,     "dsParseQuotedLimStringBuffer() tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
