@@ -554,24 +554,26 @@ bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
     return true;
 }
 
-// just a wrapper over helper dsHelperParseEscapedString
 bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_buffer) {
     if (in == NULL || dst == NULL)
         return userraiseint(ERR_NULL_INPUT, "%p %p", in, dst);
 
-    // TODO: use_buffer
+    fs  *buf = fs_init_or_use(use_buffer ? dst: NULL);
+
     if (maxlen > 0)
-        fs_resize(dst, maxlen);     // not necessary but for opt
-    fs_setlen(dst, 0);  // WA until normal fs_cmp/fs_cmpstr
+        fs_resize(buf, maxlen);     // not necessary but for opt
+    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
 
-    DS      buf = dsCreatefs(dst);
+    DS      outtmp = dsCreatefs(dst);
 
-    bool res = ds_parse_quoted_core(in, &buf, maxlen, '"', '"');
+    bool res = ds_parse_quoted_core(in, &outtmp, maxlen, '"', '"');
     if (!res) {
-        dsFree(&buf);
+        dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
     }
-    dsReleaseFs(dst, &buf);
+    dsReleaseFs(buf, &outtmp);      // real dst or buf
+    if (use_buffer)
+        fs_free(buf);
 
     return true;
 }
