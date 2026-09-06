@@ -199,8 +199,12 @@ int                         dsreplacec(int c, DS *pds) {
 }
 
 int                         dsputc(int c, DS *pds) {
-    if (c == EOF)
-        return logsimpleerr(EOF, "put EOF - do nothing");
+    if (c == EOF) {
+        if (pds->type == DS_FILE)
+            return logsimpleerr(EOF, "put EOF - do nothing");
+        else
+            c = '\0';
+    }
 
     switch (pds->type) {
         case DS_CONSTSTR:
@@ -215,7 +219,10 @@ int                         dsputc(int c, DS *pds) {
             return 1;  // increment
         case DS_FS:
 #ifndef NO_FSDS
-            elem0(pds->s, pds->pos++) = (unsigned char) c;  // TODO: change to elem()
+            if (c == '\0')
+                fs_setlen(&pds->s, pds->pos++);
+            else
+                elem(pds->s, pds->pos++) = (unsigned char) c;
             return 1; // increment
 #else
         default:
@@ -937,6 +944,7 @@ tf4_ds_fs(const char *name)
         test_validate(res == 1, "dsputc 'B' must return 1");
         res = dsputc('C', &ds);
         test_validate(res == 1, "dsputc 'C' must return 1");
+        dsputc(EOF, &ds);
 
         dsReset(&ds);
         test_validate(dsgetc(&ds) == 'A', "read A");
@@ -953,9 +961,19 @@ tf4_ds_fs(const char *name)
         DS ds = dsCreatefs(&s);
         ds.pos = 5;
         int res = dsputc('X', &ds);
-        test_validate(res == 1, "dsputc at pos 5 must return 1");
+        test_validatefree(
+            res == 1, 
+            dsFree(&ds),
+            "dsputc at pos 5 must return 1"
+        );
+        dsputc(EOF, &ds);
+        test_validatefree(
+            res == 1, 
+            dsFree(&ds),
+            "dsputc at pos 5 must return 1"
+        );
         test_validate(ds.s.len == 6 && ds.s.v[5] == 'X' && ds.s.v[6] == '\0',
-                      "FS len=6, str[5]='X', str[6]='\\0'");
+                      "FS len= %zu, str[5]='%c', str[6]='%c'", ds.s.len, ds.s.v[5], ds.s.v[6]);
         dsFree(&ds);
     }
     fs_alloc_check(true);
