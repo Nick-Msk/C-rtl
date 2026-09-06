@@ -5344,6 +5344,234 @@ tf19_ds_parse_quoted_lim_string_buffer(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseQuotedLimfsDirect (прямой режим для fs) -------------------------
+static TestStatus
+tf20_ds_parse_quoted_limfs_direct(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Успех: простая строка, maxlen=0 (безлимит) */
+    test_sub("subtest %d: simple string, unlimited", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("hello")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Успех: пустая строка */
+    test_sub("subtest %d: empty string", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 0, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty, got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Успех: escape-последовательности */
+    test_sub("subtest %d: escaped string", ++subnum);
+    {
+        const char *input = "\"a\\\"b\\\\c\\nd\\te\\rf\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(res && dst.len == 11,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 11, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("a\"b\\c\nd\te\rf")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Успех: ограничение maxlen = 6 (ровно для "hello") */
+    test_sub("subtest %d: maxlen == len+1", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 6);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("hello")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Ошибка: превышение maxlen, dst становится пустым */
+    test_sub("subtest %d: maxlen exceeded, dst reset", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 3);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false, got true");
+        test_validatefree(fs_isnull(&dst),
+                          (dsFree(&in), fsfree(dst)),
+                          "dst should be reset after error (use_buffer=false)");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Ошибка: нет открывающей кавычки, dst становится пустым */
+    test_sub("subtest %d: missing begin, dst reset", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(fs_isnull(&dst),
+                          (dsFree(&in), fsfree(dst)),
+                          "dst should be reset after error");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Ошибка: нет закрывающей кавычки, dst становится пустым */
+    test_sub("subtest %d: missing end, dst reset", ++subnum);
+    {
+        const char *input = "\"hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(fs_isnull(&dst),
+                          (dsFree(&in), fsfree(dst)),
+                          "dst should be reset after error");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Ошибка: некорректный escape, dst становится пустым */
+    test_sub("subtest %d: invalid escape, dst reset", ++subnum);
+    {
+        const char *input = "\"\\x\"";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimfsDirect(&in, &dst, 0);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(fs_isnull(&dst),
+                          (dsFree(&in), fsfree(dst)),
+                          "dst should be reset after error");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 9. NULL in */
+    test_sub("subtest %d: NULL in raises error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseQuotedLimfsDirect(NULL, &dst, 0);
+            test_validatefree(false, fsfree(dst), "must raise error");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 10. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        if (!try()) {
+            dsParseQuotedLimfsDirect(&in, NULL, 0);
+            test_validate(false, "must raise error");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 11. Неаллоцируемый dst (например, FSLITERAL) */
+    test_sub("subtest %d: non-allocatable dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        fs dst = FSLITERAL("original");
+        if (!try()) {
+            dsParseQuotedLimfsDirect(&in, &dst, 0);
+            test_validate(false, "must raise error for non-allocatable dst");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -5364,12 +5592,14 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf11_fs_ds_FS_roundtrip,                    "fs_dsload() with DS_FS round-trip and errors")
       , TESTADD(tf12_fs_ds_FILE_roundtrip,                  "fs_dsload() with DS_FILE round-trip and errors")
       , TESTADD(tf13_ds_release_fs,                         "dsReleaseFs() simple test")
-      , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf15_ds_parse_quoted_core,                  "ds_parse_quoted_core() simple test")
+        //
+      , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf16_ds_parse_quoted_limfs_buffered,        "dsParseQuotedLimfs() with limit and buffer tests")
       , TESTADD(tf17_ds_parse_quoted_unlimfs_buffered,      "dsParseQuotedLimfs() unlimit and buffer tests")
       , TESTADD(tf18_ds_parse_quoted_lim_string_direct,     "dsParseQuotedLimStringDirect() tests")
       , TESTADD(tf19_ds_parse_quoted_lim_string_buffer,     "dsParseQuotedLimStringBuffer() tests")
+      , TESTADD(tf20_ds_parse_quoted_limfs_direct, "dsParseQuotedLimfsDirect tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
