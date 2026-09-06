@@ -323,8 +323,10 @@ static inline bool              dsReleaseFs(fs *restrict dst, DS *restrict pds) 
             "%d/%s isn't supported", pds->type, DSTypeName(pds->type));
     if (dst == NULL)        // just free
         fsfree(pds->s);
-    else
+    else {
+        fs_free(dst);   // to avoid leaking
         *dst = fs_move(&pds->s);
+    }
 
 #endif  /* !NO_FSDS */   
 
