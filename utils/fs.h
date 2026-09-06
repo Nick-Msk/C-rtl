@@ -22,7 +22,7 @@
 // ------------------- TYPES -----------------------
 
 typedef enum  {
-               FS_FLAG_DEFUNCT      = 0x0
+               FS_FLAG_DEFUNCT      = 0x20
              , FS_FLAG_ALLOC        = 0x10     // standard allocation
              , FS_FLAG_STATIC       = 0x1
              , FS_FLAG_CONST        = 0x2     // Not user for now

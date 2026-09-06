@@ -127,12 +127,8 @@ fs                                       fs_move(fs *orig){
 }
 // normal move, now ANY types!
 fs                                      *fs_moveto(fs *dst, fs *src) {
-    /*if (!fs_alloc(dst) || !fs_alloc(src) )
-        userraiseint(ERR_FS_NOT_ALLOC_FLAG,
-            "Unable to move not allocated fs type src[%d/%s], dst[%d/%s]", 
-                src->flags, fs_flag_str(src->flags),
-                dst->flags, fs_flag_str(dst->flags) ); */
-
+    if (!dst || !src)
+        userraiseint(ERR_NULLABLE_PTR, "%p %p", dst, src);
     if (dst != src) {    
         fs_free(dst);
         *dst = *src;
@@ -4979,6 +4975,151 @@ tf40_fs_catstr_mem(const char *name)
     return TEST_PASSED;
 }
 
+// ------------------------- TEST fs_moveto -------------------------
+static TestStatus
+tf41_fs_moveto(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Перемещение из ALLOC в пустой ALLOC */
+    test_sub("subtest %d: move ALLOC to empty ALLOC", ++subnum);
+    {
+        fs          src = fscopy("hello");
+        fs          dst = FS();
+        const char *orig_v = src.v;
+        int         orig_flags = src.flags;
+
+        fs *result = fs_moveto(&dst, &src);
+        test_validatefree(result == &dst,
+                          (fsfree(src), fsfree(dst)),
+                          "returned pointer mismatch");
+        test_validatefree(dst.v == orig_v && dst.flags == orig_flags,
+                          (fsfree(src), fsfree(dst)),
+                          "dst should inherit src pointer and flags");
+        test_validatefree(fscmp(dst, FSLITERAL("hello")) == 0,
+                          (fsfree(src), fsfree(dst)),
+                          "dst content mismatch: '%s'", fs_str(&dst));
+        test_validatefree(fs_defunct(&src),
+                          (fsfree(src), fsfree(dst)),
+                          "src must be defunct after move");
+
+        fsfree(dst);   // src defunct, fsfree(src) безопасен
+        fs_alloc_check(true);
+    }
+
+    /* 2. Перемещение из STATIC в ALLOC */
+    test_sub("subtest %d: move STATIC to ALLOC", ++subnum);
+    {
+        fs          src = FSLITERAL("static");
+        fs          dst = FS();
+        const char *orig_v = src.v;
+        int         orig_flags = src.flags;
+
+        fs_moveto(&dst, &src);
+        test_validatefree(dst.v == orig_v && dst.flags == orig_flags,
+                          (fsfree(dst)),
+                          "dst should inherit src flags and pointer");
+        test_validatefree(fs_defunct(&src),
+                          (fsfree(dst)),
+                          "src must be defunct");
+        fsfree(dst);   // dst статический, fsfree не должен ничего делать
+        fs_alloc_check(true);
+    }
+
+    /* 3. Перемещение из LOCAL в ALLOC */
+    test_sub("subtest %d: move LOCAL to ALLOC", ++subnum);
+    {
+        fslocal(localbuf, 16);
+        fs          src = localbuf;
+        fs_cpystr(&src, "local data");
+        fs          dst = FS();
+        const char *orig_v = src.v;
+        int         orig_flags = src.flags;
+
+        fs_moveto(&dst, &src);
+        test_validatefree(dst.v == orig_v && dst.flags == orig_flags,
+                          (fsfree(dst)),
+                          "dst should inherit src flags and pointer");
+        test_validatefree(fs_defunct(&src),
+                          (fsfree(dst)),
+                          "src must be defunct");
+        fsfree(dst);   // dst локальный, fsfree не должен ничего делать
+        fs_alloc_check(true);
+    }
+
+    /* 4. Перемещение dst == src (само в себя) */
+    test_sub("subtest %d: move to itself", ++subnum);
+    {
+        fs      s = fscopy("self");
+        size_t  len_before = s.len;
+        char   *v_before = s.v;
+
+        fs *result = fs_moveto(&s, &s);
+        test_validatefree(result == &s,
+                          (fsfree(s)),
+                          "returned pointer mismatch");
+        test_validatefree(s.len == len_before && s.v == v_before,
+                          (fsfree(s)),
+                          "self-move should not change object");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Перемещение из DEFUNCT (уже перемещённый) */
+    test_sub("subtest %d: move from DEFUNCT", ++subnum);
+    {
+        fs src = fscopy("original");
+        fs dst = FS();
+        fs_moveto(&dst, &src);   // теперь src defunct
+
+        fs dst2 = FS();
+        fs_moveto(&dst2, &src);  // src defunct, dst2 станет defunct
+        test_validatefree(fs_defunct(&dst2),
+                          (fsfree(dst), fsfree(dst2)),
+                          "dst2 should become defunct");
+        test_validatefree(fs_defunct(&src),
+                          (fsfree(dst), fsfree(dst2)),
+                          "src must still be defunct");
+
+        fsfree(dst);
+        fsfree(dst2);
+        fs_alloc_check(true);
+    }
+
+        /* 6a. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        fs src = fscopy("test");
+        if (!try()) {
+            fs_moveto(NULL, &src);
+            fsfree(src);   // освобождаем, так как функция не освободила
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            fsfree(src);
+            test_validate(true, "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 6b. NULL src */
+    test_sub("subtest %d: NULL src raises error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            fs_moveto(&dst, NULL);
+            fsfree(dst);
+            test_validate(false, "must raise error for NULL src");
+        } else {
+            fsfree(dst);
+            test_validate(true, "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
 // ------------------------------------------------------------------------------------------------------------------------------
 int
 main( /* int argc, const char *argv[] */)
@@ -5026,8 +5167,9 @@ main( /* int argc, const char *argv[] */)
         TESTADD(tf36_fs_movetostr,      "fs_movetostr() simple tests"),
         TESTADD(tf37_fs_cmpstr,         "fs_cmpstr() series simple tests"),
         TESTADD(tf38_fs_icmpstr,        "fs_icmpstr()/fs_nicmpstr()  simple tests"),
-        TESTADD(tf39_fs_sprintf_position,   "fs_sprintf_position simple tests"),
-        TESTADD(tf40_fs_catstr_mem,     "fs_catstr / fs_catmem simple tests")
+        TESTADD(tf39_fs_sprintf_position,   "fs_sprintf_position() simple tests"),
+        TESTADD(tf40_fs_catstr_mem,         "fs_catstr / fs_catmem() simple tests"),
+        TESTADD(tf41_fs_moveto,             "fs_moveto() simple tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
