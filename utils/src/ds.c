@@ -134,7 +134,7 @@ bool                        dsInitconst(DS *restrict pds, const char *restrict b
             return false;
         pds->type = DS_FS;
         pds->pos = 0;        // iterator
-        pds->s = fs_move(s);    // clear s
+        fs_moveto(&pds->s, s);
         return true;
     }
 #endif  /* !NO_FSDS */   
