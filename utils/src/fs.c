@@ -117,13 +117,28 @@ static inline fs                       *strcopy(fs *restrict target, const fs *r
 
 // ------------------ General functions ----------------------------
 
-// move only heap alloc fs
+// move only heap alloc fs: TO BE REMOVED
 fs                                       fs_move(fs *orig){
     if (!fs_alloc(orig) )
         userraiseint(ERR_FS_NOT_ALLOC_FLAG, "Unable to move not allocated fs (type %s)", fs_flag_str(orig->flags) );    // 10001 interrupt
     fs tmp = *orig;
     *orig = FS();
     return tmp; // logsimpleret(tmp, "fs moved %d: %p", tmp.sz, tmp.v);
+}
+// normal move, only FS_FLAG_ALLOC
+fs                                      *fs_moveto(fs *dst, fs *src) {
+     if (!fs_alloc(dst) || !fs_alloc(src) )
+        userraiseint(ERR_FS_NOT_ALLOC_FLAG,
+            "Unable to move not allocated fs type src[%d/%s], dst[%d/%s]", 
+                src->flags, fs_flag_str(src->flags),
+                dst->flags, fs_flag_str(dst->flags) ); 
+
+    if (dst != src) {    
+        fs_free(dst);
+        *dst = *src;
+        fs_free(src);
+    }
+    return dst;
 }
 
 // move whole fs (body and string)

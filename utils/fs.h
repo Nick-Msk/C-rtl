@@ -81,7 +81,7 @@ static inline bool          fs_flag_alloc(FS_FLAGS fl){
 }
 
 static inline bool          fs_alloc(const fs *s){
-    return fs_flag_alloc(s->flags);
+    return s && fs_flag_alloc(s->flags);
 }
 
 static inline bool          fs_flag_bodyalloc(FS_FLAGS fl){
@@ -239,8 +239,10 @@ static inline long           fs_sprintf(fs *restrict s, const char *restrict fmt
 static inline long           fs_sprintf_concat(fs *restrict s, const char *restrict fmt, ...)
     __attribute__ (( format (printf, 2, 3) ) );
 
-// move only heap alloc fs
+// move only heap alloc fs, TO BE REMOVED
 extern fs                    fs_move(fs *orig);
+//
+extern fs                   *fs_moveto(fs *dst, fs *src);
 // move whole fs (body and string)
 extern fs                   *fs_moveto_heap(fs *orig);
 // actually this is MOVE CONSTRUCTOR, *orig MUST be heap allocated c-str
