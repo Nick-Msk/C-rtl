@@ -2162,6 +2162,25 @@ tf8_ds_parse_quoted_line(const char *name)
         fsfree(dst);
         fs_alloc_check(true);
     }
+    /* 20. use_buffer=false с maxlen=2 и одним символом (проверка небуферизованного режима) */
+    test_sub("subtest %d: use_buffer=false, one char, maxlen=2", ++subnum);
+    {
+        const char *input = "\"x\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfs(&in, &dst, 2, false);
+        test_validatefree(res && dst.len == 1,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 1");
+        test_validatefree(fscmp(dst, FSLITERAL("x")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
 
     return logret(TEST_PASSED, "done");
 }
@@ -3967,7 +3986,7 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
     }
 
     /* 2. DS_CONSTSTR: успех, точное совпадение maxlen == длина */
-    test_sub("subtest %d: DS_CONSTSTR success (maxlen == len)", ++subnum);
+    test_sub("subtest %d: DS_CONSTSTR success (maxlen == len + 1)", ++subnum);
     {
         const char *input = "\"hello\"";
         DS in = dsCreateconst(input);
@@ -4211,6 +4230,573 @@ tf16_ds_parse_quoted_limitedfs_buffered(const char *name)
         fs_alloc_check(true);
     }
 
+        /* 13. DS_CONSTSTR: пустая строка, maxlen=1 (ровно на нуль-терминатор) */
+    test_sub("subtest %d: empty string, maxlen=1", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty success, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty content");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 14. DS_CONSTSTR: строка из одного символа, maxlen=2 (успех) */
+    test_sub("subtest %d: one char, maxlen=2", ++subnum);
+    {
+        const char *input = "\"a\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        test_validatefree(res && dst.len == 1,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 1, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("a")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 15. DS_CONSTSTR: строка из одного символа, maxlen=1 (ошибка) */
+    test_sub("subtest %d: one char, maxlen=1 (error)", ++subnum);
+    {
+        const char *input = "\"a\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected error, got true");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 16. DS_CONSTSTR: строка из двух символов, maxlen=2 (ошибка, нужен 1 байт под '\0') */
+    test_sub("subtest %d: two chars, maxlen=2 (error)", ++subnum);
+    {
+        const char *input = "\"ab\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected error");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 17. DS_CONSTSTR: строка из двух символов, maxlen=3 (успех) */
+    test_sub("subtest %d: two chars, maxlen=3", ++subnum);
+    {
+        const char *input = "\"ab\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 3);
+        test_validatefree(res && dst.len == 2,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 2, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("ab")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 18. DS_FS: пустая строка, maxlen=1 */
+    test_sub("subtest %d: DS_FS empty string, maxlen=1", ++subnum);
+    {
+        fs input_fs = fscopy("\"\"");
+        DS in = dsCreatefs(&input_fs);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 1);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty success");
+        test_validatefree(fscmp(dst, FSLITERAL("")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty content");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 19. DS_FS: один символ, maxlen=2 */
+    test_sub("subtest %d: DS_FS one char, maxlen=2", ++subnum);
+    {
+        fs input_fs = fscopy("\"z\"");
+        DS in = dsCreatefs(&input_fs);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedLimitedfsBuffered(&in, &dst, 2);
+        test_validatefree(res && dst.len == 1,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 1");
+        test_validatefree(fscmp(dst, FSLITERAL("z")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ------------------------- TEST dsParseQuotedUnlimfsBufferre (безлимитный буферизованный режим) -------------------------
+static TestStatus
+tf17_ds_parse_quoted_unlimitedfs_buffered(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. DS_CONSTSTR: успех, простая строка */
+    test_sub("subtest %d: DS_CONSTSTR success", ++subnum);
+    {
+        const char *input = "\"hello\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 5, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("hello")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree(in.pos == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected %zu, got %zu", strlen(input), in.pos);
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. DS_CONSTSTR: успех, пустая строка */
+    test_sub("subtest %d: DS_CONSTSTR empty string", ++subnum);
+    {
+        const char *input = "\"\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 0, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty content");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. DS_CONSTSTR: успех, экранированные символы */
+    test_sub("subtest %d: DS_CONSTSTR escaped string", ++subnum);
+    {
+        const char *input = "\"a\\\"b\\\\c\\nd\\te\\rf\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 11,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 11, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("a\"b\\c\nd\te\rf")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. DS_CONSTSTR: успех, очень длинная строка (проверка расширения) */
+    test_sub("subtest %d: DS_CONSTSTR long string", ++subnum);
+    {
+        char longstr[201];
+        memset(longstr, 'A', 200);
+        longstr[200] = '\0';
+        char input[205];
+        snprintf(input, sizeof(input), "\"%s\"", longstr);
+
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 200,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 200, got %zu", dst.len);
+        test_validatefree(strncmp(fs_str(&dst), longstr, 200) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. DS_CONSTSTR: ошибка (нет открывающей кавычки), dst не изменён */
+    test_sub("subtest %d: DS_CONSTSTR missing begin, dst unchanged", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false, got true");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. DS_CONSTSTR: ошибка (нет закрывающей кавычки), dst не изменён */
+    test_sub("subtest %d: DS_CONSTSTR missing end, dst unchanged", ++subnum);
+    {
+        const char *input = "\"hello";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false, got true");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. DS_CONSTSTR: ошибка (некорректный escape), dst не изменён */
+    test_sub("subtest %d: DS_CONSTSTR invalid escape, dst unchanged", ++subnum);
+    {
+        const char *input = "\"\\x\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false, got true");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 8. DS_STR: успех */
+    test_sub("subtest %d: DS_STR success", ++subnum);
+    {
+        char input[] = "\"from str\"";
+        DS in = dsCreatestr(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 8,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 8, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("from str")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 9. DS_FS: успех */
+    test_sub("subtest %d: DS_FS success", ++subnum);
+    {
+        fs input_fs = fscopy("\"from fs\"");
+        DS in = dsCreatefs(&input_fs);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 7,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 7, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("from fs")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 10. DS_FILE: успех (создаём файл в res/ds_adapter) */
+    test_sub("subtest %d: DS_FILE success", ++subnum);
+    {
+        const char *path = "res/ds_adapter/dsParseQuotedUnlimfsBufferre_file_success.txt";
+        FILE *fp = fopen(path, "w");
+        test_validate(fp != NULL, "failed to create test file");
+        fputs("\"from file\"", fp);
+        fclose(fp);
+
+        DS in = dsCreateFilename(path, "r");
+        test_validatefree(in.type == DS_FILE, (dsFree(&in)), "failed to open DS_FILE");
+
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 9,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 9, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("from file")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 11. DS_FILE: ошибка, dst не изменён (файл без кавычек) */
+    test_sub("subtest %d: DS_FILE error, dst unchanged", ++subnum);
+    {
+        const char *path = "res/ds_adapter/dsParseQuotedUnlimfsBufferre_file_error.txt";
+        FILE *fp = fopen(path, "w");
+        test_validate(fp != NULL, "failed to create test file");
+        fputs("not quoted", fp);
+        fclose(fp);
+
+        DS in = dsCreateFilename(path, "r");
+        test_validatefree(in.type == DS_FILE, (dsFree(&in)), "failed to open DS_FILE");
+
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = dsGetpos(&in);
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(dsGetpos(&in) == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 12. DS_CONSTSTR: строка только из перевода строки (escape \n) */
+    test_sub("subtest %d: DS_CONSTSTR newline escape only", ++subnum);
+    {
+        const char *input = "\"\\n\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 1,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 1, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("\n")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 13. DS_CONSTSTR: строка с одним обратным слэшем (escape \\) */
+    test_sub("subtest %d: DS_CONSTSTR backslash escape only", ++subnum);
+    {
+        const char *input = "\"\\\\\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 1,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 1, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("\\")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 14. DS_CONSTSTR: экранированная кавычка в конце строки */
+    test_sub("subtest %d: DS_CONSTSTR escaped quote at end", ++subnum);
+    {
+        const char *input = "\"abc\\\"\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(res && dst.len == 4,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len 4, got %zu", dst.len);
+        test_validatefree(fscmp(dst, FSLITERAL("abc\"")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 15. DS_CONSTSTR: ошибка: обратный слэш в конце без символа */
+    test_sub("subtest %d: DS_CONSTSTR backslash at end", ++subnum);
+    {
+        const char *input = "\"\\";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 16. DS_CONSTSTR: ошибка: экранированная кавычка без закрывающей */
+    test_sub("subtest %d: DS_CONSTSTR escaped quote without closing", ++subnum);
+    {
+        const char *input = "\"abc\\\"";
+        DS in = dsCreateconst(input);
+        fs dst = fscopy("original");
+        size_t saved_len = dst.len;
+        size_t saved_pos = in.pos;
+
+        bool res = dsParseQuotedUnlimfsBufferre(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected false");
+        test_validatefree(dst.len == saved_len &&
+                          fscmp(dst, FSLITERAL("original")) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst must remain unchanged");
+        test_validatefree(in.pos == saved_pos,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos not restored");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 17. NULL in */
+    test_sub("subtest %d: NULL in raises error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseQuotedUnlimfsBufferre(NULL, &dst);
+            test_validatefree(false, fsfree(dst), "must raise error");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 18. NULL dst */
+    test_sub("subtest %d: NULL dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("\"test\"");
+        if (!try()) {
+            dsParseQuotedUnlimfsBufferre(&in, NULL);
+            test_validate(false, "must raise error");
+        } else {
+            test_validate(true, "correctly raised error");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
     return logret(TEST_PASSED, "done");
 }
 
@@ -4237,6 +4823,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf14_ds_parse_quoted_unlim,                 "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf15_ds_parse_quoted_core,                  "ds_parse_quoted_core() simple test")
       , TESTADD(tf16_ds_parse_quoted_limitedfs_buffered,    "dsParseQuotedLimitedfs with limit and buffer tests")
+      , TESTADD(tf17_ds_parse_quoted_unlimitedfs_buffered,  "dsParseQuotedLimitedfs unlimit and buffer tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
