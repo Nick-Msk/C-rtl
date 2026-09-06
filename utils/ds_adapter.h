@@ -342,8 +342,12 @@ static inline bool                dsParseQuotedLimitedfsBuffered(DS *restrict in
     return dsParseQuotedLimitedfs(in, dst, maxlen, true);
 }
 
-// TODO: remove to use dsParseQuotedLimitedfs with maxlen == 0L
-extern bool                       dsParseQuotedUnlimfs(DS *restrict pds, fs *restrict dst/*, bool use_buffer*/);
+static inline bool                dsParseQuotedUnlimfsDirect(DS *restrict in, fs *restrict dst) {
+    return dsParseQuotedLimitedfs(in, dst, 0L, false);
+}
+static inline bool                dsParseQuotedUnlimfsBufferre(DS *restrict in, fs *restrict dst) {
+    return dsParseQuotedLimitedfs(in, dst, 0L, true);
+}
 
 // ------------------------ PRINTERS/CHECKERS ---------------------------------------
 

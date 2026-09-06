@@ -575,43 +575,43 @@ bool                      dsParseQuotedLimitedfs(DS *restrict in, fs *restrict d
 
     return true;
 }
-// unlimited quoted line
-// TODO: remove that old impl
-bool                       dsParseQuotedUnlimfs(DS *restrict in, fs *restrict dst/* , bool use_buffer */) {
-    if (in == NULL || dst == NULL || !fs_alloc(dst))
-        return userraiseint(ERR_NULL_INPUT, 
-            "Null input or non-allocatable fs ds %p fs %p/%s", in, dst, dst ? bool_str(fs_alloc(dst)): "");
+// // unlimited quoted line
+// // TODO: remove that old impl
+// bool                       dsParseQuotedUnlimfsDirect(DS *restrict in, fs *restrict dst/* , bool use_buffer */) {
+//     if (in == NULL || dst == NULL || !fs_alloc(dst))
+//         return userraiseint(ERR_NULL_INPUT, 
+//             "Null input or non-allocatable fs ds %p fs %p/%s", in, dst, dst ? bool_str(fs_alloc(dst)): "");
 
-    size_t      pos = dsSavepos(in);                       // запоминаем позицию
-    bool        error = false;
-    size_t      len = 0;
+//     size_t      pos = dsSavepos(in);                       // запоминаем позицию
+//     bool        error = false;
+//     size_t      len = 0;
 
-    int         c = dsgetc(in);
-    if (c != '"')
-        error = true;
+//     int         c = dsgetc(in);
+//     if (c != '"')
+//         error = true;
 
-    while (!error && (c = dsgetc(in)) != EOF && c != '"') {
+//     while (!error && (c = dsgetc(in)) != EOF && c != '"') {
 
-        if (c == '\\') {
-            if (!dsgetcEscaped(in, &c))
-                error = true; // Ошибка, если после '\' ничего нет или неизвестный символ
-        }
-        if (!error)
-            elem(*dst, len++) = (unsigned char) c;   // allocation if required
-    }
-    if (c != '"')
-        error = true;
+//         if (c == '\\') {
+//             if (!dsgetcEscaped(in, &c))
+//                 error = true; // Ошибка, если после '\' ничего нет или неизвестный символ
+//         }
+//         if (!error)
+//             elem(*dst, len++) = (unsigned char) c;   // allocation if required
+//     }
+//     if (c != '"')
+//         error = true;
 
-    fs_setlen(dst, len);
+//     fs_setlen(dst, len);
 
-    if (error) {
-        dsRestorepos(in, pos);                 // rollback only if error
-        return userraise(false, ERR_UNABLE_PARSE_DATA, 
-            "Unable to parse quoted line!");
-    }
+//     if (error) {
+//         dsRestorepos(in, pos);                 // rollback only if error
+//         return userraise(false, ERR_UNABLE_PARSE_DATA, 
+//             "Unable to parse quoted line!");
+//     }
 
-    return true;
-}
+//     return true;
+// }
 
 // -------------------------------------- fs adapters ------------------------------------------------
 // ------------------------------- NOTE: no call to fs.c from here -----------------------------------
@@ -3169,7 +3169,7 @@ tf13_ds_release_fs(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ------------------------- TEST dsParseQuotedUnlimfs -------------------------
+// ------------------------- TEST dsParseQuotedUnlimfsDirect -------------------------
 static TestStatus
 tf14_ds_parse_quoted_unlim(const char *name)
 {
@@ -3183,7 +3183,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 5,
             (dsFree(&ds), fsfree(dst)),
@@ -3207,7 +3207,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 0,
             (dsFree(&ds), fsfree(dst)),
@@ -3231,7 +3231,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 11,
             (dsFree(&ds), fsfree(dst)),
@@ -3255,7 +3255,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 6,
             (dsFree(&ds), fsfree(dst)),
@@ -3279,7 +3279,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(input);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 3,
             (dsFree(&ds), fsfree(dst)),
@@ -3304,7 +3304,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         fs dst = FS();
         size_t saved = ds.pos;
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             !res,
             (dsFree(&ds), fsfree(dst)),
@@ -3329,7 +3329,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         fs dst = FS();
         size_t saved = ds.pos;
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             !res,
             (dsFree(&ds), fsfree(dst)),
@@ -3354,7 +3354,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         fs dst = FS();
         size_t saved = ds.pos;
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             !res,
             (dsFree(&ds), fsfree(dst)),
@@ -3379,7 +3379,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         fs dst = FS();
         size_t saved = ds.pos;
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             !res,
             (dsFree(&ds), fsfree(dst)),
@@ -3408,7 +3408,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst(quoted);
         fs dst = FS();
 
-        bool res = dsParseQuotedUnlimfs(&ds, &dst);
+        bool res = dsParseQuotedUnlimfsDirect(&ds, &dst);
         test_validatefree(
             res && dst.len == 100,
             (dsFree(&ds), fsfree(dst)),
@@ -3430,7 +3430,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
     {
         fs dst = FS();
         if (!try()) {
-            dsParseQuotedUnlimfs(NULL, &dst);
+            dsParseQuotedUnlimfsDirect(NULL, &dst);
             test_validatefree(false, fsfree(dst), "must raise error for NULL in");
         } else {
             test_validatefree(true, fsfree(dst), "correctly raised error");
@@ -3443,7 +3443,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
     {
         DS ds = dsCreateconst("\"test\"");
         if (!try()) {
-            dsParseQuotedUnlimfs(&ds, NULL);
+            dsParseQuotedUnlimfsDirect(&ds, NULL);
             test_validate(false, "must raise error for NULL dst");
         } else {
             test_validate(true, "correctly raised error");
@@ -3458,7 +3458,7 @@ tf14_ds_parse_quoted_unlim(const char *name)
         DS ds = dsCreateconst("\"test\"");
         fs dst = FSLITERAL("initial");  // статический, не аллоцируемый
         if (!try()) {
-            dsParseQuotedUnlimfs(&ds, &dst);
+            dsParseQuotedUnlimfsDirect(&ds, &dst);
             test_validate(false, "must raise error for non-allocatable dst");
         } else {
             test_validate(true, "correctly raised error");
@@ -3954,7 +3954,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf11_fs_ds_FS_roundtrip,    "fs_dsload() with DS_FS round-trip and errors")
       , TESTADD(tf12_fs_ds_FILE_roundtrip,  "fs_dsload() with DS_FILE round-trip and errors")
       , TESTADD(tf13_ds_release_fs,         "dsReleaseFs() simple test")
-      , TESTADD(tf14_ds_parse_quoted_unlim, "dsParseQuotedUnlimfs() simple test")
+      , TESTADD(tf14_ds_parse_quoted_unlim, "dsParseQuotedUnlimfsDirect() simple test")
       , TESTADD(tf15_ds_parse_quoted_core,  "ds_parse_quoted_core() simple test")
     );
 
