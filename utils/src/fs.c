@@ -136,7 +136,7 @@ fs                                      *fs_moveto(fs *dst, fs *src) {
     if (dst != src) {    
         fs_free(dst);
         *dst = *src;
-        fs_free(src);
+        *src = FS();
     }
     return dst;
 }
