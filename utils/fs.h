@@ -39,6 +39,7 @@ static inline const char * fs_flag_str(int flag){
         CASE_RETURN(FS_FLAG_CONST);
         CASE_RETURN(FS_FLAG_LOCAL);
         CASE_RETURN(FS_FLAG_ALLOC);
+        CASE_RETURN(FS_FLAG_DEFUNCT);
         CASE_RETURN(FS_FLAG_BODYALLOC | FS_FLAG_ALLOC);
         default:
             return "Unknown action";
