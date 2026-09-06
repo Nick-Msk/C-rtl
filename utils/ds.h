@@ -93,7 +93,6 @@ typedef struct DS {
 #endif  /* !NO_FSDS */             
             };
             size_t  pos;        /**< Current read position in the buffer. */
-            size_t  strssavepos;      /**< For save/resrote position  */
         };                  /**< Buffer details. */
     };
 } DS;
@@ -101,17 +100,13 @@ typedef struct DS {
 /** @name Macro Constructors
  * Macros for quick initialization of DS objects.
  * @{ */
-#define DS(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL,\
-     .strssavepos = 0L, __VA_ARGS__}
-#define DSFILE(...) (DS) {.type = DS_FILE, .fp = NULL,\
-     .filesavepos = 0L, __VA_ARGS__}
-#define DSSTR(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL,\
-     .strssavepos = 0L, .cap = 0L, __VA_ARGS__}
-#define DSCONST(...) (DS) {.type = DS_CONSTSTR, .pos = 0L, .constptr = NULL, \
-     .strssavepos = 0L, __VA_ARGS__}
+#define DS(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, __VA_ARGS__}
+#define DSFILE(...) (DS) {.type = DS_FILE, .fp = NULL, __VA_ARGS__}
+#define DSSTR(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .cap = 0L, __VA_ARGS__}
+#define DSCONST(...) (DS) {.type = DS_CONSTSTR, .pos = 0L, .constptr = NULL, __VA_ARGS__}
 
 #ifndef NO_FSDS
-    #define DSFS(...) (DS) {.type = DS_FS, .pos = 0L, .s = FS(), .strssavepos = 0L, __VA_ARGS__}
+    #define DSFS(...) (DS) {.type = DS_FS, .pos = 0L, .s = FS(), __VA_ARGS__}
 #endif  /* !NO_FSDS */    
 /** @} */
 
