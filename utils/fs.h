@@ -32,13 +32,13 @@ typedef enum  {
 // type-support functions
 
 // to string
-static inline const char * fs_flag_str(FS_FLAGS flag){
+static inline const char * fs_flag_str(int flag){
     switch(flag){
         CASE_RETURN(FS_FLAG_STATIC);        // not sure whether is good to use CASE_RETURN
         CASE_RETURN(FS_FLAG_CONST);
         CASE_RETURN(FS_FLAG_LOCAL);
         CASE_RETURN(FS_FLAG_ALLOC);
-        CASE_RETURN(FS_FLAG_BODYALLOC);
+        CASE_RETURN(FS_FLAG_BODYALLOC | FS_FLAG_ALLOC);
         default:
             return "Unknown action";
     }
@@ -47,7 +47,7 @@ static inline const char * fs_flag_str(FS_FLAGS flag){
 // faststring
 typedef struct fs {
     size_t      len, sz; // sz >= len + 1 because of last '\0'
-    FS_FLAGS    flags;
+    int         flags;
     char       *v;      // with '\0'
 } fs;
 
