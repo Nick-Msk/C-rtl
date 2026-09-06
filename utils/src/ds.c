@@ -210,8 +210,13 @@ int                         dsputc(int c, DS *pds) {
         case DS_CONSTSTR:
             return userraise(EOF, ERR_STREAM_ERROR, "Unable to put to contant stream DS_CONSTSTR");     // только для чтения
         case DS_STR: {
-            pds->pos += WRITE_OR_RET(dsputc_strbuf(pds->ptr, pds->pos, pds->cap, c), EOF);
-            return 1;
+            if (c != '\0') {
+                pds->pos += WRITE_OR_RET(dsputc_strbuf(pds->ptr, pds->pos, pds->cap, c), EOF);
+                return 1;
+            } else {
+                dsputc_strbuf(pds->ptr, pds->pos, pds->cap, c);
+                return 0;
+            }
         }
         case DS_FILE:
             WRITE_OR_RET(fputc(c, pds->fp), EOF);
@@ -219,11 +224,13 @@ int                         dsputc(int c, DS *pds) {
             return 1;  // increment
         case DS_FS:
 #ifndef NO_FSDS
-            if (c == '\0')
-                fs_setlen(&pds->s, pds->pos++);
-            else
+            if (c == '\0') {
+                fs_setlen(&pds->s, pds->pos);
+                return 0;
+            } else {
                 elem(pds->s, pds->pos++) = (unsigned char) c;
-            return 1; // increment
+                return 1; // increment
+            }
 #else
         default:
             return EOF;
