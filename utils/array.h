@@ -371,7 +371,7 @@ static inline Array            *CArrayCreate(size_t cnt, ArrayFillType typ){
  * @param v64_type   The specific v64 subtype.
  * @return Array*    Pointer to the new Array, or NULL.
  */
-static inline Array                *V64ArrayCreate(size_t cnt, ArrayFillType typ, value64_type vt){
+static inline Array             *V64ArrayCreate(size_t cnt, ArrayFillType typ, value64_type vt){
     return arrayCreate(cnt, typ, ARRAY_V64, vt);
 }
 

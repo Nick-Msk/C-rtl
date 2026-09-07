@@ -1487,7 +1487,7 @@ tf6(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
-    g_custom_print_line = NULL;   // сбрасываем формат печати
+    // g_custom_print_line = NULL;   // сбрасываем формат печати
 
     /* ---------- double ---------- */
     test_sub("subtest %d: double", ++subnum);
