@@ -122,7 +122,7 @@ test/metric_test: src/metric.c lib/log.o lib/test.o lib/error.o | lib/metric.o
 
 test/array_test: src/array.c lib/log.o lib/test.o lib/error.o lib/checker.o lib/common.o \
 	lib/value64.o lib/fs.o lib/numeric_ops.o lib/fileutils.o lib/getword.o lib/buffer.o \
-	lib/ds.o lib/v64gen.o lib/v64typed.o lib/arrayIO.o | lib/array.o
+	lib/ds.o lib/v64gen.o lib/v64typed.o lib/arrayIO.o lib/ds.o | lib/array.o
 	$(CC) $(CFLAGS) -DARRAYTESTING $^ -o $@ $(LDLIBS)
 
 test/buffer_test:       src/buffer.c lib/log.o lib/test.o lib/error.o lib/checker.o lib/common.o | lib/buffer.o

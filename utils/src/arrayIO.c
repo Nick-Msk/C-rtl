@@ -184,18 +184,20 @@ arraySerializeValuesToDs(DS *restrict out, const Array *restrict parr) {
                     total += WRITE_OR_RET(dsPrintf(out, g_save_format_int, i, parr->iv[i]), -1L);
                 break;
             case ARRAY_LONG:
+                    total += WRITE_OR_RET(dsPrintf(out, g_save_format_long, i, parr->lv[i]), -1L);
                 break;
             case ARRAY_DOUBLE:
-
+                    total += WRITE_OR_RET(dsPrintf(out, g_save_format_double, i, parr->dv[i]), -1L);
                 break;
             case ARRAY_POINTER:
-
+                    total += WRITE_OR_RET(dsPrintf(out, g_save_format_pointer, i, parr->pv[i]), -1L);
                 break;
             case ARRAY_CHAR:
-
+                    total += WRITE_OR_RET(dsPrintf(out, g_save_format_char, i, parr->cv[i]), -1L);
                 break;
             case ARRAY_V64: {
                 return userraise(-1, ERR_NOT_IMPLEMENTED_FEATURE, "Not implements for v64 container");
+                // total += value64_tods(s, parr->v64[i], parr->v64type, true);
                 break;
             }
             default:
@@ -636,10 +638,10 @@ long                            arraySaveToDS(DS *restrict out, Array *restrict 
     const char  *v64_type  =  arrayGetV64typeName(parr);
     size_t       pos = dsGetpos(out);
 
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len), -1L, dsRestorepos(pos));
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len), -1L, dsRestorepos(out, pos));
 
-    total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(pos));
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1, dsRestorepos(pos));
+    total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(out, pos));
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1, dsRestorepos(out, pos));
     return total_written;
 }
 
