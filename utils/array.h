@@ -330,7 +330,7 @@ static inline Array            *IarrayCreate(size_t cnt, ArrayFillType typ){
  * @param fill     Initialization pattern.
  * @return Array*  Pointer to the new Array, or NULL.
  */
-static inline Array            *LArrayCreate(size_t cnt, ArrayFillType typ){
+static inline Array            *LarrayCreate(size_t cnt, ArrayFillType typ){
     return arrayCreate(cnt, typ, ARRAY_LONG, VALUE64_UNKNOWN);
 }
 
@@ -340,7 +340,7 @@ static inline Array            *LArrayCreate(size_t cnt, ArrayFillType typ){
  * @param fill     Initialization pattern.
  * @return Array*  Pointer to the new Array, or NULL.
  */
-static inline Array            *DArrayCreate(size_t cnt, ArrayFillType typ){
+static inline Array            *DarrayCreate(size_t cnt, ArrayFillType typ){
     return arrayCreate(cnt, typ, ARRAY_DOUBLE, VALUE64_UNKNOWN);
 }
 
@@ -360,7 +360,7 @@ static inline Array            *PArrayCreate(size_t cnt, ArrayFillType typ){
  * @param fill     Initialization pattern.
  * @return Array*  Pointer to the new Array, or NULL.
  */
-static inline Array            *CArrayCreate(size_t cnt, ArrayFillType typ){
+static inline Array            *CarrayCreate(size_t cnt, ArrayFillType typ){
     return arrayCreate(cnt, typ, ARRAY_CHAR, VALUE64_UNKNOWN);
 }
 

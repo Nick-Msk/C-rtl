@@ -1172,7 +1172,7 @@ tf1(const char *name)
 
     test_sub("subtest %d: double", ++subnum);
     {
-        Array *arr = DArrayCreate(100, ARRAY_FILLTYPE_ZERO);
+        Array *arr = DarrayCreate(100, ARRAY_FILLTYPE_ZERO);
         for (size_t i= 0; i < arr->len; i++)
             test_validatefree(
                 arr->dv[i] == 0.0,
@@ -1208,7 +1208,7 @@ tf1(const char *name)
 
     test_sub("subtest %d: long", ++subnum);
     {
-        Array *arr = LArrayCreate(100, ARRAY_FILLTYPE_ZERO);
+        Array *arr = LarrayCreate(100, ARRAY_FILLTYPE_ZERO);
         for (size_t i= 0; i < arr->len; i++)
             test_validatefree(
                 arr->lv[i] == 0L,
@@ -1236,7 +1236,7 @@ tf2(const char *name)
 
     test_sub("subtest %d: double asc/desc", ++subnum);
     {
-        Array *arr = DArrayCreate(100, ARRAY_FILLTYPE_ASC);
+        Array *arr = DarrayCreate(100, ARRAY_FILLTYPE_ASC);
         // ASC check
         for (size_t i = 0; i < arr->len - 1; i++)
             test_validatefree(
@@ -1281,7 +1281,7 @@ tf2(const char *name)
 
     test_sub("subtest %d: long asc/desc", ++subnum);
     {
-        Array *arr = LArrayCreate(100, ARRAY_FILLTYPE_ASC);
+        Array *arr = LarrayCreate(100, ARRAY_FILLTYPE_ASC);
         for (size_t i= 0; i < arr->len - 1; i++)
             test_validatefree(
                 arr->lv[i] <= arr->lv[i + 1],
@@ -1320,7 +1320,7 @@ tf3(const char *name)
 
     test_sub("subtest %d: double", ++subnum);
     {
-        Array *arr = DArrayCreate(100, ARRAY_FILLTYPE_ASC);
+        Array *arr = DarrayCreate(100, ARRAY_FILLTYPE_ASC);
         arrayfprint(logfile, arr, 0);
 
         arr = arrayShrink(arr, 10);
@@ -1348,7 +1348,7 @@ tf3(const char *name)
 
     test_sub("subtest %d: long", ++subnum);
     {
-        Array *arr = LArrayCreate(100, ARRAY_FILLTYPE_ASC);
+        Array *arr = LarrayCreate(100, ARRAY_FILLTYPE_ASC);
         arrayfprint(logfile, arr, 0);
 
         arr = arrayShrink(arr, 10);
@@ -1412,7 +1412,7 @@ tf4(const char *name)
 
     test_sub("subtest %d: long save/load", ++subnum);
     {
-        Array *arr = LArrayCreate(100, ARRAY_FILLTYPE_RND);
+        Array *arr = LarrayCreate(100, ARRAY_FILLTYPE_RND);
         const char *filename = "res/array/larr.sv";
 
         long written = arraySaveFileByName(arr, filename);
@@ -1451,7 +1451,7 @@ tf5(const char *name)
 
     test_sub("subtest %d", ++subnum);
     {
-        Array *arr = DArrayCreate(100, ARRAY_FILLTYPE_RND);
+        Array *arr = DarrayCreate(100, ARRAY_FILLTYPE_RND);
         const char *filename = "res/array/darr.sv";
 
         arrayfprint(logfile, arr, 0);
@@ -1492,7 +1492,7 @@ tf6(const char *name)
     /* ---------- double ---------- */
     test_sub("subtest %d: double", ++subnum);
     {
-        Array *arr = DArrayCreate(50, ARRAY_FILLTYPE_ASC);
+        Array *arr = DarrayCreate(50, ARRAY_FILLTYPE_ASC);
         arrayShuffle(arr);
 
         // проверяем, что порядок нарушен (не все элементы строго возрастают)
@@ -1535,7 +1535,7 @@ tf6(const char *name)
     /* ---------- long ---------- */
     test_sub("subtest %d: long", ++subnum);
     {
-        Array *arr = LArrayCreate(50, ARRAY_FILLTYPE_ASC);
+        Array *arr = LarrayCreate(50, ARRAY_FILLTYPE_ASC);
         arrayShuffle(arr);
 
         bool ordered = true;
@@ -1566,7 +1566,7 @@ tf7(const char *name)
     /* ---------- double ---------- */
     test_sub("subtest %d: double asc/desc", ++subnum);
     {
-        Array *arr = DArrayCreate(10000, ARRAY_FILLTYPE_RND);
+        Array *arr = DarrayCreate(10000, ARRAY_FILLTYPE_RND);
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
         for (size_t i= 1; i < arr->len; i++)
             test_validatefree(
@@ -1614,7 +1614,7 @@ tf7(const char *name)
     /* ---------- long ---------- */
     test_sub("subtest %d: long asc/desc", ++subnum);
     {
-        Array *arr = LArrayCreate(100000, ARRAY_FILLTYPE_RND);
+        Array *arr = LarrayCreate(100000, ARRAY_FILLTYPE_RND);
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
         for (size_t i= 1; i < arr->len; i++)
             test_validatefree(
@@ -1669,7 +1669,7 @@ tf8(const char *name)
     test_sub("subtest %d: increase double array", ++subnum);
     {
         size_t   initsz = 25;
-        Array   *arr = DArrayCreate(initsz, ARRAY_FILLTYPE_RND);
+        Array   *arr = DarrayCreate(initsz, ARRAY_FILLTYPE_RND);
 
         arr = arrayIncrease(arr, initsz * 3);
 
@@ -1690,7 +1690,7 @@ tf8(const char *name)
     test_sub("subtest %d: increase long array", ++subnum);
     {
         size_t  initsz = 25;
-        Array  *arr = LArrayCreate(initsz, ARRAY_FILLTYPE_RND);
+        Array  *arr = LarrayCreate(initsz, ARRAY_FILLTYPE_RND);
 
         arr = arrayIncrease(arr, initsz * 5);
 
@@ -1892,7 +1892,7 @@ tf10(const char *name)
     test_sub("subtest %d: long asc series", ++subnum);
     {
         size_t     cnt = 70;
-        Array     *arr = LArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array     *arr = LarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         size_t     len = arraylen(arr);
         test_validatefree(
@@ -1914,7 +1914,7 @@ tf10(const char *name)
     test_sub("subtest %d: long desc series", ++subnum);
     {
         size_t     cnt = 40;
-        Array   *arr = LArrayCreate(cnt, ARRAY_FILLTYPE_DESC_SERIES);
+        Array   *arr = LarrayCreate(cnt, ARRAY_FILLTYPE_DESC_SERIES);
 
         size_t     len = arraylen(arr);
         test_validatefree(
@@ -1937,7 +1937,7 @@ tf10(const char *name)
     test_sub("subtest %d: double asc series", ++subnum);
     {
         size_t     cnt = 30;
-        Array   *arr = DArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array   *arr = DarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         size_t     len = arraylen(arr);
         test_validatefree(
@@ -1959,7 +1959,7 @@ tf10(const char *name)
     test_sub("subtest %d: double desc series", ++subnum);
     {
         size_t     cnt = 25;
-        Array   *arr = DArrayCreate(cnt, ARRAY_FILLTYPE_DESC_SERIES);
+        Array   *arr = DarrayCreate(cnt, ARRAY_FILLTYPE_DESC_SERIES);
 
         size_t     len = arraylen(arr);
         test_validatefree(
@@ -2062,7 +2062,7 @@ tf11(const char *name)
     test_sub("subtest %d: full fill with desc series (long)", ++subnum);
     {
         size_t     cnt = 30;
-        Array     *arr = LArrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array     *arr = LarrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY);
         arrayFillRange(arr, ARRAY_FILLTYPE_DESC_SERIES, 0, cnt);
 
         size_t     len = arraylen(arr);
@@ -2125,7 +2125,7 @@ tf11(const char *name)
     test_sub("subtest %d: double asc series fill range", ++subnum);
     {
         size_t     cnt = 25, from = 5, to = 15;
-        Array     *arr = DArrayCreate(cnt, ARRAY_FILLTYPE_ZERO);
+        Array     *arr = DarrayCreate(cnt, ARRAY_FILLTYPE_ZERO);
         arrayFillRange(arr, ARRAY_FILLTYPE_ASC_SERIES, from, to);
 
         size_t     len = arraylen(arr);
@@ -2193,7 +2193,7 @@ tf12(const char *name)
     test_sub("subtest %d: long array", ++subnum);
     {
         size_t   cnt = 8;
-        Array   *arr = LArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array   *arr = LarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         LArray_foreach(arr, elem) {
             if (*elem % 2 == 0)
@@ -2216,7 +2216,7 @@ tf12(const char *name)
     test_sub("subtest %d: double array", ++subnum);
     {
         size_t   cnt = 6;
-        Array   *arr = DArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array   *arr = DarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         DArray_foreach(arr, elem) {
             if (fmod(*elem, 2.0) == 0.0)
@@ -2315,7 +2315,7 @@ tf13(const char *name)
     test_sub("subtest %d: long array", ++subnum);
     {
         size_t   cnt = 8;
-        Array   *arr = LArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array   *arr = LarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         arrayForeach(arr, keep_if_index_not_multiple_of_3, square_long);
 
@@ -2341,7 +2341,7 @@ tf13(const char *name)
     test_sub("subtest %d: double array", ++subnum);
     {
         size_t   cnt = 6;
-        Array   *arr = DArrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
+        Array   *arr = DarrayCreate(cnt, ARRAY_FILLTYPE_ASC_SERIES);
 
         arrayForeach(arr, keep_if_index_not_multiple_of_3, mul_one_point_five_double);
 
@@ -3227,7 +3227,7 @@ tf_array_bsearch(const char *name)
     /* ========== LONG ========== */
     test_sub("subtest %d: LONG find existing", ++subnum);
     {
-        Array *arr = LArrayCreate(10, ARRAY_FILLTYPE_ASC_SERIES);
+        Array *arr = LarrayCreate(10, ARRAY_FILLTYPE_ASC_SERIES);
         long idx;
         test_validatefree(
             (idx = arrayBsearchLong(arr, 7L)) == 7,
@@ -3239,7 +3239,7 @@ tf_array_bsearch(const char *name)
 
     test_sub("subtest %d: LONG rev missing", ++subnum);
     {
-        Array *arr = LArrayCreate(10, ARRAY_FILLTYPE_DESC_SERIES);
+        Array *arr = LarrayCreate(10, ARRAY_FILLTYPE_DESC_SERIES);
         long idx;
         test_validatefree(
             (idx = arrayBsearchLongRev(arr, 100L)) == -1,
@@ -3252,7 +3252,7 @@ tf_array_bsearch(const char *name)
     /* ========== DBL ========== */
     test_sub("subtest %d: DBL find first / last", ++subnum);
     {
-        Array *arr = DArrayCreate(5, ARRAY_FILLTYPE_ASC_SERIES); // 0.0,1.0,...,4.0
+        Array *arr = DarrayCreate(5, ARRAY_FILLTYPE_ASC_SERIES); // 0.0,1.0,...,4.0
         test_validatefree(
             arrayBsearchDbl(arr, 0.0) == 0 && arrayBsearchDbl(arr, 4.0) == 4,
             ARRAYFREE(arr),
@@ -3263,7 +3263,7 @@ tf_array_bsearch(const char *name)
 
     test_sub("subtest %d: DBL rev search", ++subnum);
     {
-        Array *arr = DArrayCreate(5, ARRAY_FILLTYPE_DESC_SERIES); // 4.0,3.0,...,0.0
+        Array *arr = DarrayCreate(5, ARRAY_FILLTYPE_DESC_SERIES); // 4.0,3.0,...,0.0
         long idx;
         test_validatefree(
             (idx = arrayBsearchDblRev(arr, 2.0)) == 2,   // 4(0),3(1),2(2)
@@ -3361,7 +3361,7 @@ tf_carray_create_fill_free(const char *name)
     /* 1. Создание пустого CHAR массива */
     test_sub("subtest %d: create empty CHAR array", ++subnum);
     {
-        Array *arr = CArrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         test_validatefree(
             arr->len == 0 && arr->sz == 0 && arr->cv == NULL,
             ARRAYFREE(arr),
@@ -3374,7 +3374,7 @@ tf_carray_create_fill_free(const char *name)
     /* 2. Создание ZERO‑filled CHAR массива */
     test_sub("subtest %d: create ZERO‑filled CHAR array", ++subnum);
     {
-        Array *arr = CArrayCreate(5, ARRAY_FILLTYPE_ZERO);
+        Array *arr = CarrayCreate(5, ARRAY_FILLTYPE_ZERO);
         test_validatefree(
             arr->len == 5 && arr->sz >= 5,
             ARRAYFREE(arr),
@@ -3394,7 +3394,7 @@ tf_carray_create_fill_free(const char *name)
     /* 3. Создание ASC‑filled CHAR массива (случайные буквы) */
     test_sub("subtest %d: create ASC‑filled CHAR array", ++subnum);
     {
-        Array *arr = CArrayCreate(4, ARRAY_FILLTYPE_ASC);
+        Array *arr = CarrayCreate(4, ARRAY_FILLTYPE_ASC);
         test_validatefree(
             arr->len == 4,
             ARRAYFREE(arr),
@@ -3414,7 +3414,7 @@ tf_carray_create_fill_free(const char *name)
     /* 4. Создание DESC‑filled CHAR массива (случайные буквы в обратном порядке) */
     test_sub("subtest %d: create DESC‑filled CHAR array", ++subnum);
     {
-        Array *arr = CArrayCreate(4, ARRAY_FILLTYPE_DESC);
+        Array *arr = CarrayCreate(4, ARRAY_FILLTYPE_DESC);
         test_validatefree(
             arr->len == 4,
             ARRAYFREE(arr),
@@ -3444,7 +3444,7 @@ tf_carray_sort(const char *name)
     /* 1. Сортировка по возрастанию */
     test_sub("subtest %d: CHAR sort ASC", ++subnum);
     {
-        Array *arr = CArrayCreate(6, ARRAY_FILLTYPE_RND);
+        Array *arr = CarrayCreate(6, ARRAY_FILLTYPE_RND);
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
 
         for (size_t i = 1; i < arr->len; i++) {
@@ -3461,7 +3461,7 @@ tf_carray_sort(const char *name)
     /* 2. Сортировка по убыванию */
     test_sub("subtest %d: CHAR sort DESC", ++subnum);
     {
-        Array *arr = CArrayCreate(6, ARRAY_FILLTYPE_RND);
+        Array *arr = CarrayCreate(6, ARRAY_FILLTYPE_RND);
         arrayQsort(arr, ARRAY_SORTTYPE_DESC);
 
         for (size_t i = 1; i < arr->len; i++) {
@@ -3478,7 +3478,7 @@ tf_carray_sort(const char *name)
     /* 3. Пустой массив */
     test_sub("subtest %d: CHAR sort empty", ++subnum);
     {
-        Array *arr = CArrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);   // не должно упасть
         test_validatefree(arr->len == 0, ARRAYFREE(arr), "Empty array must stay empty after sort");
         ARRAYFREE(arr);
@@ -3487,7 +3487,7 @@ tf_carray_sort(const char *name)
     /* 4. Один элемент */
     test_sub("subtest %d: CHAR sort single element", ++subnum);
     {
-        Array *arr = CArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'x';
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
         test_validatefree(
@@ -3501,7 +3501,7 @@ tf_carray_sort(const char *name)
     /* 5. Уже отсортированный */
     test_sub("subtest %d: CHAR sort already sorted", ++subnum);
     {
-        Array *arr = CArrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'a'; arr->cv[1] = 'b'; arr->cv[2] = 'c';
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
         test_validatefree(
@@ -3515,7 +3515,7 @@ tf_carray_sort(const char *name)
     /* 6. Дубликаты */
     test_sub("subtest %d: CHAR sort duplicates", ++subnum);
     {
-        Array *arr = CArrayCreate(4, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(4, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'b'; arr->cv[1] = 'a'; arr->cv[2] = 'b'; arr->cv[3] = 'c';
         arrayQsort(arr, ARRAY_SORTTYPE_ASC);
         test_validatefree(
@@ -3539,7 +3539,7 @@ tf_array_bsearch_char(const char *name)
     /* ========== CHAR ========== */
     test_sub("subtest %d: CHAR find existing", ++subnum);
     {
-        Array *arr = CArrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'a'; arr->cv[1] = 'b'; arr->cv[2] = 'c'; arr->cv[3] = 'd'; arr->cv[4] = 'e';
         long idx = arrayBsearchChar(arr, 'c');
         test_validatefree(
@@ -3552,7 +3552,7 @@ tf_array_bsearch_char(const char *name)
 
     test_sub("subtest %d: CHAR find missing", ++subnum);
     {
-        Array *arr = CArrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'a'; arr->cv[1] = 'b'; arr->cv[2] = 'c'; arr->cv[3] = 'd'; arr->cv[4] = 'e';
         long idx = arrayBsearchChar(arr, 'z');
         test_validatefree(
@@ -3565,7 +3565,7 @@ tf_array_bsearch_char(const char *name)
 
     test_sub("subtest %d: CHAR rev search", ++subnum);
     {
-        Array *arr = CArrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = CarrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'e'; arr->cv[1] = 'd'; arr->cv[2] = 'c'; arr->cv[3] = 'b'; arr->cv[4] = 'a';
         long idx = arrayBsearchCharRev(arr, 'b');
         test_validatefree(
@@ -3592,7 +3592,7 @@ tf_arraySaveFile_load_char(const char *name)
         const char *fname = "res/array/carr.sv";
 
         // создаём массив и заполняем
-        Array *orig = CArrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *orig = CarrayCreate(5, ARRAY_FILLTYPE_SAFE_EMPTY);
         orig->cv[0] = 'h'; orig->cv[1] = 'e'; orig->cv[2] = 'l';
         orig->cv[3] = 'l'; orig->cv[4] = 'o';
 
@@ -3627,7 +3627,7 @@ tf_arraySaveFile_load_char(const char *name)
     {
         const char *fname = "res/array/carr_empty.sv";
 
-        Array *orig = CArrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *orig = CarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         long written = arraySaveFileByName(orig, fname);
         test_validatefree(written > 0, ARRAYFREE(orig), "CHAR empty save failed");
 
@@ -3647,7 +3647,7 @@ tf_arraySaveFile_load_char(const char *name)
     {
         const char *fname = "res/array/carr_single.sv";
 
-        Array *orig = CArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *orig = CarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         orig->cv[0] = 'Z';
         long written = arraySaveFileByName(orig, fname);
         test_validatefree(written > 0, ARRAYFREE(orig), "CHAR single save failed");
@@ -3729,8 +3729,8 @@ tf_array_eq_noteq(const char *name)
     /* ========== CHAR ========== */
     test_sub("subtest %d: CHAR equal", ++subnum);
     {
-        Array *a = CArrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
-        Array *b = CArrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *a = CarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *b = CarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
         a->cv[0] = 'x'; a->cv[1] = 'y';
         b->cv[0] = 'x'; b->cv[1] = 'y';
         test_validatefree(
@@ -3743,8 +3743,8 @@ tf_array_eq_noteq(const char *name)
 
     test_sub("subtest %d: CHAR not equal", ++subnum);
     {
-        Array *a = CArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
-        Array *b = CArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *a = CarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *b = CarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         a->cv[0] = 'a';
         b->cv[0] = 'b';
         test_validatefree(
@@ -3825,7 +3825,7 @@ tf_array_eq_noteq(const char *name)
     test_sub("subtest %d: type mismatch raises SIGINT", ++subnum);
     {
         Array *a = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
-        Array *b = CArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *b = CarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         if (!try()) {
             arrayNoteq(a, b);
             test_validatefree(false, (ARRAYFREE(a), ARRAYFREE(b)),
