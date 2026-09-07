@@ -11,7 +11,8 @@ LDLIBS=
 .PHONY: getword systemutils command_executor fileutils value64_tarray seq all hashset_utils lwset
 .PHONY: ds ds_nofs ds_adapter v64gen v64typed
 
-all: checker error log common test metric numeric_ops context hashset value64 array buffer fs fs_iter fs_array \
+all: checker error log common test metric numeric_ops context hashset value64 array arrayIO buffer fs fs_iter \
+	fs_array \
 	getword systemutils command_executor fileutils value64_tarray seq hashset_utils lwset ds ds_adapter v64gen \
 	v64typed
 
@@ -125,6 +126,11 @@ test/array_test: src/array.c lib/log.o lib/test.o lib/error.o lib/checker.o lib/
 	lib/ds.o lib/v64gen.o lib/v64typed.o lib/arrayIO.o lib/ds.o lib/ds_adapter.o | lib/array.o
 	$(CC) $(CFLAGS) -DARRAYTESTING $^ -o $@ $(LDLIBS)
 
+test/arrayIO_test: src/arrayIO.c lib/array.o lib/log.o lib/test.o lib/error.o lib/checker.o lib/common.o \
+	lib/value64.o lib/fs.o lib/numeric_ops.o lib/fileutils.o lib/getword.o lib/buffer.o \
+	lib/ds.o lib/v64gen.o lib/v64typed.o lib/ds.o lib/ds_adapter.o | lib/arrayIO.o
+	$(CC) $(CFLAGS) -DARRAYIO_TESTING $^ -o $@ $(LDLIBS)
+
 test/buffer_test:       src/buffer.c lib/log.o lib/test.o lib/error.o lib/checker.o lib/common.o | lib/buffer.o
 	$(CC) $(CFLAGS) -DBUFFERTESTING $^ -o $@ $(LDLIBS)
 
@@ -219,7 +225,7 @@ UTIL_OBJS = lib/log.o lib/test.o lib/error.o lib/common.o lib/checker.o \
 	lib/fs_iter.o lib/fs_array.o lib/command_executor.o \
 	lib/numeric_ops.o lib/hashset.o lib/value64.o \
 	lib/context.o lib/systemutils.o \
-	lib/fs.o lib/fileutils.o lib/array.o lib/metric.o lib/value64_tarray.o \
+	lib/fs.o lib/fileutils.o lib/array.o lib/arrayIO.o lib/metric.o lib/value64_tarray.o \
 	lib/hashset_utils.o lib/seq.o lib/lwset.o lib/ds.o lib/ds_adapter.o lib/v64gen.o
 
 lib/cmutils.a: $(UTIL_OBJS)
@@ -251,6 +257,7 @@ fs_iter: test/fs_iter_test
 fs: test/fs_test
 buffer: test/buffer_test
 array: test/array_test
+arrayIO: test/arrayIO_test
 seq: test/seq_test
 lwset: test/lwset_test
 
