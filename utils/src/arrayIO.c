@@ -1,6 +1,6 @@
 #include "array.h"
 #include "ds.h"
-
+#include "ds_adapter.h"
 
 /********************************************************************
                  ARRAY  IO IMPLEMENTATION
@@ -180,11 +180,28 @@ arraySerializeValuesToDs(DS *restrict out, const Array *restrict parr) {
     Array_pforeach_idx(parr, i) {
         switch (typ) {
             case ARRAY_INT:
-                // TODO:
+                // TODO: // now stupidly via printf
+                    total += WRITE_OR_RET(dsPrintf(out, g_save_format_int, i, parr->iv[i]), -1L);
                 break;
+            case ARRAY_LONG:
+                break;
+            case ARRAY_DOUBLE:
+
+                break;
+            case ARRAY_POINTER:
+
+                break;
+            case ARRAY_CHAR:
+
+                break;
+            case ARRAY_V64: {
+                return userraise(-1, ERR_NOT_IMPLEMENTED_FEATURE, "Not implements for v64 container");
+                break;
+            }
             default:
                 return userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type %d/%s", typ, arrayTypeGetName(typ));
         }
+        cnt++;
     }
 
     return logsimpleret(total, "Total bytes %ld, elements %ld", total, cnt);
