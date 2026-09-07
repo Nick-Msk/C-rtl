@@ -19,7 +19,7 @@ const char              *g_save_format_char      = "%6zu\t%c\n";
 
 // -------------------------- Utilities -----------------------------
 
-
+// ------- Helpers -----------
 /**
  * @brief Loads array elements from a text stream.
  *
@@ -30,7 +30,8 @@ const char              *g_save_format_char      = "%6zu\t%c\n";
  * @param arr pointer to the array to fill
  * @return positive value in suceess, -1 if failed 
  */
-static long                         arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
+static long                         
+arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
     ArrayType   typ = arrayGettype(parr);
     fs          buf = FS();
     long        cnt = 0;
@@ -86,7 +87,8 @@ static long                         arrayFileLoadValues(FILE *restrict in, Array
  * @param arr constant pointer to the array
  * @return number of bytes written
  */
-static long                         arraySaveValues(FILE *restrict out, const Array *restrict parr) {
+static long                         
+arraySaveValues(FILE *restrict out, const Array *restrict parr) {
     long        total = 0L;
     ArrayType   typ = arrayGettype(parr);
     Array_pforeach_idx(parr, i)
@@ -131,7 +133,8 @@ static long                         arraySaveValues(FILE *restrict out, const Ar
  * @param arr constant pointer to the array
  * @return number of bytes written
  */
-static long                 arraySerializeValues(fs *restrict s, const Array *restrict parr) {
+static long                 
+arraySerializeValuesTofs(fs *restrict s, const Array *restrict parr) {
     long        total = 0L;
     ArrayType   typ = arrayGettype(parr);
 
@@ -162,10 +165,29 @@ static long                 arraySerializeValues(fs *restrict s, const Array *re
                 break;
             }
             default:
-                userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type %d/%s", typ, arrayTypeGetName(typ));
+                return userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type %d/%s", typ, arrayTypeGetName(typ));
         }
     }
     return total;
+}
+
+static long
+arraySerializeValuesToDs(DS *restrict out, const Array *restrict parr) {
+    long        total = 0L, cnt = 0L;
+    ArrayType   typ = arrayGettype(parr);
+    // simple via switch for now: TODO: to be reworked via dispatcher!!!!!
+
+    Array_pforeach_idx(parr, i) {
+        switch (typ) {
+            case ARRAY_INT:
+                // TODO:
+                break;
+            default:
+                return userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type %d/%s", typ, arrayTypeGetName(typ));
+        }
+    }
+
+    return logsimpleret(total, "Total bytes %ld, elements %ld", total, cnt);
 }
 
 /**
@@ -179,7 +201,8 @@ static long                 arraySerializeValues(fs *restrict s, const Array *re
  * @param arr   pointer to the array to fill
  * @return count of bytes read
  */
-static long             arrayFsLoadValues(const char *restrict initdata, Array *restrict parr) {
+static long             
+arrayFsLoadValues(const char *restrict initdata, Array *restrict parr) {
     const char     *data = initdata;
     ArrayType       typ = arrayGettype(parr);
     fs              buf = FS();
@@ -589,16 +612,17 @@ Array                       *arrayLoadFileByName(const char *fname) {
 
 long                            arraySaveToDS(DS *restrict out, Array *restrict parr) {
     invraisecode(ERR_NULLABLE_PTR, out != NULL && parr != NULL, 
-        "Fs nullable or arr is null %p %p", out, parr);
+        "Out or parr is null %p %p", out, parr);
 
-    long        total_written = 0L;
+    long         total_written = 0L;
     const char  *typ = arrayTypeGetName(parr->flags);
     const char  *v64_type  =  arrayGetV64typeName(parr);
+    size_t       pos = dsGetpos(out);
 
-    // TODO: 
-    // total_written += WRITE_OR_RET(fs_dsprintf(out, "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len), -1L);
-    // total_written += WRITE_OR_RET(arraySerializeValuesToDS(out, parr), -1);
-    // total_written += WRITE_OR_RET(fs_sprintf_concat(out, "ARRAY: DONE\n"), -1);
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len), -1L, dsRestorepos(pos));
+
+    total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(pos));
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1, dsRestorepos(pos));
     return total_written;
 }
 
@@ -611,7 +635,7 @@ long                            arraySaveTofs(fs *restrict s, const Array *restr
     const char  *v64_type  = arrayIsV64(parr) ? arrayGetV64typeName(parr) : "NONV64_TYPE";
 
     total_written += fs_sprintf_concat(s, "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len);
-    total_written += arraySerializeValues(s, parr);
+    total_written += arraySerializeValuesTofs(s, parr);
     total_written += fs_sprintf_concat(s, "ARRAY: DONE\n");
     return total_written;
 }
@@ -620,6 +644,9 @@ long                            arraySaveTofs(fs *restrict s, const Array *restr
 long                            arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     long total = 0L;
     // TODO:
+
+
+
     return total;
 }
 
