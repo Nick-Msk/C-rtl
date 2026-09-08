@@ -322,7 +322,8 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
  *
  * @note This function is for debugging purposes only and is not intended 
  *       for use in production data serialization.
- */static long                     
+ */
+static long                     
 dsfsHelperTechprintTofs(fs *restrict out, size_t pos, const fs *restrict s, const char *restrict name) {
     long    initpos = pos;
     if (s) {
@@ -353,7 +354,8 @@ dsfsHelperFsDSWrite(DS *restrict out, const fs *restrict s) {
 
 // --------------------------- API ---------------------------------
 
-int                         dsPrintf(DS *restrict pds, const char *restrict msg, ...) {
+int                         
+dsPrintf(DS *restrict pds, const char *restrict msg, ...) {
     invraisecode(pds != NULL && msg != NULL, ERR_NULLABLE_PTR, 
         "Null input %p %p", pds, msg);
 
@@ -383,7 +385,8 @@ int                         dsPrintf(DS *restrict pds, const char *restrict msg,
     return total;
 }
 
-int                         dsScanf(DS *restrict pds, const char *restrict msg, ...) {
+int                         
+dsScanf(DS *restrict pds, const char *restrict msg, ...) {
     invraisecode(pds != NULL && msg != NULL, ERR_NULLABLE_PTR, 
         "Null input %p %p", pds, msg);
     
@@ -411,7 +414,8 @@ int                         dsScanf(DS *restrict pds, const char *restrict msg, 
     return ret;
 }
 
-bool                        dsParseInt(DS *restrict pds, int *restrict pval) {
+bool                        
+dsParseInt(DS *restrict pds, int *restrict pval) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, 
         "Null input %p %p", pds, pval);
     switch (pds->type) {
@@ -430,7 +434,8 @@ bool                        dsParseInt(DS *restrict pds, int *restrict pval) {
     return true;
 }
 
-bool                        dsParseLong(DS *restrict pds, long *restrict pval) {
+bool                        
+dsParseLong(DS *restrict pds, long *restrict pval) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, 
         "Null input %p %p", pds, pval);
     switch (pds->type) {
@@ -449,7 +454,8 @@ bool                        dsParseLong(DS *restrict pds, long *restrict pval) {
     return true;
 }
 
-bool                        dsParseUnsigned(DS *restrict pds, unsigned int *restrict pval) {
+bool                        
+dsParseUnsigned(DS *restrict pds, unsigned int *restrict pval) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, "Null input %p %p", pds, pval);
     switch (pds->type) {
         case DS_FILE:
@@ -466,7 +472,8 @@ bool                        dsParseUnsigned(DS *restrict pds, unsigned int *rest
     return true;
 }
 
-bool                        dsParseUnsignedLong(DS *restrict pds, unsigned long *restrict pval) {
+bool                        
+dsParseUnsignedLong(DS *restrict pds, unsigned long *restrict pval) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, "Null input %p %p", pds, pval);
     switch (pds->type) {
         case DS_FILE:
@@ -483,7 +490,8 @@ bool                        dsParseUnsignedLong(DS *restrict pds, unsigned long 
     return true;
 }
 
-bool                        dsParseDouble(DS *restrict pds, double *restrict pdval) {
+bool                        
+dsParseDouble(DS *restrict pds, double *restrict pdval) {
     invraisecode(pds != NULL && pdval != NULL, ERR_NULLABLE_PTR, 
         "Null input %p %p", pds, pdval);
 
@@ -505,7 +513,8 @@ bool                        dsParseDouble(DS *restrict pds, double *restrict pdv
     return true;
 }
 
-bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
+bool                        
+dsParseChar(DS *restrict pds, char *restrict pval) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, "Null input %p %p", pds, pval);
 
     switch (pds->type) {
@@ -579,11 +588,17 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
     return res;
 }
 
+bool                       
+dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer) {
+    // TODO:
+}
+
 // -------------------------------------- fs adapters ------------------------------------------------
 // ------------------------------- NOTE: no call to fs.c from here -----------------------------------
 
 // write fs data into stream out
-long                            fs_dswrite(DS *restrict out, const fs *restrict s) {
+long                            
+fs_dswrite(DS *restrict out, const fs *restrict s) {
     if (!out)
         return userraise(-1L, ERR_NULL_OUTPUT, "");
     if (!s) // that is normal behaviour, just log
@@ -595,7 +610,8 @@ long                            fs_dswrite(DS *restrict out, const fs *restrict 
 }
 
 // techprint used temporary fs buffer (low performace) in order to have the same logic for all path
-long                            fs_dstechprint(DS *restrict out, const fs *restrict s, const char *restrict name) {
+long                            
+fs_dstechprint(DS *restrict out, const fs *restrict s, const char *restrict name) {
     if (!out)
         return userraise(-1L, ERR_NULL_OUTPUT, "");
     if (int_notin(out->type, DS_FILE, DS_STR, DS_FS) )
@@ -613,7 +629,8 @@ long                            fs_dstechprint(DS *restrict out, const fs *restr
     return actual_written;
 }
 
-long                            fs_dsserialize(DS *restrict out, const fs *restrict s) {
+long                            
+fs_dsserialize(DS *restrict out, const fs *restrict s) {
     if (!out || !s)
         return userraise(-1L, ERR_NULL_OUTPUT, "%p %p", out, s);
     long    total = 0L;
@@ -628,7 +645,8 @@ long                            fs_dsserialize(DS *restrict out, const fs *restr
     return total;
 }
 
-long                           fs_dsload(DS *restrict in, fs *restrict dst, bool use_buffer) {
+long                           
+fs_dsload(DS *restrict in, fs *restrict dst, bool use_buffer) {
     if (!in || !dst)
         return userraise(-1L, ERR_NULL_INPUT, 
             "Input DS or fs is null %p %p", in, dst);

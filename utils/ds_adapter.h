@@ -348,6 +348,17 @@ static inline bool                dsParseQuotedUnlimfsDirect(DS *restrict in, fs
 static inline bool                dsParseQuotedUnlimfsBufferre(DS *restrict in, fs *restrict dst) {
     return dsParseQuotedLimfs(in, dst, 0L, true);
 }
+
+extern bool                       dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer);
+
+static inline bool                dsParseUnlimfsDirect(DS *restrict in, fs *restrict dst) {
+    return dsParseUnlimfs(in, dst, false);
+}
+
+static inline bool                dsParseUnlimfsBuffer(DS *restrict in, fs *restrict dst) {
+    return dsParseUnlimfs(in, dst, true);
+}
+
 /**
  * @brief IParse escaped sequences from a @ref DS stream.
  *
