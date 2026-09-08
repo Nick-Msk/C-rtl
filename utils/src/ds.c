@@ -2478,223 +2478,130 @@ tf12_ds_getc_ecran(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// // ------------------------- TEST dsparseEscaped -------------------------
-// static TestStatus
-// tf13_dsparseEscaped(const char *name)
-// {
-//     logenter("%s", name);
-//     int subnum = 0;
+// ------------------------- TEST DS memowner (new constructors) -------------------------
+static TestStatus
+tf13_ds_memowner(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
 
-//     /* 1. DS_STR: обычный символ без слэша */
-//     test_sub("subtest %d: DS_STR - ordinary char", ++subnum);
-//     {
-//         char buf[] = "a";
-//         DS ds = dsCreatestr(buf);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == 'a' && !err, (dsFree(&ds)), "expected 'a', got %d, err=%d", c, err);
+    /* 1. dsCreatestrAlloc создаёт DS_STR с memowner=true, dsFree освобождает буфер */
+    test_sub("subtest %d: dsCreatestrAlloc owns buffer", ++subnum);
+    {
+        DS ds = dsCreatestrAlloc(64);
+        test_validate(ds.type == DS_STR && ds.memowner == true, "invalid DS_STR owner");
+        test_validate(ds.ptr != NULL, "buffer not allocated");
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        strcpy(ds.ptr, "hello");
+        ds.pos = 5;
+        dsFree(&ds);
 
-//     /* 2. DS_STR: все корректные escape-последовательности */
-//     test_sub("subtest %d: DS_STR - valid escapes", ++subnum);
-//     {
-//         char buf[] = {'\\', '\\', '"', '\\', 'n', '\\', 'r', '\\', 't', '\0'};   // символы: \ " n r t
-//         DS ds = dsCreatestr(buf);
-//         bool err = false;
-//         int c;
+        // Проверяем, что структура сброшена
+        test_validate(ds.type == DS_UNK && ds.ptr == NULL && ds.memowner == false,
+                      "DS not reset after dsFree");
+    }
 
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\\' && !err, (dsFree(&ds)), "backslash failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '"'  && !err, (dsFree(&ds)), "quote failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\n' && !err, (dsFree(&ds)), "newline failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\r' && !err, (dsFree(&ds)), "carriage return failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\t' && !err, (dsFree(&ds)), "tab failed");
+    /* 2. Обычный dsCreatestr НЕ освобождает буфер (memowner=false) */
+    test_sub("subtest %d: dsCreatestr does not own buffer", ++subnum);
+    {
+        char buf[32] = "test";
+        DS ds = dsCreatestr(buf);
+        test_validate(ds.type == DS_STR && ds.memowner == false, "invalid DS_STR non-owner");
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        dsFree(&ds);
+        // Внешний буфер должен остаться неизменным
+        test_validate(buf[0] == 't' && ds.ptr == NULL, "external buffer corrupted or DS not reset");
+    }
 
-//     /* 3. DS_STR: некорректный escape -> EOF, error=true, символ возвращается */
-//     test_sub("subtest %d: DS_STR - invalid escape", ++subnum);
-//     {
-//         char buf[] = "\\x";
-//         DS ds = dsCreatestr(buf);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == EOF && err, (dsFree(&ds)), "expected EOF and error, got c=%d err=%d", c, err);
+    /* 3. dsCreatefsAlloc создаёт DS_FS с memowner=true, dsFree освобождает строку */
+    test_sub("subtest %d: dsCreatefsAlloc owns fs string", ++subnum);
+    {
+        DS ds = dsCreatefsAlloc();
+        test_validate(ds.type == DS_FS && ds.memowner == true, "invalid DS_FS owner");
 
-//         int ch = dsgetc(&ds);
-//         test_validatefree(ch == 'x', (dsFree(&ds)), "expected 'x' after unget, got '%c'", ch);
+        test_validate(
+            dsputc('1', &ds) >= 0, 
+            "Unable to put into allocated DS/fs"
+        );
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        test_validate(ds.s.v != NULL, "fs string not allocated");
 
-//     /* 4. DS_STR: EOF (пустая строка) -> EOF, error=false */
-//     test_sub("subtest %d: DS_STR - EOF", ++subnum);
-//     {
-//         char buf[] = "";
-//         DS ds = dsCreatestr(buf);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == EOF && !err, (dsFree(&ds)), "expected EOF, got c=%d err=%d", c, err);
+        const char pattern[] = "hello!";
+        fs_cpystr(&ds.s, pattern);
+        test_validatefree(
+            ds.s.len == strlen(pattern), 
+            dsFree(&ds),
+            "length not set, get %zu while expected %zu", ds.s.len, strlen(pattern)
+        );
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        dsFree(&ds);
 
-//     /* 5. DS_STR: error == NULL, корректный escape */
-//     test_sub("subtest %d: DS_STR - error NULL, valid escape", ++subnum);
-//     {
-//         char buf[] = "\\n";
-//         DS ds = dsCreatestr(buf);
-//         int c = dsparseEscaped(&ds, NULL);
-//         test_validatefree(c == '\n', (dsFree(&ds)), "expected newline, got %d", c);
+        test_validate(ds.type == DS_UNK && ds.s.v == NULL && ds.memowner == false,
+                      "DS not reset after dsFree");
+        fs_alloc_check(true);
+    }
 
-//         // проверяем, что позиция продвинулась на 2 (слэш и 'n')
-//         test_validatefree(ds.pos == 2, (dsFree(&ds)), "pos expected 2, got %zu", ds.pos);
+    /* 4. dsCreatefs (обычный) не владеет структурой, но владеет строкой (как обычно) */
+    test_sub("subtest %d: dsCreatefs normal behaviour", ++subnum);
+    {
+        fs tmp = FS();
+        DS ds = dsCreatefs(&tmp);
+        test_validate(ds.type == DS_FS && ds.memowner == false, "invalid DS_FS non-owner");
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        fs_setlen(&ds.s, 3);
+        memcpy(ds.s.v, "abc", 3);
+        dsFree(&ds);
 
-//     /* 6. DS_STR: error == NULL, некорректный escape */
-//     test_sub("subtest %d: DS_STR - error NULL, invalid escape", ++subnum);
-//     {
-//         char buf[] = "\\z";
-//         DS ds = dsCreatestr(buf);
-//         int c = dsparseEscaped(&ds, NULL);
-//         test_validatefree(c == EOF, (dsFree(&ds)), "expected EOF, got %d", c);
+        test_validate(ds.type == 0 && ds.s.v == NULL, "DS not reset after dsFree");
+        fs_alloc_check(true);
+    }
 
-//         int ch = dsgetc(&ds);
-//         test_validatefree(ch == 'z', (dsFree(&ds)), "expected 'z' after unget, got '%c'", ch);
+    /* 5. dsReleaseFs для dsCreatefsAlloc корректно переносит владение строкой */
+    test_sub("subtest %d: dsReleaseFs with memowner", ++subnum);
+    {
+        DS ds = dsCreatefsAlloc();
+        test_validate(
+            dsputc('1', &ds) >= 0, 
+            "Unable to put into allocated DS/fs"
+        );
+        
+        fs result = FS();
+        bool ok = dsReleaseFs(&result, &ds);
+        test_validate(
+            ok, 
+            "dsReleaseFs failed"
+        );
+        test_validate(
+            ds.type == DS_UNK && ds.memowner == false, 
+            "DS not reset after release"
+        );
+        test_validate(
+            result.v != NULL, 
+            "result fs is null"
+        );
+        // fsfree(result);
+        fsfree(result);
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        fs_alloc_check(true);
+    }
 
-//     /* 7. DS_CONSTSTR: обычный символ */
-//     test_sub("subtest %d: DS_CONSTSTR - ordinary char", ++subnum);
-//     {
-//         const char *buf = "h";
-//         DS ds = dsCreateconst(buf);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == 'h' && !err, (dsFree(&ds)), "expected 'h', got %d", c);
+    /* 6. NULL аргументы для новых конструкторов */
+    test_sub("subtest %d: invalid arguments", ++subnum);
+    {
+        // dsCreatestrAlloc с cap=0 должен вернуть нулевой DS
+        DS ds = dsCreatestrAlloc(0);
+        test_validate(ds.type == 0, "expected zero DS for cap=0");
+        dsFree(&ds);
 
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
+        // dsCreatefsAlloc всегда должен работать
+        DS ds2 = dsCreatefsAlloc();
+        test_validate(ds2.type == DS_FS && ds2.memowner == true, "invalid dsCreatefsAlloc");
+        dsFree(&ds2);
+        fs_alloc_check(true);
+    }
 
-//     /* 8. DS_CONSTSTR: корректный и некорректный escape */
-//     test_sub("subtest %d: DS_CONSTSTR - mixed escapes", ++subnum);
-//     {
-//         const char *buf = "\\n\\q";
-//         DS ds = dsCreateconst(buf);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\n' && !err, (dsFree(&ds)), "newline failed");
-
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == EOF && err, (dsFree(&ds)), "expected invalid escape error");
-
-//         // после ошибки 'q' должна быть в потоке
-//         int ch = dsgetc(&ds);
-//         test_validatefree(ch == 'q', (dsFree(&ds)), "expected 'q', got '%c'", ch);
-
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
-
-//     /* 9. DS_FS: обычный символ */
-//     test_sub("subtest %d: DS_FS - ordinary char", ++subnum);
-//     {
-//         fs src = fscopy("b");
-//         DS ds = dsCreatefs(&src);
-//         bool err = false;
-//         int c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == 'b' && !err, (dsFree(&ds)), "expected 'b', got %d", c);
-
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
-
-//     /* 10. DS_FS: все корректные escape */
-//     test_sub("subtest %d: DS_FS - valid escapes", ++subnum);
-//     {
-//         fs src = fscopy((const char[]){'\\', '\\', '\\', '"', '\\', 'n', '\\', 'r', '\\', 't', '\0'});
-//         DS ds = dsCreatefs(&src);
-//         bool err = false;
-//         int c;
-
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\\' && !err, (dsFree(&ds)), "backslash failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '"'  && !err, (dsFree(&ds)), "quote failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\n' && !err, (dsFree(&ds)), "newline failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\r' && !err, (dsFree(&ds)), "carriage return failed");
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\t' && !err, (dsFree(&ds)), "tab failed");
-
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
-
-//         /* 11. DS_FILE: обычный символ и escape (используем обычный файл) */
-//     test_sub("subtest %d: DS_FILE - mixed escapes", ++subnum);
-//     {
-//         const char *path = "res/ds/dsparse_ecraned_file.ds";
-//         FILE *fp = fopen(path, "w");
-//         test_validate(fp != NULL, "failed to create file for test");
-//         fputs("a\\n\\x", fp);   // обычный 'a', затем валидный \n, затем невалидный \x
-//         fclose(fp);
-
-//         DS ds = dsCreateFilename(path, "r");
-//         test_validatefree(ds.type == DS_FILE, (dsFree(&ds)), "failed to open DS_FILE");
-
-//         bool err = false;
-//         int c;
-
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == 'a' && !err, (dsFree(&ds)), "ordinary char failed");
-
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == '\n' && !err, (dsFree(&ds)), "newline failed");
-
-//         c = dsparseEscaped(&ds, &err);
-//         test_validatefree(c == EOF && err, (dsFree(&ds)), "invalid escape failed");
-
-//         int ch = dsgetc(&ds);
-//         test_validatefree(ch == 'x', (dsFree(&ds)), "expected 'x' after unget, got '%c'", ch);
-
-//         dsFree(&ds);
-//         fs_alloc_check(true);
-//     }
-
-//     /* 12. NULL DS должен вызывать ошибку */
-//     test_sub("subtest %d: NULL DS raises error", ++subnum);
-//     {
-//         if (!try()) {
-//             dsparseEscaped(NULL, NULL);
-//             test_validate(false, "must raise error for NULL DS");
-//         } else {
-//             test_validate(true, "correctly raised error");
-//         }
-//         fs_alloc_check(true);
-//     }
-
-//     return logret(TEST_PASSED, "done");
-// }
-
+    return logret(TEST_PASSED, "done");
+}
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -2714,7 +2621,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf10_ds_skip_nl,         "dsSkipNl() simple test")
       , TESTADD(tf11_ds_skipspace,       "dsSkipSpaces() simple test")
       , TESTADD(tf12_ds_getc_ecran,      "dsgetcEscaped() simple test")
-      //, TESTADD(tf13_dsparseEscaped,     "dsparseEscaped() simple test")
+      , TESTADD(tf13_ds_memowner,        "dsparseEscaped() simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()

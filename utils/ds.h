@@ -103,7 +103,7 @@ typedef struct DS {
 /** @name Macro Constructors
  * Macros for quick initialization of DS objects.
  * @{ */
-#define DS(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .memowner = false, __VA_ARGS__}
+#define DS(...) (DS) {.type = DS_UNK, .pos = 0L, .ptr = NULL, .memowner = false, __VA_ARGS__}
 #define DSFILE(...) (DS) {.type = DS_FILE, .fp = NULL, .memowner = false, __VA_ARGS__}
 #define DSSTR(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .cap = 0L, .memowner = false, __VA_ARGS__}
 #define DSCONST(...) (DS) {.type = DS_CONSTSTR, .pos = 0L, .constptr = NULL, .memowner = false, __VA_ARGS__}
@@ -268,8 +268,8 @@ static inline DS                dsCreatefs(fs *s) {
 }
 
 static inline DS                dsCreatefsAlloc(void) {
-    fs     *buf = fs_create();
-    DS      tmp = dsCreatefs(buf);
+    fs      buf = FS(); // that is correct! will be moved in dsInitfs()
+    DS      tmp = dsCreatefs(&buf);
     tmp.memowner = true;
     return logsimpleret(tmp, "DS/Fs memory owner is created");
 }
