@@ -358,24 +358,21 @@ int                         dsPrintf(DS *restrict pds, const char *restrict msg,
         "Null input %p %p", pds, msg);
 
     va_list     ap;
-    int         total = 0;
+    int         total = 0, wr;
     va_start(ap, msg);
     switch (pds->type) {
         case DS_FILE:
-            IOCHECKER(wr, vfprintf(pds->fp, msg, ap), -1)
-                total += wr;
+            total += WRITE_OR_RET(vfprintf(pds->fp, msg, ap), -1);
             break;
         case DS_STR: // this is NOT autoextendable, till end of pds->ptr only
-            IOCHECKER(wr, dsHelperVPrintStr(pds->ptr, pds->pos, pds->cap, msg, ap), -1) {
-                total += wr;
-                pds->pos += wr;
-            }
+            wr = WRITE_OR_RET(dsHelperVPrintStr(pds->ptr, pds->pos, pds->cap, msg, ap), -1);
+            total += wr;
+            pds->pos += wr;
             break;
         case DS_FS:     // this is autoextendable
-            IOCHECKER(wr, fs_vsprintf_position(&pds->s, pds->pos, msg, ap), -1) {
-                total += wr;
-                pds->pos += wr; // iterator over fs pds->s
-            }
+            wr = WRITE_OR_RET(fs_vsprintf_position(&pds->s, pds->pos, msg, ap), -1);
+            total += wr;
+            pds->pos += wr; // iterator over fs pds->s
             break;
         default:
             va_end(ap); // for lulz
