@@ -250,7 +250,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
     invraisecode(in != NULL && out != NULL, ERR_NULLABLE_PTR, 
         "Null pointers %p %p", in, out);
     invraisecode(out->type == DS_STR || out->type == DS_FS, ERR_UNSUPPORTED_TYPE,
-        "Not suppoted type for out: %d/%s", out->type, DSTypeName(out->type) );
+        "Not suppoted type for out: %d/%s", out->type, dsTypeName(out->type) );
 
     bool        error = false;
     size_t      pos = dsSavepos(in);
@@ -377,7 +377,7 @@ int                         dsPrintf(DS *restrict pds, const char *restrict msg,
         default:
             va_end(ap); // for lulz
             return userraise(-1, ERR_ACTION_NOT_APPLICABLE, 
-                "Can't write to  %d/%s", pds->type, DSTypeName(pds->type) );
+                "Can't write to  %d/%s", pds->type, dsTypeName(pds->type) );
     }
     va_end(ap);
     return total;
@@ -404,7 +404,7 @@ int                         dsScanf(DS *restrict pds, const char *restrict msg, 
             }
             break;
         default:
-            ret = userraise(-1, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type) );
+            ret = userraise(-1, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type) );
     }
 
     va_end(ap);
@@ -425,7 +425,7 @@ bool                        dsParseInt(DS *restrict pds, int *restrict pval) {
                 return dsHelperParseInt(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
             break;
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type) );
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type) );
     }
     return true;
 }
@@ -444,7 +444,7 @@ bool                        dsParseLong(DS *restrict pds, long *restrict pval) {
                 return dsHelperParseLong(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
             break;
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type) );
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type) );
     }
     return true;
 }
@@ -461,7 +461,7 @@ bool                        dsParseUnsigned(DS *restrict pds, unsigned int *rest
         case DS_CONSTSTR:
             return dsHelperParseUnsigned(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type));
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type));
     }
     return true;
 }
@@ -478,7 +478,7 @@ bool                        dsParseUnsignedLong(DS *restrict pds, unsigned long 
         case DS_CONSTSTR:
             return dsHelperParseUnsignedLong(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type));
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type));
     }
     return true;
 }
@@ -500,7 +500,7 @@ bool                        dsParseDouble(DS *restrict pds, double *restrict pdv
             return dsHelperParseDouble(dsStrbuf(pds) + pds->pos, pdval, &pds->pos);
         }
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type));
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type));
     }
     return true;
 }
@@ -516,7 +516,7 @@ bool                        dsParseChar(DS *restrict pds, char *restrict pval) {
         case DS_STR: case DS_FS: case DS_CONSTSTR:
             return dsHelperParseChar(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
         default:
-            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", DSTypeName(pds->type));
+            return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type));
     }
     return true;
 }
@@ -590,7 +590,7 @@ long                            fs_dswrite(DS *restrict out, const fs *restrict 
         return logsimpleret(0L, "NUll fs");
     if (int_notin(out->type, DS_FILE, DS_STR, DS_FS) )
         return userraise(-1L, ERR_UNSUPPORTED_TYPE, 
-            "Unsupported %d/%s", out->type, DSTypeName(out->type));
+            "Unsupported %d/%s", out->type, dsTypeName(out->type));
     return dsfsHelperFsDSWrite(out, s);
 }
 
@@ -600,7 +600,7 @@ long                            fs_dstechprint(DS *restrict out, const fs *restr
         return userraise(-1L, ERR_NULL_OUTPUT, "");
     if (int_notin(out->type, DS_FILE, DS_STR, DS_FS) )
         return userraise(-1L, ERR_UNSUPPORTED_TYPE, 
-            "Unsupported %d/%s", out->type, DSTypeName(out->type));
+            "Unsupported %d/%s", out->type, dsTypeName(out->type));
 
     fs           buf = FS();      // empty
     // common printer for all types! 

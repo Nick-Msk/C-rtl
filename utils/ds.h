@@ -55,7 +55,7 @@ typedef enum {
  * @param typ The type to convert.
  * @return A constant string representing the type.
  */
-static inline const char               *DSTypeName(DSType typ) {
+static inline const char               *dsTypeName(DSType typ) {
     switch (typ) {
         CASE_RETURN(DS_UNK);
         CASE_RETURN(DS_FILE);
@@ -340,7 +340,7 @@ static inline bool              dsReleaseFs(fs *restrict dst, DS *restrict pds) 
 
     if (pds->type != DS_FS)
         return userraise(false, ERR_UNSUPPORTED_TYPE, 
-            "%d/%s isn't supported", pds->type, DSTypeName(pds->type));
+            "%d/%s isn't supported", pds->type, dsTypeName(pds->type));
     if (dst == NULL)        // just free
         fsfree(pds->s);
     else {
@@ -359,7 +359,7 @@ static inline char               *dsReleaseStr(DS *restrict pds) {
         return userraise(NULL, ERR_NULL_INPUT, "Ds is null");
     if (pds->type != DS_STR)
         return userraise(NULL, ERR_UNSUPPORTED_TYPE, 
-            "%d/%s isn't supported", pds->type, DSTypeName(pds->type));
+            "%d/%s isn't supported", pds->type, dsTypeName(pds->type));
     char    *tmp = pds->ptr;
     *pds = DS();
     return tmp;
@@ -495,7 +495,7 @@ static inline off_t             dsGetpos(const DS *pds) {
         case DS_STR: case DS_CONSTSTR: case DS_FS:
             return pds->pos;
         default:
-            return logsimpleerr(0L, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(0L, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
 }
 /**
@@ -522,7 +522,7 @@ static inline bool              dsRestorepos(DS *pds, off_t savepos) {
             pds->pos = savepos;
             break;
         default:
-            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
     return true;
 }
@@ -541,7 +541,7 @@ static inline bool              dsReset(DS *pds) {
             pds->pos = 0;
             break;
         default:
-            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
     return true;
 } 

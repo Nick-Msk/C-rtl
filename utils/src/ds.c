@@ -159,7 +159,7 @@ int                         dsgetc(DS *pds) {
             return EOF;
 #endif  /* !NO_FSDS */ 
         default:
-            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
 }
 
@@ -179,7 +179,7 @@ int                             dsungetc(int c, DS *pds) {
             return dsungetc_conststr(ptr, &pds->pos, c);
         }
         default:
-            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
 }
 
@@ -196,7 +196,7 @@ int                         dsreplacec(int c, DS *pds) {
             // the same logic for FS and STR
             return dsreplace_str(ptr, &pds->pos, c);
         default:
-            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
 }
 
@@ -235,7 +235,7 @@ int                         dsputc(int c, DS *pds) {
             }
 #endif
         default:
-            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, dsTypeName(pds->type));
     }
 }
 
@@ -384,7 +384,7 @@ size_t                      dsGetcap(const DS *pds) {
 #endif
         default:
             return userraise(0L, ERR_UNSUPPORTED_TYPE, 
-                "Unsupported %d/%s", pds->type, DSTypeName(pds->type));
+                "Unsupported %d/%s", pds->type, dsTypeName(pds->type));
     }
 
     return size;
