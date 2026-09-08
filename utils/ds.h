@@ -43,6 +43,7 @@
  * @brief Defines the type of the data source. Now DS_FILE and DS_BUFFER are suppoted
  */
 typedef enum {
+    DS_UNK = 0,   /**< just a plug */
     DS_FILE,     /**< Data source is a standard file (FILE*). */
     DS_STR,      /**< Data source is a memory buffer (null-terminated string). */
     DS_CONSTSTR, /**< Data source is a memory const buffer (null-terminated string). */
@@ -56,6 +57,7 @@ typedef enum {
  */
 static inline const char               *DSTypeName(DSType typ) {
     switch (typ) {
+        CASE_RETURN(DS_UNK);
         CASE_RETURN(DS_FILE);
         CASE_RETURN(DS_STR);
         CASE_RETURN(DS_CONSTSTR);
@@ -93,6 +95,7 @@ typedef struct DS {
 #endif  /* !NO_FSDS */             
             };
             size_t  pos;        /**< Current read position in the buffer. */
+            bool    memowner;   /**< Owner flag for FS, STR and CONSTSTR */
         };                  /**< Buffer details. */
     };
 } DS;
@@ -100,13 +103,13 @@ typedef struct DS {
 /** @name Macro Constructors
  * Macros for quick initialization of DS objects.
  * @{ */
-#define DS(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, __VA_ARGS__}
-#define DSFILE(...) (DS) {.type = DS_FILE, .fp = NULL, __VA_ARGS__}
-#define DSSTR(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .cap = 0L, __VA_ARGS__}
-#define DSCONST(...) (DS) {.type = DS_CONSTSTR, .pos = 0L, .constptr = NULL, __VA_ARGS__}
+#define DS(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .memowner = false, __VA_ARGS__}
+#define DSFILE(...) (DS) {.type = DS_FILE, .fp = NULL, .memowner = false, __VA_ARGS__}
+#define DSSTR(...) (DS) {.type = DS_STR, .pos = 0L, .ptr = NULL, .cap = 0L, .memowner = false, __VA_ARGS__}
+#define DSCONST(...) (DS) {.type = DS_CONSTSTR, .pos = 0L, .constptr = NULL, .memowner = false, __VA_ARGS__}
 
 #ifndef NO_FSDS
-    #define DSFS(...) (DS) {.type = DS_FS, .pos = 0L, .s = FS(), __VA_ARGS__}
+    #define DSFS(...) (DS) {.type = DS_FS, .pos = 0L, .s = FS(), .memowner = false, __VA_ARGS__}
 #endif  /* !NO_FSDS */    
 /** @} */
 
@@ -191,6 +194,19 @@ static inline DS                dsCreatestrCap(char *buf, size_t cap) {
     DS      empty = {0};
     return empty;
 }
+
+// TODO: autoallocation
+static inline DS                dsCreatestrAlloc(size_t cap) {
+    DS       tmp = DSSTR();
+    char    *buf = malloc(cap);
+    if (!buf)
+        return userraise(tmp, ERR_UNABLE_ALLOCATE, "unable allocation %zu", cap);
+    tmp = dsCreatestrCap(buf, cap);
+    tmp.memowner = true;
+
+    return logsimpleret(tmp, "DS/str owner is %s created", buf ? "": "NOT");
+}
+
 /**
  * @brief Initializes a Datasource (DS) object for reading from a c-string.
  * 
@@ -252,6 +268,13 @@ static inline DS                dsCreatefs(fs *s) {
     return empty;
 }
 
+static inline DS                dsCreatefsAlloc(void) {
+    fs     *buf = fs_create();
+    DS      tmp = dsCreatefs(buf);
+    tmp.memowner = true;
+    return logsimpleret(tmp, "DS/Fs memory owner is created");
+}
+
 /**
  * @brief Creates a new, empty dynamic @ref fs buffer.
  * 
@@ -284,6 +307,8 @@ static inline void              dsFree(DS *pds) {
 #endif  /* !NO_FSDS */   
         if (pds->type == DS_FILE)
             fclose(pds->fp);
+        if (pds->type == DS_STR && pds->memowner)
+            free(pds->ptr);
         *pds = DS();
     }
 }
@@ -320,13 +345,24 @@ static inline bool              dsReleaseFs(fs *restrict dst, DS *restrict pds) 
         fsfree(pds->s);
     else {
         fs_free(dst);   // to avoid leaking
-        *dst = fs_move(&pds->s);
+        fs_moveto(dst, &pds->s);
     }
 
 #endif  /* !NO_FSDS */   
 
     *pds = DS();      // reset
     return true;
+}
+
+static inline char               *dsReleaseStr(DS *restrict pds) {
+    if (pds == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "Ds is null");
+    if (pds->type != DS_STR)
+        return userraise(NULL, ERR_UNSUPPORTED_TYPE, 
+            "%d/%s isn't supported", pds->type, DSTypeName(pds->type));
+    char    *tmp = pds->ptr;
+    *pds = DS();
+    return tmp;
 }
 
 /**
@@ -458,6 +494,8 @@ static inline off_t             dsGetpos(const DS *pds) {
             return ftell(pds->fp);
         case DS_STR: case DS_CONSTSTR: case DS_FS:
             return pds->pos;
+        default:
+            return logsimpleerr(0L, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
 }
 /**
@@ -483,6 +521,8 @@ static inline bool              dsRestorepos(DS *pds, off_t savepos) {
         case DS_STR: case DS_CONSTSTR: case DS_FS:
             pds->pos = savepos;
             break;
+        default:
+            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
     return true;
 }
@@ -500,6 +540,8 @@ static inline bool              dsReset(DS *pds) {
         case DS_STR: case DS_CONSTSTR: case DS_FS:
             pds->pos = 0;
             break;
+        default:
+            return logsimpleerr(false, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
     return true;
 } 

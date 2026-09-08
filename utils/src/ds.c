@@ -158,6 +158,8 @@ int                         dsgetc(DS *pds) {
 #else
             return EOF;
 #endif  /* !NO_FSDS */ 
+        default:
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
 }
 
@@ -176,8 +178,8 @@ int                             dsungetc(int c, DS *pds) {
             // the same logic for FS, STR and CONSTSTR
             return dsungetc_conststr(ptr, &pds->pos, c);
         }
-        default:      
-            return EOF;
+        default:
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
 }
 
@@ -194,7 +196,7 @@ int                         dsreplacec(int c, DS *pds) {
             // the same logic for FS and STR
             return dsreplace_str(ptr, &pds->pos, c);
         default:
-            return EOF;
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
 }
 
@@ -231,10 +233,9 @@ int                         dsputc(int c, DS *pds) {
                 elem(pds->s, pds->pos++) = (unsigned char) c;
                 return 1; // increment
             }
-#else
-        default:
-            return EOF;
 #endif
+        default:
+            return logsimpleerr(EOF, "Not suppotred type %d/%s", pds->type, DSTypeName(pds->type));
     }
 }
 
