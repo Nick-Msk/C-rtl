@@ -1720,7 +1720,7 @@ tf9(const char *name)
 
     test_sub("subtest %d: creating pointer array", ++subnum);
     {
-        Array *parr = PArrayCreate(100, ARRAY_FILLTYPE_ZERO);
+        Array *parr = ParrayCreate(100, ARRAY_FILLTYPE_ZERO);
         for (size_t i= 0; i < parr->len; i++)
             test_validatefree(
                 parr->pv[i] == NULL,
@@ -1737,7 +1737,7 @@ tf9(const char *name)
 
     test_sub("subtest %d: shrinking", ++subnum);
     {
-        Array  *parr = PArrayCreate(100, ARRAY_FILLTYPE_ZERO);
+        Array  *parr = ParrayCreate(100, ARRAY_FILLTYPE_ZERO);
         size_t  cnt = 10;
         parr = arrayShrink(parr, cnt);
         test_validatefree(
@@ -1756,7 +1756,7 @@ tf9(const char *name)
     test_sub("subtest %d: pointer array save/load", ++subnum);
     {
         const char *filename = "res/array/parr.sv";
-        Array *parr = PArrayCreate(100, ARRAY_FILLTYPE_ZERO);
+        Array *parr = ParrayCreate(100, ARRAY_FILLTYPE_ZERO);
         arraySaveFileByName(parr, filename);
 
         Array *loaded = arrayLoadFileByName(filename);
@@ -1787,7 +1787,7 @@ tf9(const char *name)
     test_sub("subtest %d: pointer array sorting", ++subnum);
     {
         int cnt = 10000;
-        Array *parr = PArrayCreate(cnt, ARRAY_FILLTYPE_ZERO);
+        Array *parr = ParrayCreate(cnt, ARRAY_FILLTYPE_ZERO);
 
         // fill array with descending addresses
         for (size_t i = 0; i < parr->len; i++)
@@ -1816,7 +1816,7 @@ tf9(const char *name)
     test_sub("subtest %d: increase pointer array", ++subnum);
     {
         size_t initsz = 25;
-        Array *arr = PArrayCreate(initsz, ARRAY_FILLTYPE_ZERO);
+        Array *arr = ParrayCreate(initsz, ARRAY_FILLTYPE_ZERO);
         arr = arrayIncrease(arr, initsz * 3);
 
         test_validatefree(
@@ -1994,7 +1994,7 @@ tf10(const char *name)
     test_sub("subtest %d: pointer series (unsupported)", ++subnum);
     {
         if (!try()) {
-            Array *arr = PArrayCreate(10, ARRAY_FILLTYPE_ASC_SERIES);
+            Array *arr = ParrayCreate(10, ARRAY_FILLTYPE_ASC_SERIES);
             // We should not reach here
             test_validate(
                 false,
@@ -2243,7 +2243,7 @@ tf12(const char *name)
     test_sub("subtest %d: pointer array (no‑op)", ++subnum);
     {
         size_t   cnt = 3;
-        Array   *arr = PArrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array   *arr = ParrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->pv[0] = (void*)1; arr->pv[1] = (void*)2; arr->pv[2] = (void*)3;
 
         PArray_foreach(arr, elem) {

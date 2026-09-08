@@ -350,7 +350,7 @@ static inline Array            *DarrayCreate(size_t cnt, ArrayFillType typ){
  * @param fill     Initialization pattern.
  * @return Array*  Pointer to the new Array, or NULL.
  */
-static inline Array            *PArrayCreate(size_t cnt, ArrayFillType typ){
+static inline Array            *ParrayCreate(size_t cnt, ArrayFillType typ){
     return arrayCreate(cnt, typ, ARRAY_POINTER, VALUE64_UNKNOWN);
 }
 
