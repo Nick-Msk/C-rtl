@@ -195,7 +195,6 @@ static inline DS                dsCreatestrCap(char *buf, size_t cap) {
     return empty;
 }
 
-// TODO: autoallocation
 static inline DS                dsCreatestrAlloc(size_t cap) {
     DS       tmp = DSSTR();
     char    *buf = malloc(cap);
