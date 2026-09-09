@@ -256,6 +256,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
     size_t      pos = dsSavepos(in);
     bool        quot = begin != '\0';   // check if quoted, word is ignored in that case
     bool        str = !quot && !word;   // parse till EOF or \n
+    bool        stop = false;
     int         c;
 
     if (quot) {
@@ -264,7 +265,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
             error = true;
     }
 
-    while (!error && (c = dsgetc(in)) != EOF) {
+    while (!stop && (c = dsgetc(in)) != EOF) {
 
         if (quot) {
             if ((unsigned char) c == end) 
@@ -275,29 +276,34 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
                     break;
                 }
             }
-        } else if (str && (unsigned char) c == end)
-            break;                                // терминатор (например, '\n')            
+        } else if (str && (unsigned char) c == end)     // '\n'
+            stop = true;                               
+        else if (word && !isalnum_u(c) ) {         // end of word!
+            dsungetc(c, in);
+            break;
+        }
 
+        // for every parsing type!
         if (maxlen > 0L && out->pos + 1 >= maxlen) { // if maxlen == 0 - UNLIM
             error = true;             // never shoud be here if normal serialization 
             logsimple("WARN: len (%zu) + 1 > dst_capacity (%zu)", out->pos, maxlen);
             break;
         } 
         if (dsputc(c, out) < 0) {
-            userraise(false, ERR_STREAM_ERROR, "out ds stream error!");
+            userraise(false, ERR_STREAM_ERROR, "out ds stream error!"); // no return here!
             error = true;
             break;
         }
     }
     // not good, but ok for now
-    if (str && (unsigned char) c == end) {
+    /*if (str && (unsigned char) c == end) {
         if (maxlen == 0L || out->pos + 1 >= maxlen)
             dsputc(c, out);     // put last \n only if have a space
         else {
             error = true;   // out of space
             logsimple("WARN: len (%zu) + 1 > dst_capacity (%zu)", out->pos, maxlen);
         }
-    }
+    } */
 
     dsputc(EOF, out);      // out is DS_FS or DS_STR. Set it Even if error!!!
 
