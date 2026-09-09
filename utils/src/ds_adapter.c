@@ -256,7 +256,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
     size_t      pos = dsSavepos(in);
     bool        quot = begin != '\0';   // check if quoted, word is ignored in that case
     bool        str = !quot && !word;   // parse till EOF or \n
-    bool        stop = false;
+    bool        stop = false, startword = false;
     int         c;
 
     if (quot) {
@@ -278,9 +278,22 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
             }
         } else if (str && (unsigned char) c == end)     // '\n'
             stop = true;                               
-        else if (word && !isalnum_u(c) ) {         // end of word!
-            dsungetc(c, in);
-            break;
+        else if (word) {
+            if (!startword) {
+                if (isspace(c) )
+                    ;
+                else if (isalpha(c) )
+                    startword = true;
+                else {        // wrong symbol!
+                    logsimple("Wrong word symbol '%c'", c);
+                    dsungetc(c, in);
+                    error = true;
+                    break;
+                }
+            } else if (startword && !isalnum_u(c) ) {         // end of word
+                dsungetc(c, in);
+                break;
+            }
         }
 
         // for every parsing type!
@@ -307,8 +320,14 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
 
     dsputc(EOF, out);      // out is DS_FS or DS_STR. Set it Even if error!!!
 
-    if (quot && c != end)
+    if (quot && c != end) {
+        logsimple("quoted: final \" not found");
         error = true;
+    }
+    if (word && !startword) {
+        logsimple("Can't pars a word!");
+        error = true;
+    }
 
     if (error) {
         dsRestorepos(in, pos);                 // rollback only if error
