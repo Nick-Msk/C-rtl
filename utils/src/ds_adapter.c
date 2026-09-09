@@ -5653,9 +5653,6 @@ tf21_ds_parse_unlimfs_direct(const char *name)
 
         bool res = dsParseUnlimfsDirect(&in, &dst);
 
-        DSTECHFPRINT(logfile, in);
-        fstechfprint(logfile, dst);
-
         test_validatefree(res && dst.len == strlen(input),
                           (dsFree(&in), fsfree(dst)),
                           "expected success and len=%zu, got res=%d len=%zu", strlen(input), res, dst.len);
@@ -5847,6 +5844,213 @@ tf21_ds_parse_unlimfs_direct(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseUnlimfsBuffer (buffer mode, w/o escape) -------------------------
+static TestStatus
+tf22_ds_parse_unlimfs_buffer(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Успешное чтение строки, оканчивающейся '\n' */
+    test_sub("subtest %d: simple line with newline", ++subnum);
+    {
+        const char *input = "hello\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+
+        test_validatefree(res && dst.len == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success and len=%zu, got res=%d len=%zu", strlen(input), res, dst.len);
+        test_validatefree(fscmpstr(dst, input) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected %zu, got %lld", strlen(input), (long long)dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Успешное чтение последней строки без '\n' (EOF) */
+    test_sub("subtest %d: line at EOF without newline", ++subnum);
+    {
+        const char *input = "world";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success and len=5, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "world") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected %zu, got %lld", strlen(input), (long long)dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Пустая строка (только '\n') */
+    test_sub("subtest %d: empty line (just newline)", ++subnum);
+    {
+        const char *input = "\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+        test_validatefree(res && dst.len == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success and \\n, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, input) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected empty string");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Пустой вход (EOF сразу) */
+    test_sub("subtest %d: empty input (EOF)", ++subnum);
+    {
+        const char *input = "";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+        test_validatefree(res && dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success and empty, got res=%d len=%zu", res, dst.len);
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Строка, состоящая только из пробелов (до '\n') */
+    test_sub("subtest %d: line with spaces", ++subnum);
+    {
+        const char *input = "   \t  \n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+        test_validatefree(res && dst.len == strlen(input),   // три пробела, таб, два пробела
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=6, got %zu", dst.len);
+        test_validatefree(fscmpstr(dst, input) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Длинная строка (проверка автоматического расширения fs) */
+    test_sub("subtest %d: long line", ++subnum);
+    {
+        char longstr[256];
+        memset(longstr, 'A', 255);
+        longstr[255] = '\0';
+        char input[260];
+        snprintf(input, sizeof(input), "%s\n", longstr);
+
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseUnlimfsBuffer(&in, &dst);
+        test_validatefree(res && dst.len == strlen(input),
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=%zu, got %zu", strlen(input), dst.len);
+        test_validatefree(strncmp(fsstr(dst), input, strlen(input)) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch '%s'", fsstr(dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Несколько строк подряд (повторные вызовы) */
+    test_sub("subtest %d: multiple lines sequentially", ++subnum);
+    {
+        const char *input = "first\nsecond\nthird";
+        DS in = dsCreateconst(input);
+
+        fs dst1 = FS();
+        bool r1 = dsParseUnlimfsBuffer(&in, &dst1);
+        test_validatefree(r1 && fscmpstr(dst1, "first\n") == 0,
+                          (dsFree(&in), fsfree(dst1)),
+                          "first line mismatch '%s", fsstr(dst1) );
+
+        fs dst2 = FS();
+        bool r2 = dsParseUnlimfsBuffer(&in, &dst2);
+        test_validatefree(r2 && fscmpstr(dst2, "second\n") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2)),
+                          "second line mismatch");
+
+        fs dst3 = FS();
+        bool r3 = dsParseUnlimfsBuffer(&in, &dst3);
+        test_validatefree(r3 && fscmpstr(dst3, "third") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3)),
+                          "third line mismatch");
+
+        dsFree(&in);
+        fsfree(dst1);
+        fsfree(dst2);
+        fsfree(dst3);
+        fs_alloc_check(true);
+    }
+
+    /* 8. NULL аргументы */
+    test_sub("subtest %d: NULL arguments raise error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseUnlimfsBuffer(NULL, &dst);
+            test_validatefree(false, fsfree(dst), "must raise error for NULL in");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error for NULL in");
+        }
+
+        DS in = dsCreateconst("test");
+        if (!try()) {
+            dsParseUnlimfsBuffer(&in, NULL);
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            test_validate(true, "correctly raised error for NULL dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Неаллоцируемый dst (FSLITERAL) */
+    test_sub("subtest %d: non-allocatable dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("test\n");
+        fs dst = FSLITERAL("initial");
+        if (!try()) {
+            dsParseUnlimfsBuffer(&in, &dst);
+            test_validate(false, "must raise error for non-allocatable dst");
+        } else {
+            test_validate(true, "correctly raised error for non-allocatable dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -5876,7 +6080,8 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf19_ds_parse_quoted_lim_string_buffer,     "dsParseQuotedLimStringBuffer() tests")
       , TESTADD(tf20_ds_parse_quoted_limfs_direct,          "dsParseQuotedLimfsDirect tests")
       // normal str
-      , TESTADD(tf21_ds_parse_unlimfs_direct,               "dsParseUnlimfsDirect tests")
+      , TESTADD(tf21_ds_parse_unlimfs_direct,               "dsParseUnlimfsDirect() tests")
+      , TESTADD(tf22_ds_parse_unlimfs_buffer,               "dsParseUnlimfsBuffer() tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
