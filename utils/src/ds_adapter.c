@@ -373,6 +373,18 @@ dsfsHelperFsDSWrite(DS *restrict out, const fs *restrict s) {
     return dswrite(out, s->v, s->len);
 }
 
+static DS
+dsPrepareout(fs *restrict dst, bool use_buffer, size_t maxlen) {
+    fs      tmp = FS();         // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
+    fs     *buf = use_buffer ? &tmp : dst;
+
+    if (maxlen > 0)
+        fs_resize(buf, maxlen);     // not necessary but for opt
+
+    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
+    return dsCreatefs(buf);
+}
+
 // --------------------------- API ---------------------------------
 
 int                         
@@ -556,14 +568,7 @@ dsParseQuotedLimfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_bu
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
-    fs      tmp = FS(); // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
-    fs     *buf = use_buffer ? &tmp : dst;
-
-    if (maxlen > 0)
-        fs_resize(buf, maxlen);     // not necessary but for opt
-    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
-
-    DS      outtmp = dsCreatefs(buf);
+    DS      outtmp = dsPrepareout(dst, use_buffer, maxlen);
 
     bool res = ds_parse_quoted_core(in, &outtmp, maxlen, '"', '"');
     if (!res) {
@@ -571,8 +576,6 @@ dsParseQuotedLimfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_bu
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
     }
     dsReleaseFs(dst, &outtmp);   
-    if (use_buffer)
-        fs_free(buf);
 
     return true;
 }
@@ -584,15 +587,17 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
             "Null input or zero capacity %p %p %zu", in, dst, dst_capacity);
 
     fs      tmp = (fs) {.v = dst, .len = dst_capacity - 1, .sz = dst_capacity, .flags = FS_FLAG_STATIC};   // static
-    if (use_buffer)
+    /*if (use_buffer)
         tmp = fsinit(dst_capacity);    // alloc with final \0
 
     fs     *buf = &tmp;
     
     // create DS wrapper
-    DS outtmp = dsCreatefs(buf);
+    DS outtmp = dsCreatefs(buf); */
 
-    // exec core
+    DS      outtmp = dsPrepareout(&tmp, use_buffer, dst_capacity);
+
+    // exec core, quoted line
     bool res = ds_parse_quoted_core(in, &outtmp, dst_capacity, '"', '"');
     if (!res) {
         dsFree(&outtmp);
@@ -609,21 +614,12 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
     return res;
 }
 
-static DS
-dsPrepareout(fs *restrict dst, bool use_buffer) {
-    fs      tmp = FS();         // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
-    fs     *buf = use_buffer ? &tmp : dst;
-
-    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
-    return dsCreatefs(buf);
-}
-
 bool                       
 dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
-    DS      outtmp = dsPrepareout(dst, use_buffer);
+    DS      outtmp = dsPrepareout(dst, use_buffer, 0L);
 
     // \0 - non-espaced mode, \n - line terminator
     bool res = ds_parse_quoted_core(in, &outtmp, 0L, '\0', '\n');
