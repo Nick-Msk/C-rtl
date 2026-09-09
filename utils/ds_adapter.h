@@ -359,6 +359,18 @@ static inline bool                dsParseUnlimfsBuffer(DS *restrict in, fs *rest
     return dsParseUnlimfs(in, dst, true);
 }
 
+extern bool                       dsParseWord(DS *restrict in, fs *restrict dst, bool use_buffer);
+
+static inline bool                dsParseWordDirect(DS *restrict in, fs *restrict dst) {
+    return dsParseWord(in, dst, false);
+}
+
+static inline bool                dsParseWordBuffer(DS *restrict in, fs *restrict dst) {
+    return dsParseWord(in, dst, true);
+}
+
+
+
 /**
  * @brief IParse escaped sequences from a @ref DS stream.
  *
