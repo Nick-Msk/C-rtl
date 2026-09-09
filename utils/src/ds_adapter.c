@@ -609,18 +609,21 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
     return res;
 }
 
+static DS
+dsPrepareout(fs *restrict dst, bool use_buffer) {
+    fs      tmp = FS();         // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
+    fs     *buf = use_buffer ? &tmp : dst;
+
+    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
+    return dsCreatefs(buf);
+}
+
 bool                       
 dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
 
-    fs      tmp = FS();         // стековая структура с флагом FS_FLAG_ALLOC, но без BODYALLOC
-    fs     *buf = use_buffer ? &tmp : dst;
-
-    fs_setlen(buf, 0);  // WA until normal fs_cmp/fs_cmpstr
-
-    DS      outtmp = dsCreatefs(buf);
-    // DS      outtmp = dsPrepareout(dst, use_buffer) TODO:!!!
+    DS      outtmp = dsPrepareout(dst, use_buffer);
 
     // \0 - non-espaced mode, \n - line terminator
     bool res = ds_parse_quoted_core(in, &outtmp, 0L, '\0', '\n');
