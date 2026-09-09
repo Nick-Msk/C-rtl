@@ -246,7 +246,7 @@ dsHelperParseUnsigned(const char *restrict str, unsigned *restrict pival, size_t
  * It reads from 'in' and writes processed characters to 'out'.
  */
 static bool                     
-ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned char begin, unsigned char end) {
+ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned char begin, unsigned char end, bool word) {
     invraisecode(in != NULL && out != NULL, ERR_NULLABLE_PTR, 
         "Null pointers %p %p", in, out);
     invraisecode(out->type == DS_STR || out->type == DS_FS, ERR_UNSUPPORTED_TYPE,
@@ -254,7 +254,8 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
 
     bool        error = false;
     size_t      pos = dsSavepos(in);
-    bool        quot = begin != '\0';   // check if quoted
+    bool        quot = begin != '\0';   // check if quoted, word is ignored in that case
+    bool        str = !quot && !word;   // parse till EOF or \n
     int         c;
 
     if (quot) {
@@ -274,7 +275,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
                     break;
                 }
             }
-        } else if (end != '\0' && (unsigned char) c == end)
+        } else if (str && (unsigned char) c == end)
             break;                                // терминатор (например, '\n')            
 
         if (maxlen > 0L && out->pos + 1 >= maxlen) { // if maxlen == 0 - UNLIM
@@ -289,16 +290,18 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
         }
     }
     // not good, but ok for now
-    if (!quot && end != '\0' && (unsigned char) c == end) {
+    if (str && (unsigned char) c == end) {
         if (maxlen == 0L || out->pos + 1 >= maxlen)
             dsputc(c, out);     // put last \n only if have a space
-        else
+        else {
             error = true;   // out of space
+            logsimple("WARN: len (%zu) + 1 > dst_capacity (%zu)", out->pos, maxlen);
+        }
     }
 
-    dsputc(EOF, out);      // out is DS_FS or DS_STR
+    dsputc(EOF, out);      // out is DS_FS or DS_STR. Set it Even if error!!!
 
-    if (!error && quot && c != end)
+    if (quot && c != end)
         error = true;
 
     if (error) {
@@ -570,7 +573,7 @@ dsParseQuotedLimfs(DS *restrict in, fs *restrict dst, size_t maxlen, bool use_bu
 
     DS      outtmp = dsPrepareout(dst, use_buffer, maxlen);
 
-    bool res = ds_parse_quoted_core(in, &outtmp, maxlen, '"', '"');
+    bool res = ds_parse_quoted_core(in, &outtmp, maxlen, '"', '"', false);
     if (!res) {
         dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
@@ -598,7 +601,7 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
     DS      outtmp = dsPrepareout(&tmp, use_buffer, dst_capacity);
 
     // exec core, quoted line
-    bool res = ds_parse_quoted_core(in, &outtmp, dst_capacity, '"', '"');
+    bool res = ds_parse_quoted_core(in, &outtmp, dst_capacity, '"', '"', false);
     if (!res) {
         dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse quoted fs");
@@ -622,7 +625,7 @@ dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer) {
     DS      outtmp = dsPrepareout(dst, use_buffer, 0L);
 
     // \0 - non-espaced mode, \n - line terminator
-    bool res = ds_parse_quoted_core(in, &outtmp, 0L, '\0', '\n');
+    bool res = ds_parse_quoted_core(in, &outtmp, 0L, '\0', '\n', false);
     if (!res) {
         dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse line");
@@ -3539,7 +3542,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 5,
             (dsFree(&in), dsFree(&out)),
@@ -3568,7 +3571,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 0,
             (dsFree(&in), dsFree(&out)),
@@ -3597,7 +3600,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 11,
             (dsFree(&in), dsFree(&out)),
@@ -3626,7 +3629,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 6,
             (dsFree(&in), dsFree(&out)),
@@ -3655,7 +3658,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 3,
             (dsFree(&in), dsFree(&out)),
@@ -3685,7 +3688,7 @@ tf15_ds_parse_quoted_core(const char *name)
         DS out = dsCreatefs(&f);
         size_t saved = in.pos;
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             !res,
             (dsFree(&in), dsFree(&out)),
@@ -3711,7 +3714,7 @@ tf15_ds_parse_quoted_core(const char *name)
         DS out = dsCreatefs(&f);
         size_t saved = in.pos;
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             !res,
             (dsFree(&in), dsFree(&out)),
@@ -3737,7 +3740,7 @@ tf15_ds_parse_quoted_core(const char *name)
         DS out = dsCreatefs(&f);
         size_t saved = in.pos;
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             !res,
             (dsFree(&in), dsFree(&out)),
@@ -3763,7 +3766,7 @@ tf15_ds_parse_quoted_core(const char *name)
         DS out = dsCreatefs(&f);
         size_t saved = in.pos;
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             !res,
             (dsFree(&in), dsFree(&out)),
@@ -3789,7 +3792,7 @@ tf15_ds_parse_quoted_core(const char *name)
         DS out = dsCreatefs(&f);
         size_t saved = in.pos;
 
-        bool res = ds_parse_quoted_core(&in, &out, 3, '"', '"'); // лимит 3, строка "hello" (5 симв.)
+        bool res = ds_parse_quoted_core(&in, &out, 3, '"', '"', false); // лимит 3, строка "hello" (5 симв.)
         test_validatefree(
             !res,
             (dsFree(&in), dsFree(&out)),
@@ -3814,7 +3817,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = fsinit(8);
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 3, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 3, '"', '"', false);
         test_validatefree(
             res && out.pos == 2,
             (dsFree(&in), dsFree(&out)),
@@ -3848,7 +3851,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = FS();
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 100,
             (dsFree(&in), dsFree(&out)),
@@ -3879,7 +3882,7 @@ tf15_ds_parse_quoted_core(const char *name)
         char        buf[5] = {'1', '2', '3', '4', '5'};
         DS          out = dsCreatestrCap(buf, sizeof(buf));
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 4,
             (dsFree(&in), dsFree(&out)),
@@ -3908,7 +3911,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = FS();
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 3,
             (dsFree(&in), dsFree(&out)),
@@ -3939,7 +3942,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = FS();
         DS out = dsCreatefs(&f);
 
-        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"');
+        bool res = ds_parse_quoted_core(&in, &out, 0, '"', '"', false);
         test_validatefree(
             res && out.pos == 3,
             (dsFree(&in), dsFree(&out)),
@@ -3967,7 +3970,7 @@ tf15_ds_parse_quoted_core(const char *name)
         fs f = FS();
         DS out = dsCreatefs(&f);
         if (!try()) {
-            ds_parse_quoted_core(NULL, &out, 0, '"', '"');
+            ds_parse_quoted_core(NULL, &out, 0, '"', '"', false);
             test_validatefree(false, dsFree(&out), "must raise error for NULL in");
         } else {
             test_validatefree(true, dsFree(&out), "correctly raised error");
@@ -3980,7 +3983,7 @@ tf15_ds_parse_quoted_core(const char *name)
     {
         DS in = dsCreateconst("\"test\"");
         if (!try()) {
-            ds_parse_quoted_core(&in, NULL, 0, '"', '"');
+            ds_parse_quoted_core(&in, NULL, 0, '"', '"', false);
             test_validate(false, "must raise error for NULL out");
         } else {
             test_validate(true, "correctly raised error");
