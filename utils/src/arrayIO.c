@@ -334,7 +334,8 @@ arrayParseHeaderStr(const char **base) {
     Array           *parr = NULL;  // = ArrayInit();
     const char     *data = *base;
 
-    if (sscanf(data, "ARRAY: %" TOSTRING(ARRAY_MAX_TYPE_STR_WO_LAST) "s / %" TOSTRING(ARRAY_MAX_TYPE_STR_WO_LAST) "s : %zu %n", typ, v64typ, &cnt, &header_len) != 3) {
+    if (sscanf(data, "ARRAY: %" TOSTRING(ARRAY_MAX_TYPE_STR_WO_LAST) "s / %" TOSTRING(ARRAY_MAX_TYPE_STR_WO_LAST) "s : %zu %n", 
+                    typ, v64typ, &cnt, &header_len) != 3) {
         return userraise(parr, ERR_WRONG_INPUT_FORMAT, "arrayLoadFromfs: header mismatch");
     } 
     data += header_len;
@@ -350,6 +351,36 @@ arrayParseHeaderStr(const char **base) {
     *base = data;
     return parr;
 }
+
+static Array *
+arrayParseHeaderFromDS(DS *source) {
+    fs              typ = FS(), v64typ = FS();
+    size_t          cnt = 0;
+    Array           *parr = NULL;
+
+    if (!dsExpect(source, "ARRAY: ") )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'Array' keyword mismatch");
+    //if (!dsParseUnlimfsBuffer(source, &cnt))
+    if (!dsParseWordBuffer(source, &typ) )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse type");
+    if (!dsExpect(source, " / ") )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'/' keyword mismatch");
+    if (!dsParseWordBuffer(source, &v64typ) )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse v64 type");
+
+    // ---------- Create empty array ----------
+    ArrayType       atype = arrayTypeFromName(typ.v);
+    value64_type    vt = value64_gettype(v64typ.v);
+    parr = arrayOnlyCreate(cnt, atype, vt);
+    if (!parr) { // 
+        fsfree(typ), fsfree(v64typ);
+        return userraise(parr, ERR_UNSUPPORTED_TYPE, 
+            "Unsupported type '%s', vtype '%s'", typ.v, v64typ.v);
+    }
+
+    fsfree(typ), fsfree(v64typ);
+    return parr;
+} 
 
 static bool                     arrayParseFooterFile(FILE *in) {
     char            typ[ARRAY_MAX_TYPE_STR];
@@ -667,6 +698,8 @@ long                            arraySaveTofs(fs *restrict s, const Array *restr
 long                            arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     long total = 0L;
     // TODO:
+
+    Array           *pa = arrayParseHeaderFromDS(source); 
 
 
 
