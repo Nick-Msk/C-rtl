@@ -265,7 +265,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
             error = true;
     }
 
-    while (!stop && (c = dsgetc(in)) != EOF) {
+    while (!error && !stop && (c = dsgetc(in)) != EOF) {
 
         if (quot) {
             if ((unsigned char) c == end) 
@@ -276,21 +276,20 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
                     break;
                 }
             }
-        } else if (str && (unsigned char) c == end)     // '\n'
+        } else if (str && end != '\0' && (unsigned char) c == end)     // '\n'
             stop = true;                               
         else if (word) {
             if (!startword) {
-                if (isspace(c) )
-                    ;
-                else if (isalpha(c) )
+                if (isspace((unsigned char) c) )
+                    continue;
+                else if (isalnum_u((unsigned char) c) )
                     startword = true;
                 else {        // wrong symbol!
                     logsimple("Wrong word symbol '%c'", c);
-                    dsungetc(c, in);
                     error = true;
                     break;
                 }
-            } else if (startword && !isalnum_u(c) ) {         // end of word
+            } else if (startword && !isalnum_u((unsigned char) c) ) {         // end of word
                 dsungetc(c, in);
                 break;
             }
@@ -308,15 +307,6 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
             break;
         }
     }
-    // not good, but ok for now
-    /*if (str && (unsigned char) c == end) {
-        if (maxlen == 0L || out->pos + 1 >= maxlen)
-            dsputc(c, out);     // put last \n only if have a space
-        else {
-            error = true;   // out of space
-            logsimple("WARN: len (%zu) + 1 > dst_capacity (%zu)", out->pos, maxlen);
-        }
-    } */
 
     dsputc(EOF, out);      // out is DS_FS or DS_STR. Set it Even if error!!!
 
@@ -332,7 +322,7 @@ ds_parse_quoted_core(DS *restrict in, DS *restrict out, size_t maxlen, unsigned 
     if (error) {
         dsRestorepos(in, pos);                 // rollback only if error
         return userraise(false, ERR_UNABLE_PARSE_DATA, 
-            "Unable to parse %s line!", quot ? "quoted": "");
+            "Unable to parse %s %s!", quot ? "quoted": "", word ? "word": "line");
     }
 
     return true;
@@ -615,13 +605,6 @@ dsParseQuotedLimString(DS *restrict in, char *restrict dst, size_t dst_capacity,
             "Null input or zero capacity %p %p %zu", in, dst, dst_capacity);
 
     fs      tmp = (fs) {.v = dst, .len = dst_capacity - 1, .sz = dst_capacity, .flags = FS_FLAG_STATIC};   // static
-    /*if (use_buffer)
-        tmp = fsinit(dst_capacity);    // alloc with final \0
-
-    fs     *buf = &tmp;
-    
-    // create DS wrapper
-    DS outtmp = dsCreatefs(buf); */
 
     DS      outtmp = dsPrepareout(&tmp, use_buffer, dst_capacity);
 
