@@ -93,18 +93,24 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr) {
 
         switch (typ) {
             case ARRAY_INT:
+                if (!dsParseInt(in, parr->iv + ind) )
+                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse int");
                 break;
             case ARRAY_LONG:
+                if (!dsParseLong(in, parr->lv + ind) )
+                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse long");
                 break;
             case ARRAY_DOUBLE:
-                break;
-            case ARRAY_POINTER:
+                if (!dsParseDouble(in, parr->dv + ind) )
+                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse double");
                 break;
             case ARRAY_CHAR:
+                if (!dsParseChar(in, parr->cv + ind) )
+                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse char");
                 break;
             case ARRAY_V64:
                 userraiseint(ERR_NOT_IMPLEMENTED_FEATURE, "Not yet implemented loading v64");
-            default:
+            default:    // and pointer!
                 return userraise(-1L, ERR_UNSUPPORTED_TYPE, "%d/%s", typ, arrayTypeGetName(typ));
         }
         cnt++;
@@ -397,15 +403,39 @@ arrayParseHeaderFromDS(DS *source) {
         return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'Array' keyword mismatch");
     //if (!dsParseUnlimfsBuffer(source, &cnt))
     if (!dsParseWordBuffer(source, &typ) )
-        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse type");
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "Unable to parse type"
+        );
     if (!dsExpect(source, " / ") )
-        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'/' keyword mismatch");
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "'/' keyword mismatch"
+        );
     if (!dsParseWordBuffer(source, &v64typ) )
-        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse v64 type");
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, "Unable to parse v64 type"
+    );
     if (!dsExpect(source, " : ") )
-        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "':' keyword mismatch");
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "':' keyword mismatch"
+        );
     if (!dsParseUnsignedLong(source, &cnt) )
-        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse cnt");
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "Unable to parse cnt"
+        );
 
     // ---------- Create empty array ----------
     parr = arrayCreateFromTextparam(cnt, typ.v, v64typ.v);
@@ -444,7 +474,7 @@ arrayParseFooterStr(const char **base) {
 static bool
 arrayParseFooterFromDS(DS *source) {
     if (!dsExpect(source, "ARRAY: DONE") )
-        return userraise(false, ERR_WRONG_INPUT_FORMAT, "'/' keyword mismatch");
+        return userraise(false, ERR_WRONG_INPUT_FORMAT, "'ARRAY: DONE' keywords mismatch");
     return true;
 }
 
@@ -611,7 +641,8 @@ arraySaveFilevalues(const Array *restrict parr, const char *restrict fname, char
  * @return number of bytes written
  */
 
-long                        arraySaveFile(FILE *restrict out, const Array *restrict parr) {  
+long                        
+arraySaveFile(FILE *restrict out, const Array *restrict parr) {  
     invraisecode(parr != NULL, ERR_NULLABLE_PTR, "Array is null");
     if (!out)
         return logsimpleret(0L,  "Output is null"); 
@@ -638,7 +669,8 @@ long                        arraySaveFile(FILE *restrict out, const Array *restr
  * @param fname file path
  * @return number of bytes written, or a negative value on error
  */
-long                        arraySaveFileByName(const Array *parr, const char *fname) {
+long                        
+arraySaveFileByName(const Array *parr, const char *fname) {
     logenter("%s", fname);
 
     FILE        *out = fopen(fname, "w");
@@ -663,7 +695,8 @@ long                        arraySaveFileByName(const Array *parr, const char *f
  * @param in input stream, already opened for reading
  * @return loaded array, or NULL
  */
-Array                           *arrayLoadFile(FILE *in) {
+Array *
+arrayLoadFile(FILE *in) {
     invraisecode(ERR_NULLABLE_PTR, in != NULL, "Nullable input");
 
     Array *parr = arrayParseHeaderFile(in); 
@@ -691,7 +724,8 @@ Array                           *arrayLoadFile(FILE *in) {
  * @param fname file path
  * @return loaded array, or an array with the error flag set
  */
-Array                       *arrayLoadFileByName(const char *fname) {
+Array *
+arrayLoadFileByName(const char *fname) {
     invraisecode(ERR_NULLABLE_PTR, fname != NULL, "Nullable fname");
 
     logenter("%s", fname);
@@ -708,8 +742,8 @@ Array                       *arrayLoadFileByName(const char *fname) {
 
 // -------------------------- (API) serialization -----------------------
 
-
-long                            arraySaveToDS(DS *restrict out, Array *restrict parr) {
+long                            
+arraySaveToDS(DS *restrict out, Array *restrict parr) {
     invraisecode(ERR_NULLABLE_PTR, out != NULL && parr != NULL, 
         "Out or parr is null %p %p", out, parr);
 
@@ -725,7 +759,8 @@ long                            arraySaveToDS(DS *restrict out, Array *restrict 
     return total_written;
 }
 
-long                            arraySaveTofs(fs *restrict s, const Array *restrict parr) {
+long                            
+arraySaveTofs(fs *restrict s, const Array *restrict parr) {
     invraisecode(ERR_NULLABLE_PTR, s != NULL && parr != NULL, 
             "Fs nullable or arr is null %p %p", s, parr);
 
@@ -740,26 +775,25 @@ long                            arraySaveTofs(fs *restrict s, const Array *restr
 }
 
 // new DS 
-long                            arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
+long                            
+arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     if (source == NULL)
         userraiseint(ERR_NULL_INPUT, "DS source is null");
 
     Array           *pa = arrayParseHeaderFromDS(source); 
 
-    if (arrayLoadValuesFromDS(source, pa) < 0) {
-        arrayFree(pa);
-        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to read header");
-    }
+    if (!pa)
+        return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to create empty array");
 
     long total = arrayLoadValuesFromDS(source, pa);
     if (total < 0) {
         arrayFree(pa);
-        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
+        return userraise(total, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
     }
 
     if (!arrayParseFooterFromDS(source) ) {
         arrayFree(pa);
-        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
+        return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
     }
     if (parr)    // if arr is NULL then dump read
         *parr = *pa;
@@ -768,7 +802,8 @@ long                            arrayLoadFromDS(DS *restrict source, Array *rest
     return total;
 }
 
-long                            arrayLoadFromfs(const fs *restrict s, Array *restrict parr) {
+long                            
+arrayLoadFromfs(const fs *restrict s, Array *restrict parr) {
     invraisecode(ERR_NULLABLE_PTR, fs_isnull(s),
                  "Nullable input %p", (void*) s);
 
