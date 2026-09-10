@@ -295,8 +295,20 @@ extern Array                   *arrayCreate(size_t cnt, ArrayFillType filltyp, A
  * 
  * @return Array* A pointer to the newly allocated Array, or NULL on error.
  */
-static inline Array            *arrayOnlyCreate(size_t cnt, ArrayType typ, value64_type vt) {
+static inline Array *
+arrayOnlyCreate(size_t cnt, ArrayType typ, value64_type vt) {
     return arrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY, typ, vt);
+}
+
+static inline Array *
+arrayCreateFromTextparam(size_t cnt, const char *restrict typ, const char *restrict v64typ) {
+    ArrayType       atype = arrayTypeFromName(typ);
+    value64_type    vt = value64_gettype(v64typ);
+    Array *parr = arrayOnlyCreate(cnt, atype, vt);
+    if (!parr)
+        return userraise(parr, ERR_UNSUPPORTED_TYPE, 
+            "Unsupported type '%s', vtype '%s'", typ, v64typ);
+    return parr;
 }
 
 /**
