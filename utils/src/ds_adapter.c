@@ -638,10 +638,7 @@ dsParseUnlimfs(DS *restrict in, fs *restrict dst, bool use_buffer) {
         dsFree(&outtmp);
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse line");
     }
-
     dsReleaseFs(dst, &outtmp);   
-    //if (use_buffer)
-      //  fs_free(buf);
 
     return true;
 }
@@ -652,6 +649,18 @@ dsParseWord(DS *restrict in, fs *restrict dst, bool use_buffer) {
     if (in == NULL || dst == NULL || !fs_alloc(dst))
         return userraiseint(ERR_NULL_INPUT, "%p %p/%s", in, dst, bool_str(fs_alloc(dst)) );
     
+    DS      outtmp = dsPrepareout(dst, use_buffer, 0L);
+
+    // \0 - non-espaced mode, \n - line terminator
+    bool res = ds_parse_quoted_core(in, &outtmp, 0L, '\0', '\0', true);
+
+    if (!res) {
+        dsFree(&outtmp);
+        return userraise(false, ERR_UNABLE_PARSE_DATA, "Unable to parse line");
+    }
+    dsReleaseFs(dst, &outtmp);   
+
+    return true;
 }
 
 // -------------------------------------- fs adapters ------------------------------------------------
@@ -6062,6 +6071,868 @@ tf22_ds_parse_unlimfs_buffer(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// ------------------------- TEST dsParseWordDirect (direct mode, word parsing) -------------------------
+static TestStatus
+tf23_ds_parse_word_direct(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Простое слово до EOF */
+    test_sub("subtest %d: simple word at EOF", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success len=5, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Слово, ограниченное '\n' — '\n' НЕ должен попасть в результат и должен остаться в потоке */
+    test_sub("subtest %d: word before newline", ++subnum);
+    {
+        const char *input = "hello\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=5, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5 (before \\n, ungetc), got %lld",
+                          (long long) dsGetpos(&in));
+
+        /* Проверим, что '\n' реально остался в потоке */
+        int c = dsgetc(&in);
+        test_validatefree(c == '\n',
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '\\n' still in stream, got %d", c);
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Слово после ведущих пробелов — пробелы НЕ должны попасть в результат */
+    test_sub("subtest %d: leading spaces skipped", ++subnum);
+    {
+        const char *input = "   \t  hello\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=5 (no leading spaces), got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Слово, ограниченное пробелом (пробел остаётся в потоке) */
+    test_sub("subtest %d: word before space", ++subnum);
+    {
+        const char *input = "hello world";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'hello', got res=%d '%s'", res, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5 (before space), got %lld",
+                          (long long) dsGetpos(&in));
+        test_validatefree(dsgetc(&in) == ' ',
+                          (dsFree(&in), fsfree(dst)),
+                          "space should remain in stream");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Слово с цифрами и подчёркиванием (внутри слова) */
+    test_sub("subtest %d: word with digits and underscore inside", ++subnum);
+    {
+        const char *input = "abc_123\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "abc_123") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'abc_123', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Слово, начинающееся с цифры/подчёркивания.
+     * Если isalnum_u их принимает как старт — ok. Если нет — тест надо убрать/поправить. */
+    test_sub("subtest %d: word starting with digit", ++subnum);
+    {
+        const char *input = "123abc\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "123abc") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '123abc', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Слово, заканчивающееся на не-идентификатор: '-' должен остаться в потоке */
+    test_sub("subtest %d: word terminated by non-alnum", ++subnum);
+    {
+        const char *input = "abc-def";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "abc") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'abc', got res=%d '%s'", res, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 3,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 3 (before '-'), got %lld",
+                          (long long) dsGetpos(&in));
+        test_validatefree(dsgetc(&in) == '-',
+                          (dsFree(&in), fsfree(dst)),
+                          "'-' should remain in stream");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Длинное слово — проверка авторасширения fs */
+    test_sub("subtest %d: long word", ++subnum);
+    {
+        char input[300];
+        memset(input, 'a', 255);
+        input[255] = '\n';
+        input[256] = '\0';
+
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && dst.len == 255,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=255, got res=%d len=%zu", res, dst.len);
+        test_validatefree( (size_t) dsGetpos(&in) == 255,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 255, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Несколько слов последовательно */
+    test_sub("subtest %d: multiple words sequentially", ++subnum);
+    {
+        const char *input = "foo bar_baz 42qux";
+        DS in = dsCreateconst(input);
+
+        fs dst1 = FS();
+        bool r1 = dsParseWordDirect(&in, &dst1);
+        test_validatefree(r1 && fscmpstr(dst1, "foo") == 0,
+                          (dsFree(&in), fsfree(dst1)),
+                          "word1 mismatch: got res=%d '%s'", r1, fs_str(&dst1));
+
+        fs dst2 = FS();
+        bool r2 = dsParseWordDirect(&in, &dst2);
+        test_validatefree(r2 && fscmpstr(dst2, "bar_baz") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2)),
+                          "word2 mismatch: got res=%d '%s'", r2, fs_str(&dst2));
+
+        fs dst3 = FS();
+        bool r3 = dsParseWordDirect(&in, &dst3);
+        test_validatefree(r3 && fscmpstr(dst3, "42qux") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3)),
+                          "word3 mismatch: got res=%d '%s'", r3, fs_str(&dst3));
+
+        /* после последнего слова — EOF */
+        fs dst4 = FS();
+        if (!try()) {
+            dsParseWordDirect(&in, &dst4);
+            test_validatefree(false, (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3), fsfree(dst4)),
+                              "expected error at EOF after last word");
+        } else {
+            test_validatefree(true, (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3), fsfree(dst4)),
+                              "correctly raised error at EOF");
+        }
+
+        dsFree(&in);
+        fsfree(dst1);
+        fsfree(dst2);
+        fsfree(dst3);
+        fs_alloc_check(true);
+    }
+
+        /* 7b. Слово, начинающееся с подчёркивания */
+    test_sub("subtest %d: word starting with underscore", ++subnum);
+    {
+        const char *input = "_foo\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "_foo") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '_foo', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7c. Слово из одних подчёркиваний */
+    test_sub("subtest %d: word of underscores only", ++subnum);
+    {
+        const char *input = "___\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "___") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '___', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7d. Слово, начинающееся с подчёркивания, с цифрами/буквами */
+    test_sub("subtest %d: _1a_2 word", ++subnum);
+    {
+        const char *input = "_1a_2 rest";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "_1a_2") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '_1a_2', got res=%d '%s'", res, fs_str(&dst));
+        /* разделитель остался в потоке */
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5, got %lld", (long long) dsGetpos(&in));
+        test_validatefree(dsgetc(&in) == ' ',
+                          (dsFree(&in), fsfree(dst)),
+                          "space should remain in stream");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 10. Пустой вход — ошибка, позиция откатывается */
+    test_sub("subtest %d: empty input -> error, pos rolled back", ++subnum);
+    {
+        const char *input = "";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        if (!try()) {
+            dsParseWordDirect(&in, &dst);
+            test_validatefree(false, (dsFree(&in), fsfree(dst)),
+                              "must raise error for empty input");
+        } else {
+            test_validatefree( (size_t) dsGetpos(&in) == 0,
+                              (dsFree(&in), fsfree(dst)),
+                              "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+        }
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 11. Только пробелы — ошибка, позиция откатывается */
+    test_sub("subtest %d: only spaces -> error, pos rolled back", ++subnum);
+    {
+        const char *input = "     \t  ";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        if (!try()) {
+            dsParseWordDirect(&in, &dst);
+            test_validatefree(false, (dsFree(&in), fsfree(dst)),
+                              "must raise error for whitespace-only input");
+        } else {
+            test_validatefree( (size_t) dsGetpos(&in) == 0,
+                              (dsFree(&in), fsfree(dst)),
+                              "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+        }
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 12. Невалидный первый символ — ошибка, позиция откатывается */
+    test_sub("subtest %d: invalid first symbol -> error, pos rolled back", ++subnum);
+    {
+        const char *input = "!hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(
+            !res, 
+            (dsFree(&in), fsfree(dst)),
+             "must not be parsed");
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                              (dsFree(&in), fsfree(dst)),
+                              "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 13. Невалидный символ после ведущих пробелов — тоже ошибка + rollback */
+    test_sub("subtest %d: spaces then invalid symbol -> error, pos rolled back", ++subnum);
+    {
+        const char *input = "   !hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordDirect(&in, &dst);
+        test_validatefree(
+            !res, 
+            (dsFree(&in), fsfree(dst)),
+            "must not be parsed"
+        );
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                              (dsFree(&in), fsfree(dst)),
+                              "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 14. NULL аргументы */
+    test_sub("subtest %d: NULL arguments raise error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseWordDirect(NULL, &dst);
+            test_validatefree(false, fsfree(dst), "must raise error for NULL in");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error for NULL in");
+        }
+
+        DS in = dsCreateconst("test");
+        if (!try()) {
+            dsParseWordDirect(&in, NULL);
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            test_validate(true, "correctly raised error for NULL dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 15. Неаллоцируемый dst (FSLITERAL) */
+    test_sub("subtest %d: non-allocatable dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("hello\n");
+        fs dst = FSLITERAL("initial");
+        if (!try()) {
+            dsParseWordDirect(&in, &dst);
+            test_validate(false, "must raise error for non-allocatable dst");
+        } else {
+            test_validate(true, "correctly raised error for non-allocatable dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ------------------------- TEST dsParseWordBuffer (buffer mode, word parsing) -------------------------
+static TestStatus
+tf24_ds_parse_word_buffer(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. Простое слово до EOF */
+    test_sub("subtest %d: simple word at EOF", ++subnum);
+    {
+        const char *input = "hello";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+
+        DSTECHFPRINT(logfile, in);
+        fstechfprint(logfile, dst);
+
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected success len=5, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 2. Слово перед '\n' — '\n' остаётся в потоке */
+    test_sub("subtest %d: word before newline", ++subnum);
+    {
+        const char *input = "hello\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=5, got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5, got %lld", (long long) dsGetpos(&in));
+
+        int c = dsgetc(&in);
+        test_validatefree(c == '\n',
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '\\n' still in stream, got %d", c);
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 3. Ведущие пробелы не попадают в результат */
+    test_sub("subtest %d: leading spaces skipped", ++subnum);
+    {
+        const char *input = "   \t  hello\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && dst.len == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=5 (no leading spaces), got res=%d len=%zu", res, dst.len);
+        test_validatefree(fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "content mismatch: got '%s'", fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 4. Слово перед пробелом — пробел остаётся в потоке */
+    test_sub("subtest %d: word before space", ++subnum);
+    {
+        const char *input = "hello world";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'hello', got res=%d '%s'", res, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 5,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 5, got %lld", (long long) dsGetpos(&in));
+        test_validatefree(dsgetc(&in) == ' ',
+                          (dsFree(&in), fsfree(dst)),
+                          "space should remain in stream");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 5. Слово с цифрами и подчёркиванием внутри */
+    test_sub("subtest %d: word with digits and underscore inside", ++subnum);
+    {
+        const char *input = "abc_123\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "abc_123") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'abc_123', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 6. Слово, начинающееся с цифры */
+    test_sub("subtest %d: word starting with digit", ++subnum);
+    {
+        const char *input = "123abc\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "123abc") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '123abc', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 7. Слово, начинающееся с подчёркивания */
+    test_sub("subtest %d: word starting with underscore", ++subnum);
+    {
+        const char *input = "_foo\n";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "_foo") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected '_foo', got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Слово, ограниченное не-идентификатором: '-' остаётся в потоке */
+    test_sub("subtest %d: word terminated by non-alnum", ++subnum);
+    {
+        const char *input = "abc-def";
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "abc") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'abc', got res=%d '%s'", res, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 3,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 3, got %lld", (long long) dsGetpos(&in));
+        test_validatefree(dsgetc(&in) == '-',
+                          (dsFree(&in), fsfree(dst)),
+                          "'-' should remain in stream");
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Длинное слово — авторасширение fs */
+    test_sub("subtest %d: long word", ++subnum);
+    {
+        char input[300];
+        memset(input, 'a', 255);
+        input[255] = '\n';
+        input[256] = '\0';
+
+        DS in = dsCreateconst(input);
+        fs dst = FS();
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && dst.len == 255,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected len=255, got res=%d len=%zu", res, dst.len);
+        test_validatefree( (size_t) dsGetpos(&in) == 255,
+                          (dsFree(&in), fsfree(dst)),
+                          "in.pos expected 255, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 10. Несколько слов последовательно */
+    test_sub("subtest %d: multiple words sequentially", ++subnum);
+    {
+        const char *input = "foo bar_baz 42qux";
+        DS in = dsCreateconst(input);
+
+        fs dst1 = FS();
+        bool r1 = dsParseWordBuffer(&in, &dst1);
+        test_validatefree(r1 && fscmpstr(dst1, "foo") == 0,
+                          (dsFree(&in), fsfree(dst1)),
+                          "word1 mismatch: got res=%d '%s'", r1, fs_str(&dst1));
+
+        fs dst2 = FS();
+        bool r2 = dsParseWordBuffer(&in, &dst2);
+        test_validatefree(r2 && fscmpstr(dst2, "bar_baz") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2)),
+                          "word2 mismatch: got res=%d '%s'", r2, fs_str(&dst2));
+
+        fs dst3 = FS();
+        bool r3 = dsParseWordBuffer(&in, &dst3);
+        test_validatefree(r3 && fscmpstr(dst3, "42qux") == 0,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3)),
+                          "word3 mismatch: got res=%d '%s'", r3, fs_str(&dst3));
+
+        /* EOF после последнего слова — на buffer-режиме тоже возвращает false (не raise) */
+        fs dst4 = FS();
+        bool r4 = dsParseWordBuffer(&in, &dst4);
+        test_validatefree(!r4,
+                          (dsFree(&in), fsfree(dst1), fsfree(dst2), fsfree(dst3), fsfree(dst4)),
+                          "expected failure at EOF after last word");
+
+        dsFree(&in);
+        fsfree(dst1);
+        fsfree(dst2);
+        fsfree(dst3);
+        fsfree(dst4);
+        fs_alloc_check(true);
+    }
+
+    /* 11. Пустой вход — ошибка, содержимое dst сохранено (buffer-инвариант) */
+    test_sub("subtest %d: empty input -> error, dst content preserved", ++subnum);
+    {
+        const char *input = "";
+        DS in = dsCreateconst(input);
+
+        fs dst = fscopy("SENTINEL");
+        test_validatefree(dst.v != NULL && fscmpstr(dst, "SENTINEL") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "setup: fscopy failed");
+
+        size_t saved_len = dst.len;
+        size_t saved_sz  = dst.sz;
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "must not parse empty input");
+        test_validatefree(dst.len == saved_len && fscmpstr(dst, "SENTINEL") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst content must be preserved, got len=%zu '%s'",
+                          dst.len, fs_str(&dst));
+        test_validatefree(dst.sz == saved_sz,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst capacity must not change (%zu -> %zu)", saved_sz, dst.sz);
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 12. Только пробелы — ошибка, dst (свежий) остался пустым */
+    test_sub("subtest %d: only spaces -> error, fresh dst stays empty", ++subnum);
+    {
+        const char *input = "     \t  ";
+        DS in = dsCreateconst(input);
+
+        fs dst = FS();       // свежий — проверяем, что buffer-режим его не аллоцирует зря
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "must not parse whitespace-only input");
+        test_validatefree(dst.len == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "fresh dst must remain empty, got len=%zu", dst.len);
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 13. Невалидный первый символ — содержимое dst сохранено */
+    test_sub("subtest %d: invalid first symbol -> error, dst content preserved", ++subnum);
+    {
+        const char *input = "!hello";
+        DS in = dsCreateconst(input);
+
+        fs dst = fscopy("SENTINEL");
+        test_validatefree(dst.v != NULL,
+                          (dsFree(&in), fsfree(dst)),
+                          "setup: fscopy failed");
+
+        size_t saved_len = dst.len;
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "must not parse invalid input");
+        test_validatefree(dst.len == saved_len && fscmpstr(dst, "SENTINEL") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst content must be preserved, got len=%zu '%s'",
+                          dst.len, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 14. Пробелы, потом невалидный символ — dst content preserved */
+    test_sub("subtest %d: spaces then invalid -> error, dst content preserved", ++subnum);
+    {
+        const char *input = "   !hello";
+        DS in = dsCreateconst(input);
+
+        fs dst = fscopy("SENTINEL");
+        test_validatefree(dst.v != NULL,
+                          (dsFree(&in), fsfree(dst)),
+                          "setup: fscopy failed");
+
+        size_t saved_len = dst.len;
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "must not parse");
+        test_validatefree(dst.len == saved_len && fscmpstr(dst, "SENTINEL") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst content must be preserved, got len=%zu '%s'",
+                          dst.len, fs_str(&dst));
+        test_validatefree( (size_t) dsGetpos(&in) == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "pos must rollback to 0, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 15. dst с длинным содержимым — проверка, что не обрезан и не изменён */
+    test_sub("subtest %d: long sentinel preserved on error", ++subnum);
+    {
+        const char *input = "@not a word";
+        DS in = dsCreateconst(input);
+
+        fs dst = fscopy("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        test_validatefree(dst.v != NULL && dst.len == 40,
+                          (dsFree(&in), fsfree(dst)),
+                          "setup: fscopy failed");
+
+        size_t saved_len = dst.len;
+        size_t saved_sz  = dst.sz;
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(!res,
+                          (dsFree(&in), fsfree(dst)),
+                          "must not parse");
+        test_validatefree(dst.len == saved_len && fscmpstr(dst, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "long dst must be preserved, got len=%zu", dst.len);
+        test_validatefree(dst.sz == saved_sz,
+                          (dsFree(&in), fsfree(dst)),
+                          "dst capacity must not change (%zu -> %zu)", saved_sz, dst.sz);
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 16. dst уже содержит данные — при успехе должны быть перезаписаны */
+    test_sub("subtest %d: pre-filled dst replaced on success", ++subnum);
+    {
+        const char *input = "hello\n";
+        DS in = dsCreateconst(input);
+
+        fs dst = fscopy("OLD");
+
+        bool res = dsParseWordBuffer(&in, &dst);
+        test_validatefree(res && fscmpstr(dst, "hello") == 0,
+                          (dsFree(&in), fsfree(dst)),
+                          "expected 'hello' after success, got res=%d '%s'", res, fs_str(&dst));
+
+        dsFree(&in);
+        fsfree(dst);
+        fs_alloc_check(true);
+    }
+
+    /* 17. NULL аргументы */
+    test_sub("subtest %d: NULL arguments raise error", ++subnum);
+    {
+        fs dst = FS();
+        if (!try()) {
+            dsParseWordBuffer(NULL, &dst);
+            test_validatefree(false, fsfree(dst), "must raise error for NULL in");
+        } else {
+            test_validatefree(true, fsfree(dst), "correctly raised error for NULL in");
+        }
+
+        DS in = dsCreateconst("test");
+        if (!try()) {
+            dsParseWordBuffer(&in, NULL);
+            test_validate(false, "must raise error for NULL dst");
+        } else {
+            test_validate(true, "correctly raised error for NULL dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 18. Неаллоцируемый dst (FSLITERAL) */
+    test_sub("subtest %d: non-allocatable dst raises error", ++subnum);
+    {
+        DS in = dsCreateconst("hello\n");
+        fs dst = FSLITERAL("initial");
+        if (!try()) {
+            dsParseWordBuffer(&in, &dst);
+            test_validate(false, "must raise error for non-allocatable dst");
+        } else {
+            test_validate(true, "correctly raised error for non-allocatable dst");
+        }
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -6091,8 +6962,11 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf19_ds_parse_quoted_lim_string_buffer,     "dsParseQuotedLimStringBuffer() tests")
       , TESTADD(tf20_ds_parse_quoted_limfs_direct,          "dsParseQuotedLimfsDirect tests")
       // normal str
-      , TESTADD(tf21_ds_parse_unlimfs_direct,               "dsParseUnlimfsDirect() tests")
-      , TESTADD(tf22_ds_parse_unlimfs_buffer,               "dsParseUnlimfsBuffer() tests")
+      , TESTADD(tf21_ds_parse_unlimfs_direct,               "dsParseUnlimfsDirect() simple tests")
+      , TESTADD(tf22_ds_parse_unlimfs_buffer,               "dsParseUnlimfsBuffer() simple tests")
+      // word ([a-z], [A-Z], [0-9], _)
+      , TESTADD(tf23_ds_parse_word_direct,                  "dsParseWordDirect() simple tests")
+      , TESTADD(tf24_ds_parse_word_buffer,                  "dsParseWordBuffer() simple tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
