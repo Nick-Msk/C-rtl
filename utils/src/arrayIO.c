@@ -77,6 +77,41 @@ arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
     return logsimpleret(cnt, "Readed %ld", cnt);
 }
 
+static long
+arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr) {
+    ArrayType   typ = arrayGettype(parr);
+    long        cnt = 0;
+
+    Array_pforeach_idx(parr, i) {
+        size_t        ind;
+
+        if (!dsParseUnsignedLong(in, &ind))
+            return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Can't parse index");  
+
+        if (ind >= parr->len)
+            return userraise(-1, ERR_OUT_OF_RANGE, "%ld must be < %zu", ind, parr->len);
+
+        switch (typ) {
+            case ARRAY_INT:
+                break;
+            case ARRAY_LONG:
+                break;
+            case ARRAY_DOUBLE:
+                break;
+            case ARRAY_POINTER:
+                break;
+            case ARRAY_CHAR:
+                break;
+            case ARRAY_V64:
+                userraiseint(ERR_NOT_IMPLEMENTED_FEATURE, "Not yet implemented loading v64");
+            default:
+                return userraise(-1L, ERR_UNSUPPORTED_TYPE, "%d/%s", typ, arrayTypeGetName(typ));
+        }
+        cnt++;
+    }
+
+    return logsimpleret(cnt, "Read %ld", cnt);
+}
 
 /**
  * @brief Writes the array elements into a text stream.
@@ -367,22 +402,25 @@ arrayParseHeaderFromDS(DS *source) {
         return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'/' keyword mismatch");
     if (!dsParseWordBuffer(source, &v64typ) )
         return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse v64 type");
+    if (!dsExpect(source, " : ") )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "':' keyword mismatch");
+    if (!dsParseUnsignedLong(source, &cnt) )
+        return userraise(parr, ERR_WRONG_INPUT_FORMAT, "Unable to parse cnt");
 
     // ---------- Create empty array ----------
-    ArrayType       atype = arrayTypeFromName(typ.v);
-    value64_type    vt = value64_gettype(v64typ.v);
-    parr = arrayOnlyCreate(cnt, atype, vt);
-    if (!parr) { // 
+    parr = arrayCreateFromTextparam(cnt, typ.v, v64typ.v);
+    if (!parr) {
         fsfree(typ), fsfree(v64typ);
         return userraise(parr, ERR_UNSUPPORTED_TYPE, 
-            "Unsupported type '%s', vtype '%s'", typ.v, v64typ.v);
+            "Unable to create array");
     }
 
     fsfree(typ), fsfree(v64typ);
     return parr;
 } 
 
-static bool                     arrayParseFooterFile(FILE *in) {
+static bool                     
+arrayParseFooterFile(FILE *in) {
     char            typ[ARRAY_MAX_TYPE_STR];
     if (fscanf(in, " ARRAY: %" TOSTRING(ARRAY_MAX_TYPE_STR_WO_LAST) "s", typ) != 1 || strcmp(typ, "DONE") != 0)
         return userraise(false, ERR_WRONG_INPUT_FORMAT, "Wrong final piece '%s'", typ);
@@ -390,7 +428,8 @@ static bool                     arrayParseFooterFile(FILE *in) {
         return true;
 }
 
-static bool                     arrayParseFooterStr(const char **base) {
+static bool                     
+arrayParseFooterStr(const char **base) {
     const char     *data = *base;
     int             footer_len = 0;
     if (sscanf(data, "ARRAY: DONE%n", &footer_len) != 1) {
@@ -402,6 +441,12 @@ static bool                     arrayParseFooterStr(const char **base) {
     return true;
 }
 
+static bool
+arrayParseFooterFromDS(DS *source) {
+    if (!dsExpect(source, "ARRAY: DONE") )
+        return userraise(false, ERR_WRONG_INPUT_FORMAT, "'/' keyword mismatch");
+    return true;
+}
 
 // -------------------------- (API) printers ------------------------
 
@@ -696,13 +741,30 @@ long                            arraySaveTofs(fs *restrict s, const Array *restr
 
 // new DS 
 long                            arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
-    long total = 0L;
-    // TODO:
+    if (source == NULL)
+        userraiseint(ERR_NULL_INPUT, "DS source is null");
 
     Array           *pa = arrayParseHeaderFromDS(source); 
 
+    if (arrayLoadValuesFromDS(source, pa) < 0) {
+        arrayFree(pa);
+        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to read header");
+    }
 
+    long total = arrayLoadValuesFromDS(source, pa);
+    if (total < 0) {
+        arrayFree(pa);
+        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
+    }
 
+    if (!arrayParseFooterFromDS(source) ) {
+        arrayFree(pa);
+        userraise(pa, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
+    }
+    if (parr)    // if arr is NULL then dump read
+        *parr = *pa;
+    else
+        arrayFree(pa);
     return total;
 }
 
