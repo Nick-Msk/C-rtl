@@ -78,11 +78,12 @@ arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
 }
 
 static long
-arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr) {
+arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
     ArrayType   typ = arrayGettype(parr);
     long        cnt = 0;
 
-    Array_pforeach_idx(parr, i) {
+    // load paircount elements
+    while (paircount-- > 0) {
         size_t        ind;
 
         if (!dsParseUnsignedLong(in, &ind))
@@ -221,7 +222,6 @@ arraySerializeValuesToDs(DS *restrict out, const Array *restrict parr) {
     Array_pforeach_idx(parr, i) {
         switch (typ) {
             case ARRAY_INT:
-                // TODO: // now stupidly via printf
                     total += WRITE_OR_RET(dsPrintf(out, g_save_format_int, i, parr->iv[i]), -1L);
                 break;
             case ARRAY_LONG:
@@ -394,9 +394,12 @@ arrayParseHeaderStr(const char **base) {
 }
 
 static Array *
-arrayParseHeaderFromDS(DS *source) {
+arrayParseHeaderFromDS(DS *restrict source, size_t *restrict paircount) {
+    invraisecode(source != NULL && paircount != NULL, ERR_NULL_INPUT,
+                "DS is null %p or pair count is null %p", source, paircount);
+
     fs              typ = FS(), v64typ = FS();
-    size_t          cnt = 0;
+    unsigned long   cnt = 0;
     Array           *parr = NULL;
 
     if (!dsExpect(source, "ARRAY: ") )
@@ -436,7 +439,22 @@ arrayParseHeaderFromDS(DS *source) {
             ERR_WRONG_INPUT_FORMAT, 
             "Unable to parse cnt"
         );
-
+    if (!dsExpect(source, " / ") )
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "'/' keyword mismatch"
+        );
+    if (!dsParseUnsignedLong(source, &cnt) )
+        return userraiseact(
+            parr, 
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT, 
+            "Unable to parse paircount"
+        );
+    *paircount = cnt;
+    
     // ---------- Create empty array ----------
     parr = arrayCreateFromTextparam(cnt, typ.v, v64typ.v);
     if (!parr) {
@@ -752,7 +770,9 @@ arraySaveToDS(DS *restrict out, Array *restrict parr) {
     const char  *v64_type  =  arrayGetV64typeName(parr);
     size_t       pos = dsGetpos(out);
 
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  "ARRAY: %s / %s : %zu\n", typ, v64_type, parr->len), -1L, dsRestorepos(out, pos));
+    // paircnt == len using this saver
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  
+                        "ARRAY: %s / %s : %zu / %zu\n", typ, v64_type, parr->len, parr->len), -1L, dsRestorepos(out, pos));
 
     total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(out, pos));
     total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1, dsRestorepos(out, pos));
@@ -780,12 +800,12 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     if (source == NULL)
         userraiseint(ERR_NULL_INPUT, "DS source is null");
 
-    Array           *pa = arrayParseHeaderFromDS(source); 
-
+    size_t           paircount = 0L;
+    Array           *pa = arrayParseHeaderFromDS(source, &paircount); 
     if (!pa)
         return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to create empty array");
 
-    long total = arrayLoadValuesFromDS(source, pa);
+    long total = arrayLoadValuesFromDS(source, pa, paircount);
     if (total < 0) {
         arrayFree(pa);
         return userraise(total, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
@@ -795,8 +815,10 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
         arrayFree(pa);
         return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
     }
-    if (parr)    // if arr is NULL then dump read
+    if (parr) {   // if arr is NULL then dump read
+        arrayFree(parr);        // release if exists
         *parr = *pa;
+    }
     else
         arrayFree(pa);
     return total;
