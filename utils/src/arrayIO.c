@@ -773,11 +773,15 @@ arraySaveToDS(DS *restrict out, Array *restrict parr) {
     off_t        pos = dsGetpos(out);
 
     // paircnt == len using this saver
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  
-                        "ARRAY: %s / %s : %zu / %zu\n", typ, v64_type, parr->len, parr->len), -1L, dsRestorepos(out, pos));
+    total_written += WRITE_OR_RET_ACTION(
+            dsPrintf(out, "ARRAY: %s / %s : %zu / %zu\n", typ, v64_type, parr->len, parr->len), 
+                    -1L, dsRestorepos(out, pos));
 
-    total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(out, pos));
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1L, dsRestorepos(out, pos));
+    total_written += WRITE_OR_RET_ACTION(
+            arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(out, pos));
+    total_written += WRITE_OR_RET_ACTION(
+            dsPrintf(out, "ARRAY: DONE\n"), -1L, dsRestorepos(out, pos));
+
     return total_written;
 }
 
@@ -802,6 +806,10 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     if (source == NULL)
         userraiseint(ERR_NULL_INPUT, "DS source is null");
 
+    off_t            initpos = dsGetpos(source);
+    if (initpos == (off_t) -1)
+        userraise(-1L, ERR_STREAM_ERROR, "Unable to get stream position, but 'll continue");    // just err looging
+    
     size_t           paircount = 0L;
     Array           *pa = arrayParseHeaderFromDS(source, &paircount); 
     if (!pa)
@@ -810,20 +818,26 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     long total = arrayLoadValuesFromDS(source, pa, paircount);
     if (total < 0) {
         arrayFree(pa);
+        if (!dsRestorepos(source, initpos) )
+            userraise(-1L, ERR_STREAM_ERROR, "Unable to restore stream position");  // just err looging
         return userraise(total, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
     }
 
     if (!arrayParseFooterFromDS(source) ) {
         arrayFree(pa);
+        if (!dsRestorepos(source, initpos) )
+            userraise(-1L, ERR_STREAM_ERROR, "Unable to restore stream position");  // just err looging
         return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
     }
     if (parr) {   // if arr is NULL then dump read
         arrayFree(parr);        // release if exists
         *parr = *pa;
+        free(pa);       // a bit stupid, but let it as is for now
     }
     else
         arrayFree(pa);
-    return total;
+
+    return logsimpleret(total, "Loaded %ld", total);
 }
 
 long                            
