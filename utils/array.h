@@ -97,6 +97,11 @@ static const ArrayTypeInfo          ARRAY_TYPE_TABLE[] = {
     { ARRAY_UNKNOWN, VALUE64_UNKNOWN, "UNKNOWN",    "ARRAY_UNKNOWN", 0 }
 };
 
+_Static_assert(
+    ARRAY_TYPE_TABLE[COUNT(ARRAY_TYPE_TABLE) - 1].type == ARRAY_UNKNOWN,
+    "ARRAY_UNKNOWN must be the last entry in ARRAY_TYPE_TABLE"
+);
+
 static const ArrayFillTypeInfo      ARRAY_FILLTYPE_TABLE[] = {
     { ARRAY_FILLTYPE_SAFE_EMPTY,     "ARRAY_FILLTYPE_SAFE_EMPTY" },
     { ARRAY_FILLTYPE_DESC,           "FILLTYPE_DESC" },
