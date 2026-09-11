@@ -82,6 +82,8 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
     ArrayType   typ = arrayGettype(parr);
     long        cnt = 0;
 
+    // initially fill by zero
+    arrayFillAll(parr, ARRAY_FILLTYPE_ZERO);
     // load paircount elements
     while (paircount-- > 0) {
         size_t        ind;
@@ -399,12 +401,12 @@ arrayParseHeaderFromDS(DS *restrict source, size_t *restrict paircount) {
                 "DS is null %p or pair count is null %p", source, paircount);
 
     fs              typ = FS(), v64typ = FS();
-    unsigned long   cnt = 0;
+    unsigned long   arrsize = 0L, totalelem = 0L;
     Array           *parr = NULL;
 
     if (!dsExpect(source, "ARRAY: ") )
         return userraise(parr, ERR_WRONG_INPUT_FORMAT, "'Array' keyword mismatch");
-    //if (!dsParseUnlimfsBuffer(source, &cnt))
+
     if (!dsParseWordBuffer(source, &typ) )
         return userraiseact(
             parr, 
@@ -432,12 +434,12 @@ arrayParseHeaderFromDS(DS *restrict source, size_t *restrict paircount) {
             ERR_WRONG_INPUT_FORMAT, 
             "':' keyword mismatch"
         );
-    if (!dsParseUnsignedLong(source, &cnt) )
+    if (!dsParseUnsignedLong(source, &arrsize) )
         return userraiseact(
             parr, 
             (fsfree(typ), fsfree(v64typ)),
             ERR_WRONG_INPUT_FORMAT, 
-            "Unable to parse cnt"
+            "Unable to parse arrsize"
         );
     if (!dsExpect(source, " / ") )
         return userraiseact(
@@ -446,17 +448,17 @@ arrayParseHeaderFromDS(DS *restrict source, size_t *restrict paircount) {
             ERR_WRONG_INPUT_FORMAT, 
             "'/' keyword mismatch"
         );
-    if (!dsParseUnsignedLong(source, &cnt) )
+    if (!dsParseUnsignedLong(source, &totalelem) )
         return userraiseact(
             parr, 
             (fsfree(typ), fsfree(v64typ)),
             ERR_WRONG_INPUT_FORMAT, 
             "Unable to parse paircount"
         );
-    *paircount = cnt;
+    *paircount = totalelem;
     
     // ---------- Create empty array ----------
-    parr = arrayCreateFromTextparam(cnt, typ.v, v64typ.v);
+    parr = arrayCreateFromTextparam(arrsize, typ.v, v64typ.v);
     if (!parr) {
         fsfree(typ), fsfree(v64typ);
         return userraise(parr, ERR_UNSUPPORTED_TYPE, 
@@ -762,20 +764,20 @@ arrayLoadFileByName(const char *fname) {
 
 long                            
 arraySaveToDS(DS *restrict out, Array *restrict parr) {
-    invraisecode(ERR_NULLABLE_PTR, out != NULL && parr != NULL, 
+    invraisecode(out != NULL && parr != NULL, ERR_NULLABLE_PTR, 
         "Out or parr is null %p %p", out, parr);
 
     long         total_written = 0L;
     const char  *typ = arrayTypeGetName(parr->flags);
     const char  *v64_type  =  arrayGetV64typeName(parr);
-    size_t       pos = dsGetpos(out);
+    off_t        pos = dsGetpos(out);
 
     // paircnt == len using this saver
     total_written += WRITE_OR_RET_ACTION(dsPrintf(out,  
                         "ARRAY: %s / %s : %zu / %zu\n", typ, v64_type, parr->len, parr->len), -1L, dsRestorepos(out, pos));
 
     total_written += WRITE_OR_RET_ACTION(arraySerializeValuesToDs(out, parr), -1L, dsRestorepos(out, pos));
-    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1, dsRestorepos(out, pos));
+    total_written += WRITE_OR_RET_ACTION(dsPrintf(out, "ARRAY: DONE\n"), -1L, dsRestorepos(out, pos));
     return total_written;
 }
 
