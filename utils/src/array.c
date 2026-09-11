@@ -633,8 +633,10 @@ Array                          *arrayCreate(size_t cnt, ArrayFillType filltyp, A
 }
 
 void                            arrayFreeBody(Array *val) {
-    if (val)
+    if (val) {
         increase(val, 0);
+        val->v = NULL;
+    }
 }
 
 /// @brief free array
@@ -644,7 +646,6 @@ void                           arrayFree(Array *val){
     if (val) {      // arrayFree must not failed even if val == NULL
         arrayFreeBody(val);
         free(val);
-        val = NULL;
     }
 }
 
