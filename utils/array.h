@@ -495,7 +495,7 @@ static inline bool                  arrayIsvalid(const Array *parr){
  *       matches a known entry in the metadata table.
  */
 static inline size_t               arrayGetelemsize(const Array *parr) {
-    invraisecode(ERR_NULLABLE_PTR, parr != NULL, "Null pointer");
+    invraisecode(parr != NULL, ERR_NULLABLE_PTR, "Null pointer");
 
     return arrayGetTypeInfo(parr)->elem_size;
 }

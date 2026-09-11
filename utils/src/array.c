@@ -565,9 +565,10 @@ static size_t                    increase(Array *parr, size_t newsz){
     if (newsz > parr->sz)
         newsz = round_up_2(newsz);
 
-    size_t      bytes = newsz * arrayGetelemsize(parr);
-    if (bytes < 0) 
-        return userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type");
+    if (arrayGetelemsize(parr) == 0L)
+        return userraise(0L, ERR_UNKNOWN_TYPE, "Unknown type, elem size == 0");
+
+    size_t      bytes = newsz * arrayGetelemsize(parr);        
 
     if (newsz < parr->len)
         freeV64elems(parr, newsz, parr->len);    
@@ -575,14 +576,15 @@ static size_t                    increase(Array *parr, size_t newsz){
     void       *p = NULL;  
     if (bytes > 0) {
         if ( (p = realloc(parr->v, bytes) ) == NULL)
-            userraise(-1, ERR_UNABLE_ALLOCATE, "Unable to allocate %zu", bytes);
+            userraiseint(ERR_UNABLE_ALLOCATE, "Unable to allocate %zu", bytes);
     } else
         free(parr->v);
+
     parr->v = p; // iv/dv/pv... is the same
     if (parr->len > newsz)   // shrink case, 0 if newsz == 0 (free)
         parr->len = newsz;
     parr->sz = newsz;
-    return logsimpleret(parr->sz, "New sz %zu", parr->sz);
+    return logsimpleret(parr->sz, "New sz %zu, new v = %p", parr->sz, parr->v);
 }
 
 /**
