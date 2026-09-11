@@ -800,14 +800,34 @@ arraySaveTofs(fs *restrict s, const Array *restrict parr) {
     return total_written;
 }
 
-// new DS 
+/**
+ * @brief Loads an array from a data stream (DS).
+ *
+ * This function parses a serialized array from the provided stream using a 
+ * Header-Body-Footer format. It performs type-safe data loading and ensures 
+ * data integrity via the footer.
+ *
+ * @param source  Pointer to the source data stream.
+ * @param parr    Pointer to the destination Array structure.
+ *                - If non-NULL: The existing array content is released, and 
+ *                  the structure is updated with the newly loaded data.
+ *                - If NULL: The loaded data is discarded (dump read) to avoid leaks.
+ *
+ * @return The total number of elements successfully loaded.
+ * @retval Negative error code if parsing, reading, or stream restoration fails.
+ *
+ * @note If an error occurs during the loading process, the function attempts 
+ *       to restore the stream position to its original state using `dsRestorepos`.
+ * @note The function assumes the stream follows the format:
+ *       "ARRAY: <type> / <v64_type> : <size> / <count> <values> ARRAY: DONE"
+ */
 long                            
 arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     if (source == NULL)
         userraiseint(ERR_NULL_INPUT, "DS source is null");
 
     off_t            initpos = dsGetpos(source);
-    if (initpos == (off_t) -1)
+    if (initpos < 0)
         userraise(-1L, ERR_STREAM_ERROR, "Unable to get stream position, but 'll continue");    // just err looging
     
     size_t           paircount = 0L;
@@ -818,21 +838,22 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     long total = arrayLoadValuesFromDS(source, pa, paircount);
     if (total < 0) {
         arrayFree(pa);
-        if (!dsRestorepos(source, initpos) )
+        if (initpos >= 0L && !dsRestorepos(source, initpos) )
             userraise(-1L, ERR_STREAM_ERROR, "Unable to restore stream position");  // just err looging
         return userraise(total, ERR_WRONG_INPUT_FORMAT, "Unable to read values");
     }
 
     if (!arrayParseFooterFromDS(source) ) {
         arrayFree(pa);
-        if (!dsRestorepos(source, initpos) )
+        if (initpos >= 0L && !dsRestorepos(source, initpos) )
             userraise(-1L, ERR_STREAM_ERROR, "Unable to restore stream position");  // just err looging
         return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to finish create array");
     }
     if (parr) {   // if arr is NULL then dump read
+        Array temp = *pa;
         arrayFree(parr);        // release if exists
-        *parr = *pa;
-        free(pa);       // a bit stupid, but let it as is for now
+        *parr = temp;
+        free(pa);       // a bit stupid, but let it as is for now, probably Array **restrict pparr is required to avoid free
     }
     else
         arrayFree(pa);
