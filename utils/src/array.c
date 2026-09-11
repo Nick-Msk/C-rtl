@@ -556,33 +556,33 @@ static void                     freeV64elems(Array *parr, size_t from, size_t to
 /// @param arr pointer to array
 /// @param newsz new size
 /// @return 
-static size_t                    increase(Array *arr, size_t newsz){
-    invraisecode(ERR_NULLABLE_PTR, arr != NULL, 
-        "Null pointer");
+static size_t                    increase(Array *parr, size_t newsz){
+    invraisecode(parr != NULL, ERR_NULLABLE_PTR,
+        "Null pointer %p", parr);
 
-    if (newsz == arr->sz)
-        return logsimpleret(arr->sz, "No change sz %zu", arr->sz);
-    if (newsz > arr->sz)
+    if (newsz == parr->sz)
+        return logsimpleret(parr->sz, "No change sz %zu", parr->sz);
+    if (newsz > parr->sz)
         newsz = round_up_2(newsz);
 
-    size_t      bytes = newsz * arrayGetelemsize(arr);
+    size_t      bytes = newsz * arrayGetelemsize(parr);
     if (bytes < 0) 
         return userraise(-1, ERR_UNKNOWN_TYPE, "Unknown type");
 
-    if (newsz < arr->len)
-        freeV64elems(arr, newsz, arr->len);    
+    if (newsz < parr->len)
+        freeV64elems(parr, newsz, parr->len);    
 
     void       *p = NULL;  
     if (bytes > 0) {
-        if ( (p = realloc(arr->v, bytes) ) == NULL)
+        if ( (p = realloc(parr->v, bytes) ) == NULL)
             userraise(-1, ERR_UNABLE_ALLOCATE, "Unable to allocate %zu", bytes);
     } else
-        free(arr->v);
-    arr->v = p; // iv/dv/pv... is the same
-    if (arr->len > newsz)   // shrink case, 0 if newsz == 0 (free)
-        arr->len = newsz;
-    arr->sz = newsz;
-    return logsimpleret(arr->sz, "New sz %zu", arr->sz);
+        free(parr->v);
+    parr->v = p; // iv/dv/pv... is the same
+    if (parr->len > newsz)   // shrink case, 0 if newsz == 0 (free)
+        parr->len = newsz;
+    parr->sz = newsz;
+    return logsimpleret(parr->sz, "New sz %zu", parr->sz);
 }
 
 /**
@@ -629,16 +629,23 @@ Array                          *arrayCreate(size_t cnt, ArrayFillType filltyp, A
     }
     return logret(res, "sz = %zu, len = %zu", res->sz, res->len );
 }
+
+void                            arrayFreeBody(Array *val) {
+    if (val)
+        increase(val, 0);
+}
+
 /// @brief free array
 /// @param val pointer to array
 /// @note: arrayFree must not failed even if val == NULL
 void                           arrayFree(Array *val){
     if (val) {      // arrayFree must not failed even if val == NULL
-        increase(val, 0);
+        arrayFreeBody(val);
         free(val);
         val = NULL;
     }
 }
+
 /// @brief        Array filler (formatter) using fill type
 /// @param a  Array (by value now, will be reworked)
 /// @param typ  Array type 

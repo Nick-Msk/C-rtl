@@ -327,6 +327,11 @@ arrayCreateFromTextparam(size_t cnt, const char *restrict typ, const char *restr
  */
 extern void                    arrayFree(Array *val);
 
+/// @brief free array body only
+/// @param val pointer to array
+/// @note: arrayFree must not failed even if val == NULL
+extern void                    arrayFreeBody(Array *val);
+
 /* =========================================================
  * CONVENIENCE FACTORY FUNCTIONS (Typed Helpers)
  * ========================================================= */
