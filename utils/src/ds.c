@@ -345,7 +345,7 @@ bool                        dsExpect(DS *restrict pds, const char *literal) {
     if (pds == NULL || literal == NULL)
         return userraiseint(ERR_NULL_INPUT, 
             "Ds or literal is null %p %p", pds, literal);
-    size_t pos = dsSavepos(pds);
+    off_t   pos = dsSavepos(pds);
     size_t  i = 0;
     while(literal[i] != '\0') {
         int c = dsgetc(pds);
