@@ -41,7 +41,7 @@ arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
         if (fscanf(in, "%6ld\t", &ind) != 1)
             return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Can't parse index");        
         if (ind >= parr->len)
-            return userraise(-1, ERR_OUT_OF_RANGE, "%ld must be < %zu", ind, parr->len);
+            return userraise(-1, ERR_OUT_OF_RANGE, "%zu must be < %zu", ind, parr->len);
 
         switch (typ) {
             case ARRAY_INT:
