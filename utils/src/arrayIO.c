@@ -118,6 +118,9 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
                 return userraise(-1L, ERR_UNSUPPORTED_TYPE, "%d/%s", typ, arrayTypeGetName(typ));
         }
         cnt++;
+        if (!dsSkipNl(in))
+            return userraise(-1, ERR_WRONG_INPUT_FORMAT,
+                "expected newline after value at idx %zu", ind);
     }
 
     return logsimpleret(cnt, "Read %ld", cnt);
