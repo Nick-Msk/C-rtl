@@ -9,7 +9,8 @@
 /**
  * @brief Internal helper for reading from a memory buffer.
  */
-static inline int           dsgetc_buffer(const char *restrict ptr, size_t *restrict pos) {
+static inline int           
+dsgetc_buffer(const char *restrict ptr, size_t *restrict pos) {
     if (ptr[*pos] == '\0') {
         return EOF;
     }
@@ -19,7 +20,8 @@ static inline int           dsgetc_buffer(const char *restrict ptr, size_t *rest
 /**
  * @brief Internal helper for mutable string unget.
  */
-static inline int           dsreplace_str(char *restrict ptr, size_t *restrict pos, int c) {
+static inline int           
+dsreplace_str(char *restrict ptr, size_t *restrict pos, int c) {
     if (*pos > 0)
         return ptr[--(*pos)] = (unsigned char) c;
     else
@@ -29,7 +31,8 @@ static inline int           dsreplace_str(char *restrict ptr, size_t *restrict p
 /**
  * @brief Internal helper for mutable string put.
  */
-static inline int           dsputc_strbuf(char *ptr, size_t pos, size_t cap, int c) {
+static inline int           
+dsputc_strbuf(char *ptr, size_t pos, size_t cap, int c) {
     if (cap > 0 && pos < cap) {
         ptr[pos] = (unsigned char) c;
         return 1;   // shift
@@ -41,7 +44,8 @@ static inline int           dsputc_strbuf(char *ptr, size_t pos, size_t cap, int
 /**
  * @brief Internal helper for constant string unget (conditional rollback).
  */
-static inline int           dsungetc_conststr(const char *restrict ptr, size_t *restrict pos, int c) {
+static inline int           
+dsungetc_conststr(const char *restrict ptr, size_t *restrict pos, int c) {
     if (*pos > 0 && (unsigned char) ptr[*pos - 1] == (unsigned char) c) {
         (*pos)--;
         return c;
@@ -53,7 +57,9 @@ static inline int           dsungetc_conststr(const char *restrict ptr, size_t *
  * @brief Escapes non-printable characters for debug output.
  * @return Number of characters printed.
  */
-static int                  ds_escape_print(FILE *out, unsigned char c) {
+static int                  
+ds_escape_print(FILE *out, unsigned char c) {
+
     switch (c) {
         case '\n': return fprintf(out, "\\n");
         case '\r': return fprintf(out, "\\r");
@@ -73,7 +79,9 @@ static int                  ds_escape_print(FILE *out, unsigned char c) {
  * @brief Helper to print the buffer content and closing delimiters.
  * @return Total characters written to 'out'.
  */
-static int                  ds_print_buffer_content(FILE *restrict out, const char *restrict ptr, size_t start, size_t end) {
+static int                  
+ds_print_buffer_content(FILE *restrict out, const char *restrict ptr, size_t start, size_t end) {
+
     int total = 0;
     for (size_t i = start; (end == 0 || i < end) && ptr[i] != '\0'; i++) {
         total += ds_escape_print(out, (unsigned char) ptr[i]);
@@ -85,7 +93,9 @@ static int                  ds_print_buffer_content(FILE *restrict out, const ch
 
 // -------------------- CONSTRUCTOTS/DESTRUCTORS -------------------
 
-bool                        dsInitf(DS *restrict pds, FILE *restrict fp) {
+bool                        
+dsInitf(DS *restrict pds, FILE *restrict fp) {
+
     if (pds == NULL || fp == NULL)
         return false;
     pds->type = DS_FILE;
@@ -93,7 +103,9 @@ bool                        dsInitf(DS *restrict pds, FILE *restrict fp) {
     return true;
 }
 
-bool                        dsInitFilename(DS *restrict pds, const char *restrict fname, const char *restrict mode) {
+bool                        
+dsInitFilename(DS *restrict pds, const char *restrict fname, const char *restrict mode) {
+
     if (pds == NULL || fname == NULL || mode == NULL)
         return false;
     FILE *f = fopen(fname, mode);
@@ -104,7 +116,9 @@ bool                        dsInitFilename(DS *restrict pds, const char *restric
 }
 
 
-bool                        dsInitstrCap(DS *restrict pds, char *restrict buf, size_t cap) {
+bool                        
+dsInitstrCap(DS *restrict pds, char *restrict buf, size_t cap) {
+
     if (pds == NULL || buf == NULL)
         return false;
     pds->type = DS_STR;
@@ -118,7 +132,9 @@ bool                        dsInitstrCap(DS *restrict pds, char *restrict buf, s
     return true;
 }
 
-bool                        dsInitconst(DS *restrict pds, const char *restrict buf) {
+bool                        
+dsInitconst(DS *restrict pds, const char *restrict buf) {
+
     if (pds == NULL || buf == NULL)
         return false;
     pds->type = DS_CONSTSTR;
@@ -129,7 +145,8 @@ bool                        dsInitconst(DS *restrict pds, const char *restrict b
 }
 
 #ifndef NO_FSDS
-    bool                    dsInitfs(DS *restrict pds, fs *restrict s) {
+    bool                    
+    dsInitfs(DS *restrict pds, fs *restrict s) {
         if (pds == NULL || s == NULL)
             return false;
         pds->type = DS_FS;
@@ -141,7 +158,8 @@ bool                        dsInitconst(DS *restrict pds, const char *restrict b
 
 // --------------------- ACCESS AND MODIFICATION --------------------
 
-int                         dsgetc(DS *pds) {
+int                         
+dsgetc(DS *pds) {
     switch (pds->type) {
         case DS_FILE:
             return fgetc(pds->fp);
@@ -163,7 +181,8 @@ int                         dsgetc(DS *pds) {
     }
 }
 
-int                             dsungetc(int c, DS *pds) {
+int                             
+dsungetc(int c, DS *pds) {
     if (c == EOF)   // NOT SURE, LET IT BE FOR NOW
         return EOF;
     switch (pds->type) {
@@ -184,7 +203,8 @@ int                             dsungetc(int c, DS *pds) {
 }
 
 // only for DS_STR and DS_FS
-int                         dsreplacec(int c, DS *pds) {
+int                         
+dsreplacec(int c, DS *pds) {
     if (c == EOF)
         return EOF;
     switch (pds->type) {
@@ -200,7 +220,8 @@ int                         dsreplacec(int c, DS *pds) {
     }
 }
 
-int                         dsputc(int c, DS *pds) {
+int                         
+dsputc(int c, DS *pds) {
     if (c == EOF) {
         if (pds->type == DS_FILE)
             return logsimpleerr(EOF, "put EOF - do nothing");
@@ -239,7 +260,8 @@ int                         dsputc(int c, DS *pds) {
     }
 }
 
-int                      dsputcEscape(int c, DS *pds) {
+int                      
+dsputcEscape(int c, DS *pds) {
     int cnt = 1;
     switch (c) {
         case '"':   WRITE_OR_RET(dsputc('\\', pds), EOF); 
@@ -269,7 +291,8 @@ int                      dsputcEscape(int c, DS *pds) {
 }
 
 // helper for ecranned '//' symbols
-bool                        dsgetcEscaped(DS *restrict in, int *c) {
+bool                        
+dsgetcEscaped(DS *restrict in, int *c) {
     int esc = dsgetc(in);
 
     if (esc == EOF)
@@ -289,24 +312,8 @@ bool                        dsgetcEscaped(DS *restrict in, int *c) {
     return true;
 }
 
-// process symbol (normal or ecranned)
-// int                      dsparseEscaped(DS *restrict in, bool *restrict error) {
-//     int c = dsgetc(in);
-//     if (c == EOF)
-//         return EOF; // no more sym
-
-//     if (c != '\\')
-//         return c;   // normal sym
-
-//     if (!dsgetcEscaped(in, &c) ) {
-//         if (error)
-//             *error = true;
-//         return EOF; // something wrong with ercanning, stream is rolled back
-//     } 
-//     return c;   // converted from ecranned
-// }
-
-long                     dswrite(DS *restrict out, const char *ptr, size_t len) {
+long                     
+dswrite(DS *restrict out, const char *ptr, size_t len) {
 
     size_t  total_prepared = len, actual_written = 0L;
     switch (out->type) {
@@ -341,7 +348,8 @@ long                     dswrite(DS *restrict out, const char *ptr, size_t len) 
     return actual_written;
 }
 
-bool                        dsExpect(DS *restrict pds, const char *literal) {
+bool                        
+dsExpect(DS *restrict pds, const char *literal) {
     if (pds == NULL || literal == NULL)
         return userraiseint(ERR_NULL_INPUT, 
             "Ds or literal is null %p %p", pds, literal);
@@ -358,7 +366,8 @@ bool                        dsExpect(DS *restrict pds, const char *literal) {
     return true;
 }
 
-size_t                      dsGetcap(const DS *pds) {
+size_t                      
+dsGetcap(const DS *pds) {
     if (pds == NULL)
         return userraiseint(ERR_NULL_INPUT, 
             "Ds or literal is null %p", pds);
@@ -390,7 +399,8 @@ size_t                      dsGetcap(const DS *pds) {
     return size;
 }
 
-int                         dsTechFPrint(FILE *restrict out, const DS *restrict pds, const char *restrict name) {
+int                         
+dsTechFPrint(FILE *restrict out, const DS *restrict pds, const char *restrict name) {
     if (!pds || !out) 
         return -1;
 
