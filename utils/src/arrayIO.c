@@ -46,30 +46,30 @@ arrayFileLoadValues(FILE *restrict in, Array *restrict parr) {
         switch (typ) {
             case ARRAY_INT:
                 if (fscanf(in, "%d\n", parr->iv + ind) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a int value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a int value");
                 break;
             case ARRAY_LONG:
                 if (fscanf(in, "%ld\n", parr->lv + ind) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a long value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a long value");
                 break;
             case ARRAY_DOUBLE:
                 if (fscanf(in, "%lg\n", parr->dv + ind) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a double value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a double value");
                 break;
             case ARRAY_POINTER:
                 if (fscanf(in, "%p\n", parr->pv + ind) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a ptr value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a ptr value");
                 break;
             case ARRAY_CHAR:
                 if (fscanf(in, "%c\n", parr->cv + ind) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a char value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a char value");
                 break;
             case ARRAY_V64:
                 if (value64_loadfile(in, &parr->v64[ind], parr->v64type, true, &buf) != 1)
-                    return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a V64 containered value");
+                    return userraise(-1L, ERR_WRONG_INPUT_FORMAT, "Unable to fscanf a V64 containered value");
                 break;
             default:
-                return userraise(-1, ERR_UNSUPPORTED_TYPE, "%d", typ);
+                return userraise(-1L, ERR_UNSUPPORTED_TYPE, "%d", typ);
         }
         cnt++;
     }
