@@ -8,11 +8,11 @@
 
 const char              *g_custom_print_line     = 0;   // TODO: rework that to normal (in Array structure)
 // TODO: move into context
-const char              *g_save_format_double    = "%6zu      %15.15lg\n";
-const char              *g_save_format_int       = "%6zu\t%6d\n";
-const char              *g_save_format_long      = "%6zu\t%6ld\n";
-const char              *g_save_format_pointer   = "%6zu\t%p\n";
-const char              *g_save_format_char      = "%6zu\t%c\n";
+const char              *g_save_format_double    = "%8zu\t%.17g\n";
+const char              *g_save_format_int       = "%8zu\t%d\n";
+const char              *g_save_format_long      = "%8zu\t%ld\n";
+const char              *g_save_format_pointer   = "%8zu\t%p\n";
+const char              *g_save_format_char      = "%8zu\t%c\n";
 
 #define                         ARRAY_MAX_TYPE_STR          20
 #define                         ARRAY_MAX_TYPE_STR_WO_LAST  19
@@ -83,7 +83,7 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
     long        cnt = 0;
 
     // initially fill by zero
-    arrayFillAll(parr, ARRAY_FILLTYPE_ZERO);
+    // arrayFillAll(parr, ARRAY_FILLTYPE_ZERO);
     // load paircount elements
     while (paircount-- > 0) {
         size_t        ind;
@@ -93,6 +93,7 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
 
         if (ind >= parr->len)
             return userraise(-1, ERR_OUT_OF_RANGE, "%ld must be < %zu", ind, parr->len);
+        dsSkipSpace(in);    // skip \t
 
         switch (typ) {
             case ARRAY_INT:
@@ -108,7 +109,7 @@ arrayLoadValuesFromDS(DS *restrict in, Array *restrict parr, size_t paircount) {
                     return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse double");
                 break;
             case ARRAY_CHAR:
-                if (!dsParseChar(in, parr->cv + ind) )
+                if (!dsParseChar(in, parr->cv + ind, false) )
                     return userraise(-1, ERR_WRONG_INPUT_FORMAT, "Unable to parse char");
                 break;
             case ARRAY_V64:

@@ -1,3 +1,3 @@
 ARRAY: ARRAY_CHAR / NONV64_TYPE : 1
-     0	Z
+       0	Z
 ARRAY: DONE
