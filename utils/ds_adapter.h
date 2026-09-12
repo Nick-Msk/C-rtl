@@ -301,6 +301,7 @@ extern bool                         dsParseDouble(DS *restrict pds, double *rest
  * - @c DS_STR, @c DS_FS, @c DS_CONSTSTR: Parses an integer from a memory buffer.
  *
  * @param[in,out] pds  Pointer to the @c DS structure containing the data source.
+ * @param[in] skipspaces  If true then skip spaces (isspace) before char
  * @param[out] pval    Pointer to the char where the parsed value will be stored.
  *
  * @return true if the integer was successfully parsed and stored in @p pval, 
@@ -309,7 +310,7 @@ extern bool                         dsParseDouble(DS *restrict pds, double *rest
  * @note the position is advanced after a successful read.
  * @retval false if input pointers are NULL, the source type is unsupported, or parsing fails.
  */
-extern bool                         dsParseChar(DS *restrict pds, char *restrict pval);
+extern bool                         dsParseChar(DS *restrict pds, char *restrict pval, bool skipspaces);
 
 // TODO: not sure about that since V64 has own value64_loadds/value64_loadfile/value64_loadstr
 extern bool                         dsParseV64(DS *restrict pds, value64 *restrict pval, value64_type v64typ);

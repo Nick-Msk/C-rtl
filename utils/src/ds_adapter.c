@@ -22,7 +22,8 @@
  * @return The number of characters written (excluding null terminator), 
  *         or -1 if the buffer is too small or an error occurred.
  */
-static int                      dsHelperVPrintStr(char *ptr, size_t pos, size_t cap, const char *fmt, va_list ap) {
+static int                      
+dsHelperVPrintStr(char *ptr, size_t pos, size_t cap, const char *fmt, va_list ap) {
     int needed = vsnprintf(NULL, 0, fmt, ap);
     if (needed < 0)
         return userraise(-1, ERR_STREAM_ERROR, "Unable to vsnprintf NULL");
@@ -51,7 +52,8 @@ static int                      dsHelperVPrintStr(char *ptr, size_t pos, size_t 
  * @param ap    variadic argument list (as passed to vfscanf)
  * @return      number of successfully matched items, or a negative value on error
  */
-static int                      dsHelperVScanf(const char *buf, size_t cap, size_t *ppos, const char *fmt, va_list ap) {
+static int                      
+dsHelperVScanf(const char *buf, size_t cap, size_t *ppos, const char *fmt, va_list ap) {
     size_t remaining = cap - *ppos;
     if (remaining == 0)
         return userraise(-1, ERR_OUT_OF_BUFFER, "Buffer exhausted");
@@ -85,7 +87,8 @@ static int                      dsHelperVScanf(const char *buf, size_t cap, size
  * @return true if parsing was successful and the value is within integer bounds, 
  *         false otherwise (raises error via @c userraise).
  */
-static bool                     dsHelperParseLong(const char *restrict str, long *restrict plval, size_t *restrict pos) {
+static bool                     
+dsHelperParseLong(const char *restrict str, long *restrict plval, size_t *restrict pos) {
     char    *endptr;
     errno = 0;
     long    val = strtol(str, &endptr, 10);
@@ -102,7 +105,8 @@ static bool                     dsHelperParseLong(const char *restrict str, long
 /**
  * @brief Wrapper for parsing int, including bounds checking.
  */
-static bool                     dsHelperParseInt(const char *restrict str, int *restrict pival, size_t *restrict pos) {
+static bool                     
+dsHelperParseInt(const char *restrict str, int *restrict pival, size_t *restrict pos) {
     long temp_val;
     if (!dsHelperParseLong(str, &temp_val, pos)) {
         return false; 
@@ -124,7 +128,8 @@ static bool                     dsHelperParseInt(const char *restrict str, int *
  *
  * @return true if parsing was successful, false otherwise.
  */
-static bool                     dsHelperParseDouble(const char *restrict str, double *restrict pdval, size_t *restrict pos) {
+static bool                     
+dsHelperParseDouble(const char *restrict str, double *restrict pdval, size_t *restrict pos) {
     char *endptr;
     errno = 0;
     double val = strtod(str, &endptr);
@@ -144,10 +149,11 @@ static bool                     dsHelperParseDouble(const char *restrict str, do
 /**
  * @brief Internal helper to parse a char from a string.
  */
-static bool                     dsHelperParseChar(const char *restrict str, char *restrict pval, size_t *restrict pos) {
+static bool                     
+dsHelperParseChar(const char *restrict str, char *restrict pval, size_t *restrict pos, bool skipspaces) {
     // Skip leading whitespace to find the first character
     size_t skip = 0;
-    while (str[skip] && isspace((unsigned char)str[skip]))
+    while (skipspaces && str[skip] && isspace((unsigned char) str[skip]))
         skip++;
     if (str[skip] == '\0')
         return userraise(false, ERR_UNABLE_PARSE_DATA, "Empty or whitespace string for char");
@@ -163,7 +169,8 @@ static bool                     dsHelperParseChar(const char *restrict str, char
 /**
  * @brief Internal helper to parse an unsigned long from a string.
  */
-static bool                     dsHelperParseUnsignedLong(const char *restrict str, unsigned long *restrict plval, size_t *restrict pos) {
+static bool                     
+dsHelperParseUnsignedLong(const char *restrict str, unsigned long *restrict plval, size_t *restrict pos) {
     char *endptr;
     errno = 0;
     unsigned long val = strtoul(str, &endptr, 10);
@@ -565,16 +572,16 @@ dsParseDouble(DS *restrict pds, double *restrict pdval) {
 }
 
 bool                        
-dsParseChar(DS *restrict pds, char *restrict pval) {
+dsParseChar(DS *restrict pds, char *restrict pval, bool skip) {
     invraisecode(pds != NULL && pval != NULL, ERR_NULLABLE_PTR, "Null input %p %p", pds, pval);
 
     switch (pds->type) {
         case DS_FILE:
-            if (fscanf(pds->fp, " %c", pval) != 1) // " %c" skips whitespace
+            if (fscanf(pds->fp, skip ? " %c": "%c", pval) != 1) // " %c" skips whitespace
                 return userraise(false, ERR_UNABLE_PARSE_DATA, "Failed to read char from file");
             break;
         case DS_STR: case DS_FS: case DS_CONSTSTR:
-            return dsHelperParseChar(dsStrbuf(pds) + pds->pos, pval, &pds->pos);
+            return dsHelperParseChar(dsStrbuf(pds) + pds->pos, pval, &pds->pos, skip);
         default:
             return userraise(false, ERR_UNSUPPORTED_TYPE, "Unsupported %s", dsTypeName(pds->type));
     }
@@ -1257,10 +1264,10 @@ tf_ds_parsers(const char *name)
         char buf[64] = "A B";
         DS ds = dsCreatestrCap(buf, sizeof(buf));
         char c;
-        test_validate(dsParseChar(&ds, &c) && c == 'A',
+        test_validate(dsParseChar(&ds, &c, true) && c == 'A',
                       "dsParseChar: expected 'A', got '%c'", c);
         test_validate(ds.pos == 1, "pos must be 1, got %zu", ds.pos);
-        test_validate(dsParseChar(&ds, &c) && c == 'B',
+        test_validate(dsParseChar(&ds, &c, true) && c == 'B',
                       "dsParseChar second: expected 'B', got '%c'", c);
         test_validate(ds.pos == 3, "pos must be 3, got %zu", ds.pos);
     }
@@ -1270,7 +1277,7 @@ tf_ds_parsers(const char *name)
         char buf[4] = "";
         DS ds = dsCreatestrCap(buf, sizeof(buf));
         char c;
-        test_validate(!dsParseChar(&ds, &c),
+        test_validate(!dsParseChar(&ds, &c, true),
                       "dsParseChar on empty must fail");
     }
 
@@ -6933,6 +6940,473 @@ tf24_ds_parse_word_buffer(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// --------------------- TEST dsParseChar (all DS types, both skip modes) ---------------------
+static TestStatus
+tf25_ds_parse_char(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    // ======================== DS_CONSTSTR, skip=true ========================
+
+    /* 1. plain, no leading ws */
+    test_sub("subtest %d: CONSTSTR skip=true plain", ++subnum);
+    {
+        DS   in = dsCreateconst("abc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && c == 'a',
+                          dsFree(&in),
+                          "expected 'a', got res=%d c='%c'", res, c);
+        test_validatefree(dsGetpos(&in) == 1,
+                          dsFree(&in),
+                          "pos expected 1, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 2. leading spaces */
+    test_sub("subtest %d: CONSTSTR skip=true leading spaces", ++subnum);
+    {
+        DS   in = dsCreateconst("   abc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && c == 'a',
+                          dsFree(&in),
+                          "expected 'a', got res=%d c='%c'", res, c);
+        test_validatefree(dsGetpos(&in) == 4,
+                          dsFree(&in),
+                          "pos expected 4, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 3. mixed whitespace: tab, newline, spaces */
+    test_sub("subtest %d: CONSTSTR skip=true mixed ws", ++subnum);
+    {
+        DS   in = dsCreateconst("\t\n  xyz");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && c == 'x',
+                          dsFree(&in),
+                          "expected 'x', got res=%d c='%c'", res, c);
+        test_validatefree(dsGetpos(&in) == 5,
+                          dsFree(&in),
+                          "pos expected 5, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 4. only whitespace -> error, pval untouched */
+    test_sub("subtest %d: CONSTSTR skip=true only spaces -> error", ++subnum);
+    {
+        DS   in = dsCreateconst("     ");
+        char c  = 'Z';
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(!res && c == 'Z',
+                          dsFree(&in),
+                          "expected error and untouched pval, got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 5. empty -> error */
+    test_sub("subtest %d: CONSTSTR skip=true empty -> error", ++subnum);
+    {
+        DS   in = dsCreateconst("");
+        char c  = 'Z';
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(!res && c == 'Z',
+                          dsFree(&in),
+                          "expected error, got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    // ======================== DS_CONSTSTR, skip=false ========================
+
+    /* 6. plain */
+    test_sub("subtest %d: CONSTSTR skip=false plain", ++subnum);
+    {
+        DS   in = dsCreateconst("abc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == 'a',
+                          dsFree(&in),
+                          "expected 'a', got res=%d c='%c'", res, c);
+        test_validatefree(dsGetpos(&in) == 1,
+                          dsFree(&in),
+                          "pos expected 1, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 7. leading space must be returned as value itself */
+    test_sub("subtest %d: CONSTSTR skip=false leading space", ++subnum);
+    {
+        DS   in = dsCreateconst(" abc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == ' ',
+                          dsFree(&in),
+                          "expected ' ', got res=%d c='%c'", res, c);
+        test_validatefree(dsGetpos(&in) == 1,
+                          dsFree(&in),
+                          "pos expected 1, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 8. leading tab */
+    test_sub("subtest %d: CONSTSTR skip=false leading tab", ++subnum);
+    {
+        DS   in = dsCreateconst("\tabc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == '\t',
+                          dsFree(&in),
+                          "expected '\\t', got res=%d c=%d", res, (int) c);
+        test_validatefree(dsGetpos(&in) == 1,
+                          dsFree(&in),
+                          "pos expected 1, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 9. leading newline */
+    test_sub("subtest %d: CONSTSTR skip=false leading newline", ++subnum);
+    {
+        DS   in = dsCreateconst("\nabc");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == '\n',
+                          dsFree(&in),
+                          "expected '\\n', got res=%d c=%d", res, (int) c);
+        test_validatefree(dsGetpos(&in) == 1,
+                          dsFree(&in),
+                          "pos expected 1, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 10. single space only */
+    test_sub("subtest %d: CONSTSTR skip=false single space", ++subnum);
+    {
+        DS   in = dsCreateconst(" ");
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == ' ',
+                          dsFree(&in),
+                          "expected ' ', got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 11. empty -> error */
+    test_sub("subtest %d: CONSTSTR skip=false empty -> error", ++subnum);
+    {
+        DS   in = dsCreateconst("");
+        char c  = 'Z';
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(!res && c == 'Z',
+                          dsFree(&in),
+                          "expected error, got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 12. high byte 0xFF, skip=false (unsigned path) */
+    test_sub("subtest %d: CONSTSTR skip=false high byte 0xFF", ++subnum);
+    {
+        const char input[] = { (char) 0xFF, '\0' };
+        DS   in = dsCreateconst(input);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && (unsigned char) c == 0xFF,
+                          dsFree(&in),
+                          "expected 0xFF, got res=%d c=0x%02X",
+                          res, (unsigned char) c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 13. high byte 0xFF after space, skip=true */
+    test_sub("subtest %d: CONSTSTR skip=true high byte after space", ++subnum);
+    {
+        const char input[] = { ' ', (char) 0xFF, '\0' };
+        DS   in = dsCreateconst(input);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && (unsigned char) c == 0xFF,
+                          dsFree(&in),
+                          "expected 0xFF, got res=%d c=0x%02X",
+                          res, (unsigned char) c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    // ======================== DS_STR ========================
+    // adjust constructor name if not dsCreatestr
+
+    /* 14. DS_STR skip=true with leading spaces */
+    test_sub("subtest %d: DS_STR skip=true leading spaces", ++subnum);
+    {
+        char buf[] = "   abc";
+        DS   in = dsCreatestr(buf);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && c == 'a',
+                          dsFree(&in),
+                          "expected 'a', got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 15. DS_STR skip=false with leading space */
+    test_sub("subtest %d: DS_STR skip=false leading space", ++subnum);
+    {
+        char buf[] = " abc";
+        DS   in = dsCreatestr(buf);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == ' ',
+                          dsFree(&in),
+                          "expected ' ', got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    // ======================== DS_FS ========================
+    // adjust constructor name if not dsCreatefs
+
+    /* 16. DS_FS skip=true with leading spaces */
+    test_sub("subtest %d: DS_FS skip=true leading spaces", ++subnum);
+    {
+        fs buf = fscopy("   abc");
+        DS in  = dsCreatefs(&buf);
+        char c = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(res && c == 'a',
+                          (dsFree(&in), fsfree(buf)),
+                          "expected 'a', got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fsfree(buf);
+        fs_alloc_check(true);
+    }
+
+    /* 17. DS_FS skip=false with leading tab */
+    test_sub("subtest %d: DS_FS skip=false leading tab", ++subnum);
+    {
+        fs buf = fscopy("\tabc");
+        DS in  = dsCreatefs(&buf);
+        char c = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validatefree(res && c == '\t',
+                          (dsFree(&in), fsfree(buf)),
+                          "expected '\\t', got res=%d c=%d", res, (int) c);
+        dsFree(&in);
+        fsfree(buf);
+        fs_alloc_check(true);
+    }
+
+    /* 18. DS_FS skip=true only spaces -> error */
+    test_sub("subtest %d: DS_FS skip=true only spaces -> error", ++subnum);
+    {
+        fs buf = fscopy("   ");
+        DS in  = dsCreatefs(&buf);
+        char c = 'Z';
+        bool res = dsParseChar(&in, &c, true);
+        test_validatefree(!res && c == 'Z',
+                          (dsFree(&in), fsfree(buf)),
+                          "expected error, got res=%d c='%c'", res, c);
+        dsFree(&in);
+        fsfree(buf);
+        fs_alloc_check(true);
+    }
+
+    // ======================== DS_FILE ========================
+    // adjust constructor name if not dsCreatef
+
+    /* 19. DS_FILE skip=true with leading spaces */
+    test_sub("subtest %d: DS_FILE skip=true leading spaces", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validate(fp != NULL, "tmpfile failed");
+        fputs("   abc", fp);
+        rewind(fp);
+
+        DS   in = dsCreatef(fp);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, true);
+        test_validate(res && c == 'a',
+                      "expected 'a', got res=%d c='%c'", res, c);
+        test_validate(dsGetpos(&in) == 4,
+                      "pos expected 4, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fclose(fp);
+        fs_alloc_check(true);
+    }
+
+    /* 20. DS_FILE skip=false with leading space */
+    test_sub("subtest %d: DS_FILE skip=false leading space", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        fputs(" abc", fp);
+        rewind(fp);
+
+        DS   in = dsCreatef(fp);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validate(res && c == ' ',
+                      "expected ' ', got res=%d c='%c'", res, c);
+        test_validate(dsGetpos(&in) == 1,
+                      "pos expected 1, got %lld", (long long) dsGetpos(&in));
+
+        dsFree(&in);
+        fclose(fp);
+        fs_alloc_check(true);
+    }
+
+    /* 21. DS_FILE skip=true, only whitespace -> error */
+    test_sub("subtest %d: DS_FILE skip=true only spaces -> error", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        fputs("     ", fp);
+        rewind(fp);
+
+        DS   in = dsCreatef(fp);
+        char c  = 'Z';
+        bool res = dsParseChar(&in, &c, true);
+        test_validate(!res && c == 'Z',
+                      "expected error, got res=%d c='%c'", res, c);
+
+        dsFree(&in);
+        fclose(fp);
+        fs_alloc_check(true);
+    }
+
+    /* 22. DS_FILE skip=false, empty file -> error */
+    test_sub("subtest %d: DS_FILE skip=false empty -> error", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        rewind(fp);
+
+        DS   in = dsCreatef(fp);
+        char c  = 'Z';
+        bool res = dsParseChar(&in, &c, false);
+        test_validate(!res && c == 'Z',
+                      "expected error, got res=%d c='%c'", res, c);
+
+        dsFree(&in);
+        fclose(fp);
+        fs_alloc_check(true);
+    }
+
+    /* 23. DS_FILE skip=false, leading newline is returned as value */
+    test_sub("subtest %d: DS_FILE skip=false leading newline", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        fputs("\nabc", fp);
+        rewind(fp);
+
+        DS   in = dsCreatef(fp);
+        char c  = 0;
+        bool res = dsParseChar(&in, &c, false);
+        test_validate(res && c == '\n',
+                      "expected '\\n', got res=%d c=%d", res, (int) c);
+
+        dsFree(&in);
+        fclose(fp);
+        fs_alloc_check(true);
+    }
+
+    // ======================== NULL args ========================
+
+    /* 24. NULL DS */
+    test_sub("subtest %d: NULL DS raises", ++subnum);
+    {
+        char c = 'Z';
+        if (!try()) {
+            dsParseChar(NULL, &c, true);
+            test_validate(false, "must raise for NULL DS");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+    }
+
+    /* 25. NULL pval */
+    test_sub("subtest %d: NULL pval raises", ++subnum);
+    {
+        DS in = dsCreateconst("abc");
+        if (!try()) {
+            dsParseChar(&in, NULL, true);
+            test_validate(false, "must raise for NULL pval");
+            dsFree(&in);
+        } else {
+            test_validate(true, "correctly raised");
+            dsFree(&in);
+        }
+        fs_alloc_check(true);
+    }
+
+    // ======================== sequential reads ========================
+
+    /* 26. sequential, skip=true: whitespace eaten between calls */
+    test_sub("subtest %d: sequential reads skip=true", ++subnum);
+    {
+        DS   in = dsCreateconst("a b c");
+        char c1 = 0, c2 = 0, c3 = 0;
+        bool r1 = dsParseChar(&in, &c1, true);   // 'a', pos 1
+        bool r2 = dsParseChar(&in, &c2, true);   // skip ' ', read 'b', pos 3
+        bool r3 = dsParseChar(&in, &c3, true);   // skip ' ', read 'c', pos 5
+        test_validatefree(r1 && r2 && r3
+                          && c1 == 'a' && c2 == 'b' && c3 == 'c',
+                          dsFree(&in),
+                          "got [%c, %c, %c], res=[%d, %d, %d]",
+                          c1, c2, c3, r1, r2, r3);
+        test_validatefree(dsGetpos(&in) == 5,
+                          dsFree(&in),
+                          "pos expected 5, got %lld", (long long) dsGetpos(&in));
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 27. sequential, skip=false: spaces preserved as values */
+    test_sub("subtest %d: sequential reads skip=false", ++subnum);
+    {
+        DS   in = dsCreateconst("a b c");
+        char c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0;
+        dsParseChar(&in, &c1, false);   // 'a'
+        dsParseChar(&in, &c2, false);   // ' '
+        dsParseChar(&in, &c3, false);   // 'b'
+        dsParseChar(&in, &c4, false);   // ' '
+        dsParseChar(&in, &c5, false);   // 'c'
+        test_validatefree(c1 == 'a' && c2 == ' ' && c3 == 'b'
+                          && c4 == ' ' && c5 == 'c',
+                          dsFree(&in),
+                          "got [%c, %c, %c, %c, %c]", c1, c2, c3, c4, c5);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    /* 28. read past end after consuming all */
+    test_sub("subtest %d: read past end", ++subnum);
+    {
+        DS   in = dsCreateconst("x");
+        char c1 = 0, c2 = 'Z';
+        bool r1 = dsParseChar(&in, &c1, false);   // 'x', pos 1
+        bool r2 = dsParseChar(&in, &c2, false);   // at end -> error
+        test_validatefree(r1 && c1 == 'x' && !r2 && c2 == 'Z',
+                          dsFree(&in),
+                          "r1=%d c1='%c' r2=%d c2='%c'", r1, c1, r2, c2);
+        dsFree(&in);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -6967,6 +7441,8 @@ main( /*int argc, char *argv[] */ )
       // word ([a-z], [A-Z], [0-9], _)
       , TESTADD(tf23_ds_parse_word_direct,                  "dsParseWordDirect() simple tests")
       , TESTADD(tf24_ds_parse_word_buffer,                  "dsParseWordBuffer() simple tests")
+      //
+      , TESTADD(tf25_ds_parse_char,                         "dsParseChar() simple tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
