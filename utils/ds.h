@@ -581,7 +581,7 @@ static inline bool               dsSkipSpace(DS *ds) {
     int c = dsgetc(ds);
     if (c == EOF)
         return false;
-    if (isspace(c))
+    if (isspace( (unsigned char) c))
         return true;
     dsungetc(c, ds);           // return back
     return false;
