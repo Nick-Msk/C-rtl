@@ -305,11 +305,25 @@ arrayOnlyCreate(size_t cnt, ArrayType typ, value64_type vt) {
     return arrayCreate(cnt, ARRAY_FILLTYPE_SAFE_EMPTY, typ, vt);
 }
 
+/**
+ * @brief Creates an Array without any initial filling pattern (initialized to ZERO).
+ * 
+ * @param cnt      Number of elements to allocate.
+ * @param data_type The primitive data type to be stored.
+ * @param v64_type The specific value64 type (only applicable if data_type is ARRAY_V64).
+ * 
+ * @return Array* A pointer to the newly allocated Array, or NULL on error.
+ */
+static inline Array *
+arrayOnlyCreateZero(size_t cnt, ArrayType typ, value64_type vt) {
+    return arrayCreate(cnt, ARRAY_FILLTYPE_ZERO, typ, vt);
+}
+
 static inline Array *
 arrayCreateFromTextparam(size_t cnt, const char *restrict typ, const char *restrict v64typ) {
     ArrayType       atype = arrayTypeFromName(typ);
     value64_type    vt = value64_gettype(v64typ);
-    Array *parr = arrayOnlyCreate(cnt, atype, vt);
+    Array *parr = arrayOnlyCreateZero(cnt, atype, vt);
     if (!parr)
         return userraise(parr, ERR_UNSUPPORTED_TYPE, 
             "Unsupported type '%s', vtype '%s'", typ, v64typ);
