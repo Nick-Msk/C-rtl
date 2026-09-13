@@ -1158,6 +1158,156 @@ tf_strisempty(const char *name)
     return TEST_PASSED;
 }
 
+// =====================================================================
+// countstrings — count NUL-terminated array of C-strings
+// =====================================================================
+
+static TestStatus
+tf8_countstrings(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. обычный массив */
+    test_sub("subtest %d: plain 3 strings", ++subnum);
+    {
+        const char *arr[] = { "alpha", "beta", "gamma", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 3, "expected 3, got %d", n);
+    }
+
+    /* 2. один элемент */
+    test_sub("subtest %d: single string", ++subnum);
+    {
+        const char *arr[] = { "only", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 1, "expected 1, got %d", n);
+    }
+
+    /* 3. пустой массив (сразу NULL) */
+    test_sub("subtest %d: empty array", ++subnum);
+    {
+        const char *arr[] = { NULL };
+        int n = countstrings(arr);
+        test_validate(n == 0, "expected 0, got %d", n);
+    }
+
+    /* 4. много элементов */
+    test_sub("subtest %d: many elements", ++subnum);
+    {
+        const char *arr[33];
+        for (int i = 0; i < 32; i++) arr[i] = "x";
+        arr[32] = NULL;
+        int n = countstrings(arr);
+        test_validate(n == 32, "expected 32, got %d", n);
+    }
+
+    /* 5. пустые строки внутри — они не NULL, считаются */
+    test_sub("subtest %d: empty strings count", ++subnum);
+    {
+        const char *arr[] = { "", "", "", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 3, "expected 3 (empty strings count), got %d", n);
+    }
+
+    /* 6. смесь пустых и непустых */
+    test_sub("subtest %d: mixed empty and non-empty", ++subnum);
+    {
+        const char *arr[] = { "a", "", "b", "", "c", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 5, "expected 5, got %d", n);
+    }
+
+    /* 7. строки с пробельными/спецсимволами */
+    test_sub("subtest %d: whitespace/special chars", ++subnum);
+    {
+        const char *arr[] = { " ", "\t", "\n", "  with space  ", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 4, "expected 4, got %d", n);
+    }
+
+    /* 8. первый элемент NULL — пустой массив */
+    test_sub("subtest %d: first element NULL", ++subnum);
+    {
+        const char *arr[] = { NULL, "unreachable", "also unreachable" };
+        int n = countstrings(arr);
+        test_validate(n == 0, "expected 0 (first is NULL), got %d", n);
+    }
+
+    /* 9. compound literal (inline usage как в макросах) */
+    test_sub("subtest %d: compound literal inline", ++subnum);
+    {
+        int n = countstrings((const char * const[]){ "a", "b", "c", NULL });
+        test_validate(n == 3, "expected 3 from compound literal, got %d", n);
+    }
+
+    /* 10. указатель на строку-литерал, не массив */
+    test_sub("subtest %d: via local pointer", ++subnum);
+    {
+        const char *arr[] = { "x", "y", NULL };
+        const char * const *p = arr;
+        int n = countstrings(p);
+        test_validate(n == 2, "expected 2, got %d", n);
+    }
+
+    /* 11. countstrings == strlen-like consistency */
+    test_sub("subtest %d: consistency with manual count", ++subnum);
+    {
+        const char *arr[] = { "one", "two", "three", "four", NULL };
+        int via_func = countstrings(arr);
+
+        int manual = 0;
+        while (arr[manual]) manual++;
+
+        test_validate(via_func == manual,
+                      "func=%d manual=%d", via_func, manual);
+    }
+
+    /* 12. повторные вызовы на одном массиве — функция чистая */
+    test_sub("subtest %d: idempotent (no state)", ++subnum);
+    {
+        const char *arr[] = { "a", "b", NULL };
+        int n1 = countstrings(arr);
+        int n2 = countstrings(arr);
+        int n3 = countstrings(arr);
+        test_validate(n1 == 2 && n1 == n2 && n2 == n3,
+                      "expected stable 2,2,2 got %d,%d,%d", n1, n2, n3);
+    }
+
+    /* 13. длинные строки (значения неважны, важен факт ненулевого указателя) */
+    test_sub("subtest %d: long strings", ++subnum);
+    {
+        char big1[512], big2[512];
+        memset(big1, 'a', 511); big1[511] = '\0';
+        memset(big2, 'b', 511); big2[511] = '\0';
+
+        const char *arr[] = { big1, big2, NULL };
+        int n = countstrings(arr);
+        test_validate(n == 2, "expected 2, got %d", n);
+    }
+
+    /* 14. указатели на разные буферы одного содержимого — считаются как отдельные */
+    test_sub("subtest %d: same content different buffers", ++subnum);
+    {
+        char b1[] = "dup";
+        char b2[] = "dup";
+        const char *arr[] = { b1, b2, "dup", NULL };
+        int n = countstrings(arr);
+        test_validate(n == 3, "expected 3 (each pointer counts), got %d", n);
+    }
+
+    /* 15. результат типа int, возврат t - p — проверяем знак (>= 0) */
+    test_sub("subtest %d: non-negative result", ++subnum);
+    {
+        const char *arr[] = { NULL };
+        int n = countstrings(arr);
+        test_validate(n >= 0, "result must be >= 0, got %d", n);
+        test_validate(n == 0, "empty must be 0, got %d", n);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /* int argc, const char *argv[] */ )
@@ -1171,7 +1321,8 @@ main( /* int argc, const char *argv[] */ )
         TESTADD(tf_comparators_ptr,  "Simple pointer compare_<type> test"),
         TESTADD(tf_round_up_2,       "round_up_2() simple test"),
         TESTADD(tf_calcnewsize,      "calcnewsize() simple test"),
-        TESTADD(tf_strisempty,       "strisempty() simple test")
+        TESTADD(tf_strisempty,       "strisempty() simple test"),
+        TESTADD(tf8_countstrings,    "countstrings() simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()
