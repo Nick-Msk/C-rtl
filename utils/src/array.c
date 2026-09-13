@@ -920,7 +920,7 @@ Array *
 arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
-     Array *arr = arrayOnlyCreate(cnt, ARRAY_CHAR, vt);
+    Array *arr = arrayOnlyCreate(cnt, ARRAY_V64, vt);
     if (!arr)
         return userraise(NULL, ERR_UNABLE_ALLOCATE, 
             "Unable to allocated V64Array %zu with %d/%s", cnt, vt, value64_typename(vt));
@@ -5833,6 +5833,191 @@ tf36_array_fill_char(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// =====================================================================
+// array.c — tests for arrayFillArrV64move (VALUE64_FS focus)
+// =====================================================================
+
+static TestStatus
+tf37_array_fill_v64move(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. VALUE64_FS — базовый случай */
+    test_sub("subtest %d: VALUE64_FS basic", ++subnum);
+    {
+        value64 src[3];
+        src[0] = value64_createfs_asstr("alpha");
+        src[1] = value64_createfs_asstr("beta");
+        src[2] = value64_createfs_asstr("gamma");
+
+        Array *a = arrayFillArrV64move(src, VALUE64_FS, 3);
+        if (!a) {
+            value64_free(&src[0], VALUE64_FS);
+            value64_free(&src[1], VALUE64_FS);
+            value64_free(&src[2], VALUE64_FS);
+            test_validate(false, "create failed");
+        } else {
+            test_validatefree(arrayIsV64(a), arrayFree(a),
+                              "array type must be ARRAY_V64, got %s (%d)",
+                              arrayGetTypeName(a), arrayGettype(a));
+            test_validatefree(a->len == 3, arrayFree(a),
+                              "len=%zu want 3", a->len);
+            test_validatefree(a->v64type == VALUE64_FS, arrayFree(a),
+                              "v64type=%d want VALUE64_FS=%d",
+                              (int) a->v64type, (int) VALUE64_FS);
+
+            test_validatefree(value64_fs_compstr(a->v64[0], "alpha") == 0, arrayFree(a), "v64[0]");
+            test_validatefree(value64_fs_compstr(a->v64[1], "beta") == 0,  arrayFree(a), "v64[1]");
+            test_validatefree(value64_fs_compstr(a->v64[2], "gamma") == 0, arrayFree(a), "v64[2]");
+
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 2. VALUE64_FS — пустая строка */
+    test_sub("subtest %d: VALUE64_FS empty string", ++subnum);
+    {
+        value64 src[2];
+        src[0] = value64_createfs_asstr("");
+        src[1] = value64_createfs_asstr("nonempty");
+
+        Array *a = arrayFillArrV64move(src, VALUE64_FS, 2);
+        if (!a) {
+            value64_free(&src[0], VALUE64_FS);
+            value64_free(&src[1], VALUE64_FS);
+            test_validate(false, "create failed");
+        } else {
+            test_validatefree(arrayIsV64(a) && a->len == 2, arrayFree(a),
+                              "type/len mismatch");
+            test_validatefree(value64_fs_compstr(a->v64[0], "") == 0,         arrayFree(a), "empty fs lost");
+            test_validatefree(value64_fs_compstr(a->v64[1], "nonempty") == 0, arrayFree(a), "nonempty mismatch");
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 3. VALUE64_FS — пробельные/спецсимволы */
+    test_sub("subtest %d: VALUE64_FS special chars", ++subnum);
+    {
+        value64 src[3];
+        src[0] = value64_createfs_asstr("with space");
+        src[1] = value64_createfs_asstr("tab\there");
+        src[2] = value64_createfs_asstr("new\nline");
+
+        Array *a = arrayFillArrV64move(src, VALUE64_FS, 3);
+        if (!a) {
+            value64_free(&src[0], VALUE64_FS);
+            value64_free(&src[1], VALUE64_FS);
+            value64_free(&src[2], VALUE64_FS);
+            test_validate(false, "create failed");
+        } else {
+            test_validatefree(value64_fs_compstr(a->v64[0], "with space") == 0, arrayFree(a), "v0");
+            test_validatefree(value64_fs_compstr(a->v64[1], "tab\there") == 0,  arrayFree(a), "v1");
+            test_validatefree(value64_fs_compstr(a->v64[2], "new\nline") == 0,  arrayFree(a), "v2");
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 4. cnt == 0 */
+    test_sub("subtest %d: cnt == 0", ++subnum);
+    {
+        value64 dummy = value64_createfs_asstr("x");
+        Array *a = arrayFillArrV64move(&dummy, VALUE64_FS, 0);
+
+        test_validatefree(a != NULL && a->len == 0 && arrayIsV64(a),
+                          (a ? arrayFree(a) : (void) 0),
+                          "empty v64 create failed");
+
+        arrayFree(a);
+        value64_free(&dummy, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 5. NULL source */
+    test_sub("subtest %d: NULL source raises", ++subnum);
+    {
+        if (!try()) {
+            arrayFillArrV64move(NULL, VALUE64_FS, 3);
+            test_validate(false, "must raise for NULL source");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 6. v64type прокидывается в массив */
+    test_sub("subtest %d: v64type stored in array", ++subnum);
+    {
+        value64 src[1];
+        src[0] = value64_createfs_asstr("x");
+
+        Array *a = arrayFillArrV64move(src, VALUE64_FS, 1);
+        if (!a) {
+            value64_free(&src[0], VALUE64_FS);
+            test_validate(false, "create failed");
+        } else {
+            test_validatefree(a->v64type == VALUE64_FS, arrayFree(a),
+                              "v64type=%d want VALUE64_FS", (int) a->v64type);
+            test_validatefree(arrayGetV64mapType(a) == VALUE64_FS, arrayFree(a),
+                              "arrayGetV64mapType=%d", (int) arrayGetV64mapType(a));
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 7. VALUE64_INT — sanity */
+    test_sub("subtest %d: VALUE64_INT sanity", ++subnum);
+    {
+        value64 src[3];
+        src[0] = value64_createint(10);
+        src[1] = value64_createint(-20);
+        src[2] = value64_createint(0);
+
+        Array *a = arrayFillArrV64move(src, VALUE64_INT, 3);
+        test_validatefree(a != NULL && arrayIsV64(a) && a->len == 3
+                          && a->v64type == VALUE64_INT,
+                          (a ? arrayFree(a) : (void) 0),
+                          "INT v64 create failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 8. 32 FS-элемента: move + free без утечек/double-free */
+    test_sub("subtest %d: many FS elements", ++subnum);
+    {
+        enum { N = 32 };
+        value64 src[N];
+        char    tmp[32];
+        for (int i = 0; i < N; i++) {
+            snprintf(tmp, sizeof(tmp), "elem_%02d", i);
+            src[i] = value64_createfs_asstr(tmp);
+        }
+
+        Array *a = arrayFillArrV64move(src, VALUE64_FS, N);
+        if (!a) {
+            for (int i = 0; i < N; i++) value64_free(&src[i], VALUE64_FS);
+            test_validate(false, "create failed");
+        } else {
+            test_validatefree(a->len == N, arrayFree(a), "len=%zu want %d", a->len, N);
+            for (int i = 0; i < N; i++) {
+                snprintf(tmp, sizeof(tmp), "elem_%02d", i);
+                if (value64_fs_compstr(a->v64[i], tmp) != 0) {
+                    test_validatefree(false, arrayFree(a),
+                                      "v64[%d] mismatch (want '%s')", i, tmp);
+                    break;
+                }
+            }
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -5877,6 +6062,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf34_array_fill_long,                   "arrayFillArrLong() simple test")
       , TESTADD(tf35_array_fill_double,                 "arrayFillArrDouble() simple test")
       , TESTADD(tf36_array_fill_char,                   "arrayFillArrChar() simple test")
+      , TESTADD(tf37_array_fill_v64move,                "arrayFillArrV64move() for fs simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()
