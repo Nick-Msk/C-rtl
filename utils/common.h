@@ -34,6 +34,43 @@ typedef int(*Comparator)(const void *, const void *);
 //#define 			COUNT(arr) (int)(sizeof arr/sizeof(typeof(*arr)) )
 #define             COUNT(arr) (int)(sizeof(arr) / sizeof((arr)[0]))
 
+/**
+ * @brief Count the number of non-NULL pointers in a NULL-terminated
+ *        array of C-strings.
+ *
+ * Iterates from @p p until the first NULL pointer is encountered and
+ * returns the number of elements seen before it. The contents of the
+ * individual strings are not inspected: an empty string @c "" is a
+ * valid element and is counted; only a NULL pointer terminates the
+ * scan.
+ *
+ * @param[in] p  Pointer to a NULL-terminated array of @c const @c char*.
+ *               Must not be NULL, and must be terminated by a NULL
+ *               pointer. Behavior is undefined if the array is not
+ *               terminated.
+ *
+ * @return Number of elements before the terminating NULL, cast to
+ *         @c int. Returns @c 0 when @c p points directly at a NULL
+ *         entry.
+ *
+ * @par Example
+ * @code
+ *   const char *names[] = { "alpha", "beta", "", "gamma", NULL };
+ *   int n = countstrings(names);   // n == 4 (empty string is counted)
+ *
+ *   int m = countstrings((const char * const[]){ NULL });  // m == 0
+ * @endcode
+ *
+ * @note The return type is @c int, while the internal pointer
+ *       difference is @c ptrdiff_t. For arrays larger than @c INT_MAX
+ *       elements the result is truncated. In practice this limit is
+ *       never reached for the intended use (config lists, argv-like
+ *       arrays, test fixtures). If a larger range is needed, change
+ *       the return type to @c ptrdiff_t or @c size_t.
+ *
+ * @warning Passing @c NULL as @p p is undefined behavior. The function
+ *          does not validate its argument.
+ */
 static inline int               countstrings(const char * const *p){
     const char * const *t = p;
     while (*t)
