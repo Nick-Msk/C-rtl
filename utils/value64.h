@@ -212,7 +212,7 @@ extern value64_PComparator                 value64_getPRevComparator(value64_typ
  */
 extern value64_Comparator                  value64_getRevComparator(value64_type typ);
 
-extern value64                      value64_convert_str_to_fs(value64 v);
+extern value64                             value64_convert_str_to_fs(value64 v);
 
 /**
  * @name Initialization Macros
@@ -819,6 +819,8 @@ extern int                          value64_dbl_comp(value64 v1, value64 v2);
 extern int                          value64_ptr_comp(value64 v1, value64 v2);
 // memory alloc types
 extern int                          value64_fs_comp(value64 v1, value64 v2);
+// compare fs vs provided c-str
+extern int                          value64_fs_compstr(value64 v1, const char *str);
 extern int                          value64_str_comp(value64 v1, value64 v2);
 /** @} */
 

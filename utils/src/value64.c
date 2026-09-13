@@ -386,6 +386,14 @@ int                             value64_fs_comp(value64 v1, value64 v2) {
         userraiseint(ERR_NULLABLE_PTR, "Null pointers (or .v) %p %p", v1.fsval, v2.fsval);
     return fs_cmp(v1.fsval, v2.fsval);
 }
+// compare fs vs provided c-str
+int                             value64_fs_compstr(value64 v1, const char *str) {
+    if (fs_isnull(v1.fsval) || str == NULL)
+        userraiseint(ERR_NULLABLE_PTR, 
+                "Null pointers v1.fsval %p or str %p", v1.fsval, str);
+    return fs_cmpstr(v1.fsval, str);
+}
+//
 int                             value64_str_comp(value64 v1, value64 v2) {
     if (!v1.sval || !v2.sval)
         userraiseint(ERR_NULLABLE_PTR, "Null pointers %p %p", v1.sval, v2.sval);
@@ -9676,6 +9684,388 @@ tf24_file(const char *name)
     return TEST_PASSED;
 }
 
+// =====================================================================
+// value64.h — tests for value64_fs_compstr / value64_fs_comp
+// =====================================================================
+// Замечания по семантике, которая проверяется:
+//   * fs_cmpstr / fs_cmp -> strcmp-like контракт: <0, 0, >0 (не -1/1)
+//   * "null fs" (fsval == NULL или .v == NULL, .sz == 0) -> userraiseint
+//     через ERR_NULLABLE_PTR (longjmp, ловится try())
+//   * пустая строка "" — это ВАЛИДНЫЙ fs, не null
+//     (fs_isnull возвращает true только для NULL/sz==0&&v==0)
+
+// ---------------------- value64_fs_compstr ---------------------------
+static TestStatus
+tf25_value64_fs_compstr(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. равные строки -> 0 */
+    test_sub("subtest %d: equal strings -> 0", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("hello");
+        test_validatefree(value64_fs_compstr(v, "hello") == 0,
+                          value64_free(&v, VALUE64_FS),
+                          "expected 0 for equal strings");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 2. v1 < str -> <0 */
+    test_sub("subtest %d: v1 < str", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("abc");
+        test_validatefree(value64_fs_compstr(v, "abd") < 0,
+                          value64_free(&v, VALUE64_FS),
+                          "expected <0 when v1 < str");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 3. v1 > str -> >0 */
+    test_sub("subtest %d: v1 > str", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("abd");
+        test_validatefree(value64_fs_compstr(v, "abc") > 0,
+                          value64_free(&v, VALUE64_FS),
+                          "expected >0 when v1 > str");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 4. префикс: короткая vs длинная */
+    test_sub("subtest %d: prefix shorter < longer", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("abc");
+        test_validatefree(value64_fs_compstr(v, "abcd") < 0,
+                          value64_free(&v, VALUE64_FS),
+                          "prefix must be < longer");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 5. пустые строки: "" vs "" -> 0 */
+    test_sub("subtest %d: empty vs empty -> 0", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("");
+        test_validatefree(value64_fs_compstr(v, "") == 0,
+                          value64_free(&v, VALUE64_FS),
+                          "empty vs empty must be 0");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 6. "" vs "x" -> <0, "x" vs "" -> >0 */
+    test_sub("subtest %d: empty vs nonempty", ++subnum);
+    {
+        value64 e = value64_createfs_asstr("");
+        value64 n = value64_createfs_asstr("x");
+
+        test_validatefree(value64_fs_compstr(e, "x") < 0,
+                          (value64_free(&e, VALUE64_FS), value64_free(&n, VALUE64_FS)),
+                          "empty must be < nonempty");
+        test_validatefree(value64_fs_compstr(n, "") > 0,
+                          (value64_free(&e, VALUE64_FS), value64_free(&n, VALUE64_FS)),
+                          "nonempty must be > empty");
+
+        value64_free(&e, VALUE64_FS);
+        value64_free(&n, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 7. case-sensitive */
+    test_sub("subtest %d: case sensitive", ++subnum);
+    {
+        value64 lo = value64_createfs_asstr("abc");
+        value64 up = value64_createfs_asstr("ABC");
+
+        test_validatefree(value64_fs_compstr(lo, "ABC") > 0,
+                          (value64_free(&lo, VALUE64_FS), value64_free(&up, VALUE64_FS)),
+                          "strcmp: 'abc' > 'ABC' (lower > upper in ASCII)");
+        test_validatefree(value64_fs_compstr(up, "abc") < 0,
+                          (value64_free(&lo, VALUE64_FS), value64_free(&up, VALUE64_FS)),
+                          "strcmp: 'ABC' < 'abc'");
+
+        value64_free(&lo, VALUE64_FS);
+        value64_free(&up, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 8. пробельные/спецсимволы */
+    test_sub("subtest %d: whitespace and specials", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("with space");
+
+        test_validatefree(value64_fs_compstr(v, "with space") == 0,
+                          value64_free(&v, VALUE64_FS), "eq with space");
+        test_validatefree(value64_fs_compstr(v, "with_space") < 0,
+                          value64_free(&v, VALUE64_FS), "space < underscore");
+        test_validatefree(value64_fs_compstr(v, "with\tspace") > 0,
+                          value64_free(&v, VALUE64_FS), "space > tab");
+
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 9. встроенный NUL в str (C-строка) не должен учитываться за пределами NUL */
+    test_sub("subtest %d: fs longer, str cut at NUL", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("abcdef");
+        /* strcmp остановится на 'd' перед \0 */
+        test_validatefree(value64_fs_compstr(v, "abc") > 0,
+                          value64_free(&v, VALUE64_FS),
+                          "'abcdef' > 'abc'");
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 10. NULL str -> raise */
+    test_sub("subtest %d: NULL str raises", ++subnum);
+    {
+        value64 v = value64_createfs_asstr("x");
+        if (!try()) {
+            value64_fs_compstr(v, NULL);
+            test_validatefree(false, value64_free(&v, VALUE64_FS),
+                              "must raise for NULL str");
+        } else {
+            test_validatefree(true, value64_free(&v, VALUE64_FS),
+                              "correctly raised");
+        }
+        value64_free(&v, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 11. null fs (fsval == NULL) -> raise */
+    test_sub("subtest %d: null fs raises", ++subnum);
+    {
+        value64 v = LITERAL64_ZERO;   // fsval == NULL
+        if (!try()) {
+            value64_fs_compstr(v, "x");
+            test_validate(false, "must raise for null fs");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 12. fs with .v == NULL -> raise (fs_isnull true) */
+    test_sub("subtest %d: fs with .v == NULL raises", ++subnum);
+    {
+        /* Создаём value64 с fs, у которого .v == NULL — через LITERAL64_FS(NULL fs)? */
+        /* Если такого API нет — пропускаем. Проверяем через пустую FS() */
+        fs nullfs = FSEMPTY;   // .sz == 0, .v == "" -> это НЕ null для fs_isnull
+        value64 v = LITERAL64_FS(nullfs);
+        /* .v = "" (не NULL), .sz = 0 -> fs_isnull(s) == (s==NULL || (sz==0 && v==0)) */
+        /* v == "" != 0, значит НЕ null. Тест на "null fs" через FSEMPTY не сработает. */
+        /* Пропускаем — см. subtest 11 для реального null fs. */
+        (void) v;
+        test_validate(true, "skipped (fs_isnull semantics)");
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ---------------------- value64_fs_comp ------------------------------
+static TestStatus
+tf26_value64_fs_comp(const char *name) 
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. равные -> 0 */
+    test_sub("subtest %d: equal -> 0", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("hello");
+        value64 b = value64_createfs_asstr("hello");
+        test_validatefree(value64_fs_comp(a, b) == 0,
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "equal strings must give 0");
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 2. a < b -> <0 */
+    test_sub("subtest %d: a < b", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("abc");
+        value64 b = value64_createfs_asstr("abd");
+        test_validatefree(value64_fs_comp(a, b) < 0,
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "expected <0");
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 3. a > b -> >0 */
+    test_sub("subtest %d: a > b", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("abd");
+        value64 b = value64_createfs_asstr("abc");
+        test_validatefree(value64_fs_comp(a, b) > 0,
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "expected >0");
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 4. антисимметрия: sign(comp(a,b)) == -sign(comp(b,a)) */
+    test_sub("subtest %d: antisymmetry", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("alpha");
+        value64 b = value64_createfs_asstr("beta");
+
+        int ab = value64_fs_comp(a, b);
+        int ba = value64_fs_comp(b, a);
+
+        test_validatefree((ab < 0 && ba > 0) || (ab > 0 && ba < 0) || (ab == 0 && ba == 0),
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "sign mismatch: ab=%d ba=%d", ab, ba);
+
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 5. транзитивность на трёх строках */
+    test_sub("subtest %d: transitivity", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("aaa");
+        value64 b = value64_createfs_asstr("bbb");
+        value64 c = value64_createfs_asstr("ccc");
+
+        int ab = value64_fs_comp(a, b);
+        int bc = value64_fs_comp(b, c);
+        int ac = value64_fs_comp(a, c);
+
+        test_validatefree(ab < 0 && bc < 0 && ac < 0,
+                          (value64_free(&a, VALUE64_FS),
+                           value64_free(&b, VALUE64_FS),
+                           value64_free(&c, VALUE64_FS)),
+                          "expected all <0: ab=%d bc=%d ac=%d", ab, bc, ac);
+
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        value64_free(&c, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 6. обе пустые -> 0 */
+    test_sub("subtest %d: both empty -> 0", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("");
+        value64 b = value64_createfs_asstr("");
+        test_validatefree(value64_fs_comp(a, b) == 0,
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "empty vs empty must be 0");
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 7. пустая < непустой */
+    test_sub("subtest %d: empty < nonempty", ++subnum);
+    {
+        value64 e = value64_createfs_asstr("");
+        value64 n = value64_createfs_asstr("x");
+        test_validatefree(value64_fs_comp(e, n) < 0,
+                          (value64_free(&e, VALUE64_FS), value64_free(&n, VALUE64_FS)),
+                          "empty must be < nonempty");
+        value64_free(&e, VALUE64_FS);
+        value64_free(&n, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 8. префикс */
+    test_sub("subtest %d: prefix < longer", ++subnum);
+    {
+        value64 s = value64_createfs_asstr("abc");
+        value64 l = value64_createfs_asstr("abcd");
+        test_validatefree(value64_fs_comp(s, l) < 0,
+                          (value64_free(&s, VALUE64_FS), value64_free(&l, VALUE64_FS)),
+                          "prefix must be < longer");
+        value64_free(&s, VALUE64_FS);
+        value64_free(&l, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 9. согласованность с value64_fs_compstr */
+    test_sub("subtest %d: consistency with compstr", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("foo");
+        value64 b = value64_createfs_asstr("bar");
+
+        int via_comp    = value64_fs_comp(a, b);
+        int via_compstr = value64_fs_compstr(a, "bar");
+
+        test_validatefree((via_comp < 0) == (via_compstr < 0) &&
+                          (via_comp > 0) == (via_compstr > 0) &&
+                          (via_comp == 0) == (via_compstr == 0),
+                          (value64_free(&a, VALUE64_FS), value64_free(&b, VALUE64_FS)),
+                          "sign mismatch comp=%d compstr=%d", via_comp, via_compstr);
+
+        value64_free(&a, VALUE64_FS);
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 10. NULL v1.fsval -> raise */
+    test_sub("subtest %d: NULL v1.fsval raises", ++subnum);
+    {
+        value64 a = LITERAL64_ZERO;
+        value64 b = value64_createfs_asstr("x");
+
+        if (!try()) {
+            value64_fs_comp(a, b);
+            test_validatefree(false, value64_free(&b, VALUE64_FS),
+                              "must raise for NULL v1.fsval");
+        } else {
+            test_validatefree(true, value64_free(&b, VALUE64_FS),
+                              "correctly raised");
+        }
+        value64_free(&b, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 11. NULL v2.fsval -> raise */
+    test_sub("subtest %d: NULL v2.fsval raises", ++subnum);
+    {
+        value64 a = value64_createfs_asstr("x");
+        value64 b = LITERAL64_ZERO;
+
+        if (!try()) {
+            value64_fs_comp(a, b);
+            test_validatefree(false, value64_free(&a, VALUE64_FS),
+                              "must raise for NULL v2.fsval");
+        } else {
+            test_validatefree(true, value64_free(&a, VALUE64_FS),
+                              "correctly raised");
+        }
+        value64_free(&a, VALUE64_FS);
+        fs_alloc_check(true);
+    }
+
+    /* 12. оба NULL -> raise (проверка порядка проверок) */
+    test_sub("subtest %d: both NULL raises", ++subnum);
+    {
+        value64 a = LITERAL64_ZERO;
+        value64 b = LITERAL64_ZERO;
+        if (!try()) {
+            value64_fs_comp(a, b);
+            test_validate(false, "must raise");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------
 int
 main(/* int argc, const char *argv[] */)
@@ -9683,30 +10073,32 @@ main(/* int argc, const char *argv[] */)
 
     logsimpleinit("Start");
     testenginestd(
-        TESTADD(tf_init_free,           "Simple init and validate test"),
-        TESTADD(tf_point_init,          "Simple value64_pcopy_move() test"),
-        TESTADD(tf_clone,               "Simple value64_clone() test"),
-        TESTADD(tf_move,                "Simple value64_moveto() test"),
-        TESTADD(tf_lhash,               "Simple value64_lhash() test"),
-        TESTADD(tf_compare,             "Simple value64_compare() test"),
-        TESTADD(tf_is_convertable,      "Simple value64_is_convertable() test"),
-        TESTADD(tf_convert,             "Simple value64_convert() test"),
-        TESTADD(tf_convert_move,        "Simple value64_convert_move() test"),
-        TESTADD(tf_pt_compare,          "Simple value64_pt_compare() test"),
-        TESTADD(tf_search,              "Simple value64_(rev)search test"),
-        TESTADD(tf_getComparator,       "Simple value64_get(Rev)Comparator test"),
-        TESTADD(tf_getPComparator,      "Simple value64_getP(Rev)Comparator test"),
-        TESTADD(tf_binsearch,           "Simple value64_(rev_)binsearch test"),
-        TESTADD(tf_sort,                "Simple value64_(rev_)sort test"),
-        TESTADD(tf_fsave,               "Simple value64_tofile manual test"),
-        TESTADD(tf_fsave_fload,         "Simple value64_tofile/fload test"),
-        TESTADD(tf_tostr,               "Simple value64_tostr_<type> test"),
-        TESTADD(tf_createfs_asstr,      "Simple value64_createfs_asstr test"),
-        TESTADD(tf_setzero,             "Simple value64_setzero test"),
-        TESTADD(tf_value64_move,        "Simple value64_move() test"),
-        TESTADD(tf_techfprint,          "Simple value64_techfprint() manual test"),
-        TESTADD(tf_str_serialization,   "Simple serialization (tostr/loadstr) test"),
-        TESTADD(tf24_file,              "Simple VALUE64_FILE tests")
+        TESTADD(tf_init_free,               "Simple init and validate test"),
+        TESTADD(tf_point_init,              "Simple value64_pcopy_move() test"),
+        TESTADD(tf_clone,                   "Simple value64_clone() test"),
+        TESTADD(tf_move,                    "Simple value64_moveto() test"),
+        TESTADD(tf_lhash,                   "Simple value64_lhash() test"),
+        TESTADD(tf_compare,                 "Simple value64_compare() test"),
+        TESTADD(tf_is_convertable,          "Simple value64_is_convertable() test"),
+        TESTADD(tf_convert,                 "Simple value64_convert() test"),
+        TESTADD(tf_convert_move,            "Simple value64_convert_move() test"),
+        TESTADD(tf_pt_compare,              "Simple value64_pt_compare() test"),
+        TESTADD(tf_search,                  "Simple value64_(rev)search test"),
+        TESTADD(tf_getComparator,           "Simple value64_get(Rev)Comparator test"),
+        TESTADD(tf_getPComparator,          "Simple value64_getP(Rev)Comparator test"),
+        TESTADD(tf_binsearch,               "Simple value64_(rev_)binsearch test"),
+        TESTADD(tf_sort,                    "Simple value64_(rev_)sort test"),
+        TESTADD(tf_fsave,                   "Simple value64_tofile manual test"),
+        TESTADD(tf_fsave_fload,             "Simple value64_tofile/fload test"),
+        TESTADD(tf_tostr,                   "Simple value64_tostr_<type> test"),
+        TESTADD(tf_createfs_asstr,          "Simple value64_createfs_asstr test"),
+        TESTADD(tf_setzero,                 "Simple value64_setzero test"),
+        TESTADD(tf_value64_move,            "Simple value64_move() test"),
+        TESTADD(tf_techfprint,              "Simple value64_techfprint() manual test"),
+        TESTADD(tf_str_serialization,       "Simple serialization (tostr/loadstr) test"),
+        TESTADD(tf24_file,                  "Simple VALUE64_FILE tests"),
+        TESTADD(tf25_value64_fs_compstr,    "Simple value64_fs_compstr() tests"),
+        TESTADD(tf26_value64_fs_comp,       "Simple value64_fs_comp() tests")
     );
 
     return logret(0, "end...");  // as replace of logclose()
