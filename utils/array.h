@@ -644,13 +644,17 @@ extern long                      arrayFillAll(Array *restrict parr, ArrayFillTyp
  */
 extern long                       arrayFillRange(Array *parr, ArrayFillType typ, size_t from, size_t to);
 
-// simple loader per type
-extern Array                     *arrayFillArrInt(const int *source, size_t cnt);  
-extern Array                     *arrayFillArrLong(const long *source, size_t cnt); 
-extern Array                     *arrayFillArrDouble(const double *source, size_t cnt); 
-extern Array                     *arrayFillArrChar(const char *source, size_t cnt);       
+// simple constructor-loader per type
+extern Array                     *arrayCreateFromInt(const int *source, size_t cnt);  
+extern Array                     *arrayCreateFromLong(const long *source, size_t cnt); 
+extern Array                     *arrayCreateFromDouble(const double *source, size_t cnt); 
+extern Array                     *arrayCreateFromChar(const char *source, size_t cnt);       
 // container! move semantic.          
-extern Array                     *arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt);   
+extern Array                     *arrayCreateFromV64(value64 *source, value64_type vt, size_t cnt);   
+// simplified v64:fs via c-str, copy
+extern Array                     *arrayCreateFromV64fsasstr(const char *source, size_t cnt);  
+// simplified v64:str via c-str, copy
+extern Array                     *arrayCreateFromV64str(const char *source, size_t cnt);
 
 /**
  * @file array.h (section: Array construction macros for tests / inline use)
@@ -660,8 +664,8 @@ extern Array                     *arrayFillArrV64move(value64 *source, value64_t
  *
  * Intended for tests, fixtures, and inline comparisons. For runtime-sized
  * arrays or data coming from variables, prefer the corresponding functions
- * (@ref arrayFillArrInt, @ref arrayFillArrLong, @ref arrayFillArrDouble,
- * @ref arrayFillArrChar) directly.
+ * (@ref arrayCreateFromInt, @ref arrayCreateFromLong, @ref arrayCreateFromDouble,
+ * @ref arrayCreateFromChar) directly.
  *
  * @par Semantics
  * Each macro builds a compound literal in the current block, then calls the
@@ -710,26 +714,26 @@ extern Array                     *arrayFillArrV64move(value64 *source, value64_t
 
 /** @brief Build an @c ARRAY_INT from a variadic list of @c int values. */
 #define IARRAY_FILL(...) \
-    arrayFillArrInt(   (const int[]){ __VA_ARGS__ },    COUNT(((const int[]){ __VA_ARGS__ })))
+    arrayCreateFromInt(   (const int[]){ __VA_ARGS__ },    COUNT(((const int[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_LONG from a variadic list of @c long values. */
 #define LARRAY_FILL(...) \
-    arrayFillArrLong(  (const long[]){ __VA_ARGS__ },   COUNT(((const long[]){ __VA_ARGS__ })))
+    arrayCreateFromLong(  (const long[]){ __VA_ARGS__ },   COUNT(((const long[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_DOUBLE from a variadic list of @c double values. */
 #define DARRAY_FILL(...) \
-    arrayFillArrDouble((const double[]){ __VA_ARGS__ }, COUNT(((const double[]){ __VA_ARGS__ })))
+    arrayCreateFromDouble((const double[]){ __VA_ARGS__ }, COUNT(((const double[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_CHAR from a variadic list of @c char values. */
 #define CARRAY_FILL(...) \
-    arrayFillArrChar(  (const char[]){ __VA_ARGS__ },   COUNT(((const char[]){ __VA_ARGS__ })))
+    arrayCreateFromChar(  (const char[]){ __VA_ARGS__ },   COUNT(((const char[]){ __VA_ARGS__ })))
 
 /**
  * @brief Build an @c ARRAY_CHAR from a C string, WITHOUT the trailing NUL.
  * @param str A string literal or NUL-terminated @c const char*.
  */
 #define CARRAY_FILLSTR(str) \
-    arrayFillArrChar((const char[]){ str }, strlen(str))
+    arrayCreateFromChar((const char[]){ str }, strlen(str))
 
 /**
  * @brief Build an @c ARRAY_CHAR from a string literal, INCLUDING the
@@ -737,7 +741,7 @@ extern Array                     *arrayFillArrV64move(value64 *source, value64_t
  * @param str A string literal.
  */
 #define CARRAY_FILLSTR_NUL(str) \
-    arrayFillArrChar((const char[]){ str }, sizeof(str))
+    arrayCreateFromChar((const char[]){ str }, sizeof(str))
 
 /** @} */  // end of array_fill_macros group
 

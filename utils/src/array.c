@@ -869,7 +869,7 @@ arrayFillRange(Array *parr, ArrayFillType filltyp, size_t from, size_t to) {
 }
 
 Array *                
-arrayFillArrInt(const int *source, size_t cnt) {
+arrayCreateFromInt(const int *source, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
     Array *arr = arrayOnlyCreate(cnt, ARRAY_INT, VALUE64_UNKNOWN);
@@ -881,7 +881,7 @@ arrayFillArrInt(const int *source, size_t cnt) {
 }
 
 Array *                
-arrayFillArrLong(const long *source, size_t cnt) {
+arrayCreateFromLong(const long *source, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
     Array *arr = arrayOnlyCreate(cnt, ARRAY_LONG, VALUE64_UNKNOWN);
@@ -893,7 +893,7 @@ arrayFillArrLong(const long *source, size_t cnt) {
 }
 
 Array *                
-arrayFillArrDouble(const double *source, size_t cnt) {
+arrayCreateFromDouble(const double *source, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
     Array *arr = arrayOnlyCreate(cnt, ARRAY_DOUBLE, VALUE64_UNKNOWN);
@@ -905,7 +905,7 @@ arrayFillArrDouble(const double *source, size_t cnt) {
 }
 
 Array *                
-arrayFillArrChar(const char *source, size_t cnt) {
+arrayCreateFromChar(const char *source, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
     Array *arr = arrayOnlyCreate(cnt, ARRAY_CHAR, VALUE64_UNKNOWN);
@@ -917,7 +917,7 @@ arrayFillArrChar(const char *source, size_t cnt) {
 }
 
 Array *                    
-arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt) {
+arrayCreateFromV64(value64 *source, value64_type vt, size_t cnt) {
     if (source == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "source is null");
     Array *arr = arrayOnlyCreate(cnt, ARRAY_V64, vt);
@@ -928,6 +928,17 @@ arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt) {
         arr->v64[i] = value64_move(source + i, vt);
     return arr;
 }  
+
+// simplified v64:fs via c-str, copy
+Array *
+arrayCreateFromV64fsasstr(const char *source, size_t cnt) {
+    // TODO:
+}
+// simplified v64:str via c-str, copy
+Array *
+arrayCreateFromV64str(const char *source, size_t cnt) {
+    // TODO:
+}
 
 // -------------- ACCESS AND MODIFICATION --------------
 
@@ -5475,7 +5486,7 @@ tf32_array_safe_empty(const char *name)
 // array.c — tests for arrayFillArr* loaders
 // =====================================================================
 
-// ---------------------- TEST arrayFillArrInt -------------------------
+// ---------------------- TEST arrayCreateFromInt -------------------------
 static TestStatus
 tf33_array_fill_int(const char *name)
 {
@@ -5486,7 +5497,7 @@ tf33_array_fill_int(const char *name)
     test_sub("subtest %d: plain ints", ++subnum);
     {
         const int src[] = { 1, -2, 3, -4, 5 };
-        Array *a = arrayFillArrInt(src, COUNT(src));
+        Array *a = arrayCreateFromInt(src, COUNT(src));
 
         test_validatefree(a != NULL, (void) 0, "create failed");
         test_validatefree(a->len == COUNT(src), arrayFree(a),
@@ -5505,7 +5516,7 @@ tf33_array_fill_int(const char *name)
     test_sub("subtest %d: INT_MIN/INT_MAX/0", ++subnum);
     {
         const int src[] = { INT_MIN, INT_MAX, 0, -1, 1 };
-        Array *a = arrayFillArrInt(src, COUNT(src));
+        Array *a = arrayCreateFromInt(src, COUNT(src));
         test_validatefree(a != NULL, (void) 0, "create failed");
         for (size_t i = 0; i < COUNT(src); i++)
             test_validatefree(a->iv[i] == src[i], arrayFree(a),
@@ -5518,7 +5529,7 @@ tf33_array_fill_int(const char *name)
     test_sub("subtest %d: single element", ++subnum);
     {
         const int src[] = { 42 };
-        Array *a = arrayFillArrInt(src, 1);
+        Array *a = arrayCreateFromInt(src, 1);
         test_validatefree(a != NULL && a->len == 1 && a->iv[0] == 42,
                           (a ? arrayFree(a) : (void) 0),
                           "single element failed");
@@ -5530,7 +5541,7 @@ tf33_array_fill_int(const char *name)
     test_sub("subtest %d: empty", ++subnum);
     {
         const int src[] = { 0 };   // содержимое неважно, cnt=0
-        Array *a = arrayFillArrInt(src, 0);
+        Array *a = arrayCreateFromInt(src, 0);
         test_validatefree(a != NULL && a->len == 0,
                           (a ? arrayFree(a) : (void) 0),
                           "empty create failed");
@@ -5542,7 +5553,7 @@ tf33_array_fill_int(const char *name)
     test_sub("subtest %d: NULL source raises", ++subnum);
     {
         if (!try()) {
-            arrayFillArrInt(NULL, 5);
+            arrayCreateFromInt(NULL, 5);
             test_validate(false, "must raise for NULL source");
         } else {
             test_validate(true, "correctly raised");
@@ -5556,7 +5567,7 @@ tf33_array_fill_int(const char *name)
         int src[1000];
         for (size_t i = 0; i < 1000; i++) src[i] = (int) i * 3 - 500;
 
-        Array *a = arrayFillArrInt(src, 1000);
+        Array *a = arrayCreateFromInt(src, 1000);
         test_validatefree(a != NULL && a->len == 1000,
                           (a ? arrayFree(a) : (void) 0),
                           "large create failed, len=%zu", a ? a->len : 0);
@@ -5577,7 +5588,7 @@ tf33_array_fill_int(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ---------------------- TEST arrayFillArrLong ------------------------
+// ---------------------- TEST arrayCreateFromLong ------------------------
 static TestStatus
 tf34_array_fill_long(const char *name)
 {
@@ -5587,7 +5598,7 @@ tf34_array_fill_long(const char *name)
     test_sub("subtest %d: plain longs", ++subnum);
     {
         const long src[] = { 0L, -1L, 1234567890123L, -9876543210987L };
-        Array *a = arrayFillArrLong(src, COUNT(src));
+        Array *a = arrayCreateFromLong(src, COUNT(src));
         test_validatefree(a != NULL && arrayIslong(a),
                           (a ? arrayFree(a) : (void) 0),
                           "create failed or wrong type");
@@ -5600,7 +5611,7 @@ tf34_array_fill_long(const char *name)
     test_sub("subtest %d: LONG_MIN/LONG_MAX", ++subnum);
     {
         const long src[] = { LONG_MIN, LONG_MAX, 0L };
-        Array *a = arrayFillArrLong(src, COUNT(src));
+        Array *a = arrayCreateFromLong(src, COUNT(src));
         test_validatefree(a != NULL, (void) 0, "create failed");
         for (size_t i = 0; i < COUNT(src); i++)
             test_validatefree(a->lv[i] == src[i], arrayFree(a),
@@ -5611,7 +5622,7 @@ tf34_array_fill_long(const char *name)
     test_sub("subtest %d: single element", ++subnum);
     {
         const long src[] = { -777L };
-        Array *a = arrayFillArrLong(src, 1);
+        Array *a = arrayCreateFromLong(src, 1);
         test_validatefree(a != NULL && a->len == 1 && a->lv[0] == -777L,
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
@@ -5621,7 +5632,7 @@ tf34_array_fill_long(const char *name)
     test_sub("subtest %d: empty", ++subnum);
     {
         const long src[] = { 0L };
-        Array *a = arrayFillArrLong(src, 0);
+        Array *a = arrayCreateFromLong(src, 0);
         test_validatefree(a != NULL && a->len == 0,
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
@@ -5631,7 +5642,7 @@ tf34_array_fill_long(const char *name)
     test_sub("subtest %d: NULL source raises", ++subnum);
     {
         if (!try()) {
-            arrayFillArrLong(NULL, 3);
+            arrayCreateFromLong(NULL, 3);
             test_validate(false, "must raise");
         } else {
             test_validate(true, "raised");
@@ -5641,7 +5652,7 @@ tf34_array_fill_long(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ---------------------- TEST arrayFillArrDouble ----------------------
+// ---------------------- TEST arrayCreateFromDouble ----------------------
 static TestStatus
 tf35_array_fill_double(const char *name)
 {
@@ -5651,7 +5662,7 @@ tf35_array_fill_double(const char *name)
     test_sub("subtest %d: plain doubles", ++subnum);
     {
         const double src[] = { 0.0, -3.14, 1e100, -1e-100, 2.5 };
-        Array *a = arrayFillArrDouble(src, COUNT(src));
+        Array *a = arrayCreateFromDouble(src, COUNT(src));
         test_validatefree(a != NULL && arrayIsdouble(a),
                           (a ? arrayFree(a) : (void) 0),
                           "create failed or wrong type");
@@ -5670,7 +5681,7 @@ tf35_array_fill_double(const char *name)
             nextafter(0.0, 1.0),   // denormal
             -0.0,
         };
-        Array *a = arrayFillArrDouble(src, COUNT(src));
+        Array *a = arrayCreateFromDouble(src, COUNT(src));
         test_validatefree(a != NULL, (void) 0, "create failed");
 
         test_validatefree(a->dv[0] == src[0], arrayFree(a),
@@ -5690,7 +5701,7 @@ tf35_array_fill_double(const char *name)
     test_sub("subtest %d: +inf/-inf", ++subnum);
     {
         const double src[] = { (double) INFINITY, (double) -INFINITY };
-        Array *a = arrayFillArrDouble(src, COUNT(src));
+        Array *a = arrayCreateFromDouble(src, COUNT(src));
         test_validatefree(a != NULL, (void) 0, "create failed");
         test_validatefree(isinf(a->dv[0]) && a->dv[0] > 0, arrayFree(a), "+inf lost");
         test_validatefree(isinf(a->dv[1]) && a->dv[1] < 0, arrayFree(a), "-inf lost");
@@ -5700,7 +5711,7 @@ tf35_array_fill_double(const char *name)
     test_sub("subtest %d: single", ++subnum);
     {
         const double src[] = { 42.5 };
-        Array *a = arrayFillArrDouble(src, 1);
+        Array *a = arrayCreateFromDouble(src, 1);
         test_validatefree(a != NULL && a->len == 1 && a->dv[0] == 42.5,
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
@@ -5710,7 +5721,7 @@ tf35_array_fill_double(const char *name)
     test_sub("subtest %d: empty", ++subnum);
     {
         const double src[] = { 0.0 };
-        Array *a = arrayFillArrDouble(src, 0);
+        Array *a = arrayCreateFromDouble(src, 0);
         test_validatefree(a != NULL && a->len == 0,
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
@@ -5720,7 +5731,7 @@ tf35_array_fill_double(const char *name)
     test_sub("subtest %d: NULL source raises", ++subnum);
     {
         if (!try()) {
-            arrayFillArrDouble(NULL, 2);
+            arrayCreateFromDouble(NULL, 2);
             test_validate(false, "must raise");
         } else {
             test_validate(true, "raised");
@@ -5730,7 +5741,7 @@ tf35_array_fill_double(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
-// ---------------------- TEST arrayFillArrChar ------------------------
+// ---------------------- TEST arrayCreateFromChar ------------------------
 static TestStatus
 tf36_array_fill_char(const char *name)
 {
@@ -5741,7 +5752,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: printable chars", ++subnum);
     {
         const char src[] = "Hello, World!";
-        Array *a = arrayFillArrChar(src, strlen(src));
+        Array *a = arrayCreateFromChar(src, strlen(src));
         test_validatefree(a != NULL && arrayIschar(a),
                           (a ? arrayFree(a) : (void) 0),
                           "create failed or wrong type");
@@ -5758,7 +5769,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: whitespace chars", ++subnum);
     {
         const char src[] = { ' ', '\t', '\n', '\r', ' ', 'x', ' ', };
-        Array *a = arrayFillArrChar(src, COUNT(src));
+        Array *a = arrayCreateFromChar(src, COUNT(src));
         test_validatefree(a != NULL, (void) 0, "create failed");
         for (size_t i = 0; i < COUNT(src); i++)
             test_validatefree(a->cv[i] == src[i], arrayFree(a),
@@ -5771,7 +5782,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: embedded NUL", ++subnum);
     {
         const char src[] = { 'a', '\0', 'b', 'c', '\0', 'd' };
-        Array *a = arrayFillArrChar(src, COUNT(src));
+        Array *a = arrayCreateFromChar(src, COUNT(src));
         test_validatefree(a != NULL && a->len == COUNT(src),
                           (a ? arrayFree(a) : (void) 0),
                           "create failed, len=%zu", a ? a->len : 0);
@@ -5786,7 +5797,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: high byte 0xFF / 0x80", ++subnum);
     {
         const char src[] = { (char) 0xFF, (char) 0x80, (char) 0x7F, 0x00 };
-        Array *a = arrayFillArrChar(src, 3);   // без NUL-терминатора
+        Array *a = arrayCreateFromChar(src, 3);   // без NUL-терминатора
         test_validatefree(a != NULL, (void) 0, "create failed");
         test_validatefree((unsigned char) a->cv[0] == 0xFF, arrayFree(a),
                           "cv[0]=0x%02X want 0xFF", (unsigned char) a->cv[0]);
@@ -5801,7 +5812,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: single char", ++subnum);
     {
         const char src[] = { 'X' };
-        Array *a = arrayFillArrChar(src, 1);
+        Array *a = arrayCreateFromChar(src, 1);
         test_validatefree(a != NULL && a->len == 1 && a->cv[0] == 'X',
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
@@ -5812,7 +5823,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: empty", ++subnum);
     {
         const char src[] = { 'a' };
-        Array *a = arrayFillArrChar(src, 0);
+        Array *a = arrayCreateFromChar(src, 0);
         test_validatefree(a != NULL && a->len == 0,
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
@@ -5823,7 +5834,7 @@ tf36_array_fill_char(const char *name)
     test_sub("subtest %d: NULL source raises", ++subnum);
     {
         if (!try()) {
-            arrayFillArrChar(NULL, 5);
+            arrayCreateFromChar(NULL, 5);
             test_validate(false, "must raise");
         } else {
             test_validate(true, "raised");
@@ -5834,7 +5845,7 @@ tf36_array_fill_char(const char *name)
 }
 
 // =====================================================================
-// array.c — tests for arrayFillArrV64move (VALUE64_FS focus)
+// array.c — tests for arrayCreateFromV64 (VALUE64_FS focus)
 // =====================================================================
 
 static TestStatus
@@ -5851,7 +5862,7 @@ tf37_array_fill_v64move(const char *name)
         src[1] = value64_createfs_asstr("beta");
         src[2] = value64_createfs_asstr("gamma");
 
-        Array *a = arrayFillArrV64move(src, VALUE64_FS, 3);
+        Array *a = arrayCreateFromV64(src, VALUE64_FS, 3);
         if (!a) {
             value64_free(&src[0], VALUE64_FS);
             value64_free(&src[1], VALUE64_FS);
@@ -5883,7 +5894,7 @@ tf37_array_fill_v64move(const char *name)
         src[0] = value64_createfs_asstr("");
         src[1] = value64_createfs_asstr("nonempty");
 
-        Array *a = arrayFillArrV64move(src, VALUE64_FS, 2);
+        Array *a = arrayCreateFromV64(src, VALUE64_FS, 2);
         if (!a) {
             value64_free(&src[0], VALUE64_FS);
             value64_free(&src[1], VALUE64_FS);
@@ -5906,7 +5917,7 @@ tf37_array_fill_v64move(const char *name)
         src[1] = value64_createfs_asstr("tab\there");
         src[2] = value64_createfs_asstr("new\nline");
 
-        Array *a = arrayFillArrV64move(src, VALUE64_FS, 3);
+        Array *a = arrayCreateFromV64(src, VALUE64_FS, 3);
         if (!a) {
             value64_free(&src[0], VALUE64_FS);
             value64_free(&src[1], VALUE64_FS);
@@ -5925,7 +5936,7 @@ tf37_array_fill_v64move(const char *name)
     test_sub("subtest %d: cnt == 0", ++subnum);
     {
         value64 dummy = value64_createfs_asstr("x");
-        Array *a = arrayFillArrV64move(&dummy, VALUE64_FS, 0);
+        Array *a = arrayCreateFromV64(&dummy, VALUE64_FS, 0);
 
         test_validatefree(a != NULL && a->len == 0 && arrayIsV64(a),
                           (a ? arrayFree(a) : (void) 0),
@@ -5940,7 +5951,7 @@ tf37_array_fill_v64move(const char *name)
     test_sub("subtest %d: NULL source raises", ++subnum);
     {
         if (!try()) {
-            arrayFillArrV64move(NULL, VALUE64_FS, 3);
+            arrayCreateFromV64(NULL, VALUE64_FS, 3);
             test_validate(false, "must raise for NULL source");
         } else {
             test_validate(true, "correctly raised");
@@ -5954,7 +5965,7 @@ tf37_array_fill_v64move(const char *name)
         value64 src[1];
         src[0] = value64_createfs_asstr("x");
 
-        Array *a = arrayFillArrV64move(src, VALUE64_FS, 1);
+        Array *a = arrayCreateFromV64(src, VALUE64_FS, 1);
         if (!a) {
             value64_free(&src[0], VALUE64_FS);
             test_validate(false, "create failed");
@@ -5976,7 +5987,7 @@ tf37_array_fill_v64move(const char *name)
         src[1] = value64_createint(-20);
         src[2] = value64_createint(0);
 
-        Array *a = arrayFillArrV64move(src, VALUE64_INT, 3);
+        Array *a = arrayCreateFromV64(src, VALUE64_INT, 3);
         test_validatefree(a != NULL && arrayIsV64(a) && a->len == 3
                           && a->v64type == VALUE64_INT,
                           (a ? arrayFree(a) : (void) 0),
@@ -5996,7 +6007,7 @@ tf37_array_fill_v64move(const char *name)
             src[i] = value64_createfs_asstr(tmp);
         }
 
-        Array *a = arrayFillArrV64move(src, VALUE64_FS, N);
+        Array *a = arrayCreateFromV64(src, VALUE64_FS, N);
         if (!a) {
             for (int i = 0; i < N; i++) value64_free(&src[i], VALUE64_FS);
             test_validate(false, "create failed");
@@ -6058,11 +6069,11 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf31_array_v64_rnd_fill_all,            "arrayFillRangeRND with V64 generators all types")
       , TESTADD(tf32_array_safe_empty,                  "arrayFillRangeSAFEEMPTY simple test")
       // simple loaders
-      , TESTADD(tf33_array_fill_int,                    "arrayFillArrInt() simple test")
-      , TESTADD(tf34_array_fill_long,                   "arrayFillArrLong() simple test")
-      , TESTADD(tf35_array_fill_double,                 "arrayFillArrDouble() simple test")
-      , TESTADD(tf36_array_fill_char,                   "arrayFillArrChar() simple test")
-      , TESTADD(tf37_array_fill_v64move,                "arrayFillArrV64move() for fs simple test")
+      , TESTADD(tf33_array_fill_int,                    "arrayCreateFromInt() simple test")
+      , TESTADD(tf34_array_fill_long,                   "arrayCreateFromLong() simple test")
+      , TESTADD(tf35_array_fill_double,                 "arrayCreateFromDouble() simple test")
+      , TESTADD(tf36_array_fill_char,                   "arrayCreateFromChar() simple test")
+      , TESTADD(tf37_array_fill_v64move,                "arrayCreateFromV64() for fs simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()
