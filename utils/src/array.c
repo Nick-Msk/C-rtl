@@ -477,7 +477,8 @@ static const                    ArrayInterface ARRAYINTERFACE[] = {
                       }
 };
 
-static const ArrayInterface       *getTypedInterface(ArrayType typ) {
+static const ArrayInterface *
+getTypedInterface(ArrayType typ) {
     if (typ < 0 || typ >= COUNT(ARRAYINTERFACE) ) 
         return userraise(NULL, ERR_UNSUPPORTED_INTERFACE, 
                     "Unable to find  filler interface for %d/%s", 
@@ -505,7 +506,8 @@ static const ArrayInterface       *getTypedInterface(ArrayType typ) {
  * @return Array* A pointer to the newly allocated Array structure. 
  *         Returns NULL (via @ref userraise) if memory allocation fails.
  */
-static inline Array             *arraycreate(ArrayType typ, value64_type vt) {
+static inline Array *             
+arraycreate(ArrayType typ, value64_type vt) {
     Array *arr = malloc(sizeof(Array));
     if (!arr)
         return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable create Array structure");
@@ -513,7 +515,8 @@ static inline Array             *arraycreate(ArrayType typ, value64_type vt) {
     return arr;
 }
 
-static inline void             fixbysz(Array *parr, size_t *pos) {
+static inline void             
+fixbysz(Array *parr, size_t *pos) {
     if (*pos > arraysz(parr)) {
         logsimple("postion %zu is out of bound, cut to sz %zu", *pos, arraysz(parr));
         *pos = arraysz(parr);
@@ -525,7 +528,8 @@ static inline void             fixbysz(Array *parr, size_t *pos) {
 //         *pos = arraysz(parr);
 //     }
 // }
-static inline void              fixrangesbysz(Array *parr, size_t *from, size_t *to) {
+static inline void              
+fixrangesbysz(Array *parr, size_t *from, size_t *to) {
     fixbysz(parr, from);
     fixbysz(parr, to);
     // from > to isn't checker for now
@@ -540,7 +544,8 @@ static inline void              fixrangesbysz(Array *parr, size_t *from, size_t 
 /// @param arr pointer to array
 /// @param from from
 /// @param to to
-static void                     freeV64elems(Array *parr, size_t from, size_t to) {
+static void                     
+freeV64elems(Array *parr, size_t from, size_t to) {
     invraisecode(ERR_NULLABLE_PTR, parr != NULL, "Null pointer");
 
     fixrangesbysz(parr, &from, &to);
@@ -556,7 +561,8 @@ static void                     freeV64elems(Array *parr, size_t from, size_t to
 /// @param arr pointer to array
 /// @param newsz new size
 /// @return 
-static size_t                    increase(Array *parr, size_t newsz){
+static size_t                    
+increase(Array *parr, size_t newsz){
     invraisecode(parr != NULL, ERR_NULLABLE_PTR,
         "Null pointer %p", parr);
 
@@ -599,7 +605,8 @@ static size_t                    increase(Array *parr, size_t newsz){
  * @param cnt       The number of elements to move.
  * @return          The number of elements moved.
  */
-static int                  moveelem(Array *parr, size_t dest_idx, size_t src_idx, size_t cnt) {
+static int                  
+moveelem(Array *parr, size_t dest_idx, size_t src_idx, size_t cnt) {
     invraisecode(parr != NULL, ERR_NULLABLE_PTR, "Null array pointer");
 
     size_t es = arrayGetelemsize(parr);
@@ -618,7 +625,8 @@ static int                  moveelem(Array *parr, size_t dest_idx, size_t src_id
 // ------------- CONSTRUCTOTS/DESTRUCTORS --------------
 
 // CREATE  and fill with method
-Array                          *arrayCreate(size_t cnt, ArrayFillType filltyp, ArrayType typ, value64_type vt){
+Array *                         
+arrayCreate(size_t cnt, ArrayFillType filltyp, ArrayType typ, value64_type vt){
     logenter("cnt %zu, filltyp %s typ %s", cnt, arrayFillTypeGetName(filltyp), arrayTypeGetName(typ) );
     // TODO: refactor via arrayIncrease
     Array   *res = arraycreate(typ, vt);      
@@ -632,7 +640,8 @@ Array                          *arrayCreate(size_t cnt, ArrayFillType filltyp, A
     return logret(res, "sz = %zu, len = %zu", res->sz, res->len );
 }
 
-void                            arrayFreeBody(Array *val) {
+void                            
+arrayFreeBody(Array *val) {
     if (val) {
         increase(val, 0);
         val->v = NULL;
@@ -642,7 +651,8 @@ void                            arrayFreeBody(Array *val) {
 /// @brief free array
 /// @param val pointer to array
 /// @note: arrayFree must not failed even if val == NULL
-void                           arrayFree(Array *val){
+void                           
+arrayFree(Array *val){
     if (val) {      // arrayFree must not failed even if val == NULL
         arrayFreeBody(val);
         free(val);
@@ -654,7 +664,8 @@ void                           arrayFree(Array *val){
 /// @param typ  Array type 
 /// @param vt   V64 type, only for for V64
 /// @return Count of formatter data
-long                            arrayFillAll(Array *parr, ArrayFillType typ){
+long                            
+arrayFillAll(Array *parr, ArrayFillType typ){
     invraisecode(parr != NULL, ERR_NULLABLE_PTR, "Null input");
     return arrayFillRange(parr, typ, 0, parr->len);
 }
@@ -665,7 +676,8 @@ long                            arrayFillAll(Array *parr, ArrayFillType typ){
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeASC(Array *parr, size_t from, size_t to) {
+static long                     
+arrayFillRangeASC(Array *parr, size_t from, size_t to) {
 
     value64_type              vt64 = arrayGetV64mapType(parr);
     v64GenTypedFactory        ti = getTypedFillFactory(vt64, ARRAY_FILLTYPE_ASC);
@@ -689,7 +701,8 @@ static long                     arrayFillRangeASC(Array *parr, size_t from, size
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeDESC(Array *parr, size_t from, size_t to) {
+static long                     
+arrayFillRangeDESC(Array *parr, size_t from, size_t to) {
 
     value64_type              vt64 = arrayGetV64mapType(parr);
     const long                start_num = (to - from + 1) * g_array_desc_rndinc;
@@ -716,7 +729,8 @@ static long                     arrayFillRangeDESC(Array *parr, size_t from, siz
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeZERO(Array *parr, size_t from, size_t to){
+static long                     
+arrayFillRangeZERO(Array *parr, size_t from, size_t to){
 
     value64_type    vt64 = arrayGetV64mapType(parr);
 
@@ -739,7 +753,8 @@ static long                     arrayFillRangeZERO(Array *parr, size_t from, siz
 /// @param to     end index 
 /// @return       count of filled elements
 /// @note         no generator here!
-static long                     arrayFillRangeSAFEEMPTY(Array *parr, size_t from, size_t to) {
+static long                     
+arrayFillRangeSAFEEMPTY(Array *parr, size_t from, size_t to) {
     value64_type    vt64 = arrayGetV64mapType(parr);
 
     v64GenTypedFactory ti = getTypedFillFactory(vt64, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -759,7 +774,8 @@ static long                     arrayFillRangeSAFEEMPTY(Array *parr, size_t from
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeRND(Array *parr, size_t from, size_t to) {
+static long                     
+arrayFillRangeRND(Array *parr, size_t from, size_t to) {
     const long      rnd_max = 10 * (to - from);
     const long      rndinc  = to - from;
     value64_type    vt64 = arrayGetV64mapType(parr);
@@ -784,7 +800,8 @@ static long                     arrayFillRangeRND(Array *parr, size_t from, size
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeASCSERIES(Array *parr, size_t from, size_t to){
+static long                     
+arrayFillRangeASCSERIES(Array *parr, size_t from, size_t to){
     value64_type              vt64 = arrayGetV64mapType(parr);
     v64GenTypedFactory        ti = getTypedFillFactory(vt64,  ARRAY_FILLTYPE_ASC_SERIES);
 
@@ -807,7 +824,8 @@ static long                     arrayFillRangeASCSERIES(Array *parr, size_t from
 /// @param from   start index 
 /// @param to     end index 
 /// @return       count of filled elements
-static long                     arrayFillRangeDESCSERIES(Array *parr, size_t from, size_t to) {
+static long                     
+arrayFillRangeDESCSERIES(Array *parr, size_t from, size_t to) {
     value64_type              vt64 = arrayGetV64mapType(parr);
     v64GenTypedFactory        ti = getTypedFillFactory(vt64, ARRAY_FILLTYPE_DESC_SERIES);
     const long                start_num = (to - 1); // the same as for scalar types
@@ -832,7 +850,8 @@ static long                     arrayFillRangeDESCSERIES(Array *parr, size_t fro
 /// @param from from (will be normilized if out of range)
 /// @param to  to (will be normilized if out of range)
 /// @return Count of formatter data
-long                            arrayFillRange(Array *parr, ArrayFillType filltyp, size_t from, size_t to) {
+long                            
+arrayFillRange(Array *parr, ArrayFillType filltyp, size_t from, size_t to) {
     if (!parr)
         return userraise(-1, ERR_NULLABLE_PTR, "Null parr");
     logenter("%zu - %zu, %s (%s/v64: %s)", 
@@ -849,9 +868,58 @@ long                            arrayFillRange(Array *parr, ArrayFillType fillty
                 "Not supported filltype %d/%s", filltyp, arrayFillTypeGetName(filltyp));
 }
 
+Array *                
+arrayFillArrInt(const int *source, size_t cnt) {
+    if (source == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array *arr = arrayOnlyCreate(cnt, ARRAY_INT, VALUE64_UNKNOWN);
+    if (!arr)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable to allocated IArray %zu", cnt);
+    for (size_t i = 0; i < cnt; i++)
+        arr->iv[i] = source[i];
+    return arr;
+}
+
+Array *                
+arrayFillArrLong(const long *source, size_t cnt) {
+    if (source == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array *arr = arrayOnlyCreate(cnt, ARRAY_LONG, VALUE64_UNKNOWN);
+    if (!arr)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable to allocated LArray %zu", cnt);
+    for (size_t i = 0; i < cnt; i++)
+        arr->lv[i] = source[i];
+    return arr;
+}
+
+Array *                
+arrayFillArrDouble(const double *source, size_t cnt) {
+    if (source == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array *arr = arrayOnlyCreate(cnt, ARRAY_DOUBLE, VALUE64_UNKNOWN);
+    if (!arr)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable to allocated DArray %zu", cnt);
+    for (size_t i = 0; i < cnt; i++)
+        arr->dv[i] = source[i];
+    return arr;
+}
+
+Array *                
+arrayFillArrChar(const char *source, size_t cnt) {
+    if (source == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array *arr = arrayOnlyCreate(cnt, ARRAY_CHAR, VALUE64_UNKNOWN);
+    if (!arr)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable to allocated CArray %zu", cnt);
+    for (size_t i = 0; i < cnt; i++)
+        arr->cv[i] = source[i];
+    return arr;
+}
+
 // -------------- ACCESS AND MODIFICATION --------------
 
-Array                          *arrayIncrease(Array *parr, size_t newcnt){
+Array *                          
+arrayIncrease(Array *parr, size_t newcnt){
     if (newcnt > arraysz(parr) )
         increase(parr, newcnt);
     arrayFillRange(parr, ARRAY_FILLTYPE_ZERO, parr->len, newcnt);
@@ -859,7 +927,8 @@ Array                          *arrayIncrease(Array *parr, size_t newcnt){
     return parr;
 }
 
-Array                          *arrayShrink(Array *parr, size_t newsz){
+Array *                         
+arrayShrink(Array *parr, size_t newsz){
     fixbysz(parr, &newsz);
     increase(parr, newsz);
 
@@ -870,7 +939,8 @@ Array                          *arrayShrink(Array *parr, size_t newsz){
  * @brief Shuffle array elements using the Fisher–Yates algorithm.
  * @param arr array (by value)
  */
-Array                          *arrayShuffle(Array *parr) {
+Array *                          
+arrayShuffle(Array *parr) {
     size_t elem_size = arrayGetelemsize(parr);
     if (elem_size <= 0)
         userraise(NULL, ERR_UNSUPPORTED_TYPE, 
@@ -5388,6 +5458,386 @@ tf32_array_safe_empty(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// =====================================================================
+// array.c — tests for arrayFillArr* loaders
+// =====================================================================
+
+// ---------------------- TEST arrayFillArrInt -------------------------
+static TestStatus
+tf33_array_fill_int(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. обычный массив */
+    test_sub("subtest %d: plain ints", ++subnum);
+    {
+        const int src[] = { 1, -2, 3, -4, 5 };
+        Array *a = arrayFillArrInt(src, COUNT(src));
+
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(a->len == COUNT(src), arrayFree(a),
+                          "len=%zu want %zu", a->len, (size_t) COUNT(src));
+        test_validatefree(arrayIsint(a), arrayFree(a),
+                          "type mismatch: %s", arrayGetTypeName(a));
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->iv[i] == src[i], arrayFree(a),
+                              "iv[%zu]=%d want %d", i, a->iv[i], src[i]);
+
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 2. крайние значения */
+    test_sub("subtest %d: INT_MIN/INT_MAX/0", ++subnum);
+    {
+        const int src[] = { INT_MIN, INT_MAX, 0, -1, 1 };
+        Array *a = arrayFillArrInt(src, COUNT(src));
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->iv[i] == src[i], arrayFree(a),
+                              "iv[%zu]=%d want %d", i, a->iv[i], src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 3. один элемент */
+    test_sub("subtest %d: single element", ++subnum);
+    {
+        const int src[] = { 42 };
+        Array *a = arrayFillArrInt(src, 1);
+        test_validatefree(a != NULL && a->len == 1 && a->iv[0] == 42,
+                          (a ? arrayFree(a) : (void) 0),
+                          "single element failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 4. пустой массив */
+    test_sub("subtest %d: empty", ++subnum);
+    {
+        const int src[] = { 0 };   // содержимое неважно, cnt=0
+        Array *a = arrayFillArrInt(src, 0);
+        test_validatefree(a != NULL && a->len == 0,
+                          (a ? arrayFree(a) : (void) 0),
+                          "empty create failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 5. NULL source — raise */
+    test_sub("subtest %d: NULL source raises", ++subnum);
+    {
+        if (!try()) {
+            arrayFillArrInt(NULL, 5);
+            test_validate(false, "must raise for NULL source");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 6. большой массив — проверка, что цикл не обрезает */
+    test_sub("subtest %d: large array 1000 elems", ++subnum);
+    {
+        int src[1000];
+        for (size_t i = 0; i < 1000; i++) src[i] = (int) i * 3 - 500;
+
+        Array *a = arrayFillArrInt(src, 1000);
+        test_validatefree(a != NULL && a->len == 1000,
+                          (a ? arrayFree(a) : (void) 0),
+                          "large create failed, len=%zu", a ? a->len : 0);
+        bool ok = true;
+        for (size_t i = 0; i < 1000; i++) {
+            if (a->iv[i] != src[i]) {
+                test_validatefree(false, arrayFree(a),
+                                  "iv[%zu]=%d want %d", i, a->iv[i], src[i]);
+                ok = false;
+                break;
+            }
+        }
+        if (ok) test_validatefree(true, arrayFree(a), "large array ok");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ---------------------- TEST arrayFillArrLong ------------------------
+static TestStatus
+tf34_array_fill_long(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    test_sub("subtest %d: plain longs", ++subnum);
+    {
+        const long src[] = { 0L, -1L, 1234567890123L, -9876543210987L };
+        Array *a = arrayFillArrLong(src, COUNT(src));
+        test_validatefree(a != NULL && arrayIslong(a),
+                          (a ? arrayFree(a) : (void) 0),
+                          "create failed or wrong type");
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->lv[i] == src[i], arrayFree(a),
+                              "lv[%zu]=%ld want %ld", i, a->lv[i], src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: LONG_MIN/LONG_MAX", ++subnum);
+    {
+        const long src[] = { LONG_MIN, LONG_MAX, 0L };
+        Array *a = arrayFillArrLong(src, COUNT(src));
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->lv[i] == src[i], arrayFree(a),
+                              "lv[%zu]=%ld want %ld", i, a->lv[i], src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: single element", ++subnum);
+    {
+        const long src[] = { -777L };
+        Array *a = arrayFillArrLong(src, 1);
+        test_validatefree(a != NULL && a->len == 1 && a->lv[0] == -777L,
+                          (a ? arrayFree(a) : (void) 0),
+                          "single failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: empty", ++subnum);
+    {
+        const long src[] = { 0L };
+        Array *a = arrayFillArrLong(src, 0);
+        test_validatefree(a != NULL && a->len == 0,
+                          (a ? arrayFree(a) : (void) 0),
+                          "empty failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: NULL source raises", ++subnum);
+    {
+        if (!try()) {
+            arrayFillArrLong(NULL, 3);
+            test_validate(false, "must raise");
+        } else {
+            test_validate(true, "raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ---------------------- TEST arrayFillArrDouble ----------------------
+static TestStatus
+tf35_array_fill_double(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    test_sub("subtest %d: plain doubles", ++subnum);
+    {
+        const double src[] = { 0.0, -3.14, 1e100, -1e-100, 2.5 };
+        Array *a = arrayFillArrDouble(src, COUNT(src));
+        test_validatefree(a != NULL && arrayIsdouble(a),
+                          (a ? arrayFree(a) : (void) 0),
+                          "create failed or wrong type");
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->dv[i] == src[i], arrayFree(a),
+                              "dv[%zu]=%.17g want %.17g", i, a->dv[i], src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* double: точность, отрицательный ноль, денормалы */
+    test_sub("subtest %d: precision and specials", ++subnum);
+    {
+        const double src[] = {
+            0.1 + 0.2,
+            nextafter(1.0, 2.0),
+            nextafter(0.0, 1.0),   // denormal
+            -0.0,
+        };
+        Array *a = arrayFillArrDouble(src, COUNT(src));
+        test_validatefree(a != NULL, (void) 0, "create failed");
+
+        test_validatefree(a->dv[0] == src[0], arrayFree(a),
+                          "0.1+0.2: %.17g vs %.17g", a->dv[0], src[0]);
+        test_validatefree(a->dv[1] == src[1], arrayFree(a),
+                          "nextafter(1): %.17g vs %.17g", a->dv[1], src[1]);
+        test_validatefree(a->dv[2] == src[2], arrayFree(a),
+                          "denormal: %.17g vs %.17g", a->dv[2], src[2]);
+        /* -0.0 == 0.0 по ==, поэтому проверяем знак */
+        test_validatefree(signbit(a->dv[3]) && a->dv[3] == 0.0,
+                          arrayFree(a), "-0.0 lost sign");
+
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* +inf / -inf: == сработает, но пусть будет отдельный кейс */
+    test_sub("subtest %d: +inf/-inf", ++subnum);
+    {
+        const double src[] = { (double) INFINITY, (double) -INFINITY };
+        Array *a = arrayFillArrDouble(src, COUNT(src));
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(isinf(a->dv[0]) && a->dv[0] > 0, arrayFree(a), "+inf lost");
+        test_validatefree(isinf(a->dv[1]) && a->dv[1] < 0, arrayFree(a), "-inf lost");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: single", ++subnum);
+    {
+        const double src[] = { 42.5 };
+        Array *a = arrayFillArrDouble(src, 1);
+        test_validatefree(a != NULL && a->len == 1 && a->dv[0] == 42.5,
+                          (a ? arrayFree(a) : (void) 0),
+                          "single failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: empty", ++subnum);
+    {
+        const double src[] = { 0.0 };
+        Array *a = arrayFillArrDouble(src, 0);
+        test_validatefree(a != NULL && a->len == 0,
+                          (a ? arrayFree(a) : (void) 0),
+                          "empty failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    test_sub("subtest %d: NULL source raises", ++subnum);
+    {
+        if (!try()) {
+            arrayFillArrDouble(NULL, 2);
+            test_validate(false, "must raise");
+        } else {
+            test_validate(true, "raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+// ---------------------- TEST arrayFillArrChar ------------------------
+static TestStatus
+tf36_array_fill_char(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. обычные печатные */
+    test_sub("subtest %d: printable chars", ++subnum);
+    {
+        const char src[] = "Hello, World!";
+        Array *a = arrayFillArrChar(src, strlen(src));
+        test_validatefree(a != NULL && arrayIschar(a),
+                          (a ? arrayFree(a) : (void) 0),
+                          "create failed or wrong type");
+        test_validatefree(a->len == strlen(src), arrayFree(a),
+                          "len=%zu want %zu", a->len, strlen(src));
+        for (size_t i = 0; i < strlen(src); i++)
+            test_validatefree(a->cv[i] == src[i], arrayFree(a),
+                              "cv[%zu]='%c'(%d) want '%c'(%d)",
+                              i, a->cv[i], (int) a->cv[i], src[i], (int) src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 2. пробельные символы */
+    test_sub("subtest %d: whitespace chars", ++subnum);
+    {
+        const char src[] = { ' ', '\t', '\n', '\r', ' ', 'x', ' ', };
+        Array *a = arrayFillArrChar(src, COUNT(src));
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->cv[i] == src[i], arrayFree(a),
+                              "cv[%zu]=%d want %d",
+                              i, (int) a->cv[i], (int) src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 3. zero byte внутри — char это не строка, NUL законен */
+    test_sub("subtest %d: embedded NUL", ++subnum);
+    {
+        const char src[] = { 'a', '\0', 'b', 'c', '\0', 'd' };
+        Array *a = arrayFillArrChar(src, COUNT(src));
+        test_validatefree(a != NULL && a->len == COUNT(src),
+                          (a ? arrayFree(a) : (void) 0),
+                          "create failed, len=%zu", a ? a->len : 0);
+        for (size_t i = 0; i < COUNT(src); i++)
+            test_validatefree(a->cv[i] == src[i], arrayFree(a),
+                              "cv[%zu]=%d want %d",
+                              i, (int) a->cv[i], (int) src[i]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 4. high byte 0xFF и sign */
+    test_sub("subtest %d: high byte 0xFF / 0x80", ++subnum);
+    {
+        const char src[] = { (char) 0xFF, (char) 0x80, (char) 0x7F, 0x00 };
+        Array *a = arrayFillArrChar(src, 3);   // без NUL-терминатора
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree((unsigned char) a->cv[0] == 0xFF, arrayFree(a),
+                          "cv[0]=0x%02X want 0xFF", (unsigned char) a->cv[0]);
+        test_validatefree((unsigned char) a->cv[1] == 0x80, arrayFree(a),
+                          "cv[1]=0x%02X want 0x80", (unsigned char) a->cv[1]);
+        test_validatefree((unsigned char) a->cv[2] == 0x7F, arrayFree(a),
+                          "cv[2]=0x%02X want 0x7F", (unsigned char) a->cv[2]);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 5. один символ */
+    test_sub("subtest %d: single char", ++subnum);
+    {
+        const char src[] = { 'X' };
+        Array *a = arrayFillArrChar(src, 1);
+        test_validatefree(a != NULL && a->len == 1 && a->cv[0] == 'X',
+                          (a ? arrayFree(a) : (void) 0),
+                          "single failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 6. пустой */
+    test_sub("subtest %d: empty", ++subnum);
+    {
+        const char src[] = { 'a' };
+        Array *a = arrayFillArrChar(src, 0);
+        test_validatefree(a != NULL && a->len == 0,
+                          (a ? arrayFree(a) : (void) 0),
+                          "empty failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 7. NULL */
+    test_sub("subtest %d: NULL source raises", ++subnum);
+    {
+        if (!try()) {
+            arrayFillArrChar(NULL, 5);
+            test_validate(false, "must raise");
+        } else {
+            test_validate(true, "raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -5427,6 +5877,11 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf30_array_v64_desc_series_fill_all,    "arrayFillRangeDESCSERIES with V64 generator")
       , TESTADD(tf31_array_v64_rnd_fill_all,            "arrayFillRangeRND with V64 generators all types")
       , TESTADD(tf32_array_safe_empty,                  "arrayFillRangeSAFEEMPTY simple test")
+      // simple loaders
+      , TESTADD(tf33_array_fill_int,                    "arrayFillArrInt() simple test")
+      , TESTADD(tf34_array_fill_long,                   "arrayFillArrLong() simple test")
+      , TESTADD(tf35_array_fill_double,                 "arrayFillArrDouble() simple test")
+      , TESTADD(tf36_array_fill_char,                   "arrayFillArrChar() simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()

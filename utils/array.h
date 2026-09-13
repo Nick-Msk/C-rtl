@@ -644,6 +644,12 @@ extern long                      arrayFillAll(Array *restrict parr, ArrayFillTyp
  */
 extern long                       arrayFillRange(Array *parr, ArrayFillType typ, size_t from, size_t to);
 
+// simple loader per type
+extern Array                     *arrayFillArrInt(const int *source, size_t cnt);  
+extern Array                     *arrayFillArrLong(const long *source, size_t cnt); 
+extern Array                     *arrayFillArrDouble(const double *source, size_t cnt); 
+extern Array                     *arrayFillArrChar(const char *source, size_t cnt);                 
+
 /**
  * @brief Shrinks an array to the given size.
  *
@@ -692,7 +698,7 @@ extern Array                       *arrayAdd(Array *parr, size_t from, size_t cn
 extern void                         arrayQsort(Array *parr, ArraySortType ord);
 // ---------------------------- binary searchers --------------------------------
 // generallized
-extern long                       arrayBsearchCommon(const Array *parr, value64 val, bool acs);
+extern long                         arrayBsearchCommon(const Array *parr, value64 val, bool acs);
 /**
  * @brief Binary search for an integer in a sorted INT array.
  *
@@ -824,8 +830,6 @@ extern long                         arrayForeachRev(Array *restrict parr, ArrayC
 #define Array_pforeach_idx_rev(parr, i) \
     for (ssize_t i = (parr)->len - 1; i >= 0; --i)  
 
-
-// Публичные однобуквенные макросы
 #define IArray_foreach(parr, elem)   _Array_foreach_gen((parr)->iv, (parr)->len, elem)
 #define LArray_foreach(parr, elem)   _Array_foreach_gen((parr)->lv, (parr)->len, elem)
 #define DArray_foreach(parr, elem)   _Array_foreach_gen((parr)->dv, (parr)->len, elem)
