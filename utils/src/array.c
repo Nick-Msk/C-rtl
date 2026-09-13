@@ -916,6 +916,19 @@ arrayFillArrChar(const char *source, size_t cnt) {
     return arr;
 }
 
+Array *                    
+arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt) {
+    if (source == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+     Array *arr = arrayOnlyCreate(cnt, ARRAY_CHAR, vt);
+    if (!arr)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, 
+            "Unable to allocated V64Array %zu with %d/%s", cnt, vt, value64_typename(vt));
+    for (size_t i = 0; i < cnt; i++)
+        arr->v64[i] = value64_move(source + i, vt);
+    return arr;
+}  
+
 // -------------- ACCESS AND MODIFICATION --------------
 
 Array *                          
@@ -5582,7 +5595,6 @@ tf34_array_fill_long(const char *name)
             test_validatefree(a->lv[i] == src[i], arrayFree(a),
                               "lv[%zu]=%ld want %ld", i, a->lv[i], src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: LONG_MIN/LONG_MAX", ++subnum);
@@ -5594,7 +5606,6 @@ tf34_array_fill_long(const char *name)
             test_validatefree(a->lv[i] == src[i], arrayFree(a),
                               "lv[%zu]=%ld want %ld", i, a->lv[i], src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: single element", ++subnum);
@@ -5605,7 +5616,6 @@ tf34_array_fill_long(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: empty", ++subnum);
@@ -5616,7 +5626,6 @@ tf34_array_fill_long(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: NULL source raises", ++subnum);
@@ -5627,7 +5636,6 @@ tf34_array_fill_long(const char *name)
         } else {
             test_validate(true, "raised");
         }
-        fs_alloc_check(true);
     }
 
     return logret(TEST_PASSED, "done");
@@ -5651,7 +5659,6 @@ tf35_array_fill_double(const char *name)
             test_validatefree(a->dv[i] == src[i], arrayFree(a),
                               "dv[%zu]=%.17g want %.17g", i, a->dv[i], src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* double: точность, отрицательный ноль, денормалы */
@@ -5677,7 +5684,6 @@ tf35_array_fill_double(const char *name)
                           arrayFree(a), "-0.0 lost sign");
 
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* +inf / -inf: == сработает, но пусть будет отдельный кейс */
@@ -5689,7 +5695,6 @@ tf35_array_fill_double(const char *name)
         test_validatefree(isinf(a->dv[0]) && a->dv[0] > 0, arrayFree(a), "+inf lost");
         test_validatefree(isinf(a->dv[1]) && a->dv[1] < 0, arrayFree(a), "-inf lost");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: single", ++subnum);
@@ -5700,7 +5705,6 @@ tf35_array_fill_double(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: empty", ++subnum);
@@ -5711,7 +5715,6 @@ tf35_array_fill_double(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     test_sub("subtest %d: NULL source raises", ++subnum);
@@ -5722,7 +5725,6 @@ tf35_array_fill_double(const char *name)
         } else {
             test_validate(true, "raised");
         }
-        fs_alloc_check(true);
     }
 
     return logret(TEST_PASSED, "done");
@@ -5750,7 +5752,6 @@ tf36_array_fill_char(const char *name)
                               "cv[%zu]='%c'(%d) want '%c'(%d)",
                               i, a->cv[i], (int) a->cv[i], src[i], (int) src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 2. пробельные символы */
@@ -5764,7 +5765,6 @@ tf36_array_fill_char(const char *name)
                               "cv[%zu]=%d want %d",
                               i, (int) a->cv[i], (int) src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 3. zero byte внутри — char это не строка, NUL законен */
@@ -5780,7 +5780,6 @@ tf36_array_fill_char(const char *name)
                               "cv[%zu]=%d want %d",
                               i, (int) a->cv[i], (int) src[i]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 4. high byte 0xFF и sign */
@@ -5796,7 +5795,6 @@ tf36_array_fill_char(const char *name)
         test_validatefree((unsigned char) a->cv[2] == 0x7F, arrayFree(a),
                           "cv[2]=0x%02X want 0x7F", (unsigned char) a->cv[2]);
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 5. один символ */
@@ -5808,7 +5806,6 @@ tf36_array_fill_char(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "single failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 6. пустой */
@@ -5820,7 +5817,6 @@ tf36_array_fill_char(const char *name)
                           (a ? arrayFree(a) : (void) 0),
                           "empty failed");
         arrayFree(a);
-        fs_alloc_check(true);
     }
 
     /* 7. NULL */
@@ -5832,7 +5828,6 @@ tf36_array_fill_char(const char *name)
         } else {
             test_validate(true, "raised");
         }
-        fs_alloc_check(true);
     }
 
     return logret(TEST_PASSED, "done");

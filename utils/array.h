@@ -648,7 +648,9 @@ extern long                       arrayFillRange(Array *parr, ArrayFillType typ,
 extern Array                     *arrayFillArrInt(const int *source, size_t cnt);  
 extern Array                     *arrayFillArrLong(const long *source, size_t cnt); 
 extern Array                     *arrayFillArrDouble(const double *source, size_t cnt); 
-extern Array                     *arrayFillArrChar(const char *source, size_t cnt);                 
+extern Array                     *arrayFillArrChar(const char *source, size_t cnt);       
+// container! move semantic.          
+extern Array                     *arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt);   
 
 /**
  * @brief Shrinks an array to the given size.
