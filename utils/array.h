@@ -653,6 +653,96 @@ extern Array                     *arrayFillArrChar(const char *source, size_t cn
 extern Array                     *arrayFillArrV64move(value64 *source, value64_type vt, size_t cnt);   
 
 /**
+ * @file array.h (section: Array construction macros for tests / inline use)
+ *
+ * @defgroup array_fill_macros Array construction macros
+ * @brief Compact constructors for small arrays with literal values.
+ *
+ * Intended for tests, fixtures, and inline comparisons. For runtime-sized
+ * arrays or data coming from variables, prefer the corresponding functions
+ * (@ref arrayFillArrInt, @ref arrayFillArrLong, @ref arrayFillArrDouble,
+ * @ref arrayFillArrChar) directly.
+ *
+ * @par Semantics
+ * Each macro builds a compound literal in the current block, then calls the
+ * matching @c arrayFillArr* function, which copies the values into a freshly
+ * allocated @c Array. The compound literal is not retained — its lifetime
+ * ends with the enclosing block — so it is safe to discard.
+ *
+ * @par Ownership
+ * The returned @c Array* owns its own heap buffer. Caller must release it
+ * via @ref arrayFree (or @ref arrayFreeBody when the descriptor is on the
+ * stack). The source values are never referenced after the call returns.
+ *
+ * @par Example
+ * @code
+ *   Array *a1 = IARRAY_FILL(INT_MAX, -100, INT_MIN, 333, 42);
+ *   Array *a2 = LARRAY_FILL(0L, LONG_MIN, LONG_MAX);
+ *   Array *a3 = DARRAY_FILL(0.1 + 0.2, nextafter(1.0, 2.0), -0.0, 1e100);
+ *   Array *a4 = CARRAY_FILL('h', 'e', 'l', 'l', 'o');
+ *   Array *a5 = CARRAY_FILLSTR("hello");       // 5 chars, no NUL
+ *   Array *a6 = CARRAY_FILLSTR_NUL("hello");   // 6 chars, trailing NUL
+ *
+ *   // ... use ...
+ *
+ *   arrayFree(a1); arrayFree(a2); arrayFree(a3);
+ *   arrayFree(a4); arrayFree(a5); arrayFree(a6);
+ * @endcode
+ *
+ * @par Constraints
+ * - At least one value must be provided. For an empty array use
+ *   @ref IarrayCreate / @ref LarrayCreate / @ref DarrayCreate /
+ *   @ref CarrayCreate with @c ARRAY_FILLTYPE_ZERO and a count of 0.
+ * - @c __VA_ARGS__ is expanded twice: once inside @c sizeof (unevaluated)
+ *   and once as the actual argument. Do not pass expressions with side
+ *   effects unless you understand this — in practice, only literals or
+ *   pure expressions should be used.
+ * - @ref COUNT must be usable on a compound literal in the calling TU.
+ *
+ * @par String convenience
+ * A C string cannot be passed directly to @ref CARRAY_FILL because a
+ * compound literal of type @c char[] would treat the whole string as a
+ * single initializer. Use @ref CARRAY_FILLSTR or @ref CARRAY_FILLSTR_NUL
+ * for that case.
+ *
+ * @{
+ */
+
+/** @brief Build an @c ARRAY_INT from a variadic list of @c int values. */
+#define IARRAY_FILL(...) \
+    arrayFillArrInt(   (const int[]){ __VA_ARGS__ },    COUNT(((const int[]){ __VA_ARGS__ })))
+
+/** @brief Build an @c ARRAY_LONG from a variadic list of @c long values. */
+#define LARRAY_FILL(...) \
+    arrayFillArrLong(  (const long[]){ __VA_ARGS__ },   COUNT(((const long[]){ __VA_ARGS__ })))
+
+/** @brief Build an @c ARRAY_DOUBLE from a variadic list of @c double values. */
+#define DARRAY_FILL(...) \
+    arrayFillArrDouble((const double[]){ __VA_ARGS__ }, COUNT(((const double[]){ __VA_ARGS__ })))
+
+/** @brief Build an @c ARRAY_CHAR from a variadic list of @c char values. */
+#define CARRAY_FILL(...) \
+    arrayFillArrChar(  (const char[]){ __VA_ARGS__ },   COUNT(((const char[]){ __VA_ARGS__ })))
+
+/**
+ * @brief Build an @c ARRAY_CHAR from a C string, WITHOUT the trailing NUL.
+ * @param str A string literal or NUL-terminated @c const char*.
+ */
+#define CARRAY_FILLSTR(str) \
+    arrayFillArrChar((const char[]){ str }, strlen(str))
+
+/**
+ * @brief Build an @c ARRAY_CHAR from a string literal, INCLUDING the
+ *        trailing NUL. Requires a literal (uses @c sizeof).
+ * @param str A string literal.
+ */
+#define CARRAY_FILLSTR_NUL(str) \
+    arrayFillArrChar((const char[]){ str }, sizeof(str))
+
+/** @} */  // end of array_fill_macros group
+
+
+/**
  * @brief Shrinks an array to the given size.
  *
  * Elements beyond `newsz` are freed (for owning types like FS/STR).
