@@ -77,7 +77,13 @@ fs_save("data.txt", &text);
 // Load from file
 fs buffer = fs_load("data.txt");
 ⚙️ Complexity Analysis
-| Operation | Complexity | Note | | :--- | :--- | :--- | | fs_len | $O(1)$ | No strlen() overhead | | fs_cat | $O(n)$ | Linear concatenation | | fs_sprintf | $O(n)$ | Formatted write | | fs_instr | $O(n \cdot m)$ | Based on strstr | | fs_chr | $O(n)$ | Linear scan |
+| Operation | Complexity | Note | 
+| :--- | :--- | :--- | 
+| fs_len | $O(1)$ | No strlen() overhead | 
+| fs_cat | $O(n)$ | Linear concatenation | 
+| fs_sprintf | $O(n)$ | Formatted write | 
+| fs_instr | $O(n \cdot m)$ | Based on strstr | 
+| fs_chr | $O(n)$ | Linear scan |
 
 ⚠️ Safety Notes
 Memory Ownership: Always use fs_free() for any fs object initialized with FS() or fs_heapcreate(). Using fs_free() on a FSLITERAL is safe (it will do nothing).
