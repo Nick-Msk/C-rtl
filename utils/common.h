@@ -71,7 +71,7 @@ typedef int(*Comparator)(const void *, const void *);
  * @warning Passing @c NULL as @p p is undefined behavior. The function
  *          does not validate its argument.
  */
-static inline int               countstrings(const char * const *p){
+static inline size_t             countstrings(const char * const *p){
     const char * const *t = p;
     while (*t)
         t++;
