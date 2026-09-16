@@ -136,9 +136,14 @@ dsHelperParseDouble(const char *restrict str, double *restrict pdval, size_t *re
 
     // Проверяем, что:
     // 1. endptr не равен str (значит, хотя бы одна цифра была прочитана)
-    // 2. errno не содержит ошибок (например, переполнение RANGE)
-    if (str == endptr || errno != 0) 
-        return userraise(false, ERR_UNABLE_PARSE_DATA, "err parse double, errno %s", strerror(errno));
+    if (str == endptr) 
+        return sysraise(false, "err parse double, errno %s", strerror(errno));
+
+    /* ERANGE + ±HUGE_VAL = overflow, реальная ошибка.
+     * ERANGE без ±HUGE_VAL = underflow в денормал, значение валидно. */
+    if (errno == ERANGE && (val == HUGE_VAL || val == -HUGE_VAL))
+        return sysraise(false,
+            "double overflow: %s", str);
 
     *pos += endptr - str;
     if (pdval)
