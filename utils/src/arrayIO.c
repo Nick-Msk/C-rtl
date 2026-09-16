@@ -460,6 +460,15 @@ arrayParseHeaderFromDS(DS *restrict source, size_t *restrict paircount) {
             "Unable to parse paircount"
         );
     *paircount = totalelem;
+
+    // skip \n
+    if (!dsSkipNl(source))
+        return userraiseact(
+            NULL,
+            (fsfree(typ), fsfree(v64typ)),
+            ERR_WRONG_INPUT_FORMAT,
+            "expected newline after array header"
+        );
     
     // ---------- Create empty array ----------
     parr = arrayCreateFromTextparam(arrsize, typ.v, v64typ.v);
@@ -772,7 +781,7 @@ arraySaveToDS(DS *restrict out, Array *restrict parr) {
         "Out or parr is null %p %p", out, parr);
 
     long         total_written = 0L;
-    const char  *typ = arrayTypeGetName(parr->flags);
+    const char  *typ = arrayGetTypeRealName(parr);    
     const char  *v64_type  =  arrayGetV64typeName(parr);
     off_t        pos = dsGetpos(out);
 
@@ -855,7 +864,7 @@ arrayLoadFromDS(DS *restrict source, Array *restrict parr) {
     }
     if (parr) {   // if arr is NULL then dump read
         Array temp = *pa;
-        arrayFree(parr);        // release if exists
+        arrayFreeBody(parr);        // release if exists
         *parr = temp;
         free(pa);       // a bit stupid, but let it as is for now, probably Array **restrict pparr is required to avoid free
     }
@@ -900,15 +909,68 @@ arrayLoadFromfs(const fs *restrict s, Array *restrict parr) {
 
 #include "test.h"
 
+/**
+ * Build the exact byte sequence that arraySaveToDS would produce for @p arr,
+ * using the same g_save_format_* constants and header/footer literals.
+ *
+ * @param buf  destination buffer (should be >= 256 for small arrays)
+ * @param cap  capacity of @p buf
+ * @param arr  array to mimic
+ * @return     number of bytes written (excluding NUL), or 0 on error / overflow
+ */
+static size_t
+test_array_save_expected(char *buf, size_t cap, const Array *arr)
+{
+    size_t pos = 0;
+    int    n;
 
-// ------------------------- TEST arraySaveToDS (DS_STR, граничные случаи) -------------------------
+    n = snprintf(buf + pos, cap - pos,
+                 "ARRAY: %s / %s : %zu / %zu\n",
+                 arrayTypeGetRealName(arr->flags),
+                 arrayGetV64typeName((Array *) arr),
+                 arr->len, arr->len);
+    if (n < 0 || (size_t) n >= cap - pos) return 0;
+    pos += (size_t) n;
+
+    ArrayType t   = arrayGettype(arr);
+    const char *fmt = NULL;
+    switch (t) {
+        case ARRAY_INT:     fmt = g_save_format_int;        break;
+        case ARRAY_LONG:    fmt = g_save_format_long;       break;
+        case ARRAY_DOUBLE:  fmt = g_save_format_double;     break;
+        case ARRAY_CHAR:    fmt = g_save_format_char;       break;
+        case ARRAY_POINTER: fmt = g_save_format_pointer;    break;
+        default: return 0;
+    }
+
+    for (size_t i = 0; i < arr->len; i++) {
+        switch (t) {
+            case ARRAY_INT:     n = snprintf(buf + pos, cap - pos, fmt, i, arr->iv[i]); break;
+            case ARRAY_LONG:    n = snprintf(buf + pos, cap - pos, fmt, i, arr->lv[i]); break;
+            case ARRAY_DOUBLE:  n = snprintf(buf + pos, cap - pos, fmt, i, arr->dv[i]); break;
+            case ARRAY_CHAR:    n = snprintf(buf + pos, cap - pos, fmt, i, arr->cv[i]); break;
+            case ARRAY_POINTER: n = snprintf(buf + pos, cap - pos, fmt, i, arr->pv[i]); break;
+            default: return 0;
+        }
+        if (n < 0 || (size_t) n >= cap - pos) return 0;
+        pos += (size_t) n;
+    }
+
+    n = snprintf(buf + pos, cap - pos, "ARRAY: DONE\n");
+    if (n < 0 || (size_t) n >= cap - pos) return 0;
+    pos += (size_t) n;
+
+    return pos;
+}
+
+
 static TestStatus
 tf1_array_save_to_ds_str(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
 
-    /* 1. Успешная запись ARRAY_INT в DS_STR */
+    /* 1. ARRAY_INT */
     test_sub("subtest %d: save ARRAY_INT to DS_STR", ++subnum);
     {
         Array *arr = IarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -917,45 +979,42 @@ tf1_array_save_to_ds_str(const char *name)
         arr->iv[2] = 30;
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         char buffer[256];
-        memset(buffer, 'x', sizeof(buffer));   // заполняем ненулевыми
+        memset(buffer, 'x', sizeof(buffer));
         DS out = dsCreatestrCap(buffer, sizeof(buffer));
         size_t pos_before = dsGetpos(&out);
 
-        long written = arraySaveToDS(&out, arr);
+        long   written   = arraySaveToDS(&out, arr);
         size_t pos_after = dsGetpos(&out);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 3\n"
-            "     0\t    10\n"
-            "     1\t    20\n"
-            "     2\t    30\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(pos_after - pos_before == (size_t)written,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          exp_len, written,
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
+        test_validatefree(pos_after - pos_before == (size_t) written,
                           (arrayFree(arr), dsFree(&out)),
                           "position increment mismatch: wrote %ld, moved %zu",
                           written, pos_after - pos_before);
-        test_validatefree(strncmp(buffer, expected, expected_len) == 0,
+        test_validatefree(strncmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%.*s\n--- expected ---\n%s",
-                          (int)written, buffer, expected);
-        // Проверяем, что за пределами записанных данных остались 'x'
-        test_validatefree(buffer[written] == '\0', //'x',
-                          (arrayFree(arr), dsFree(&out)),
-                          "buffer overrun: byte at %ld is %c, expected '\\0'",
-                          written, buffer[written]);
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 2. Успешная запись ARRAY_LONG в DS_STR */
+    /* 2. ARRAY_LONG */
     test_sub("subtest %d: save ARRAY_LONG to DS_STR", ++subnum);
     {
         Array *arr = LarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -963,42 +1022,47 @@ tf1_array_save_to_ds_str(const char *name)
         arr->lv[1] = -987654321L;
         arr->len = 2;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         char buffer[256];
         memset(buffer, 'x', sizeof(buffer));
         DS out = dsCreatestrCap(buffer, sizeof(buffer));
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: LONG / NONV64_TYPE : 2\n"
-            "     0\t123456789\n"
-            "     1\t-987654321\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(strncmp(buffer, expected, expected_len) == 0,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          exp_len, written,
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
+        test_validatefree(strncmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%.*s\n--- expected ---\n%s",
-                          (int)written, buffer, expected);
-        test_validatefree(buffer[written] == '\0',
-                          (arrayFree(arr), dsFree(&out)),
-                          "buffer overrun");
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 3. Успешная запись ARRAY_DOUBLE (проверяем только структуру) */
+    /* 3. ARRAY_DOUBLE */
     test_sub("subtest %d: save ARRAY_DOUBLE to DS_STR", ++subnum);
     {
-        Array *arr = DarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = DarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->dv[0] = 1.5;
         arr->dv[1] = -0.25;
-        arr->len = 2;
+        arr->dv[2] = 0.1 + 0.2;              /* проверяем точность %.17g */
+        arr->len = 3;
+
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
 
         char buffer[256];
         memset(buffer, 'x', sizeof(buffer));
@@ -1006,28 +1070,26 @@ tf1_array_save_to_ds_str(const char *name)
 
         long written = arraySaveToDS(&out, arr);
 
-        // Проверяем, что заголовок и завершающий маркер присутствуют
-        test_validatefree(written > 0,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected positive return, got %ld", written);
-        test_validatefree(strncmp(buffer, "ARRAY: DOUBLE / NONV64_TYPE : 2\n", 32) == 0,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          exp_len, written,
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
+        test_validatefree(strncmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "header mismatch (%.36s)", buffer);
-        test_validatefree(strncmp(buffer + written - strlen("ARRAY: DONE\n"),
-                                  "ARRAY: DONE\n", strlen("ARRAY: DONE\n")) == 0,
-                          (arrayFree(arr), dsFree(&out)),
-                          "footer missing");
-        // Проверяем, что после маркера не было лишней записи
-        test_validatefree(buffer[written] == '\0',
-                          (arrayFree(arr), dsFree(&out)),
-                          "buffer overrun");
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 4. Успешная запись ARRAY_CHAR с символом перевода строки */
+    /* 4. ARRAY_CHAR, включая '\n' как значение */
     test_sub("subtest %d: save ARRAY_CHAR to DS_STR", ++subnum);
     {
         Array *arr = CarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1036,30 +1098,29 @@ tf1_array_save_to_ds_str(const char *name)
         arr->cv[2] = '\n';
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         char buffer[256];
         memset(buffer, 'x', sizeof(buffer));
         DS out = dsCreatestrCap(buffer, sizeof(buffer));
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: CHAR / NONV64_TYPE : 3\n"
-            "     0\tA\n"
-            "     1\tB\n"
-            "     2\t\n\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(strncmp(buffer, expected, expected_len) == 0,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          exp_len, written,
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
+        test_validatefree(strncmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%.*s\n--- expected ---\n%s",
-                          (int)written, buffer, expected);
-        test_validatefree(buffer[written] == '\0',
-                          (arrayFree(arr), dsFree(&out)),
-                          "buffer overrun");
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
@@ -1072,40 +1133,43 @@ tf1_array_save_to_ds_str(const char *name)
         Array *arr = IarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->len = 0;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         char buffer[256];
         memset(buffer, 'x', sizeof(buffer));
         DS out = dsCreatestrCap(buffer, sizeof(buffer));
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 0\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(strncmp(buffer, expected, expected_len) == 0,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          exp_len, written,
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
+        test_validatefree(strncmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch");
-        test_validatefree(buffer[written] == '\0',
-                          (arrayFree(arr), dsFree(&out)),
-                          "buffer overrun");
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 6. Переполнение буфера (маленькая ёмкость) */
+    /* 6. Переполнение буфера — rollback */
     test_sub("subtest %d: buffer overflow, rollback", ++subnum);
     {
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->iv[0] = 42;
         arr->len = 1;
 
-        char buffer[10];   // слишком мало для заголовка
+        char buffer[10];   /* слишком мало даже под заголовок */
         memset(buffer, 'x', sizeof(buffer));
         DS out = dsCreatestrCap(buffer, sizeof(buffer));
         size_t pos_before = dsGetpos(&out);
@@ -1115,15 +1179,14 @@ tf1_array_save_to_ds_str(const char *name)
         test_validatefree(res == -1,
                           (arrayFree(arr), dsFree(&out)),
                           "expected -1, got %ld", res);
-        test_validatefree( (size_t) dsGetpos(&out) == pos_before,
+        test_validatefree((size_t) dsGetpos(&out) == pos_before,
                           (arrayFree(arr), dsFree(&out)),
                           "position must be restored to %zu, got %lld",
-                          pos_before, dsGetpos(&out));
-        // Проверяем, что буфер не был изменён (остался заполнен 'x')
+                          pos_before, (long long) dsGetpos(&out));
         for (size_t i = 0; i < sizeof(buffer); i++) {
             test_validatefree(buffer[i] == 'x',
                               (arrayFree(arr), dsFree(&out)),
-                              "buffer byte %zu changed: %c", i, buffer[i]);
+                              "buffer byte %zu changed: '%c'", i, buffer[i]);
         }
 
         arrayFree(arr);
@@ -1131,34 +1194,35 @@ tf1_array_save_to_ds_str(const char *name)
         fs_alloc_check(true);
     }
 
-    /* 7. Точное соответствие размера буфера (впритык) */
-    test_sub("subtest %d: exact fit buffer", ++subnum);
+    /* 7. Точное соответствие буфера, включая место под '\0' */
+    test_sub("subtest %d: exact fit buffer (with NUL room)", ++subnum);
     {
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->iv[0] = 7;
         arr->len = 1;
 
-        // Рассчитаем точный размер выходной строки
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 1\n"
-            "     0\t     7\n"
-            "ARRAY: DONE\n";
-        size_t  expected_len = strlen(expected);
+        char   expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
 
-        size_t  buf_size = expected_len + 1;
+        size_t buf_size = exp_len + 1;   /* +1 под NUL */
+        char  *buffer   = malloc(buf_size);
+        test_validatefree(buffer != NULL, arrayFree(arr), "malloc failed");
 
-        char   *buffer = malloc(buf_size);
         memset(buffer, 'x', buf_size);
-        DS      out = dsCreatestrCap(buffer, buf_size);
+        DS out = dsCreatestrCap(buffer, buf_size);
 
         long written = arraySaveToDS(&out, arr);
 
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out), free(buffer)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(memcmp(buffer, expected, expected_len) == 0,
+                          "expected written %zu, got %ld", exp_len, written);
+        test_validatefree(memcmp(buffer, expected, exp_len) == 0,
                           (arrayFree(arr), dsFree(&out), free(buffer)),
-                          "content mismatch");
+                          "content mismatch\n"
+                          "--- expected ---\n%.*s\n--- got ---\n%.*s",
+                          (int) exp_len, expected,
+                          (int) (written > 0 ? written : 0), buffer);
 
         arrayFree(arr);
         dsFree(&out);
@@ -1166,34 +1230,33 @@ tf1_array_save_to_ds_str(const char *name)
         fs_alloc_check(true);
     }
 
-        /* 7. Точное соответствие размера буфера без запаса под '\0' -> ошибка */
-    test_sub("subtest %d: exact fit without terminator -> error", ++subnum);
+    /* 8. Точный размер без запаса под '\0' -> ошибка + rollback */
+    test_sub("subtest %d: exact fit without NUL -> error", ++subnum);
     {
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->iv[0] = 7;
         arr->len = 1;
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 1\n"
-            "     0\t     7\n"
-            "ARRAY: DONE\n";
-        size_t  expected_len = strlen(expected);
+        char   expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
 
-        char   *buffer = malloc(expected_len);
-        memset(buffer, 'x', expected_len);
-        DS      out = dsCreatestrCap(buffer, expected_len);
-        size_t  pos_before = dsGetpos(&out);
+        char  *buffer = malloc(exp_len);   /* без запаса */
+        test_validatefree(buffer != NULL, arrayFree(arr), "malloc failed");
 
-        long    written = arraySaveToDS(&out, arr);
+        memset(buffer, 'x', exp_len);
+        DS out = dsCreatestrCap(buffer, exp_len);
+        size_t pos_before = dsGetpos(&out);
+
+        long written = arraySaveToDS(&out, arr);
 
         test_validatefree(written == -1,
                           (arrayFree(arr), dsFree(&out), free(buffer)),
                           "expected -1, got %ld", written);
-        test_validatefree( (size_t) dsGetpos(&out) == pos_before,
+        test_validatefree((size_t) dsGetpos(&out) == pos_before,
                           (arrayFree(arr), dsFree(&out), free(buffer)),
                           "position must be restored to %zu, got %lld",
-                          pos_before, dsGetpos(&out)
-        );
+                          pos_before, (long long) dsGetpos(&out));
 
         arrayFree(arr);
         dsFree(&out);
@@ -1201,7 +1264,7 @@ tf1_array_save_to_ds_str(const char *name)
         fs_alloc_check(true);
     }
 
-    /* 8. NULL аргументы */
+    /* 9. NULL аргументы */
     test_sub("subtest %d: NULL arguments raise error", ++subnum);
     {
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1235,13 +1298,14 @@ tf1_array_save_to_ds_str(const char *name)
 }
 
 // ------------------------- TEST arraySaveToDS (DS_FS, граничные случаи) -------------------------
+
 static TestStatus
 tf2_array_save_to_ds_fs(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
 
-    /* 1. Успешная запись ARRAY_INT в DS_FS */
+    /* 1. ARRAY_INT в DS_FS */
     test_sub("subtest %d: save ARRAY_INT to DS_FS", ++subnum);
     {
         Array *arr = IarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1250,6 +1314,10 @@ tf2_array_save_to_ds_fs(const char *name)
         arr->iv[2] = 30;
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         fs data = FS();
         DS out = dsCreatefs(&data);
         off_t pos_before = dsGetpos(&out);
@@ -1257,32 +1325,27 @@ tf2_array_save_to_ds_fs(const char *name)
         long written = arraySaveToDS(&out, arr);
         off_t pos_after = dsGetpos(&out);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 3\n"
-            "     0\t    10\n"
-            "     1\t    20\n"
-            "     2\t    30\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(pos_after - pos_before == (off_t)written,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          exp_len, written, expected, fs_str(&out.s));
+        test_validatefree(pos_after - pos_before == (off_t) written,
                           (arrayFree(arr), dsFree(&out)),
                           "position increment mismatch: wrote %ld, moved %lld",
                           written, (long long)(pos_after - pos_before));
         test_validatefree(fscmpstr(out.s, expected) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%s\n--- expected ---\n%s",
-                          fs_str(&out.s), expected);
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr);
-        dsFree(&out);   // освобождает out.s
+        dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 2. Успешная запись ARRAY_LONG в DS_FS */
+    /* 2. ARRAY_LONG */
     test_sub("subtest %d: save ARRAY_LONG to DS_FS", ++subnum);
     {
         Array *arr = LarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1290,61 +1353,66 @@ tf2_array_save_to_ds_fs(const char *name)
         arr->lv[1] = -987654321L;
         arr->len = 2;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         fs data = FS();
         DS out = dsCreatefs(&data);
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: LONG / NONV64_TYPE : 2\n"
-            "     0\t123456789\n"
-            "     1\t-987654321\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          exp_len, written, expected, fs_str(&out.s));
         test_validatefree(fscmpstr(out.s, expected) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%s\n--- expected ---\n%s",
-                          fs_str(&out.s), expected);
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 3. Успешная запись ARRAY_DOUBLE в DS_FS */
+    /* 3. ARRAY_DOUBLE — включая точность %.17g */
     test_sub("subtest %d: save ARRAY_DOUBLE to DS_FS", ++subnum);
     {
-        Array *arr = DarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
+        Array *arr = DarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->dv[0] = 1.5;
         arr->dv[1] = -0.25;
-        arr->len = 2;
+        arr->dv[2] = 0.1 + 0.2;
+        arr->len = 3;
+
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
 
         fs data = FS();
         DS out = dsCreatefs(&data);
 
         long written = arraySaveToDS(&out, arr);
 
-        test_validatefree(written > 0,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected positive return, got %ld", written);
-        // Проверяем заголовок и завершающий маркер
-        test_validatefree(fsinstr(out.s, FSLITERAL("ARRAY: DOUBLE")) == 0,
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          exp_len, written, expected, fs_str(&out.s));
+        test_validatefree(fscmpstr(out.s, expected) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "header missing");
-        test_validatefree(fsinstr(out.s, FSLITERAL("ARRAY: DONE\n")) == (long)(out.s.len - strlen("ARRAY: DONE\n")),
-                          (arrayFree(arr), dsFree(&out)),
-                          "footer missing");
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 4. Успешная запись ARRAY_CHAR с символом перевода строки */
+    /* 4. ARRAY_CHAR с '\n' как значением */
     test_sub("subtest %d: save ARRAY_CHAR to DS_FS", ++subnum);
     {
         Array *arr = CarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1353,26 +1421,25 @@ tf2_array_save_to_ds_fs(const char *name)
         arr->cv[2] = '\n';
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         fs data = FS();
         DS out = dsCreatefs(&data);
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: CHAR / NONV64_TYPE : 3\n"
-            "     0\tA\n"
-            "     1\tB\n"
-            "     2\t\n\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          exp_len, written, expected, fs_str(&out.s));
         test_validatefree(fscmpstr(out.s, expected) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%s\n--- expected ---\n%s",
-                          fs_str(&out.s), expected);
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr);
         dsFree(&out);
@@ -1385,29 +1452,32 @@ tf2_array_save_to_ds_fs(const char *name)
         Array *arr = IarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->len = 0;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0, arrayFree(arr), "build expected failed");
+
         fs data = FS();
         DS out = dsCreatefs(&data);
 
         long written = arraySaveToDS(&out, arr);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 0\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
+        test_validatefree(written == (long) exp_len,
                           (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
+                          "expected written %zu, got %ld\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          exp_len, written, expected, fs_str(&out.s));
         test_validatefree(fscmpstr(out.s, expected) == 0,
                           (arrayFree(arr), dsFree(&out)),
-                          "content mismatch");
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr);
         dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 6. Ошибка: V64 не реализован, откат позиции */
+    /* 6. V64 not implemented — rollback */
     test_sub("subtest %d: V64 not implemented, rollback", ++subnum);
     {
         Array *arr = V64ArrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY, VALUE64_INT);
@@ -1425,9 +1495,8 @@ tf2_array_save_to_ds_fs(const char *name)
             test_validatefree(dsGetpos(&out) == pos_before,
                               (arrayFree(arr), dsFree(&out)),
                               "position must be restored to %lld, got %lld",
-                              (long long)pos_before, (long long)dsGetpos(&out));
+                              (long long) pos_before, (long long) dsGetpos(&out));
         } else {
-            // Если возбуждено исключение, это тоже допустимо
             test_validatefree(true,
                               (arrayFree(arr), dsFree(&out)),
                               "exception raised (acceptable)");
@@ -1468,7 +1537,7 @@ tf2_array_save_to_ds_fs(const char *name)
         fs_alloc_check(true);
     }
 
-    /* 8. Запись в непустой DS_FS (добавление в конец) */
+    /* 8. Две записи подряд — вторая дописывается в конец */
     test_sub("subtest %d: append to existing DS_FS", ++subnum);
     {
         Array *arr1 = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
@@ -1478,36 +1547,43 @@ tf2_array_save_to_ds_fs(const char *name)
         arr2->iv[0] = 200;
         arr2->len = 1;
 
+        /* Собираем ожидаемое — две последовательные сериализации. */
+        char expected[512];
+        size_t exp1 = test_array_save_expected(expected, sizeof(expected), arr1);
+        test_validatefree(exp1 > 0,
+                          (arrayFree(arr1), arrayFree(arr2)),
+                          "build expected[0] failed");
+        size_t exp2 = test_array_save_expected(expected + exp1, sizeof(expected) - exp1, arr2);
+        test_validatefree(exp2 > 0,
+                          (arrayFree(arr1), arrayFree(arr2)),
+                          "build expected[1] failed");
+        size_t exp_total = exp1 + exp2;
+
         fs data = FS();
         DS out = dsCreatefs(&data);
 
-        // Первая запись
         long written1 = arraySaveToDS(&out, arr1);
-        // Вторая запись (позиция уже в конце)
         off_t pos_before_second = dsGetpos(&out);
         long written2 = arraySaveToDS(&out, arr2);
-        off_t pos_after_second = dsGetpos(&out);
+        off_t pos_after_second  = dsGetpos(&out);
 
-        // Проверяем, что вторая запись добавилась в конец
-        const char *expected_total =
-            "ARRAY: INT / NONV64_TYPE : 1\n"
-            "     0\t   100\n"
-            "ARRAY: DONE\n"
-            "ARRAY: INT / NONV64_TYPE : 1\n"
-            "     0\t   200\n"
-            "ARRAY: DONE\n";
-        // Ожидаем, что обе записи корректны
-        test_validatefree(written1 > 0 && written2 > 0,
+        test_validatefree(written1 == (long) exp1 && written2 == (long) exp2,
                           (arrayFree(arr1), arrayFree(arr2), dsFree(&out)),
-                          "expected positive returns, got %ld and %ld", written1, written2);
-        test_validatefree(pos_after_second - pos_before_second == (off_t)written2,
+                          "expected %zu + %zu, got %ld + %ld",
+                          exp1, exp2, written1, written2);
+        test_validatefree(pos_after_second - pos_before_second == (off_t) written2,
                           (arrayFree(arr1), arrayFree(arr2), dsFree(&out)),
                           "second write position mismatch: wrote %ld, moved %lld",
                           written2, (long long)(pos_after_second - pos_before_second));
-        test_validatefree(fscmpstr(out.s, expected_total) == 0,
+        test_validatefree(fs_len(&out.s) == exp_total,
                           (arrayFree(arr1), arrayFree(arr2), dsFree(&out)),
-                          "content mismatch:\n--- got ---\n%s\n--- expected ---\n%s",
-                          fs_str(&out.s), expected_total);
+                          "final len=%zu, expected %zu",
+                          fs_len(&out.s), exp_total);
+        test_validatefree(fscmpstr(out.s, expected) == 0,
+                          (arrayFree(arr1), arrayFree(arr2), dsFree(&out)),
+                          "content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, fs_str(&out.s));
 
         arrayFree(arr1);
         arrayFree(arr2);
@@ -1519,47 +1595,45 @@ tf2_array_save_to_ds_fs(const char *name)
 }
 
 // ------------------------- TEST arraySaveToDS (DS_FILE и DS_CONSTSTR) -------------------------
+
 static TestStatus
 tf3_array_save_to_ds_file(const char *name)
 {
     logenter("%s", name);
     int subnum = 0;
 
-    /* 1. Успешная запись ARRAY_INT в DS_FILE */
+    /* 1. ARRAY_INT в DS_FILE */
     test_sub("subtest %d: save ARRAY_INT to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_test.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create test file");
 
-        DS out = dsCreatef(fp);
+        DS    out = dsCreatef(fp);
         Array *arr = IarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->iv[0] = 111;
         arr->iv[1] = 222;
         arr->iv[2] = 333;
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out), fclose(fp)),
+                          "build expected failed");
+
         off_t pos_before = dsGetpos(&out);
-        long written = arraySaveToDS(&out, arr);
-        off_t pos_after = dsGetpos(&out);
+        long  written    = arraySaveToDS(&out, arr);
+        off_t pos_after  = dsGetpos(&out);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 3\n"
-            "     0\t   111\n"
-            "     1\t   222\n"
-            "     2\t   333\n"
-            "ARRAY: DONE\n";
-        size_t expected_len = strlen(expected);
-
-        test_validatefree(written == (long)expected_len,
-                          (arrayFree(arr), dsFree(&out)),
-                          "expected written %zu, got %ld", expected_len, written);
-        test_validatefree(pos_after - pos_before == (off_t)written,
-                          (arrayFree(arr), dsFree(&out)),
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out), fclose(fp)),
+                          "expected written %zu, got %ld", exp_len, written);
+        test_validatefree(pos_after - pos_before == (off_t) written,
+                          (arrayFree(arr), dsFree(&out), fclose(fp)),
                           "position increment mismatch: wrote %ld, moved %lld",
                           written, (long long)(pos_after - pos_before));
 
-        // Читаем файл обратно для проверки содержимого
         fflush(fp);
         fseek(fp, 0, SEEK_SET);
         char buffer[512] = {0};
@@ -1567,12 +1641,13 @@ tf3_array_save_to_ds_file(const char *name)
         buffer[nread] = '\0';
 
         test_validatefree(strcmp(buffer, expected) == 0,
-                          (arrayFree(arr), dsFree(&out)),
-                          "file content mismatch:\n--- got ---\n%s\n--- expected ---\n%s",
-                          buffer, expected);
+                          (arrayFree(arr), dsFree(&out), fclose(fp)),
+                          "file content mismatch\n"
+                          "--- expected ---\n%s\n--- got ---\n%s",
+                          expected, buffer);
 
         arrayFree(arr);
-        dsFree(&out);   // закрывает файл
+        dsFree(&out);   /* закрывает fp */
         fs_alloc_check(true);
     }
 
@@ -1580,7 +1655,7 @@ tf3_array_save_to_ds_file(const char *name)
     test_sub("subtest %d: DS_CONSTSTR raises error", ++subnum);
     {
         const char *input = "some dummy data";
-        DS out = dsCreateconst(input);
+        DS    out = dsCreateconst(input);
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->iv[0] = 42;
         arr->len = 1;
@@ -1592,40 +1667,40 @@ tf3_array_save_to_ds_file(const char *name)
                               (arrayFree(arr), dsFree(&out)),
                               "expected -1, got %ld", res);
         } else {
-            // Исключение допустимо
             test_validatefree(true,
                               (arrayFree(arr), dsFree(&out)),
                               "exception raised (acceptable)");
         }
 
-        // Проверяем, что позиция не изменилась (восстановилась)
         test_validatefree(dsGetpos(&out) == pos_before,
                           (arrayFree(arr), dsFree(&out)),
                           "position must be restored to %lld, got %lld",
-                          (long long)pos_before, (long long)dsGetpos(&out));
-
-        // Проверяем, что строка осталась нетронутой
+                          (long long) pos_before, (long long) dsGetpos(&out));
         test_validatefree(strcmp(input, "some dummy data") == 0,
                           (arrayFree(arr), dsFree(&out)),
                           "const string must not change");
 
         arrayFree(arr);
-        dsFree(&out);   // DS_CONSTSTR не освобождает память
+        dsFree(&out);
         fs_alloc_check(true);
     }
 
-    /* 3. NULL аргументы для DS_FILE  */
-    test_sub("subtest %d: NULL arguments raise error", ++subnum);
+    /* 3. NULL out */
+    test_sub("subtest %d: NULL out raises error", ++subnum);
     {
         Array *arr = IarrayCreate(1, ARRAY_FILLTYPE_SAFE_EMPTY);
         if (!try()) {
             arraySaveToDS(NULL, arr);
-            test_validatefree(false, arrayFree(arr), "must raise error for NULL out");
+            test_validatefree(false, arrayFree(arr),
+                              "must raise error for NULL out");
         } else {
-            test_validatefree(true, arrayFree(arr), "correctly raised error for NULL out");
+            test_validatefree(true, arrayFree(arr),
+                              "correctly raised error for NULL out");
         }
     }
-    test_sub("subtest %d: NULL array  returns -1", ++subnum);
+
+    /* 4. NULL arr */
+    test_sub("subtest %d: NULL arr raises error", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_null_test.ds";
         FILE *fp = fopen(path, "w+");
@@ -1633,30 +1708,41 @@ tf3_array_save_to_ds_file(const char *name)
         DS out = dsCreatef(fp);
         if (!try()) {
             arraySaveToDS(&out, NULL);
-            test_validatefree(false, dsFree(&out), "must raise error for NULL arr");
+            test_validatefree(false, dsFree(&out),
+                              "must raise error for NULL arr");
         } else {
-            test_validatefree(true, dsFree(&out), "correctly raised error for NULL arr");
+            test_validatefree(true, dsFree(&out),
+                              "correctly raised error for NULL arr");
         }
         fs_alloc_check(true);
     }
 
-    /* 2. ARRAY_LONG */
+    /* 5. ARRAY_LONG */
     test_sub("subtest %d: ARRAY_LONG to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_long.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create file");
-        DS out = dsCreatef(fp);
+
+        DS    out = dsCreatef(fp);
         Array *arr = LarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->lv[0] = 123456789L;
         arr->lv[1] = -987654321L;
         arr->len = 2;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out)),
+                          "build expected failed");
+
         long written = arraySaveToDS(&out, arr);
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out)),
+                          "expected written %zu, got %ld", exp_len, written);
+
         dsFree(&out);
         arrayFree(arr);
-
-        test_validate(written > 0, "write failed");
 
         FILE *f = fopen(path, "rb");
         test_validate(f != NULL, "failed to open file for reading");
@@ -1665,85 +1751,82 @@ tf3_array_save_to_ds_file(const char *name)
         buf[n] = '\0';
         fclose(f);
 
-        const char *expected =
-            "ARRAY: LONG / NONV64_TYPE : 2\n"
-            "     0\t123456789\n"
-            "     1\t-987654321\n"
-            "ARRAY: DONE\n";
-        test_validate(strcmp(buf, expected) == 0, "content mismatch");
+        test_validate(strcmp(buf, expected) == 0,
+                      "content mismatch\n"
+                      "--- expected ---\n%s\n--- got ---\n%s",
+                      expected, buf);
         fs_alloc_check(true);
     }
 
-        /* 6. ARRAY_DOUBLE (проверка заголовка и значений через разбор) */
+    /* 6. ARRAY_DOUBLE */
     test_sub("subtest %d: ARRAY_DOUBLE to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_double.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create file");
-        DS out = dsCreatef(fp);
-        Array *arr = DarrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
+
+        DS    out = dsCreatef(fp);
+        Array *arr = DarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->dv[0] = 3.14159265358979;
         arr->dv[1] = -2.718281828459;
-        arr->len = 2;
+        arr->dv[2] = 0.1 + 0.2;          /* проверяем %.17g */
+        arr->len = 3;
 
-        // Сохраняем ожидаемые значения до освобождения массива
-        double expected0 = arr->dv[0];
-        double expected1 = arr->dv[1];
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out)),
+                          "build expected failed");
 
         long written = arraySaveToDS(&out, arr);
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out)),
+                          "expected written %zu, got %ld", exp_len, written);
+
         dsFree(&out);
         arrayFree(arr);
 
-        test_validate(written > 0, "write failed");
-
         FILE *f = fopen(path, "rb");
         test_validate(f != NULL, "failed to open file for reading");
-        char buf[1024];
+        char buf[512];
         size_t n = fread(buf, 1, sizeof(buf)-1, f);
         buf[n] = '\0';
         fclose(f);
 
-        // Проверяем заголовок
-        const char *header = "ARRAY: DOUBLE / NONV64_TYPE : 2\n";
-        test_validate(strncmp(buf, header, strlen(header)) == 0, "header mismatch");
-        // Проверяем маркер завершения
-        const char *footer = "ARRAY: DONE\n";
-        test_validate(strncmp(buf + strlen(buf) - strlen(footer), footer, strlen(footer)) == 0, "footer missing");
-
-        // Разбираем числовые строки между заголовком и маркером
-        char *line_start = buf + strlen(header);
-        char *line_end = buf + strlen(buf) - strlen(footer) - 1;
-        char saved = *line_end;
-        *line_end = '\0';
-
-        double v1, v2;
-        int matched = sscanf(line_start, "%*s\t%lf\n%*s\t%lf", &v1, &v2);
-        *line_end = saved;
-
-        test_validate(matched == 2, "failed to parse double values");
-        test_validate(fabs(v1 - expected0) < 1e-12 && fabs(v2 - expected1) < 1e-12,
-                      "double values mismatch");
+        test_validate(strcmp(buf, expected) == 0,
+                      "content mismatch\n"
+                      "--- expected ---\n%s\n--- got ---\n%s",
+                      expected, buf);
         fs_alloc_check(true);
     }
 
-    /* 4. ARRAY_CHAR (включая спецсимволы) */
+    /* 7. ARRAY_CHAR с '\n' как значением */
     test_sub("subtest %d: ARRAY_CHAR to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_char.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create file");
-        DS out = dsCreatef(fp);
+
+        DS    out = dsCreatef(fp);
         Array *arr = CarrayCreate(3, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->cv[0] = 'A';
         arr->cv[1] = 'B';
         arr->cv[2] = '\n';
         arr->len = 3;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out)),
+                          "build expected failed");
+
         long written = arraySaveToDS(&out, arr);
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out)),
+                          "expected written %zu, got %ld", exp_len, written);
+
         dsFree(&out);
         arrayFree(arr);
-
-        test_validate(written > 0, "write failed");
 
         FILE *f = fopen(path, "rb");
         test_validate(f != NULL, "failed to open file for reading");
@@ -1752,31 +1835,37 @@ tf3_array_save_to_ds_file(const char *name)
         buf[n] = '\0';
         fclose(f);
 
-        const char *expected =
-            "ARRAY: CHAR / NONV64_TYPE : 3\n"
-            "     0\tA\n"
-            "     1\tB\n"
-            "     2\t\n\n"
-            "ARRAY: DONE\n";
-        test_validate(strcmp(buf, expected) == 0, "content mismatch");
+        test_validate(strcmp(buf, expected) == 0,
+                      "content mismatch\n"
+                      "--- expected ---\n%s\n--- got ---\n%s",
+                      expected, buf);
         fs_alloc_check(true);
     }
 
-    /* 5. Пустой массив */
+    /* 8. Пустой массив */
     test_sub("subtest %d: empty ARRAY_INT to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_empty.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create file");
-        DS out = dsCreatef(fp);
+
+        DS    out = dsCreatef(fp);
         Array *arr = IarrayCreate(0, ARRAY_FILLTYPE_SAFE_EMPTY);
         arr->len = 0;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out)),
+                          "build expected failed");
+
         long written = arraySaveToDS(&out, arr);
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out)),
+                          "expected written %zu, got %ld", exp_len, written);
+
         dsFree(&out);
         arrayFree(arr);
-
-        test_validate(written > 0, "write failed");
 
         FILE *f = fopen(path, "rb");
         test_validate(f != NULL, "failed to open file for reading");
@@ -1785,30 +1874,39 @@ tf3_array_save_to_ds_file(const char *name)
         buf[n] = '\0';
         fclose(f);
 
-        const char *expected =
-            "ARRAY: INT / NONV64_TYPE : 0\n"
-            "ARRAY: DONE\n";
-        test_validate(strcmp(buf, expected) == 0, "content mismatch");
+        test_validate(strcmp(buf, expected) == 0,
+                      "content mismatch\n"
+                      "--- expected ---\n%s\n--- got ---\n%s",
+                      expected, buf);
         fs_alloc_check(true);
     }
 
+    /* 9. ARRAY_POINTER — save only */
     test_sub("subtest %d: ARRAY_POINTER to DS_FILE", ++subnum);
     {
         const char *path = "res/ds_adapter/arraySaveToDS_file_pointer.ds";
         FILE *fp = fopen(path, "w+");
         test_validate(fp != NULL, "failed to create file");
-        DS out = dsCreatef(fp);
 
+        DS    out = dsCreatef(fp);
         Array *arr = ParrayCreate(2, ARRAY_FILLTYPE_SAFE_EMPTY);
-        arr->pv[0] = (void*)0x1234;
-        arr->pv[1] = (void*)0x5678;
+        arr->pv[0] = (void *) 0x1234;
+        arr->pv[1] = (void *) 0x5678;
         arr->len = 2;
 
+        char expected[256];
+        size_t exp_len = test_array_save_expected(expected, sizeof(expected), arr);
+        test_validatefree(exp_len > 0,
+                          (arrayFree(arr), dsFree(&out)),
+                          "build expected failed (POINTER format)");
+
         long written = arraySaveToDS(&out, arr);
+        test_validatefree(written == (long) exp_len,
+                          (arrayFree(arr), dsFree(&out)),
+                          "expected written %zu, got %ld", exp_len, written);
+
         dsFree(&out);
         arrayFree(arr);
-
-        test_validate(written > 0, "write failed");
 
         FILE *f = fopen(path, "rb");
         test_validate(f != NULL, "failed to open file for reading");
@@ -1817,16 +1915,233 @@ tf3_array_save_to_ds_file(const char *name)
         buf[n] = '\0';
         fclose(f);
 
-        // Проверяем заголовок и завершающий маркер
-        const char *header = "ARRAY: POINTER / NONV64_TYPE : 2\n";
-        test_validate(strncmp(buf, header, strlen(header)) == 0, "header mismatch");
-        const char *footer = "ARRAY: DONE\n";
-        test_validate(strncmp(buf + strlen(buf) - strlen(footer), footer, strlen(footer)) == 0,
-                    "footer missing");
-
+        test_validate(strcmp(buf, expected) == 0,
+                      "content mismatch\n"
+                      "--- expected ---\n%s\n--- got ---\n%s",
+                      expected, buf);
         fs_alloc_check(true);
     }
 
+    return logret(TEST_PASSED, "done");
+}
+
+// =====================================================================
+// array.c — ArrayIO: DS_STR -> DS_STR round-trip
+// =====================================================================
+// Порядок:
+//   1. writer: owner-DS_STR (dsCreatestrAlloc, memowner = true)
+//   2. arraySaveToDS(writer, arr)
+//   3. saved_len = dsGetpos(writer)
+//   4. buf = dsReleaseStr(&writer)    <- detach: DS обнулён, buf без владельца
+//   5. reader = dsCreatestrCap(buf, ...) <- non-owning DS поверх buf
+//   6. arrayLoadFromDS(reader, &loaded)
+//   7. сравнение
+//   8. arrayFreeBody(&loaded); dsFree(&reader); free(buf);
+//
+// Владение буфером: writer -> (detach) -> caller -> (free) -> NULL.
+// Reader никогда не владеет; dsFree(&reader) тело не освобождает.
+
+static bool
+test_dsstr_to_dsstr_roundtrip(const Array *arr) {
+    if (!arr)
+        return userraise(false, ERR_NULL_INPUT, "roundtrip: NULL array");
+    if (arrayIspointer(arr))
+        return userraise(false, ERR_UNSUPPORTED_TYPE,
+            "roundtrip: ARRAY_POINTER save-only, loader not implemented");
+
+    /* ---- 1. writer ---- */
+    DS out = dsCreatestrAlloc(256);
+    if (out.ptr == NULL)
+        return userraise(false, ERR_UNABLE_ALLOCATE,
+            "roundtrip: DS_STR alloc failed");
+
+    long w = arraySaveToDS(&out, (Array *) arr);
+    if (w <= 0) {
+        dsFree(&out);
+        return userraise(false, ERR_UNABLE_PARSE_DATA,
+            "roundtrip: save failed (%ld)", w);
+    }
+    size_t saved_len = (size_t) dsGetpos(&out);
+
+    DSTECHFPRINT(logfile, out);
+
+    /* ---- 2. detach: writer обнулён, владение перешло к нам ---- */
+    char *buf = dsReleaseStr(&out);
+    if (!buf)
+        return userraise(false, ERR_UNKNOWN_TYPE,
+            "roundtrip: dsReleaseStr returned NULL");
+
+    /* ---- 3. reader: non-owning DS_STR поверх того же буфера ---- */
+    DS in = dsCreatestrCap(buf, saved_len + 1);
+    /* memowner == false (default) — dsFree(&in) buf не тронет */
+
+    /* ---- 4. load ---- */
+    Array loaded = {0};
+    long  r = arrayLoadFromDS(&in, &loaded);
+
+    bool eq = false;
+    if (r < 0) {
+        userraise(false, ERR_UNABLE_PARSE_DATA,
+            "roundtrip: load failed (%ld)", r);
+    } else if (arrayGettype(arr) != arrayGettype(&loaded)) {
+        userraise(false, ERR_TYPES_MISMATCH,
+            "roundtrip: type mismatch (%s vs %s)",
+            arrayGetTypeName(arr), arrayGetTypeName(&loaded));
+    } else {
+        eq = arrayEq((Array *) arr, &loaded);
+        if (!eq)
+            userraise(false, ERR_UNKNOWN_TYPE,
+                "roundtrip: content mismatch (type=%s, len=%zu vs %zu)",
+                arrayGetTypeName(arr), arr->len, loaded.len);
+    }
+
+    /* ---- 5. cleanup ---- */
+    arrayFreeBody(&loaded);
+    dsFree(&in);      /* non-owning: buf не трогает */
+    free(buf);        /* освобождаем деточенный буфер вручную */
+
+    return eq;
+}
+
+// ---------------------- TEST dsstr round-trip ------------------------
+static TestStatus
+tf4_array_dsstr_roundtrip(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. INT — базовый */
+    test_sub("subtest %d: INT basic", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(1, -2, 3, -4, 5);
+        test_validatefree(a != NULL, (void) 0, "create INT failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "INT basic roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 2. INT — крайние значения */
+    test_sub("subtest %d: INT extremes", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(INT_MIN, INT_MAX, 0, -1, 1);
+        test_validatefree(a != NULL, (void) 0, "create INT failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "INT extremes roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 3. LONG — крайние значения */
+    test_sub("subtest %d: LONG extremes", ++subnum);
+    {
+        Array *a = LARRAY_CREATE(0L, -1L, 1234567890123L, LONG_MIN, LONG_MAX);
+        test_validatefree(a != NULL, (void) 0, "create LONG failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "LONG extremes roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 4. DOUBLE — требует точности %.17g (в сообщении экранируем %%) */
+    test_sub("subtest %d: DOUBLE precision", ++subnum);
+    {
+        Array *a = DARRAY_CREATE(0.1 + 0.2, nextafter(1.0, 2.0),
+                                 nextafter(0.0, 1.0), -0.0, 1e100, -1e-100);
+        test_validatefree(a != NULL, (void) 0, "create DOUBLE failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "DOUBLE precision roundtrip failed (needs %%.17g)");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 5. CHAR — обычные */
+    test_sub("subtest %d: CHAR plain", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('a', 'Z', '0', '~', '!');
+        test_validatefree(a != NULL, (void) 0, "create CHAR failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "CHAR plain roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 6. CHAR — пробельные */
+    test_sub("subtest %d: CHAR whitespace", ++subnum);
+    {
+        Array *a = CARRAY_CREATE(' ', '\t', '\n', 'x', ' ');
+        test_validatefree(a != NULL, (void) 0, "create CHAR failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "CHAR whitespace roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 7. CHAR — '\n' в последней позиции (footer stress) */
+    test_sub("subtest %d: CHAR '\\n' last", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('a', 'b', '\n');
+        test_validatefree(a != NULL, (void) 0, "create CHAR failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "CHAR trailing \\n roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Empty array */
+    test_sub("subtest %d: empty array", ++subnum);
+    {
+        Array *a = IarrayCreate(0, ARRAY_FILLTYPE_ZERO);
+        test_validatefree(a != NULL, (void) 0, "create empty failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "empty roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Single INT */
+    test_sub("subtest %d: single INT", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(42);
+        test_validatefree(a != NULL, (void) 0, "create single INT failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "single INT roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 10. Single CHAR */
+    test_sub("subtest %d: single CHAR", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('~');
+        test_validatefree(a != NULL, (void) 0, "create single CHAR failed");
+        test_validatefree(test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "single CHAR roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 12. POINTER — helper должен отказаться */
+    test_sub("subtest %d: POINTER rejected", ++subnum);
+    {
+        Array *a = ParrayCreate(2, ARRAY_FILLTYPE_ZERO);
+        test_validatefree(!test_dsstr_to_dsstr_roundtrip(a), arrayFree(a),
+                          "helper must reject POINTER");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 13. NULL arr — raise */
+    test_sub("subtest %d: NULL arr raises", ++subnum);
+    {
+        if (!try()) {
+            test_dsstr_to_dsstr_roundtrip(NULL);
+            test_validate(false, "must raise for NULL arr");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
 
     return logret(TEST_PASSED, "done");
 }
@@ -1841,6 +2156,8 @@ main( /*int argc, char *argv[] */ )
         TESTADD(tf1_array_save_to_ds_str,                "arraySaveToDS DS_STR tests")
       , TESTADD(tf2_array_save_to_ds_fs,                 "arraySaveToDS DS_FS tests")
       , TESTADD(tf3_array_save_to_ds_file,               "arraySaveToDS DS_FILE tests")
+      // round-trip
+      , TESTADD(tf4_array_dsstr_roundtrip,               "ArrayIO: DS_STR -> DS_STR round-trip")
     );
 
     return logret(0, "end...");  // as replace of logclose()
