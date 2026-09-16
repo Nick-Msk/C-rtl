@@ -1,104 +1,84 @@
-# Value64 Typed
+# Value64 Params
 
-`v64typed` is the primary, recommended interface for the **Value64** ecosystem. 
+> [!WARNING]  
+> **NOT RECOMMENDED for general-purpose use.**  
+> This module is a specialized, fixed-size container designed specifically for passing a limited set of arguments to predicates or map functions.  
+> 
+> **If you need a dynamic or larger collection of values, use [value64_tarray.h](value64_tarray.h) instead.**
 
-While the base `value64` union is a high-performance, "type-blind" 64-bit container, `v64typed` provides a type-safe wrapper that bundles the data with its type metadata. This ensures that values are always accompanied by their descriptors, enabling safe access, automated memory management, and type-aware arithmetic.
+`value64_params` provides a lightweight way to bundle up to 4 `value64` objects into a single structure. This is useful for passing multiple criteria to filter functions or map operations where the number of arguments is known at compile-time and is very small.
 
-## 🌟 Why use `v64typed`?
+## 🏗 Architecture
 
-The raw `value64` union is optimized for memory footprint, but it carries the risk of "type mismatch" errors if the developer loses track of the data's type. `v64typed` solves this by:
-1.  **Binding Type to Data:** The type is inseparable from the value.
-2.  **Automated Safety:** Getters include runtime checks to prevent interpreting integer bits as pointers.
-3.  **Memory Ownership:** Simplifies management of heap-allocated types (`STR`, `FS`) through unified constructors and destructors.
+The module provides a fixed-size container `value64_params_t`. Depending on your build configuration, it behaves in two ways:
 
-## 🏗 Core Structure
+### 1. Standard Mode (Default)
+When `VALUE64_PARAMS_FREE` is **not** defined, the container is a simple collection of `value64` values. It is extremely fast and intended for primitive values (integers, doubles, etc.) that do not require memory cleanup.
 
-The core of this module is the `v64typed` structure:
+### 2. Resource-Aware Mode (Memory Management)
+If `VALUE64_PARAMS_FREE` is defined during compilation, the container gains:
+*   An array of `value64_type` tags.
+*   A `count` field.
+*   The `free_value64_params()` function to safely release heap-allocated resources (like `STR` or `FS`) held within the container.
 
+## 🚀 Usage Guide
+
+### Initialization
+
+Use the provided macros to create parameter containers.
+
+#### Standard Initialization (Primitives)
 ```c
-typedef struct {
-    value64      val;   // The 64-bit data
-    value64_type typ;   // The explicit type (e.h. VALUE64_INT, VALUE64_STR, etc.)
-} v64typed;
+// Creates a container with 2 primitive parameters
+value64_params_t params = VALUE64_PARAMS2(LITERAL64_INT(10), LITERAL64_INT(20));
 ```
 
-## 📖 Usage Guide
+#### Resource-Aware Initialization (Requires `VALUE64_PARAMS_FREE`)
+If you are passing strings or filesystem objects, you **must** specify the types so they can be freed later.
 
-### 1. Initialization
-You can initialize `v64typed` objects using high-speed macros or flexible constructor functions.
-
-#### Using Macros (Fastest)
 ```c
-// For primitives
-v64typed my_int    = V64TYPEDINT(100);
-v64typed my_double = V64TYPEDDBL(3.14);
-v64typed my_bool   = V64TYPEDBOOL(true);
+#ifdef VALUE64_PARAMS_FREE
+value64_params_t params = VALUE64_PARAMS2(
+    LITERAL64_STR("Hello"), VALUE64_INT, 
+    LITERAL64_FS(my_fs),      VALUE64_FS
+);
 
-// For strings (creates a deep copy)
-v64typed my_str    = V64TYPEDSTR("Hello World");
+// Later, to prevent memory leaks:
+free_value64_params(&params);
+#endif
 ```
 
-#### Using Constructor Functions (Flexible)
+### Accessing Parameters
+
+You can access parameters using indexed access or convenience getters.
+
 ```c
-// Creating a generic typed object
-v64typed generic = v64typedCreate(LITERAL64_INT(50), VALUE64_INT);
+// Using the index-based getter (Safe: returns LITERAL64_ZERO if out of bounds)
+value64 v = value64_getpar(&params, 1);
 
-// Creating a managed string (heap allocation)
-v64typed str = v64typedCreateStr("Managed string");
-
-// Creating a filesystem resource
-v64typed fs = v64typedCreateFs(my_fs_ptr);
+// Using convenience getters for speed
+value64 v1 = value64_getpar1(&params);
+value64 v2 = value64_getpar2(&params);
 ```
 
-### 2. Memory Management
-Managing lifecycle is critical for resource-owning types (`STR`, `FS`).
+## 📋 API Reference
 
-```c
-v64typed my_str = v64typedCreateStr("Important data");
+| Function/Macro | Description |
+| :--- | :--- |
+| `VALUE64_PARAMS1..4` | Macros to initialize 1, 2, 3, or 4 parameters. |
+| `value64_getpar(p, i)` | Returns the $i$-th parameter (safe). |
+| `value64_getpar1(p)` | Returns the 1st parameter. |
+| `value64_getpar2(p)` | Returns the 2nd parameter. |
+| `value64_getpar3(p)` | Returns the 3rd parameter. |
+| `value64_getpar4(p)` | Returns the 4th parameter. |
+| `free_value64_params(p)` | *(Available only if `VALUE64_PARAMS_FREE` is defined)* Cleans up resources. |
 
-// ... use the object ...
+## ⚠️ Summary of Constraints
 
-// Safely free the internal resources and reset the object
-v64typedFree(&my_str);
-```
-
-#### Move Semantics
-To transfer ownership of a resource from one object to another without copying the underlying data, use `v64typedMove`. The source object is reset to `UNKNOWN` to prevent double-frees.
-
-```c
-v64typed source = v64typedCreateStr("Transfer me");
-v64typed target = v64typedMove(&source); 
-// 'source' is now UNKNOWN. 'target' now owns the string memory.
-```
-
-### 3. Accessing Data
-Accessing data is done through type-specific getters. These functions perform safety checks and will raise an error if the requested type does not match the stored type.
-
-```c
-v64typed my_val = V64TYPEDINT(42);
-
-// Direct access
-int i = v64typeGetInt(my_val);
-double d = v64typeGetDouble(my_val);
-char* s = v64typeGetStr(my_val);
-
-// Casting (Converting)
-// Converts a typed object to a primitive C type
-int casted_i = v64typedCastToInt(my_val);
-```
-
-### 4. Advanced Utilities
-
-#### Null Value Handling (NVL)
-Useful for providing fallback values when dealing with strings or filesystem resources.
-
-```c
-v64typed my_str = V64TYPEDSTR(""); // Empty string
-
-// Returns the string if not empty, otherwise returns "Default"
-const char* result = v64typedNvlStr(my_str, "Default");
+1.  **Fixed Capacity:** Maximum of **4** parameters.
+2.  **Manual Cleanup:** If you use dynamic types (`STR`, `FS`) and have `VALUE64_PARAMS_FREE` enabled, you **must** call `free_value64_params`.
+3.  **Alternative:** For any scenario involving more than 4 elements or dynamic growth, use **`value64_tarray.h`**.
 
 ## License
 GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
-                       
