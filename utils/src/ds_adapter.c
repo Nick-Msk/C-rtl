@@ -96,7 +96,7 @@ dsHelperParseLong(const char *restrict str, long *restrict plval, size_t *restri
     if (str == endptr)
         return userraise(false, ERR_UNABLE_PARSE_DATA, "err parse int/long %ld, errno %s", val, strerror(errno));
     
-    *pos = endptr - str;
+    *pos += endptr - str;
     if (plval)
         *plval = val;
     return true;
