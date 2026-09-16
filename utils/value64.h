@@ -50,6 +50,7 @@ typedef union value64 {
         bool                bval;       /**< single char! For conf file */
         fs                 *fsval;      /**< fs string */
         FILE               *FILEval;    /**< FILE * - NO ANY ACTIONS for now, only storage the pointer! */
+        // lwset              sw;       // TODO:
         void               *pval;       /**< Generic pointer representation */
         uint64_t            u64;        /**< Raw 64-bit representation (used for hashing) */
 } value64;
