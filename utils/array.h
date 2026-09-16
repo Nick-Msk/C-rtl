@@ -652,9 +652,9 @@ extern Array                     *arrayCreateFromChar(const char *source, size_t
 // container! move semantic.          
 extern Array                     *arrayCreateFromV64(value64 *source, value64_type vt, size_t cnt);   
 // simplified v64:fs via c-str, copy
-extern Array                     *arrayCreateFromV64fsasstr(const char *source, size_t cnt);  
+extern Array                     *arrayCreateFromV64fsasstr(const char *const *cstrs, size_t cnt);  
 // simplified v64:str via c-str, copy
-extern Array                     *arrayCreateFromV64str(const char *source, size_t cnt);
+extern Array                     *arrayCreateFromV64str(const char *const *cstrs, size_t cnt);
 
 /**
  * @file array.h (section: Array construction macros for tests / inline use)
@@ -713,26 +713,26 @@ extern Array                     *arrayCreateFromV64str(const char *source, size
  */
 
 /** @brief Build an @c ARRAY_INT from a variadic list of @c int values. */
-#define IARRAY_FILL(...) \
+#define IARRAY_CREATE(...) \
     arrayCreateFromInt(   (const int[]){ __VA_ARGS__ },    COUNT(((const int[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_LONG from a variadic list of @c long values. */
-#define LARRAY_FILL(...) \
+#define LARRAY_CREATE(...) \
     arrayCreateFromLong(  (const long[]){ __VA_ARGS__ },   COUNT(((const long[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_DOUBLE from a variadic list of @c double values. */
-#define DARRAY_FILL(...) \
+#define DARRAY_CREATE(...) \
     arrayCreateFromDouble((const double[]){ __VA_ARGS__ }, COUNT(((const double[]){ __VA_ARGS__ })))
 
 /** @brief Build an @c ARRAY_CHAR from a variadic list of @c char values. */
-#define CARRAY_FILL(...) \
+#define CARRAY_CREATE(...) \
     arrayCreateFromChar(  (const char[]){ __VA_ARGS__ },   COUNT(((const char[]){ __VA_ARGS__ })))
 
 /**
  * @brief Build an @c ARRAY_CHAR from a C string, WITHOUT the trailing NUL.
  * @param str A string literal or NUL-terminated @c const char*.
  */
-#define CARRAY_FILLSTR(str) \
+#define CARRAY_CREATE_FROM_STR(str) \
     arrayCreateFromChar((const char[]){ str }, strlen(str))
 
 /**
@@ -740,8 +740,20 @@ extern Array                     *arrayCreateFromV64str(const char *source, size
  *        trailing NUL. Requires a literal (uses @c sizeof).
  * @param str A string literal.
  */
-#define CARRAY_FILLSTR_NUL(str) \
+#define CARRAY_CREATE_FROM_STR_NUL(str) \
     arrayCreateFromChar((const char[]){ str }, sizeof(str))
+
+#define V64ARRAY_CREATE_FS_FROM_STR(...) \
+    ({ \
+        const char *const _tbl[] = { __VA_ARGS__, NULL }; \
+        arrayCreateFromV64fsasstr(_tbl, countstrings(_tbl)); \
+    })
+
+#define V64ARRAY_CREATE_STR(...) \
+    ({ \
+        const char *const _tbl[] = { __VA_ARGS__, NULL }; \
+        arrayCreateFromV64str(_tbl, countstrings(_tbl)); \
+    })
 
 /** @} */  // end of array_fill_macros group
 

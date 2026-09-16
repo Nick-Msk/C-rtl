@@ -931,13 +931,38 @@ arrayCreateFromV64(value64 *source, value64_type vt, size_t cnt) {
 
 // simplified v64:fs via c-str, copy
 Array *
-arrayCreateFromV64fsasstr(const char *source, size_t cnt) {
-    // TODO:
+arrayCreateFromV64fsasstr(const char *const *cstrs, size_t cnt) {
+    if (cstrs == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array      *arr = arrayOnlyCreate(cnt, ARRAY_V64, VALUE64_FS);
+    size_t      i;
+    if (arr == NULL)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, 
+                "%zu of VALUE64_STR", cnt);
+    for (i = 0; i < cnt; i++)
+        if (cstrs[i])
+            arr->v64[i] = value64_createfs_asstr(cstrs[i]); // malloc here
+        else
+            arr->v64[i] = LITERAL64_ZERO;
+    return logsimpleret(arr, "loaded %zu", i);
 }
 // simplified v64:str via c-str, copy
 Array *
-arrayCreateFromV64str(const char *source, size_t cnt) {
-    // TODO:
+arrayCreateFromV64str(const char *const *cstrs, size_t cnt) {
+    if (cstrs == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "source is null");
+    Array      *arr = arrayOnlyCreate(cnt, ARRAY_V64, VALUE64_STR);
+    size_t      i;
+    if (arr == NULL)
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, 
+                "%zu of VALUE64_STR", cnt);
+    for (i = 0; i < cnt; i++)
+        if (cstrs[i])
+            arr->v64[i] = value64_createstr(cstrs[i]); // malloc here
+        else
+            arr->v64[i] = LITERAL64_ZERO;
+
+    return logsimpleret(arr, "loaded %zu", i);
 }
 
 // -------------- ACCESS AND MODIFICATION --------------
@@ -6029,6 +6054,317 @@ tf37_array_fill_v64move(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// =====================================================================
+// array.c — tests for V64ARRAY_CREATE_FS_FROM_STR / V64ARRAY_CREATE_STR
+// =====================================================================
+
+static TestStatus
+tf38_v64array_from_str_macros(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* Local helpers: только для этого теста, #undef в конце. */
+    #define CHECK_FS(a, idx, want) \
+        test_validatefree( \
+            value64_fs_compstr((a)->v64[(idx)], (want)) == 0, \
+            arrayFree(a), \
+            "v64[%zu]: expected FS '%s', got '%s'", \
+            (size_t)(idx), (want), \
+            (a)->v64[(idx)].fsval ? (a)->v64[(idx)].fsval->v : "(null)")
+
+    #define CHECK_STR(a, idx, want) \
+        test_validatefree( \
+            (a)->v64[(idx)].sval != NULL \
+            && strcmp((a)->v64[(idx)].sval, (want)) == 0, \
+            arrayFree(a), \
+            "v64[%zu]: expected STR '%s', got '%s'", \
+            (size_t)(idx), (want), (a)->v64[(idx)].sval)
+
+    /* ---------------- FS-вариант ---------------- */
+
+    /* 1. базовый — три строки */
+    test_sub("subtest %d: FS macro, three strings", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR("alpha", "beta", "gamma");
+
+        test_validatefree(a != NULL, (void) 0, "macro returned NULL");
+        test_validatefree(arrayIsV64(a), arrayFree(a),
+                          "expected ARRAY_V64, got %s (%d)",
+                          arrayGetTypeName(a), arrayGettype(a));
+        test_validatefree(a->len == 3, arrayFree(a), "len=%zu want 3", a->len);
+        test_validatefree(a->v64type == VALUE64_FS, arrayFree(a),
+                          "v64type=%d want VALUE64_FS=%d",
+                          (int) a->v64type, (int) VALUE64_FS);
+        test_validatefree(arrayGetV64mapType(a) == VALUE64_FS, arrayFree(a),
+                          "arrayGetV64mapType=%d want VALUE64_FS",
+                          (int) arrayGetV64mapType(a));
+
+        CHECK_FS(a, 0, "alpha");
+        CHECK_FS(a, 1, "beta");
+        CHECK_FS(a, 2, "gamma");
+
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 2. один аргумент */
+    test_sub("subtest %d: FS macro, single arg", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR("only");
+        test_validatefree(a != NULL && a->len == 1 && a->v64type == VALUE64_FS,
+                          (a ? arrayFree(a) : (void) 0),
+                          "single arg failed: len=%zu type=%d",
+                          a ? a->len : 0, a ? (int) a->v64type : -1);
+        CHECK_FS(a, 0, "only");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 3. пять аргументов */
+    test_sub("subtest %d: FS macro, five args", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR("one", "two", "three", "four", "five");
+        test_validatefree(a != NULL && a->len == 5, (a ? arrayFree(a) : (void) 0),
+                          "len=%zu want 5", a ? a->len : 0);
+        CHECK_FS(a, 0, "one");
+        CHECK_FS(a, 1, "two");
+        CHECK_FS(a, 2, "three");
+        CHECK_FS(a, 3, "four");
+        CHECK_FS(a, 4, "five");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 4. пустые строки */
+    test_sub("subtest %d: FS macro, empty strings", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR("", "x", "");
+        test_validatefree(a != NULL && a->len == 3, (a ? arrayFree(a) : (void) 0),
+                          "empty strings failed: len=%zu", a ? a->len : 0);
+        CHECK_FS(a, 0, "");
+        CHECK_FS(a, 1, "x");
+        CHECK_FS(a, 2, "");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 5. спецсимволы */
+    test_sub("subtest %d: FS macro, special chars", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR(" ", "\t", "new\nline", "quote\"end");
+        test_validatefree(a != NULL && a->len == 4, (a ? arrayFree(a) : (void) 0),
+                          "special failed: len=%zu", a ? a->len : 0);
+        CHECK_FS(a, 0, " ");
+        CHECK_FS(a, 1, "\t");
+        CHECK_FS(a, 2, "new\nline");
+        CHECK_FS(a, 3, "quote\"end");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 6. длинные строки */
+    test_sub("subtest %d: FS macro, long strings", ++subnum);
+    {
+        char long1[256], long2[256];
+        memset(long1, 'a', 255); long1[255] = '\0';
+        memset(long2, 'b', 255); long2[255] = '\0';
+
+        Array *a = V64ARRAY_CREATE_FS_FROM_STR(long1, long2);
+        test_validatefree(a != NULL && a->len == 2, (a ? arrayFree(a) : (void) 0),
+                          "long failed");
+        CHECK_FS(a, 0, long1);
+        CHECK_FS(a, 1, long2);
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 7. независимые копии — два макроса не алиасят */
+    test_sub("subtest %d: FS macro, independent copies", ++subnum);
+    {
+        Array *a1 = V64ARRAY_CREATE_FS_FROM_STR("shared", "values");
+        Array *a2 = V64ARRAY_CREATE_FS_FROM_STR("shared", "values");
+
+        test_validatefree(a1 != NULL && a2 != NULL,
+                          (a1 ? arrayFree(a1) : (void) 0,
+                           a2 ? arrayFree(a2) : (void) 0),
+                          "create failed");
+        test_validatefree(a1->v64[0].fsval != a2->v64[0].fsval,
+                          (arrayFree(a1), arrayFree(a2)),
+                          "two independent macro calls share fsval pointer "
+                          "(aliasing): %p vs %p",
+                          (void *) a1->v64[0].fsval, (void *) a2->v64[0].fsval);
+        CHECK_FS(a1, 0, "shared");
+        CHECK_FS(a2, 0, "shared");
+
+        arrayFree(a1);
+        arrayFree(a2);
+        fs_alloc_check(true);
+    }
+
+    /* 8. стресс */
+    test_sub("subtest %d: FS macro, repeated alloc/free", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            Array *a = V64ARRAY_CREATE_FS_FROM_STR("loop", "iteration", "test");
+            if (!a) {
+                test_validatefree(false, (void) 0, "iter %d create failed", k);
+                break;
+            }
+            if (a->len != 3) {
+                test_validatefree(false, arrayFree(a),
+                                  "iter %d: len=%zu want 3", k, a->len);
+                break;
+            }
+            if (value64_fs_compstr(a->v64[0], "loop")      != 0
+                || value64_fs_compstr(a->v64[1], "iteration") != 0
+                || value64_fs_compstr(a->v64[2], "test")      != 0) {
+                test_validatefree(false, arrayFree(a),
+                                  "iter %d content mismatch: [%s|%s|%s]",
+                                  k,
+                                  a->v64[0].fsval ? a->v64[0].fsval->v : "(null)",
+                                  a->v64[1].fsval ? a->v64[1].fsval->v : "(null)",
+                                  a->v64[2].fsval ? a->v64[2].fsval->v : "(null)");
+                break;
+            }
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* ---------------- STR-вариант ---------------- */
+
+    /* 9. базовый STR */
+    test_sub("subtest %d: STR macro, three strings", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_STR("alpha", "beta", "gamma");
+
+        test_validatefree(a != NULL, (void) 0, "macro returned NULL");
+        test_validatefree(arrayIsV64(a), arrayFree(a),
+                          "expected ARRAY_V64, got %s (%d)",
+                          arrayGetTypeName(a), arrayGettype(a));
+        test_validatefree(a->len == 3, arrayFree(a), "len=%zu want 3", a->len);
+        test_validatefree(a->v64type == VALUE64_STR, arrayFree(a),
+                          "v64type=%d want VALUE64_STR=%d",
+                          (int) a->v64type, (int) VALUE64_STR);
+        test_validatefree(arrayGetV64mapType(a) == VALUE64_STR, arrayFree(a),
+                          "arrayGetV64mapType=%d want VALUE64_STR",
+                          (int) arrayGetV64mapType(a));
+
+        CHECK_STR(a, 0, "alpha");
+        CHECK_STR(a, 1, "beta");
+        CHECK_STR(a, 2, "gamma");
+
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 10. STR один аргумент */
+    test_sub("subtest %d: STR macro, single arg", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_STR("only");
+        test_validatefree(a != NULL && a->len == 1 && a->v64type == VALUE64_STR,
+                          (a ? arrayFree(a) : (void) 0),
+                          "single arg failed: len=%zu type=%d",
+                          a ? a->len : 0, a ? (int) a->v64type : -1);
+        CHECK_STR(a, 0, "only");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 11. STR пустые строки */
+    test_sub("subtest %d: STR macro, empty strings", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_STR("", "x", "");
+        test_validatefree(a != NULL && a->len == 3, (a ? arrayFree(a) : (void) 0),
+                          "empty failed: len=%zu", a ? a->len : 0);
+        CHECK_STR(a, 0, "");
+        CHECK_STR(a, 1, "x");
+        CHECK_STR(a, 2, "");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 12. STR спецсимволы */
+    test_sub("subtest %d: STR macro, special chars", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_STR(" ", "\t", "new\nline");
+        test_validatefree(a != NULL && a->len == 3, (a ? arrayFree(a) : (void) 0),
+                          "special failed: len=%zu", a ? a->len : 0);
+        CHECK_STR(a, 0, " ");
+        CHECK_STR(a, 1, "\t");
+        CHECK_STR(a, 2, "new\nline");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 13. STR — копия переживает конец блока макроса */
+    test_sub("subtest %d: STR macro, copies are heap", ++subnum);
+    {
+        Array *a = V64ARRAY_CREATE_STR("payload");
+        /* _tbl[] statement-expression уже мёртв, но sval должен жить */
+        test_validatefree(a != NULL && a->len == 1
+                          && a->v64[0].sval != NULL,
+                          (a ? arrayFree(a) : (void) 0),
+                          "STR element lost: len=%zu sval=%p",
+                          a ? a->len : 0,
+                          a ? (void *) a->v64[0].sval : NULL);
+        CHECK_STR(a, 0, "payload");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 14. STR стресс */
+    test_sub("subtest %d: STR macro, repeated alloc/free", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            Array *a = V64ARRAY_CREATE_STR("loop", "iteration", "test");
+            if (!a || a->len != 3
+                || !a->v64[0].sval || strcmp(a->v64[0].sval, "loop") != 0
+                || !a->v64[1].sval || strcmp(a->v64[1].sval, "iteration") != 0
+                || !a->v64[2].sval || strcmp(a->v64[2].sval, "test") != 0) {
+                test_validatefree(false, (a ? arrayFree(a) : (void) 0),
+                                  "iter %d failed: len=%zu",
+                                  k, a ? a->len : 0);
+                break;
+            }
+            arrayFree(a);
+        }
+        fs_alloc_check(true);
+    }
+
+    /* 15. FS и STR сосуществуют, не путаются */
+    test_sub("subtest %d: FS and STR macros coexist", ++subnum);
+    {
+        Array *afs = V64ARRAY_CREATE_FS_FROM_STR("fs_val");
+        Array *ast = V64ARRAY_CREATE_STR("str_val");
+
+        test_validatefree(afs != NULL && ast != NULL,
+                          (afs ? arrayFree(afs) : (void) 0,
+                           ast ? arrayFree(ast) : (void) 0),
+                          "create failed");
+
+        test_validatefree(afs->v64type == VALUE64_FS,
+                          (arrayFree(afs), arrayFree(ast)),
+                          "fs v64type=%d want VALUE64_FS", (int) afs->v64type);
+        test_validatefree(ast->v64type == VALUE64_STR,
+                          (arrayFree(afs), arrayFree(ast)),
+                          "str v64type=%d want VALUE64_STR", (int) ast->v64type);
+
+        CHECK_FS(afs, 0, "fs_val");
+        CHECK_STR(ast, 0, "str_val");
+
+        arrayFree(afs);
+        arrayFree(ast);
+        fs_alloc_check(true);
+    }
+
+    #undef CHECK_FS
+    #undef CHECK_STR
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -6074,6 +6410,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf35_array_fill_double,                 "arrayCreateFromDouble() simple test")
       , TESTADD(tf36_array_fill_char,                   "arrayCreateFromChar() simple test")
       , TESTADD(tf37_array_fill_v64move,                "arrayCreateFromV64() for fs simple test")
+      , TESTADD(tf38_v64array_from_str_macros,          "V64ARRAY_CREATE_FS/STR_FROM_STR macros simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()
