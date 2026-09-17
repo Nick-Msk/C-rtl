@@ -777,8 +777,9 @@ arrayLoadFileByName(const char *fname) {
 
 long                            
 arraySaveToDS(DS *restrict out, Array *restrict parr) {
-    invraisecode(out != NULL && parr != NULL, ERR_NULLABLE_PTR, 
-        "Out or parr is null %p %p", out, parr);
+    if (out == NULL || parr == NULL)
+        userraiseint(ERR_NULLABLE_PTR, 
+            "Out or parr is null %p %p", out, parr);
 
     long         total_written = 0L;
     const char  *typ = arrayGetTypeRealName(parr);    
@@ -1976,7 +1977,7 @@ test_dsstr_to_dsstr_roundtrip(const Array *arr) {
     /* memowner == false (default) — dsFree(&in) buf не тронет */
 
     /* ---- 4. load ---- */
-    Array loaded = {0};
+    Array loaded = ArrayInit();
     long  r = arrayLoadFromDS(&in, &loaded);
 
     bool eq = false;
@@ -2003,7 +2004,7 @@ test_dsstr_to_dsstr_roundtrip(const Array *arr) {
     return eq;
 }
 
-// ---------------------- TEST dsstr round-trip ------------------------
+// ---------------------- TEST dsstr -> dsstr round-trip ------------------------
 static TestStatus
 tf4_array_dsstr_roundtrip(const char *name)
 {
@@ -2146,6 +2147,270 @@ tf4_array_dsstr_roundtrip(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// =====================================================================
+// array.c — ArrayIO: DS_STR (write) -> DS_FS (read) round-trip
+// =====================================================================
+// Цепочка владения буфером:
+//   DS_STR (memowner=true) ──save──> buf в DS_STR
+//     │
+//     dsReleaseStr(&out)    → возвращает char*, DS обнулён
+//     │
+//     fs_moveto_heapstr(&buf) → fs* с FS_FLAG_BODYALLOC, buf = NULL
+//     │
+//     dsCreatefs(fsp)       → DS_FS поверх fs*
+//     │
+//     arrayLoadFromDS       → читаем, массив собран
+//     │
+//     dsFree(&in)           → fsfree(in.s) освобождает buf
+
+static bool
+test_dsstr_to_dsfs_roundtrip(const Array *arr) {
+    if (!arr)
+        return userraise(false, ERR_NULL_INPUT, "roundtrip: NULL array");
+    if (arrayIspointer(arr))
+        return userraise(false, ERR_UNSUPPORTED_TYPE,
+            "roundtrip: ARRAY_POINTER save-only, loader not implemented");
+
+    /* ---- 1. writer: DS_STR с запасом ---- */
+    size_t cap = 256 + arr->len * 64;
+    DS out = dsCreatestrAlloc(cap);
+    if (out.ptr == NULL)
+        return userraise(false, ERR_UNABLE_ALLOCATE,
+            "roundtrip: DS_STR alloc failed (cap=%zu)", cap);
+
+    long w = arraySaveToDS(&out, (Array *) arr);
+    if (w <= 0) {
+        dsFree(&out);
+        return userraise(false, ERR_UNABLE_PARSE_DATA,
+            "roundtrip: save failed (%ld)", w);
+    }
+
+    /* ---- 2. detach DS_STR -> char* ---- */
+    char *buf = dsReleaseStr(&out);
+    if (!buf)
+        return userraise(false, ERR_UNKNOWN_TYPE,
+            "roundtrip: dsReleaseStr returned NULL");
+
+    fs              data = fs_adopt(&buf); 
+
+    DS in = dsCreatefs(&data);
+
+    /* ---- 5. load ---- */
+    Array loaded = ArrayInit();
+    long  r = arrayLoadFromDS(&in, &loaded);
+
+    bool eq = false;
+    if (r < 0) {
+        userraise(false, ERR_UNABLE_PARSE_DATA,
+            "roundtrip: load failed (%ld)", r);
+    } else if (arrayGettype(arr) != arrayGettype(&loaded)) {
+        userraise(false, ERR_TYPES_MISMATCH,
+            "roundtrip: type mismatch (%s vs %s)",
+            arrayGetTypeName(arr), arrayGetTypeName(&loaded));
+    } else {
+        eq = arrayEq((Array *) arr, &loaded);
+        if (!eq)
+            userraise(false, ERR_UNKNOWN_TYPE,
+                "roundtrip: content mismatch (type=%s, len=%zu vs %zu)",
+                arrayGetTypeName(arr), arr->len, loaded.len);
+    }
+
+    /* ---- 6. cleanup ---- */
+    arrayFreeBody(&loaded);
+    dsFree(&in);   /* DS_FS -> fsfree(in.s); fsfree для BODYALLOC освободит fsp и buf */
+
+    return eq;
+}
+
+static TestStatus
+tf5_array_dsstr_to_dsfs_roundtrip(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. INT basic */
+    test_sub("subtest %d: INT basic", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(1, -2, 3, -4, 5);
+        test_validate(a != NULL, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "INT basic roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 2. INT extremes */
+    test_sub("subtest %d: INT extremes", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(INT_MIN, INT_MAX, 0, -1, 1);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "INT extremes roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 3. LONG extremes */
+    test_sub("subtest %d: LONG extremes", ++subnum);
+    {
+        Array *a = LARRAY_CREATE(0L, -1L, 1234567890123L, LONG_MIN, LONG_MAX);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "LONG extremes roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 4. DOUBLE precision (incl. denormal) */
+    test_sub("subtest %d: DOUBLE precision", ++subnum);
+    {
+        Array *a = DARRAY_CREATE(0.1 + 0.2, nextafter(1.0, 2.0),
+                                 nextafter(0.0, 1.0), -0.0, 1e100, -1e-100);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "DOUBLE precision roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 5. CHAR plain */
+    test_sub("subtest %d: CHAR plain", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('a', 'Z', '0', '~', '!');
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "CHAR plain roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 6. CHAR whitespace */
+    test_sub("subtest %d: CHAR whitespace", ++subnum);
+    {
+        Array *a = CARRAY_CREATE(' ', '\t', '\n', 'x', ' ');
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "CHAR whitespace roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 7. CHAR '\n' last (footer stress) */
+    test_sub("subtest %d: CHAR '\\n' last", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('a', 'b', '\n');
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "CHAR trailing \\n roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 8. Empty array */
+    test_sub("subtest %d: empty array", ++subnum);
+    {
+        Array *a = IarrayCreate(0, ARRAY_FILLTYPE_ZERO);
+        test_validatefree(a != NULL, (void) 0, "create empty failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "empty roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 9. Single INT */
+    test_sub("subtest %d: single INT", ++subnum);
+    {
+        Array *a = IARRAY_CREATE(42);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "single INT roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 10. Single CHAR */
+    test_sub("subtest %d: single CHAR", ++subnum);
+    {
+        Array *a = CARRAY_CREATE('~');
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "single CHAR roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 11. Large INT — 1000 элементов */
+    test_sub("subtest %d: large INT (1000)", ++subnum);
+    {
+        int vals[1000];
+        for (int k = 0; k < 1000; k++) vals[k] = k * 7 - 3000;
+        Array *a = arrayCreateFromInt(vals, 1000);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "large INT roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 12. Large DOUBLE */
+    test_sub("subtest %d: large DOUBLE (500)", ++subnum);
+    {
+        double vals[500];
+        for (int k = 0; k < 500; k++) vals[k] = (k - 250) * 0.5 + 0.1;
+        Array *a = arrayCreateFromDouble(vals, 500);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "large DOUBLE roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 13. Large CHAR со смешанными whitespace */
+    test_sub("subtest %d: large CHAR (300, mixed ws)", ++subnum);
+    {
+        char vals[300];
+        for (int k = 0; k < 300; k++) {
+            switch (k % 5) {
+                case 0: vals[k] = ' ';                        break;
+                case 1: vals[k] = '\t';                       break;
+                case 2: vals[k] = '\n';                       break;
+                case 3: vals[k] = (char) ('a' + (k % 26));    break;
+                default: vals[k] = '~';                       break;
+            }
+        }
+        Array *a = arrayCreateFromChar(vals, 300);
+        test_validatefree(a != NULL, (void) 0, "create failed");
+        test_validatefree(test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "large CHAR roundtrip failed");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 14. POINTER — helper должен отказаться */
+    test_sub("subtest %d: POINTER rejected", ++subnum);
+    {
+        Array *a = ParrayCreate(2, ARRAY_FILLTYPE_ZERO);
+        test_validatefree(!test_dsstr_to_dsfs_roundtrip(a), arrayFree(a),
+                          "helper must reject POINTER");
+        arrayFree(a);
+        fs_alloc_check(true);
+    }
+
+    /* 15. NULL arr — raise */
+    test_sub("subtest %d: NULL arr raises", ++subnum);
+    {
+        if (!try()) {
+            test_dsstr_to_dsfs_roundtrip(NULL);
+            test_validate(false, "must raise for NULL arr");
+        } else {
+            test_validate(true, "correctly raised");
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -2153,11 +2418,12 @@ main( /*int argc, char *argv[] */ )
     logsimpleinit("Start");
 
     testenginestd(
-        TESTADD(tf1_array_save_to_ds_str,                "arraySaveToDS DS_STR tests")
-      , TESTADD(tf2_array_save_to_ds_fs,                 "arraySaveToDS DS_FS tests")
-      , TESTADD(tf3_array_save_to_ds_file,               "arraySaveToDS DS_FILE tests")
+        TESTADD(tf1_array_save_to_ds_str,                "arraySaveToDS() DS_STR tests")
+      , TESTADD(tf2_array_save_to_ds_fs,                 "arraySaveToDS() DS_FS tests")
+      , TESTADD(tf3_array_save_to_ds_file,               "arraySaveToDS() DS_FILE tests")
       // round-trip
-      , TESTADD(tf4_array_dsstr_roundtrip,               "ArrayIO: DS_STR -> DS_STR round-trip")
+      , TESTADD(tf4_array_dsstr_roundtrip,               "Array save/load: DS_STR -> DS_STR round-trip")
+      , TESTADD(tf5_array_dsstr_to_dsfs_roundtrip,       "Array save/load: DS_STR write -> DS_FS read round-trip")
     );
 
     return logret(0, "end...");  // as replace of logclose()
