@@ -121,7 +121,7 @@ fs                          fs_adoptn(char **str, size_t saved_len) {
     fs s = FS();
     if (str && *str) {
         s.v = *str;
-        atomic_fetch_add(&g_alloc_cnt, 1);   /* буфер входит в fs-ownership */
+        atomic_fetch_add(&g_alloc_cnt, 1);   /* add to fs-ownership */
         s.len = saved_len;
         s.sz = s.len + 1;
         *str = NULL;
