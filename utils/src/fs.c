@@ -117,6 +117,18 @@ static inline fs                       *strcopy(fs *restrict target, const fs *r
 
 // ------------------ General functions ----------------------------
 
+fs                          fs_adoptn(char **str, size_t saved_len) {
+    fs s = FS();
+    if (str && *str) {
+        s.v = *str;
+        atomic_fetch_add(&g_alloc_cnt, 1);   /* буфер входит в fs-ownership */
+        s.len = saved_len;
+        s.sz = s.len + 1;
+        *str = NULL;
+    }
+    return s;
+}
+
 // move only heap alloc fs: TO BE REMOVED
 fs                                       fs_move(fs *orig){
     if (!fs_alloc(orig) )
@@ -5120,6 +5132,317 @@ tf41_fs_moveto(const char *name)
 
     return logret(TEST_PASSED, "done");
 }
+
+// =====================================================================
+// fs.c — tests for fs_adopt / fs_adoptn
+// =====================================================================
+// Оба возвращают стековую fs с heap-телом (FS_FLAG_ALLOC).
+// После вызова *str == NULL; владение телом переходит к fs.
+// Освобождение — через fsfree(s).
+// Тестовые буферы создаются через strdup (heap), чтобы fs_free
+// работал корректно, а fs_alloc_check ловил утечки.
+
+static TestStatus
+tf42_fs_adopt(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. обычная строка */
+    test_sub("subtest %d: adopt regular string", ++subnum);
+    {
+        char *buf = strdup("hello world");
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adopt(&buf);
+
+        test_validatefree(buf == NULL,              fsfree(s),
+                          "input pointer not NULLed: %p", (void *) buf);
+        test_validatefree(s.v != NULL,              fsfree(s),
+                          "s.v is NULL, expected adopted buffer");
+        test_validatefree(s.len == 11,              fsfree(s),
+                          "s.len=%zu want 11", s.len);
+        test_validatefree(s.sz == 12,               fsfree(s),
+                          "s.sz=%zu want 12", s.sz);
+        test_validatefree(fs_alloc(&s),             fsfree(s),
+                          "flags=0x%x missing FS_FLAG_ALLOC", s.flags);
+        test_validatefree(strcmp(s.v, "hello world") == 0, fsfree(s),
+                          "content mismatch: '%s'", s.v);
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 2. пустая строка */
+    test_sub("subtest %d: adopt empty string", ++subnum);
+    {
+        char *buf = strdup("");
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adopt(&buf);
+
+        test_validatefree(buf == NULL,   fsfree(s),
+                          "input not NULLed");
+        test_validatefree(s.v != NULL,   fsfree(s),
+                          "s.v must be non-NULL for adopted empty string");
+        test_validatefree(s.len == 0,    fsfree(s),
+                          "s.len=%zu want 0", s.len);
+        test_validatefree(s.sz == 1,     fsfree(s),
+                          "s.sz=%zu want 1", s.sz);
+        test_validatefree(s.v[0] == '\0', fsfree(s),
+                          "empty buffer not NUL-terminated");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 3. строка с пробельными и спецсимволами */
+    test_sub("subtest %d: adopt special chars", ++subnum);
+    {
+        const char *orig = " \t\n\"quote\"\\back";
+        char *buf = strdup(orig);
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adopt(&buf);
+
+        test_validatefree(buf == NULL,                              fsfree(s),
+                          "input not NULLed");
+        test_validatefree(s.len == strlen(orig),                    fsfree(s),
+                          "s.len=%zu want %zu", s.len, strlen(orig));
+        test_validatefree(strcmp(s.v, orig) == 0,                   fsfree(s),
+                          "content mismatch");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 4. длинная строка */
+    test_sub("subtest %d: adopt long string", ++subnum);
+    {
+        char big[1025];
+        memset(big, 'x', 1024);
+        big[1024] = '\0';
+
+        char *buf = strdup(big);
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adopt(&buf);
+
+        test_validatefree(buf == NULL,       fsfree(s), "input not NULLed");
+        test_validatefree(s.len == 1024,     fsfree(s), "s.len=%zu want 1024", s.len);
+        test_validatefree(s.sz == 1025,      fsfree(s), "s.sz=%zu want 1025", s.sz);
+        test_validatefree(s.v[1023] == 'x',  fsfree(s), "content cut");
+        test_validatefree(s.v[1024] == '\0', fsfree(s), "NUL missing");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 5. NULL-указатель на указатель */
+    test_sub("subtest %d: NULL char** returns empty fs", ++subnum);
+    {
+        fs s = fs_adopt(NULL);
+
+        test_validatefree(s.v == NULL,   fsfree(s),
+                          "s.v=%p want NULL for NULL input", (void *) s.v);
+        test_validatefree(s.len == 0,    fsfree(s), "s.len=%zu want 0", s.len);
+        test_validatefree(s.sz == 0,     fsfree(s), "s.sz=%zu want 0", s.sz);
+        /* FS() ставит FS_FLAG_ALLOC; fsfree на NULL-теле безопасен */
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 6. *str == NULL (указатель есть, содержимого нет) */
+    test_sub("subtest %d: *str == NULL returns empty fs", ++subnum);
+    {
+        char *buf = NULL;
+        fs    s   = fs_adopt(&buf);
+
+        test_validatefree(s.v == NULL,  fsfree(s),
+                          "s.v=%p want NULL", (void *) s.v);
+        test_validatefree(s.len == 0,   fsfree(s), "s.len=%zu want 0", s.len);
+        test_validatefree(s.sz == 0,    fsfree(s), "s.sz=%zu want 0", s.sz);
+        test_validatefree(buf == NULL,  fsfree(s),
+                          "input pointer must stay NULL");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 7. многократный adopt/free — утечки ловятся fs_alloc_check */
+    test_sub("subtest %d: repeated adopt/free", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            char *buf = strdup("loop payload");
+            if (!buf) {
+                test_validatefree(false, (void) 0, "iter %d strdup failed", k);
+                break;
+            }
+            fs s = fs_adopt(&buf);
+            if (buf != NULL || s.v == NULL || s.len != 12) {
+                test_validatefree(false, fsfree(s),
+                                  "iter %d: buf=%p s.v=%p s.len=%zu",
+                                  k, (void *) buf, (void *) s.v, s.len);
+                break;
+            }
+            fsfree(s);
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
+static TestStatus
+tf43_fs_adoptn(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. обычная строка с явной длиной */
+    test_sub("subtest %d: adoptn regular", ++subnum);
+    {
+        char *buf = strdup("hello world");
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adoptn(&buf, 11);
+
+        test_validatefree(buf == NULL,                     fsfree(s),
+                          "input not NULLed");
+        test_validatefree(s.len == 11 && s.sz == 12,       fsfree(s),
+                          "s.len=%zu s.sz=%zu want 11/12", s.len, s.sz);
+        test_validatefree(fs_alloc(&s),                    fsfree(s),
+                          "flags missing FS_FLAG_ALLOC");
+        test_validatefree(strcmp(s.v, "hello world") == 0, fsfree(s),
+                          "content mismatch");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 2. длина короче реальной строки — фиксируем контракт */
+    test_sub("subtest %d: adoptn shorter than strlen", ++subnum);
+    {
+        char *buf = strdup("hello world");
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adoptn(&buf, 5);   /* берём только "hello" */
+
+        test_validatefree(buf == NULL,   fsfree(s), "input not NULLed");
+        test_validatefree(s.len == 5,    fsfree(s),
+                          "s.len=%zu want 5 (trusted saved_len)", s.len);
+        test_validatefree(s.sz == 6,     fsfree(s),
+                          "s.sz=%zu want 6", s.sz);
+        test_validatefree(memcmp(s.v, "hello", 5) == 0, fsfree(s),
+                          "first 5 bytes mismatch");
+
+        /* Освобождается весь буфер, не только 5 байт — контракт adoptn. */
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 3. длина длиннее реальной (в границах аллокации) — фиксируем */
+    test_sub("subtest %d: adoptn reads until given length", ++subnum);
+    {
+        /* Выделяем 16 байт, кладём короткую строку, но adoptn с 15 */
+        char *buf = malloc(16);
+        test_validatefree(buf != NULL, (void) 0, "malloc failed");
+        memcpy(buf, "abc\0defghijklmn", 16);
+
+        fs s = fs_adoptn(&buf, 15);
+
+        test_validatefree(buf == NULL,  fsfree(s), "input not NULLed");
+        test_validatefree(s.len == 15,  fsfree(s), "s.len=%zu want 15", s.len);
+        test_validatefree(s.sz == 16,   fsfree(s), "s.sz=%zu want 16", s.sz);
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 4. len == 0 */
+    test_sub("subtest %d: adoptn len == 0", ++subnum);
+    {
+        char *buf = strdup("");
+        test_validatefree(buf != NULL, (void) 0, "strdup failed");
+
+        fs s = fs_adoptn(&buf, 0);
+
+        test_validatefree(buf == NULL,   fsfree(s), "input not NULLed");
+        test_validatefree(s.len == 0,    fsfree(s), "s.len=%zu want 0", s.len);
+        test_validatefree(s.sz == 1,     fsfree(s), "s.sz=%zu want 1", s.sz);
+        test_validatefree(s.v != NULL,   fsfree(s), "s.v must not be NULL");
+        test_validatefree(s.v[0] == '\0', fsfree(s), "empty buffer not NUL");
+
+        fsfree(s);
+        fs_alloc_check(true);
+    }
+
+    /* 5. NULL или *str == NULL */
+    test_sub("subtest %d: NULL inputs -> empty fs", ++subnum);
+    {
+        fs s1 = fs_adoptn(NULL, 10);
+        test_validatefree(s1.v == NULL && s1.len == 0 && s1.sz == 0,
+                          fsfree(s1), "NULL char** mismatch");
+        fsfree(s1);
+
+        char *p = NULL;
+        fs    s2 = fs_adoptn(&p, 10);
+        test_validatefree(s2.v == NULL && s2.len == 0 && s2.sz == 0,
+                          fsfree(s2), "NULL *str mismatch");
+        test_validatefree(p == NULL, fsfree(s2), "input pointer changed");
+        fsfree(s2);
+
+        fs_alloc_check(true);
+    }
+
+    /* 6. эквивалентность с fs_adopt */
+    test_sub("subtest %d: adoptn(_, strlen) == adopt result", ++subnum);
+    {
+        const char *src = "compare me";
+
+        char *b1 = strdup(src);
+        char *b2 = strdup(src);
+        test_validatefree(b1 && b2, (free(b1), free(b2)), "strdup failed");
+
+        fs s1 = fs_adopt(&b1);
+        fs s2 = fs_adoptn(&b2, strlen(src));
+
+        test_validatefree(s1.len == s2.len, (fsfree(s1), fsfree(s2)),
+                          "len mismatch: %zu vs %zu", s1.len, s2.len);
+        test_validatefree(s1.sz == s2.sz,   (fsfree(s1), fsfree(s2)),
+                          "sz mismatch: %zu vs %zu", s1.sz, s2.sz);
+        test_validatefree(strcmp(s1.v, s2.v) == 0, (fsfree(s1), fsfree(s2)),
+                          "content mismatch");
+
+        fsfree(s1);
+        fsfree(s2);
+        fs_alloc_check(true);
+    }
+
+    /* 7. многократно — утечки ловятся fs_alloc_check */
+    test_sub("subtest %d: repeated adoptn/free", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            char *buf = strdup("iteration payload");
+            if (!buf) {
+                test_validatefree(false, (void) 0, "iter %d strdup", k);
+                break;
+            }
+            fs s = fs_adoptn(&buf, 17);
+            if (buf != NULL || s.v == NULL || s.len != 17) {
+                test_validatefree(false, fsfree(s),
+                                  "iter %d mismatch", k);
+                break;
+            }
+            fsfree(s);
+        }
+        fs_alloc_check(true);
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------
 int
 main( /* int argc, const char *argv[] */)
@@ -5169,7 +5492,9 @@ main( /* int argc, const char *argv[] */)
         TESTADD(tf38_fs_icmpstr,        "fs_icmpstr()/fs_nicmpstr()  simple tests"),
         TESTADD(tf39_fs_sprintf_position,   "fs_sprintf_position() simple tests"),
         TESTADD(tf40_fs_catstr_mem,         "fs_catstr / fs_catmem() simple tests"),
-        TESTADD(tf41_fs_moveto,             "fs_moveto() simple tests")
+        TESTADD(tf41_fs_moveto,             "fs_moveto() simple tests"),
+        TESTADD(tf42_fs_adopt,  "fs_adopt: adopt heap c-string by length from strlen"),
+        TESTADD(tf43_fs_adoptn, "fs_adoptn: adopt heap c-string with explicit length")
     );
 
     return logret(0, "end...");  // as replace of logclose()

@@ -220,11 +220,12 @@ static inline fs           *fs_init_or_use(fs *s) {
 static inline fs            fsempty(void){
     return FS();
 }
-// body local copy from char *
+// body local copy from char *, copy-constructor
 static inline fs            fscopy(const char *str){
     fs         tmp = fsliteral(str);
     return  fs_clone(&tmp);
 }
+
 //  fs HEAP copy creator !
 static inline  fs          *fs_heapcopy(const char *str){
     fs         tmp = fsliteral(str);    // FSLITERAL ??? TODO:
@@ -249,6 +250,51 @@ static inline long           fs_sprintf(fs *restrict s, const char *restrict fmt
     __attribute__ (( format (printf, 2, 3) ) );
 static inline long           fs_sprintf_concat(fs *restrict s, const char *restrict fmt, ...)
     __attribute__ (( format (printf, 2, 3) ) );
+
+/**
+ * @brief Adopt a heap buffer as fs, with caller-provided length.
+ *
+ * Low-level primitive. Builds an fs from *p and an explicit length
+ * WITHOUT calling strlen. This is the right call when the buffer is
+ * not (yet) a valid C-string: partial writes, trailing NUL not set,
+ * or length obtained from an external source (e.g. DS position).
+ *
+ * The caller is responsible for the semantic validity of saved_len
+ * for its own purposes. fs_adoptn performs no checks: it trusts the
+ * caller completely and simply records the length.
+ *
+ * Moves ownership: *p becomes NULL after the call, and *p must NOT
+ * be freed by the caller. The buffer MUST be malloc-allocated;
+ * otherwise fsfree() will invoke undefined behavior.
+ *
+ * @param[in,out] p          Pointer to a heap char*. NULL or *p == NULL
+ *                           returns an empty FS().
+ * @param[in]     saved_len  Length to record. No NUL required in p.
+ * @return                   fs with .v == old *p, .len == saved_len,
+ *                           .sz == saved_len + 1, .flags == FS_FLAG_ALLOC.
+ */
+extern fs                   fs_adoptn(char **str, size_t saved_len);
+
+/**
+ * @brief Adopt a heap-allocated C-string, taking ownership.
+ *
+ * The pointer at *p is moved into the returned fs (FS_FLAG_ALLOC).
+ * After the call, *p becomes NULL. The caller must NOT free(*p).
+ *
+ * @warning The buffer MUST have been allocated with malloc/calloc/realloc.
+ *          Passing a stack buffer, a string literal, or memory owned by
+ *          someone else leads to undefined behavior on fs_free().
+ *
+ * @param[in,out] p  Pointer to a heap char*. May be NULL or point to NULL;
+ *                   in that case an empty FS() is returned.
+ * @return           fs owning the buffer; .v == old *p, .len == strlen, .sz = len+1.
+ */
+static inline fs            fs_adopt(char **str){
+    fs s = FS();
+    if (!str || !*str)
+        return s;
+    return fs_adoptn(str, strlen(*str));
+}
 
 // move only heap alloc fs, TO BE REMOVED
 extern fs                    fs_move(fs *orig);
