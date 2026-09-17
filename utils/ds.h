@@ -353,15 +353,27 @@ static inline bool              dsReleaseFs(fs *restrict dst, DS *restrict pds) 
     return true;
 }
 
-static inline char               *dsReleaseStr(DS *restrict pds) {
+static inline char               *dsReleaseStr(DS *pds) {
     if (pds == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "Ds is null");
     if (pds->type != DS_STR)
         return userraise(NULL, ERR_UNSUPPORTED_TYPE, 
             "%d/%s isn't supported", pds->type, dsTypeName(pds->type));
-    char    *tmp = pds->ptr;
+    char    *str = pds->ptr;
     *pds = DS();
-    return tmp;
+    return str;
+}
+
+static inline FILE              *dsReleaseFILE(DS *pds) {
+    if (pds == NULL)
+        return userraise(NULL, ERR_NULL_INPUT, "Ds is null");
+    if (pds->type != DS_FILE)
+        return userraise(NULL, ERR_UNSUPPORTED_TYPE, 
+            "%d/%s isn't supported", pds->type, dsTypeName(pds->type));
+    FILE *fp = pds->fp;
+    rewind(fp);
+    *pds = DS();
+    return fp;
 }
 
 /**

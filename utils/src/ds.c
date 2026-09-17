@@ -2612,6 +2612,219 @@ tf13_ds_memowner(const char *name)
 
     return logret(TEST_PASSED, "done");
 }
+
+// =====================================================================
+// ds.c — tests for dsReleaseFILE
+// =====================================================================
+// Detaches FILE* from DS_FILE, rewinds it, resets DS to zero.
+// Ownership of FILE* transfers to the caller, who must fclose().
+// After the call DS is zeroed (type == DS_UNK, fp == NULL).
+//
+// Errors: NULL DS or non-DS_FILE type returns NULL via userraise.
+// userraise in this project logs and returns its first argument (no longjmp),
+// so tests check the return value directly.
+
+static TestStatus
+tf14_ds_release_file(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. базовый: записали, отпустили, DS обнулён, fp перемотан */
+    test_sub("subtest %d: basic release", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+
+        DS ds = dsCreatef(fp);
+
+        fputs("hello", fp);
+        test_validatefree(ftell(fp) == 5, fclose(fp),
+                          "setup: ftell=%ld want 5", ftell(fp));
+
+        FILE *released = dsReleaseFILE(&ds);
+
+        test_validatefree(released == fp, fclose(fp),
+                          "released fp=%p want %p",
+                          (void *) released, (void *) fp);
+        test_validatefree(ds.type == DS_UNK, fclose(fp),
+                          "DS not reset: type=%d want DS_UNK=%d",
+                          ds.type, DS_UNK);
+        test_validatefree(ds.fp == NULL, fclose(fp),
+                          "DS.fp not NULL: %p", (void *) ds.fp);
+        test_validatefree(ftell(released) == 0, fclose(fp),
+                          "released file not rewound: ftell=%ld",
+                          ftell(released));
+
+        char   buf[16] = {0};
+        size_t n = fread(buf, 1, 5, released);
+        test_validatefree(n == 5 && memcmp(buf, "hello", 5) == 0, fclose(fp),
+                          "readback failed: n=%zu buf='%s'", n, buf);
+
+        fclose(released);
+    }
+
+    /* 2. отпускание пустого файла */
+    test_sub("subtest %d: empty file", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+
+        DS ds = dsCreatef(fp);
+        FILE *released = dsReleaseFILE(&ds);
+
+        test_validatefree(released == fp, fclose(fp), "release failed");
+        test_validatefree(ds.type == DS_UNK, fclose(fp), "DS not reset");
+        test_validatefree(ftell(released) == 0, fclose(fp), "not rewound");
+
+        fclose(released);
+    }
+
+    /* 3. отпускание после частичного чтения — rewind обязан откатить */
+    test_sub("subtest %d: release after partial read", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+        fputs("abcdef", fp);
+        rewind(fp);
+
+        DS ds = dsCreatef(fp);
+        int c1 = dsgetc(&ds);
+        int c2 = dsgetc(&ds);
+        test_validatefree(c1 == 'a' && c2 == 'b', fclose(fp),
+                          "setup: got '%c','%c'", c1, c2);
+        test_validatefree(ftell(fp) == 2, fclose(fp),
+                          "setup: ftell=%ld want 2", ftell(fp));
+
+        FILE *released = dsReleaseFILE(&ds);
+        test_validatefree(released == fp, fclose(fp), "release failed");
+        test_validatefree(ftell(released) == 0, fclose(fp),
+                          "not rewound: ftell=%ld", ftell(released));
+
+        fclose(released);
+    }
+
+    /* 4. NULL DS — вернёт NULL, не упадёт */
+    test_sub("subtest %d: NULL DS returns NULL", ++subnum);
+    {
+        FILE *p = dsReleaseFILE(NULL);
+        test_validate(p == NULL, "expected NULL for NULL DS, got %p", (void *) p);
+    }
+
+    /* 5. неправильный тип: DS_STR */
+    test_sub("subtest %d: DS_STR returns NULL, DS unchanged", ++subnum);
+    {
+        char buf[64];
+        DS   ds = dsCreatestrCap(buf, sizeof(buf));
+        FILE *p = dsReleaseFILE(&ds);
+
+        test_validate(p == NULL,
+                      "expected NULL for DS_STR, got %p", (void *) p);
+        test_validate(ds.type == DS_STR,
+                      "DS type changed: %d want DS_STR=%d", ds.type, DS_STR);
+    }
+
+    /* 6. неправильный тип: DS_CONSTSTR */
+    test_sub("subtest %d: DS_CONSTSTR returns NULL", ++subnum);
+    {
+        DS   ds = dsCreateconst("hello");
+        FILE *p = dsReleaseFILE(&ds);
+
+        test_validate(p == NULL,
+                      "expected NULL for DS_CONSTSTR, got %p", (void *) p);
+        test_validate(ds.type == DS_CONSTSTR,
+                      "DS type changed: %d", ds.type);
+    }
+
+    /* 7. неправильный тип: DS_FS */
+#ifndef NO_FSDS
+    test_sub("subtest %d: DS_FS returns NULL", ++subnum);
+    {
+        fs   f  = FS();
+        DS   ds = dsCreatefs(&f);
+        FILE *p = dsReleaseFILE(&ds);
+
+        test_validate(p == NULL,
+                      "expected NULL for DS_FS, got %p", (void *) p);
+        test_validate(ds.type == DS_FS,
+                      "DS type changed: %d", ds.type);
+        dsFree(&ds);
+    }
+#endif
+
+    /* 8. освобождённый fp полностью независим — обычный stdio работает */
+    test_sub("subtest %d: released fp usable via stdio", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+        fputs("payload", fp);
+
+        DS   ds = dsCreatef(fp);
+        FILE *r = dsReleaseFILE(&ds);
+
+        test_validatefree(r == fp, fclose(fp), "release failed");
+
+        /* пишем через обычный stdio — не через DS */
+        rewind(r);
+        fputs("XYZ", r);
+        rewind(r);
+        char buf[4] = {0};
+        fread(buf, 1, 3, r);
+        test_validatefree(memcmp(buf, "XYZ", 3) == 0, fclose(r),
+                          "post-release stdio write/read failed: '%s'", buf);
+
+        fclose(r);
+    }
+
+    /* 9. двойной release: второй обязан вернуть NULL (DS уже DS_UNK) */
+    test_sub("subtest %d: second release fails", ++subnum);
+    {
+        FILE *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+
+        DS ds = dsCreatef(fp);
+        FILE *r1 = dsReleaseFILE(&ds);
+        test_validatefree(r1 == fp, fclose(fp), "first release failed");
+
+        FILE *r2 = dsReleaseFILE(&ds);
+        test_validatefree(r2 == NULL, fclose(r1),
+                          "second release must return NULL, got %p", (void *) r2);
+        test_validatefree(ds.type == DS_UNK, fclose(r1),
+                          "DS.type after 2nd release = %d want DS_UNK", ds.type);
+
+        fclose(r1);
+    }
+
+    /* 10. цикл — утечек fd нет, tmpfile закрывается каждый раз */
+    test_sub("subtest %d: loop 100 releases", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            FILE *fp = tmpfile();
+            if (!fp) {
+                test_validate(false, "tmpfile failed at iter %d", k);
+                break;
+            }
+            DS ds = dsCreatef(fp);
+            fprintf(fp, "iter %d", k);
+
+            FILE *r = dsReleaseFILE(&ds);
+            if (r != fp || ds.type != DS_UNK || ftell(r) != 0) {
+                test_validatefree(
+                    false, 
+                    fclose(fp),
+                              "iter %d mismatch: r=%p fp=%p type=%d ftell=%ld",
+                              k, (void *) r, (void *) fp, ds.type,
+                              r ? ftell(r) : -1
+                );
+                break;
+            }
+            fclose(r);
+        }
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -2632,6 +2845,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf11_ds_skipspace,       "dsSkipSpaces() simple test")
       , TESTADD(tf12_ds_getc_ecran,      "dsgetcEscaped() simple test")
       , TESTADD(tf13_ds_memowner,        "dsparseEscaped() simple test")
+      , TESTADD(tf14_ds_release_file,    "dsReleaseFILE() detach FILE* simple test")
     );
 
     return logret(0, "end...");  // as replace of logclose()
