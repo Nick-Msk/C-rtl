@@ -2825,6 +2825,228 @@ tf14_ds_release_file(const char *name)
     return logret(TEST_PASSED, "done");
 }
 
+// =====================================================================
+// ds.c — tests for dsReleaseStr
+// =====================================================================
+// Detaches ptr from DS_STR (non-owning), resets DS to zero.
+// Ownership of the char* transfers to the caller, who must free().
+//
+// Refuses when:
+//   - DS is NULL
+//   - DS.type != DS_STR
+//   - DS.memowner == true  (DS itself owns ptr; use dsFree instead)
+// In all refusal cases, DS is left untouched and NULL is returned.
+
+static TestStatus
+tf15_ds_release_str(const char *name)
+{
+    logenter("%s", name);
+    int subnum = 0;
+
+    /* 1. базовый: non-owning DS, release, DS обнулён */
+    test_sub("subtest %d: basic release", ++subnum);
+    {
+        char buf[] = "hello";
+        DS   ds    = dsCreatestrCap(buf, sizeof(buf));
+        test_validatefree(ds.memowner == false, (void) 0,
+                          "setup: memowner must be false after dsCreatestrCap");
+
+        char *released = dsReleaseStr(&ds);
+
+        test_validatefree(released == buf, (void) 0,
+                          "released=%p want %p", (void *) released, (void *) buf);
+        test_validatefree(ds.type == DS_UNK, (void) 0,
+                          "DS not reset: type=%d", ds.type);
+        test_validatefree(ds.ptr == NULL, (void) 0,
+                          "DS.ptr not NULL");
+        test_validatefree(ds.memowner == false, (void) 0,
+                          "DS.memowner not reset");
+    }
+
+    /* 2. пустая строка */
+    test_sub("subtest %d: empty string", ++subnum);
+    {
+        char buf[] = "";
+        DS   ds    = dsCreatestrCap(buf, sizeof(buf));
+
+        char *released = dsReleaseStr(&ds);
+        test_validatefree(released == buf, (void) 0, "release failed");
+        test_validatefree(ds.type == DS_UNK, (void) 0, "DS not reset");
+    }
+
+    /* 3. после release буфер остаётся живым и принадлежит вызывающему */
+    test_sub("subtest %d: released buffer is caller's", ++subnum);
+    {
+        char *buf = malloc(16);
+        test_validatefree(buf != NULL, (void) 0, "malloc failed");
+        memcpy(buf, "payload", 8);
+
+        DS ds = dsCreatestrCap(buf, 16);
+        char *r = dsReleaseStr(&ds);
+
+        test_validatefree(
+            r == buf, 
+            (free(buf)), 
+            "release mismatch"
+        );
+        /* содержимое должно быть нетронутым */
+        test_validatefree(strcmp(r, "payload") == 0, free(r),
+                          "content changed after release: '%s'", r);
+        free(r);
+    }
+
+    /* 4. NULL DS — вернёт NULL, не упадёт */
+    test_sub("subtest %d: NULL DS returns NULL", ++subnum);
+    {
+        char *p = dsReleaseStr(NULL);
+        test_validate(p == NULL, "expected NULL for NULL DS, got %p", (void *) p);
+    }
+
+    /* 5. неверный тип: DS_CONSTSTR */
+    test_sub("subtest %d: DS_CONSTSTR returns NULL, DS unchanged", ++subnum);
+    {
+        DS      ds = dsCreateconst("hello");
+        void   *ptr_before = (void *) ds.ptr;
+        DSType  type_before = ds.type;
+
+        char *p = dsReleaseStr(&ds);
+
+        test_validate(p == NULL,
+                      "expected NULL for DS_CONSTSTR, got %p", (void *) p);
+        test_validate(ds.type == type_before,
+                      "DS.type changed: %d -> %d", type_before, ds.type);
+        test_validate((void *) ds.ptr == ptr_before,
+                      "DS.ptr changed: %p -> %p", ptr_before, (void *) ds.ptr);
+    }
+
+    /* 6. неверный тип: DS_FS */
+#ifndef NO_FSDS
+    test_sub("subtest %d: DS_FS returns NULL, DS unchanged", ++subnum);
+    {
+        fs      f  = FS();
+        DS      ds = dsCreatefs(&f);
+        DSType  type_before = ds.type;
+
+        char *p = dsReleaseStr(&ds);
+
+        test_validate(p == NULL,
+                      "expected NULL for DS_FS, got %p", (void *) p);
+        test_validate(ds.type == type_before,
+                      "DS.type changed: %d -> %d", type_before, ds.type);
+        dsFree(&ds);
+    }
+#endif
+
+    /* 7. неверный тип: DS_FILE */
+    test_sub("subtest %d: DS_FILE returns NULL, DS unchanged", ++subnum);
+    {
+        FILE   *fp = tmpfile();
+        test_validatefree(fp != NULL, (void) 0, "tmpfile failed");
+
+        DS      ds = dsCreatef(fp);
+        DSType  type_before = ds.type;
+
+        char *p = dsReleaseStr(&ds);
+
+        test_validatefree(p == NULL,
+                          dsFree(&ds),
+                          "expected NULL for DS_FILE, got %p", (void *) p);
+        test_validatefree(ds.type == type_before,
+                          dsFree(&ds),
+                          "DS.type changed: %d -> %d", type_before, ds.type);
+        dsFree(&ds);
+    }
+
+    /* 8. memowner == true — отказ, DS unchanged */
+    test_sub("subtest %d: memowner=true refuses release", ++subnum);
+    {
+        DS      ds = dsCreatestrAlloc(64);
+        test_validatefree(ds.memowner == true, dsFree(&ds),
+                          "setup: dsCreatestrAlloc must set memowner=true");
+
+        void    *ptr_before  = (void *) ds.ptr;
+        DSType   type_before = ds.type;
+
+        char   *p = dsReleaseStr(&ds);
+
+        test_validatefree(p == NULL, dsFree(&ds),
+                          "expected NULL for memowner=true, got %p", (void *) p);
+        test_validatefree(ds.type == type_before, dsFree(&ds),
+                          "DS.type changed: %d -> %d", type_before, ds.type);
+        test_validatefree((void *) ds.ptr == ptr_before, dsFree(&ds),
+                          "DS.ptr changed: %p -> %p",
+                          ptr_before, (void *) ds.ptr);
+
+        dsFree(&ds);   /* memowner=true: освободит ptr штатно */
+    }
+
+    /* 9. двойной release: второй обязан вернуть NULL (DS уже DS_UNK) */
+    test_sub("subtest %d: second release fails", ++subnum);
+    {
+        char buf[] = "x";
+        DS   ds    = dsCreatestrCap(buf, sizeof(buf));
+
+        char *r1 = dsReleaseStr(&ds);
+        test_validatefree(r1 == buf, (void) 0, "first release failed");
+
+        char *r2 = dsReleaseStr(&ds);
+        test_validatefree(r2 == NULL, (void) 0,
+                          "second release must return NULL, got %p", (void *) r2);
+        test_validatefree(ds.type == DS_UNK, (void) 0,
+                          "DS.type after 2nd release = %d want DS_UNK", ds.type);
+    }
+
+    /* 10. деточенный буфер можно завернуть в новый DS и прочитать */
+    test_sub("subtest %d: rewrap released buffer", ++subnum);
+    {
+        char buf[32] = "rewrap me";
+        DS   ds1    = dsCreatestrCap(buf, sizeof(buf));
+
+        /* имитируем использование: читаем через DS до release */
+        int c = dsgetc(&ds1);
+        test_validatefree(c == 'r', (void) 0, "setup dsgetc got '%c'", c);
+
+        /* детачим (позиция уже 1, но release возвращает buf, не сбрасывает) */
+        char *detached = dsReleaseStr(&ds1);
+        test_validatefree(detached == buf, (void) 0, "release mismatch");
+
+        /* заворачиваем в новый DS — можно прочитать с начала */
+        DS ds2 = dsCreatestrCap(detached, sizeof(buf));
+        test_validatefree(ds2.pos == 0, (void) 0, "new DS pos must be 0");
+
+        char readback[32] = {0};
+        int  i;
+        for (i = 0; i < 9 && (c = dsgetc(&ds2)) != EOF; i++)
+            readback[i] = (char) c;
+        test_validatefree(strcmp(readback, "rewrap me") == 0, (void) 0,
+                          "readback mismatch: '%s'", readback);
+
+        dsFree(&ds2);   /* memowner=false, ptr не освобождается */
+    }
+
+    /* 11. цикл — накоплений нет */
+    test_sub("subtest %d: loop 100 releases", ++subnum);
+    {
+        for (int k = 0; k < 100; k++) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "iter %d", k);
+
+            DS ds = dsCreatestrCap(buf, sizeof(buf));
+            char *r = dsReleaseStr(&ds);
+            if (r == NULL || ds.type != DS_UNK || r != buf) {
+                test_validate(false, "iter %d mismatch", k);
+                break;
+            }
+            if (strcmp(r, buf) != 0) {
+                test_validate(false, "iter %d content changed: '%s'", k, r);
+                break;
+            }
+        }
+    }
+
+    return logret(TEST_PASSED, "done");
+}
+
 // -------------------------------------------------------------------
 int
 main( /*int argc, char *argv[] */ )
@@ -2846,6 +3068,7 @@ main( /*int argc, char *argv[] */ )
       , TESTADD(tf12_ds_getc_ecran,      "dsgetcEscaped() simple test")
       , TESTADD(tf13_ds_memowner,        "dsparseEscaped() simple test")
       , TESTADD(tf14_ds_release_file,    "dsReleaseFILE() detach FILE* simple test")
+      , TESTADD(tf15_ds_release_str,     "dsReleaseStr() detach char* from non-owning DS_STR")
     );
 
     return logret(0, "end...");  // as replace of logclose()

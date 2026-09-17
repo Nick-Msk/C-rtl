@@ -356,9 +356,10 @@ static inline bool              dsReleaseFs(fs *restrict dst, DS *restrict pds) 
 static inline char               *dsReleaseStr(DS *pds) {
     if (pds == NULL)
         return userraise(NULL, ERR_NULL_INPUT, "Ds is null");
-    if (pds->type != DS_STR)
+    if (pds->type != DS_STR || pds->memowner)
         return userraise(NULL, ERR_UNSUPPORTED_TYPE, 
-            "%d/%s isn't supported", pds->type, dsTypeName(pds->type));
+            "%d/%s isn't supported or memowner flag %s", 
+            pds->type, dsTypeName(pds->type), bool_str(pds->memowner));
     char    *str = pds->ptr;
     *pds = DS();
     return str;
