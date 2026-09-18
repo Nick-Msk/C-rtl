@@ -176,7 +176,8 @@ typedef struct ArraySlice {
  * @return const ArrayTypeInfo* Pointer to the metadata structure. 
  *         Returns a pointer to the ARRAY_UNKNOWN entry if no match is found.
  */
-static inline const ArrayTypeInfo   *arrayTypeGetInfo(ArrayType t) {
+static inline const ArrayTypeInfo   *
+arrayTypeGetInfo(ArrayType t) {
     size_t      i;
     for (i = 0; i < COUNT(ARRAY_TYPE_TABLE); i++) {
         if (ARRAY_TYPE_TABLE[i].type == t)
@@ -186,7 +187,8 @@ static inline const ArrayTypeInfo   *arrayTypeGetInfo(ArrayType t) {
  }
 
 // mapper ARRAY_INT -> VALUE64_INT... etc
-static inline value64_type          arrayTypeV64map(ArrayType typ, value64_type vt) {
+static inline value64_type          
+arrayTypeV64map(ArrayType typ, value64_type vt) {
     value64_type vt64 = arrayTypeGetInfo(typ)->vt64;
     if (vt64 == VALUE64_UNKNOWN)
         vt64 = vt;
@@ -199,7 +201,8 @@ static inline value64_type          arrayTypeV64map(ArrayType typ, value64_type 
  * @param a The array instance.
  * @return const char* The pretty name (e.g., "INT").
  */
-static inline const char            *arrayTypeGetName(ArrayType t) {
+static inline const char *
+arrayTypeGetName(ArrayType t) {
     return arrayTypeGetInfo(t)->name;
 }
 
@@ -209,7 +212,8 @@ static inline const char            *arrayTypeGetName(ArrayType t) {
  * @param a The array instance.
  * @return const char* The pretty name (e.g., "INT").
  */
-static inline const char            *arrayTypeGetRealName(ArrayType t) {
+static inline const char *
+arrayTypeGetRealName(ArrayType t) {
     return arrayTypeGetInfo(t)->name_raw;
 }
 
@@ -222,7 +226,8 @@ static inline const char            *arrayTypeGetRealName(ArrayType t) {
  * @param t The ArrayType enum value.
  * @return size_t The size of the element in bytes. Returns 0 if type is unknown.
  */
-static inline size_t                arrayTypeGetElemSize(ArrayType t) {
+static inline size_t                
+arrayTypeGetElemSize(ArrayType t) {
     return arrayTypeGetInfo(t)->elem_size;
 }
 
@@ -232,7 +237,8 @@ static inline size_t                arrayTypeGetElemSize(ArrayType t) {
  * @param name The string to parse (e.g., "ARRAY_INT").
  * @return ArrayType The corresponding enum value, or ARRAY_UNKNOWN if no match is found.
  */
-static inline ArrayType               arrayTypeFromName(const char *name) {
+static inline ArrayType               
+arrayTypeFromName(const char *name) {
     if (!name)
         return ARRAY_UNKNOWN;
     for (size_t i = 0; i < COUNT(ARRAY_TYPE_TABLE); i++) {
@@ -249,7 +255,8 @@ static inline ArrayType               arrayTypeFromName(const char *name) {
  * @param t The ArrayFillType enum value.
  * @return const char* A pointer to the name string. Returns an empty string if not found.
  */
-static inline const char           *arrayFillTypeGetName(ArrayFillType t) {
+static inline const char *
+arrayFillTypeGetName(ArrayFillType t) {
     for (size_t i = 0; i < COUNT(ARRAY_FILLTYPE_TABLE); i++) {
         if (ARRAY_FILLTYPE_TABLE[i].type == t)
             return ARRAY_FILLTYPE_TABLE[i].name;
