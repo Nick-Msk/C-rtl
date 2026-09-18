@@ -1,0 +1,21 @@
+name: PostgreSQL MCP
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: postgres-test1
+    command: npx
+    args:
+      - "-y"
+      - "universal-db-mcp"
+      - "--type"
+      - "postgres"
+      - "--host"
+      - "localhost"
+      - "--port"
+      - "5432"
+      - "--user"
+      - "skelet"
+      - "--password"
+      - "123"
+      - "--database"
+      - "test1"
