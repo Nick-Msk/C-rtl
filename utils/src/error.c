@@ -98,6 +98,14 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 		g_error = g_error_init;
 		g_currerr = 0, g_allocerr = ERROR_INIT_COUNT; 
 	}
+
+	if (g_currerr >= g_allocerr) {
+        if (!err_increase()) {
+            // Если не смогли расшириться — просто не записываем новую ошибку
+            return; 
+        }
+    }
+
 	Error 	*err = g_error + g_currerr++;		// currect error, must be valid pointer
 	logauto(err->type = tp);
 	logsimple("%s", msg);	// logsimple(msg, ap) ??? TODO:
