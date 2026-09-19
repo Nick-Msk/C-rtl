@@ -24,11 +24,11 @@ typedef struct {
         char                    		msg[ERROR_MESSAGE_MAX_LENGTH];                         // TODO: to be replaced to 'fs'
 } Error;
 
-static Error							g_error_init[ERROR_INIT_COUNT];
-static Error                           *g_error = g_error_init;
-static int                              g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
+_Thread_local Error						g_error_init[ERROR_INIT_COUNT];
+_Thread_local Error                    *g_error = NULL;
+_Thread_local int                       g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
 
-static ExceptionData   					g_env;			// for longjmp
+_Thread_local ExceptionData   			g_env;			// for longjmp
 
 // ---------- pseudo-header for utility procedures -----------------
 
@@ -91,6 +91,11 @@ err_increase(void)
 static void
 err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
+	// TEMPORARY SOLUTION TO RESOLV thread local
+	if (g_error == NULL) {
+		g_error = g_error_init;
+		g_currerr = 0, g_allocerr = ERROR_INIT_COUNT; 
+	}
 	Error 	*err = g_error + g_currerr++;		// currect error, must be valid pointer
 	logauto(err->type = tp);
 	logsimple("%s", msg);	// logsimple(msg, ap) ??? TODO:
@@ -158,7 +163,7 @@ err_fprinterr(FILE *restrict out, const Error *err)
 void
 err_clean(bool force){
 	if (force && !err_isinit())
-    	free(g_error);
+    	free(g_error);	// if NULL then ok
     g_error = g_error_init;
     g_currerr = 0;
 	g_allocerr = ERROR_INIT_COUNT;
@@ -380,9 +385,10 @@ tf5(const char *name)
 
 	res_errcode = 40;
 	// checking errnum  TODO: inv2 can be used here
-    if ( (errcode = g_error[g_currerr - 1].code) != res_errcode)
+    if ( (errcode = g_error[g_currerr - 1].code) != res_errcode) {
         return logacterr(err_clean(true), TEST_FAILED, "error code of tf5_check_void = %d, but must be %d", errcode, res_errcode);
-
+	}
+	
 	err_printstacktrace();
 
 	err_clean(true);
