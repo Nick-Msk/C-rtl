@@ -24,11 +24,11 @@ typedef struct {
         char                    		msg[ERROR_MESSAGE_MAX_LENGTH];                         // TODO: to be replaced to 'fs'
 } Error;
 
-_Thread_local Error						g_error_init[ERROR_INIT_COUNT];
-_Thread_local Error                    *g_error = NULL;
-_Thread_local int                       g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
+static _Thread_local Error				g_error_init[ERROR_INIT_COUNT];
+static _Thread_local Error             *g_error = NULL;
+static _Thread_local int                g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
 
-_Thread_local ExceptionData   			g_env;			// for longjmp
+static _Thread_local ExceptionData   	g_env;			// for longjmp
 
 // ---------- pseudo-header for utility procedures -----------------
 
