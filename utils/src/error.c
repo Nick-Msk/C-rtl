@@ -75,6 +75,8 @@ err_increase(void)
 	{
 		if ( (err = malloc(newalloc * sizeof(Error))) == 0)
 			return logsimple(0, "Unable to init alloc of %d elements", newalloc);
+		// copy prev
+		memcpy(err, g_error_init, g_currerr * sizeof(Error));
 	}
 	else {
        	if ( (err = realloc(g_error, newalloc * sizeof(Error))) == 0)
@@ -388,7 +390,7 @@ tf5(const char *name)
     if ( (errcode = g_error[g_currerr - 1].code) != res_errcode) {
         return logacterr(err_clean(true), TEST_FAILED, "error code of tf5_check_void = %d, but must be %d", errcode, res_errcode);
 	}
-	
+
 	err_printstacktrace();
 
 	err_clean(true);
