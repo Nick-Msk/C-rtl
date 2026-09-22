@@ -953,15 +953,34 @@ test_array_save_expected(char *buf, size_t cap, const Array *arr)
             case ARRAY_POINTER: n = snprintf(buf + pos, cap - pos, fmt, i, arr->pv[i]); break;
             default: return 0;
         }
-        if (n < 0 || (size_t) n >= cap - pos) return 0;
+        if (n < 0 || (size_t) n >= cap - pos) 
+            return 0;
         pos += (size_t) n;
     }
 
     n = snprintf(buf + pos, cap - pos, "ARRAY: DONE\n");
-    if (n < 0 || (size_t) n >= cap - pos) return 0;
+    if (n < 0 || (size_t) n >= cap - pos) 
+        return 0;
     pos += (size_t) n;
 
     return pos;
+}
+
+static bool
+test_execall(const Array *arr, const IOScenario *table, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (!table[i].applicable) {
+            logsimple("%zu/'%s' is skipped", i, table[i].name);
+            continue;
+        }
+        logsimple("  scenario: %s", table[i].name);
+        if (!table[i].fn(arr)) {
+            userraise(false, ERR_UNABLE_PARSE_DATA,
+                "scenario %zu/'%s' failed", i, table[i].name);
+            return false;
+        }
+    }
+    return true;
 }
 
 
@@ -1941,6 +1960,56 @@ tf3_array_save_to_ds_file(const char *name)
 //
 // Владение буфером: writer -> (detach) -> caller -> (free) -> NULL.
 // Reader никогда не владеет; dsFree(&reader) тело не освобождает.
+
+// example split to save<type>, transform, load_check<type>
+// no checking version
+static bool 
+test_saver_dssrt(const Array *restrict arr, DS *pout) {
+    DS out = dsCreatestrAlloc(256);
+    long w = arraySaveToDS(&out, (Array *) arr);
+    if (w <= 0) {
+        dsFree(&out);
+        return userraise(false, ERR_UNABLE_PARSE_DATA,
+            "roundtrip: save failed (%ld)", w);
+    }
+    if (pout)
+        *pout = out;
+    return true;
+}
+
+// out -> in
+static bool 
+test_converter_dssrt_dsstr(DS *pout, DS *pin) {
+    dsReset(pin);
+    *pin = *pout; 
+    *pout = DS();
+    return true;
+}
+
+static bool
+test_loader_dsstr(const Array *restrict arr, DS *in) {
+    Array loaded = ArrayInit();
+    long  r = arrayLoadFromDS(in, &loaded);
+
+    bool eq = false;
+    if (r < 0) {
+        userraise(false, ERR_UNABLE_PARSE_DATA,
+            "load failed (%ld)", r);
+    } else if (arrayGettype(arr) != arrayGettype(&loaded)) {
+        userraise(false, ERR_TYPES_MISMATCH,
+            "type mismatch (%s vs %s)",
+            arrayGetTypeName(arr), arrayGetTypeName(&loaded));
+    } else {
+        eq = arrayEq((Array *) arr, &loaded);
+        if (!eq)
+            userraise(false, ERR_UNKNOWN_TYPE,
+                "roundtrip: content mismatch (type=%s, len=%zu vs %zu)",
+                arrayGetTypeName(arr), arr->len, loaded.len);
+    }
+    // direct free!!! Not so pretty, but for now
+    free(in->ptr);
+    return eq;
+}
 
 static bool
 test_dsstr_to_dsstr_roundtrip(const Array *arr) {
