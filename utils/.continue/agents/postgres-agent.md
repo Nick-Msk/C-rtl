@@ -1,1 +1,1 @@
-/Users/skelet/code/pg-explain-mcp/config_example/postgres-agent.md
+/Users/skelet/code/pg-explain-mcp/config_mcp/postgres-agent.md
