@@ -1,1 +1,17 @@
-/Users/skelet/code/pg-explain-mcp/config_mcp/pg-explain.yaml
+name: PostgreSQL Explain MCP
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: pg-explain
+    command: /Users/skelet/code/pg-explain-mcp/.venv/bin/python
+    args:
+      - "-m"
+      - "pg_explain_mcp.server"
+    env:
+      PG_HOST: localhost
+      PG_PORT: "5432"
+      PG_USER: skelet
+      PG_PASSWORD: "123"
+      PG_DATABASE: test1
+      TARGET_DB_TYPE: postgres
+
