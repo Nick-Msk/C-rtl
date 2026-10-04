@@ -1,0 +1,14 @@
+name: pg-tune
+version: 0.1.0
+schema: v1
+
+mcpServers:
+  pg-tune:
+    command: /Users/skelet/code/pg-explain-mcp/.venv/bin/pg-tune-mcp
+    env:
+      PGHOST: localhost
+      PGUSER: skelet
+      PGDATABASE: tune_test
+      PG_TUNE_ALLOW_WRITES: "yes"
+      PG_TUNE_BACKUP_DIR: /Users/skelet/code/pg-explain-mcp/pg-tune/config/backups
+
