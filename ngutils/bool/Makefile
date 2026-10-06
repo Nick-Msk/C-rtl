@@ -3,7 +3,9 @@ CFLAGS  = -Wall -Wextra -Iinclude
 CRIT_CFLAGS = $(shell pkg-config --cflags criterion)
 CRIT_LIBS   = $(shell pkg-config --libs criterion)
 
-BUILD   = build
+BUILD_DIR ?= build
+BUILD   := $(BUILD_DIR)
+
 LOG		= log
 DEBUG   = $(BUILD)/debug
 RELEASE = $(BUILD)/release
@@ -20,7 +22,7 @@ $(DEBUG) $(RELEASE):
 
 # --- tasks ---
 test: $(TEST_BIN)
-	./$(TEST_BIN)
+	$(TEST_BIN)
 
 # stub
 release: | $(RELEASE)

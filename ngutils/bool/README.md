@@ -1,5 +1,7 @@
 # bool.h
 
+[![CI](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml)
+
 A tiny C utility header providing a single helper function to convert a
 `bool` value into its `"true"` / `"false"` string representation.
 
