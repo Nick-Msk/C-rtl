@@ -13,3 +13,5 @@ debug/
 *.log
 *_test
 .DS_Store
+build/
+
