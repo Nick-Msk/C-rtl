@@ -22,6 +22,7 @@ HDR      = include/bool.h
 SRC_OBJ       = $(OBJ)/bool.o
 TEST_OBJ      = $(OBJ)/test_bool.o
 TEST_BIN      = $(DEBUG)/test_bool
+LIB           = $(BUILD_DIR)/libbool.a
 DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d)
 
 # --- compile ---
@@ -42,10 +43,19 @@ $(OBJ) $(DEBUG) $(RELEASE):
 
 # --- tasks ---
 
-.PHONY: test check analyze release clean clean-logs
+.PHONY: lib all test check analyze release clean clean-logs
+
+all: $(SRC_OBJ)
+	@echo "Built: $(SRC_OBJ)"
 
 test: $(TEST_BIN)
 	@$(TEST_BIN)
+
+lib: $(LIB)
+
+$(LIB): $(SRC_OBJ) | $(BUILD_DIR)
+	@ar rcs $@ $^
+	@echo "Built: $@"
 
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)

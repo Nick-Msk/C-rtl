@@ -20,6 +20,7 @@ HDR      = include/log.h
 SRC_OBJ       = $(OBJ)/log.o
 TEST_OBJ      = $(OBJ)/test_log.o
 TEST_BIN      = $(DEBUG)/test_log
+LIB           = $(BUILD_DIR)/liblog.a
 DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d)
 
 # --- compile ---
@@ -40,10 +41,19 @@ $(OBJ) $(DEBUG) $(RELEASE):
 
 # --- tasks ---
 
-.PHONY: test check analyze release clean clean-logs
+.PHONY: lib all test check analyze release clean clean-logs
+
+all: $(SRC_OBJ)
+	@echo "Built: $(SRC_OBJ)"
 
 test: $(TEST_BIN)
 	@$(TEST_BIN)
+
+lib: $(LIB)
+
+$(LIB): $(SRC_OBJ) | $(BUILD_DIR)
+	@ar rcs $@ $^
+	@echo "Built: $@"
 
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
@@ -63,7 +73,7 @@ clean:
 
 clean-logs:
 	@rm -f logs/*.log
-	
+
 no_targets__:
 list:
 	sh -c "$(MAKE) -p no_targets__ | awk -F':' '/^[a-zA-Z0-9][^\$$#\/\\t=]*:([^=]|$$)/ {split(\$$1,A,/ /);for(i in A)print A[i]}' | grep -v '__\$$' | sort"
