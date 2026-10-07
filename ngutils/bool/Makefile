@@ -17,6 +17,8 @@ SRC 	 = src/bool.c
 TEST_SRC = test/test_bool.c
 HDR      = include/bool.h
 
+#SRC = $(wildcard src/*.c)
+#SRC_OBJ = $(patsubst src/%.c,$(OBJ)/%.o,$(SRC))
 SRC_OBJ       = $(OBJ)/bool.o
 TEST_OBJ      = $(OBJ)/test_bool.o
 TEST_BIN      = $(DEBUG)/test_bool
