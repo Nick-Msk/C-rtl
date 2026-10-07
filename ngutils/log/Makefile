@@ -1,57 +1,61 @@
-CC      = gcc
-CFLAGS  = -Wall -Wextra -Iinclude
-CRIT_CFLAGS = $(shell pkg-config --cflags criterion)
-CRIT_LIBS   = $(shell pkg-config --libs criterion)
+CC            = gcc
+CFLAGS        = -Wall -Wextra -Iinclude
+CRIT_CFLAGS   = $(shell pkg-config --cflags criterion)
+CRIT_LIBS     = $(shell pkg-config --libs criterion)
 
-BUILD_DIR ?= build
-BUILD   := $(BUILD_DIR)
+CLANG_TIDY   ?= clang-tidy
+SCAN_BUILD   ?= scan-build
 
-LOG		= log
-DEBUG   = $(BUILD)/debug
-RELEASE = $(BUILD)/release
+BUILD_DIR    ?= build
+DEBUG         = $(BUILD_DIR)/debug
+RELEASE       = $(BUILD_DIR)/release
+OBJ           = $(BUILD_DIR)/obj
 
-CLANG_TIDY ?= clang-tidy
-SCAN_BUILD ?= scan-build
+SRC           = src/log.c
+TEST_SRC      = test/test_log.c
+HDR           = include/log.h
 
-SRC 	 = src/log.c
-TEST_SRC = test/test_log.c
-SCR_INCLUDE = include/log.h
+SRC_OBJ       = $(OBJ)/log.o
+TEST_OBJ      = $(OBJ)/test_log.o
+TEST_BIN      = $(DEBUG)/test_log
 
-TEST_BIN = $(DEBUG)/test_bool
+# --- compile ---
 
-# --- test build (debug flags) ---
-$(TEST_BIN): $(TEST_SRC) $(SRC) $(SCR_INCLUDE) | $(DEBUG)
-	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -o $@ $(TEST_SRC) $(SRC) $(CRIT_LIBS)
+$(SRC_OBJ): $(SRC) $(HDR) | $(OBJ)
+	$(CC) $(CFLAGS) -g -O0 -c $< -o $@
 
-$(DEBUG) $(RELEASE):
+$(TEST_OBJ): $(TEST_SRC) $(HDR) | $(OBJ)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -c $< -o $@
+
+$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
+	$(CC) -o $@ $(SRC_OBJ) $(TEST_OBJ) $(CRIT_LIBS)
+
+$(OBJ) $(DEBUG) $(RELEASE):
 	@mkdir -p $@
 
-.PHONY: test clean check
-
 # --- tasks ---
+
+.PHONY: test check analyze release clean clean-logs
+
 test: $(TEST_BIN)
 	@$(TEST_BIN)
-
-analyze:
-	@mkdir -p $(BUILD_DIR)/analyze
-	@rm -rf $(BUILD_DIR)/debug
-	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze \
-	    $(MAKE) test
 
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
-# stub
+analyze:
+	@mkdir -p $(BUILD_DIR)/analyze
+	@rm -rf $(DEBUG)
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze $(MAKE) test
+
 release: | $(RELEASE)
 	@echo "release build not implemented yet"
 
 clean:
-	@rm -rf $(BUILD)
-	@rm -rf $(LOG)/*.log
+	@rm -rf $(BUILD_DIR)
 
-
-
-.PHONY: test release clean
+clean-logs:
+	@rm -f logs/*.log
 
 no_targets__:
 list:
