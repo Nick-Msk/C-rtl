@@ -45,7 +45,8 @@ enum { LOG_MAX_SZ = 4096 };			// better to use POSIX or SC limitation instead of
 enum { LOG_TIME_SZ = 100 };
 
 /** Spaces added per indent level. */
-static			const int		OFFSET_INC			=4;
+static			const int		OFFSET_INC			= 4;
+static 			const int 		LOG_MAXMODS 		= 4096;
 
 // ── Global state ─────────────────────────────────────────────────────────────
 
@@ -114,11 +115,12 @@ cmp(const void *v1, const void *v2)
 static int
 getlevel(const char *module)
 {
-	LogModlevel tmp = {.level = LOGALL };
-	strcpy(tmp.module, module);
-	LogModlevel *m = bsearch(module, g_modules, g_modcount, sizeof(LogModlevel), cmp);
+	LogModlevel tmp;
+	memset(&tmp, 0, sizeof(tmp));
+	strncpy(tmp.module, module, MAX_MODULE - 1);
+	LogModlevel *m = bsearch(&tmp, g_modules, g_modcount, sizeof(LogModlevel), cmp);
 	if (m)
-		return m->level;
+		return (int)m->level;
 	else
 		return -1;
 }
@@ -259,16 +261,15 @@ log_modinit(LogModlevel *modlist)
 		fprintf(out, "Modules are already loaded, run log_modclear before");
 		return false;
 	}
-	static const int LOGMAXMODS = 4096;
 
 	if (!modlist)	// no modules, use DEF_MODULE
 		return true;
 
 	// determine size (bounded to prevent OOB if sentinel is missing)
-	while (cnt < LOGMAXMODS && modlist[cnt].level >= 0)
+	while (cnt < LOG_MAXMODS && modlist[cnt].level >= 0)
 		cnt++;
 
-	if (cnt == 0 || cnt >= LOGMAXMODS)	// invalid: empty or no sentinel found
+	if (cnt == 0 || cnt >= LOG_MAXMODS)	// invalid: empty or no sentinel found
 		return false;
 
 	if (!(g_modules = malloc((size_t)cnt * sizeof(LogModlevel))))
@@ -351,11 +352,18 @@ log_modload(const char *name)
 		return false;
 	}
 
-	if (g_modules != &def_mod)
-		free(g_modules);
+	log_modclear(); // free old heap array + reset g_modcount
+	
+	if (modcnt < 1 || modcnt > LOG_MAXMODS)
+	{
+		fprintf(stderr, "Bad module count %d\n", modcnt);
+		fclose(f);
+		return false;
+	}
 	if (!(g_modules = malloc((size_t)modcnt * sizeof(LogModlevel))))
     {
-        fprintf(stderr, "Unable to allocate memory for module list (%zu)\n", modcnt * sizeof(LogModlevel));
+
+        fprintf(stderr, "Unable to allocate memory for module list (%zu)\n", (size_t)modcnt * sizeof(LogModlevel));
 		fclose(f);
         return false;
     }
