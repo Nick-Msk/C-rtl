@@ -26,10 +26,11 @@
 #define LOG_H
 
 #include <stdio.h>
-#include <bool.h>
+#include <stdbool.h>
+#include <stdarg.h>
 
 /** Maximum length of a module name (NUL-terminated). */
-static const int		MAX_MODULE = 20;
+enum {MAX_MODULE = 20};		// for gcc
 
 /**
  * @brief Log severity / enable levels.
@@ -586,7 +587,10 @@ logprintoffset(void) {
 #define MOD(name, lv)						{ .module = (#name), .level = (lv) }
 
 /** @brief Init is a no-op, always returns false. */
-#define loginit(...)						(false)				// in NOBEBUG mode result is false
+#define loginit(...)						(false)				// in NODEBUG mode result is false
+
+/** @brief Full init is a no-op in NODEBUG mode. */
+#define loginits(...)
 
 /** @brief Close is a no-op, returns 0. */
 #define logclose(...)						(0)
@@ -693,7 +697,7 @@ logprintoffset(void) {
 #define LOG(...)
 
 /** @brief No-op. */
-#define LOGAPPENT(...)
+#define LOGAPPEND(...)
 
 /** @brief No-op. */
 #define LOGAUTO(ACTION)
