@@ -2,23 +2,41 @@
 
 [![CI](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml)
 
-A tiny C utility header providing a single helper function to convert a
-`bool` value into its `"true"` / `"false"` string representation.
+A tiny C utility for converting between `bool` and its string
+representation.
 
-Header-only, C99+, no dependencies beyond `<stdbool.h>`.
+Core functions are header-only (`include/bool.h`). The version API lives
+in `src/bool.c` so the published-versions array is defined in exactly one
+translation unit. C99+, no dependencies beyond the C standard library.
+
+## Features
+
+- `bool_str` — `bool` → `"true"` / `"false"`
+- `bool_tryparse` — `"true"` / `"false"` → `bool`, with explicit success flag
+- `bool_parsedef` — parse with a fallback value on failure
+- `bool_version` / `bool_versions` — current and historical version strings
 
 ## Usage
 
-Copy `include/bool.h` into your include path, then:
+Copy `include/bool.h` and `src/bool.c` into your project, then:
 
 ```c
 #include <bool.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(void) {
-    printf("1 == %s\n", bool_str(true));   // "1 == true"
-    printf("0 == %s\n", bool_str(false));  // "0 == false"
+    printf("%s\n", bool_str(true));            /* "true" */
+
+    bool ok;
+    if (bool_tryparse("True", &ok))
+        printf("parsed: %d\n", ok);            /* parsed: 1 */
+
+    bool debug = bool_parsedef(getenv("DEBUG"), false);
+    (void)debug;
+
+    printf("bool.h %s\n", bool_version());     /* "0.2.0" */
     return 0;
 }
 ```
@@ -26,21 +44,41 @@ int main(void) {
 Compile with:
 
 ```
-cc -std=c99 -Ipath/to/include main.c -o main
+cc -std=c99 -Ipath/to/include main.c path/to/src/bool.c -o main
 ```
 
 ## API
 
+### Conversion
+
 | Function | Description |
 |---|---|
-| `const char *bool_str(bool v)` | Returns a pointer to a **string literal** (`"true"` or `"false"`). No allocation, safe to use in any context. |
+| `const char *bool_str(bool v)` | Returns a pointer to a **string literal** (`"true"` or `"false"`). |
+| `bool bool_tryparse(const char *str, bool *out)` | Parses `"true"` / `"false"` (case-insensitive). Returns `true` on success. `out` may be `NULL`. On failure, `*out` is left untouched. |
+| `bool bool_parsedef(const char *str, bool def)` | Like `bool_tryparse`, but returns `def` on failure. Never fails. |
+
+`bool_tryparse` does **not** trim whitespace and does **not** accept
+synonyms such as `"yes"`, `"on"`, or `"1"`. For richer parsing, use a
+dedicated library.
+
+### Version
+
+| Function | Description |
+|---|---|
+| `const char *bool_version(void)` | Current version string, e.g. `"0.2.0"`. |
+| `const char *const *bool_versions(void)` | NULL-terminated array of published versions, newest first. |
+
+`bool_versions()[0]` is always the current version. The array is static,
+read-only, and must not be freed.
 
 ## Notes
 
-- The returned pointer refers to a **static string literal** — do **not** free or modify it.
-- The function is declared `static inline`, so it produces no extra symbol in the
-  object file and is inlined at the call site.
-- No dependencies beyond `<stdbool.h>` (C99+).
+- Pointers returned by `bool_str` and `bool_version` refer to **static
+  string literals** — do not free or modify them.
+- Core conversion functions are declared `static inline` and produce no
+  extra symbols in the object file.
+- `bool_tryparse` is case-insensitive via `strcasecmp`
+  (`_stricmp` on MSVC).
 
 ## Development
 
@@ -49,17 +87,19 @@ The project uses [Criterion](https://criterion.readthedocs.io/) for unit tests.
 ### Requirements
 
 - A C compiler (`cc`, `gcc`, or `clang`)
-- Criterion: `brew install criterion` (macOS) or see upstream docs
+- [Criterion](https://criterion.readthedocs.io/) — `brew install criterion`
+- Optional: `clang-tidy`, `scan-build` for `make check` / `make analyze`
 
 ### Layout
 
 ```
 .
-├── include/         public headers
-├── src/             library sources (currently empty — header-only)
-├── test/            unit tests
-├── build/           build artifacts (gitignored)
+├── include/bool.h        public header (core, header-only)
+├── src/bool.c            version array (single TU)
+├── test/test_bool.c      unit tests
+├── build/                build artifacts (gitignored)
 ├── Makefile
+├── Doxyfile
 ├── README.md
 └── CHANGELOG.md
 ```
@@ -67,9 +107,15 @@ The project uses [Criterion](https://criterion.readthedocs.io/) for unit tests.
 ### Commands
 
 ```
-make test      # build and run the unit tests
-make clean     # remove build artifacts
+make test       # build and run unit tests
+make check      # clang-tidy static analysis
+make analyze    # clang static analyzer (scan-build)
+make clean      # remove build artifacts
 ```
 
 Test binaries land in `build/debug/`.
+
+## License
+
+See the top-level `LICENSE` file.
 
