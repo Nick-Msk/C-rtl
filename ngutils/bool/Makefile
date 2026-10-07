@@ -10,6 +10,8 @@ LOG		= log
 DEBUG   = $(BUILD)/debug
 RELEASE = $(BUILD)/release
 
+CLANG_TIDY ?= clang-tidy
+
 TEST_SRC = test/test_bool.c
 TEST_BIN = $(DEBUG)/test_bool
 
@@ -19,6 +21,8 @@ $(TEST_BIN): $(TEST_SRC) include/bool.h | $(DEBUG)
 
 $(DEBUG) $(RELEASE):
 	mkdir -p $@
+
+.PHONY: test clean check
 
 # --- tasks ---
 test: $(TEST_BIN)
@@ -31,6 +35,9 @@ release: | $(RELEASE)
 clean:
 	rm -rf $(BUILD)
 	rm -rf $(LOG)/*.log
+
+check:
+	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
 .PHONY: test release clean
 

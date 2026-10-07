@@ -5,7 +5,7 @@
 # utility — just give it a Makefile with a `test` target.
 
 PROJECTS := $(patsubst %/Makefile,%,$(wildcard */Makefile))
-FORWARD_TARGETS := test clean
+FORWARD_TARGETS := test clean check
 
 .PHONY: help list docker-build test-docker \
         $(FORWARD_TARGETS) $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS)))
@@ -31,6 +31,7 @@ list:
 
 test:  $(addprefix test-,$(PROJECTS))
 clean: $(addprefix clean-,$(PROJECTS))
+check: $(addprefix check-,$(PROJECTS))
 
 $(addprefix test-,$(PROJECTS)): test-%:
 	@echo "==> test $*"
@@ -39,6 +40,10 @@ $(addprefix test-,$(PROJECTS)): test-%:
 $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
+
+$(addprefix check-,$(PROJECTS)): check-%:
+	@echo "==> check $*"
+	@$(MAKE) -C $* check
 
 # --- Docker ---
 
