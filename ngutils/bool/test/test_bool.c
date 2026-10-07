@@ -94,3 +94,11 @@ Test(bool, roundtrip) {
     cr_assert(bool_tryparse(bool_str(true), &ok));  cr_assert(ok);
     cr_assert(bool_tryparse(bool_str(false), &ok)); cr_assert_not(ok);
 }
+
+// version control
+Test(bool, version_is_top_of_list) {
+    /* versions[0] всегда равен текущей версии */
+    cr_assert_str_eq(bool_version(), bool_versions()[0]);
+    cr_assert_str_eq(bool_version(), BOOL_VERSION);
+    cr_assert_str_eq(bool_version(), "0.2.0");
+}

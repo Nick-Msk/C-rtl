@@ -13,14 +13,15 @@ RELEASE = $(BUILD)/release
 CLANG_TIDY ?= clang-tidy
 SCAN_BUILD ?= scan-build
 
+SRC 	 = src/bool.c
 TEST_SRC = test/test_bool.c
 TEST_BIN = $(DEBUG)/test_bool
 
 SCR_INCLUDE = include/bool.h
 
 # --- test build (debug flags) ---
-$(TEST_BIN): $(TEST_SRC) $(SCR_INCLUDE) | $(DEBUG)
-	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -o $@ $(TEST_SRC) $(CRIT_LIBS)
+$(TEST_BIN): $(TEST_SRC) $(SRC) $(SCR_INCLUDE) | $(DEBUG)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -o $@ $(TEST_SRC) $(SRC) $(CRIT_LIBS)
 
 $(DEBUG) $(RELEASE):
 	@mkdir -p $@

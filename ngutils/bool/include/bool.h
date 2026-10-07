@@ -20,6 +20,33 @@
   }
 #endif
 
+#define BOOL_VERSION_MAJOR 0
+#define BOOL_VERSION_MINOR 2
+#define BOOL_VERSION_PATCH 0
+
+#define BOOL_STRINGIFY_(x) #x
+#define BOOL_STRINGIFY(x)  BOOL_STRINGIFY_(x)
+
+#define BOOL_VERSION \
+    BOOL_STRINGIFY(BOOL_VERSION_MAJOR) "." \
+    BOOL_STRINGIFY(BOOL_VERSION_MINOR) "." \
+    BOOL_STRINGIFY(BOOL_VERSION_PATCH)
+
+/**
+ * @brief List of published versions, newest first, terminated by @c NULL.
+ *
+ * @return Pointer to a static array of version strings. Read-only,
+ *         must not be freed.
+ */
+const char *const *bool_versions(void);
+
+/**
+ * @brief Current version string, e.g. @c "0.2.0".
+ *
+ * Equivalent to @c *bool_versions() .
+ */
+const char *bool_version(void);
+
 /**
  * @brief Convert a @c bool to its string representation.
  *
