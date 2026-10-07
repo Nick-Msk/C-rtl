@@ -1,3 +1,8 @@
+/**
+ * @file bool.c
+ * @brief Version array and functions.
+ */
+
 #include <bool.h>
 #include <stddef.h>
 

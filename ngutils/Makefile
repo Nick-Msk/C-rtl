@@ -9,7 +9,7 @@ FORWARD_TARGETS := test clean check
 
 MAKEFLAGS += --no-print-directory
 
-.PHONY: help list docker-build test-docker \
+.PHONY: help docs list docker-build test-docker \
         $(FORWARD_TARGETS) $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS)))
 
 help:
@@ -51,6 +51,12 @@ $(addprefix clean-,$(PROJECTS)): clean-%:
 $(addprefix check-,$(PROJECTS)): check-%:
 	@echo "==> check $*"
 	@$(MAKE) -C $* check
+
+# --- doxygen ---
+
+docs:
+	@doxygen Doxyfile
+	@echo "docs/html/index.html"
 
 # --- Docker ---
 
