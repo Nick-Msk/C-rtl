@@ -6,9 +6,7 @@ Checks: >
   -bugprone-easily-swappable-parameteras,
   -readability-braces-around-statements,
   -readability-else-after-return,
-CheckOptions:
-  - key: readability-function-cognitive-complexity.Threshold
-    value: 50
+  -readability-function-cognitive-complexity
 WarningsAsErrors: ''
 HeaderFilterRegex: '^(include/|test/|src/)'
 
