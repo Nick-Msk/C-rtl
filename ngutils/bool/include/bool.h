@@ -8,7 +8,7 @@
 
 #include <stdbool.h>
 
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
   #include <string.h>
   static inline int bool_streq_ci(const char *a, const char *b) {
       return _stricmp(a, b);
