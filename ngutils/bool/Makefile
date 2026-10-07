@@ -3,43 +3,55 @@ CFLAGS  = -Wall -Wextra -Iinclude
 CRIT_CFLAGS = $(shell pkg-config --cflags criterion)
 CRIT_LIBS   = $(shell pkg-config --libs criterion)
 
-BUILD_DIR ?= build
-BUILD   := $(BUILD_DIR)
-
-LOG		= log
-DEBUG   = $(BUILD)/debug
-RELEASE = $(BUILD)/release
-
 CLANG_TIDY ?= clang-tidy
 SCAN_BUILD ?= scan-build
 
+BUILD_DIR ?= build
+BUILD   := $(BUILD_DIR)
+LOG		= logs
+DEBUG   = $(BUILD)/debug
+RELEASE = $(BUILD)/release
+OBJ      = $(BUILD_DIR)/obj
+
 SRC 	 = src/bool.c
 TEST_SRC = test/test_bool.c
-TEST_BIN = $(DEBUG)/test_bool
+HDR      = include/bool.h
 
-SCR_INCLUDE = include/bool.h
+SRC_OBJ       = $(OBJ)/bool.o
+TEST_OBJ      = $(OBJ)/test_bool.o
+TEST_BIN      = $(DEBUG)/test_bool
+DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d)
 
-# --- test build (debug flags) ---
-$(TEST_BIN): $(TEST_SRC) $(SRC) $(SCR_INCLUDE) | $(DEBUG)
-	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -o $@ $(TEST_SRC) $(SRC) $(CRIT_LIBS)
+# --- compile ---
 
-$(DEBUG) $(RELEASE):
+$(SRC_OBJ): $(SRC) $(HDR) | $(OBJ)
+	$(CC) $(CFLAGS) -g -O0 -MMD -MP -c $< -o $@
+
+$(TEST_OBJ): $(TEST_SRC) $(HDR) | $(OBJ)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -MMD -MP -c $< -o $@
+
+$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
+	$(CC) -o $@ $(SRC_OBJ) $(TEST_OBJ) $(CRIT_LIBS)
+
+$(OBJ) $(DEBUG) $(RELEASE):
 	@mkdir -p $@
 
-.PHONY: test clean check
+-include $(DEPS)
 
 # --- tasks ---
+
+.PHONY: test check analyze release clean clean-logs
+
 test: $(TEST_BIN)
 	@$(TEST_BIN)
 
-analyze:
-	@mkdir -p $(BUILD_DIR)/analyze
-	@rm -rf $(BUILD_DIR)/debug
-	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze \
-	    $(MAKE) test
-
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+
+analyze:
+	@mkdir -p $(BUILD_DIR)/analyze
+	@rm -rf $(DEBUG) $(OBJ)
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze $(MAKE) test
 
 # stub
 release: | $(RELEASE)
@@ -49,9 +61,8 @@ clean:
 	@rm -rf $(BUILD)
 	@rm -rf $(LOG)/*.log
 
-
-
-.PHONY: test release clean
+clean-logs:
+	@rm -f logs/*.log
 
 no_targets__:
 list:
