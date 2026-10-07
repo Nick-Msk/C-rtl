@@ -7,6 +7,8 @@
 PROJECTS := $(patsubst %/Makefile,%,$(wildcard */Makefile))
 FORWARD_TARGETS := test clean check
 
+MAKEFLAGS += --no-print-directory
+
 .PHONY: help list docker-build test-docker \
         $(FORWARD_TARGETS) $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS)))
 
@@ -49,11 +51,11 @@ $(addprefix check-,$(PROJECTS)): check-%:
 
 DOCKER_IMAGE := ngutils-dev
 
-docker-build:
+build-docker:
 	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
 
 test-docker:
-	docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
+	@docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
 	    sh -c 'BUILD_DIR=/tmp/build $(MAKE) clean && BUILD_DIR=/tmp/build $(MAKE) test'
 
 no_targets__:

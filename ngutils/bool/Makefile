@@ -20,21 +20,21 @@ $(TEST_BIN): $(TEST_SRC) include/bool.h | $(DEBUG)
 	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -o $@ $(TEST_SRC) $(CRIT_LIBS)
 
 $(DEBUG) $(RELEASE):
-	mkdir -p $@
+	@mkdir -p $@
 
 .PHONY: test clean check
 
 # --- tasks ---
 test: $(TEST_BIN)
-	$(TEST_BIN)
+	@$(TEST_BIN)
 
 # stub
 release: | $(RELEASE)
 	@echo "release build not implemented yet"
 
 clean:
-	rm -rf $(BUILD)
-	rm -rf $(LOG)/*.log
+	@rm -rf $(BUILD)
+	@rm -rf $(LOG)/*.log
 
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
