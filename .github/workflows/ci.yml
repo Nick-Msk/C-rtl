@@ -1,19 +1,20 @@
-name: CI (bool)
+name: CI (ngutils)
 
 on:
   push:
     branches: [ master ]
     paths:
-      - 'ngutils/bool/**'
+      - 'ngutils/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ master ]
     paths:
-      - 'ngutils/bool/**'
+      - 'ngutils/**'
       - '.github/workflows/ci.yml'
 
 jobs:
   test:
+    name: Test ngutils
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +26,6 @@ jobs:
           sudo apt-get install -y libcriterion-dev pkg-config
 
       - name: Build and run tests
-        working-directory: ngutils/bool   # ← вот сюда
+        working-directory: ngutils
         run: make test
 
