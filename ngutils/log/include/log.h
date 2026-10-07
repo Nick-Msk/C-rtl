@@ -30,7 +30,7 @@
 #include <stdarg.h>
 
 /** Maximum length of a module name (NUL-terminated). */
-enum {MAX_MODULE = 20};		// for gcc
+enum { MAX_MODULE = 64 };		// for gcc
 
 /**
  * @brief Log severity / enable levels.
