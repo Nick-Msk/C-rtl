@@ -31,6 +31,15 @@ $(DEBUG) $(RELEASE):
 test: $(TEST_BIN)
 	@$(TEST_BIN)
 
+analyze:
+	@mkdir -p $(BUILD_DIR)/analyze
+	@rm -rf $(BUILD_DIR)/debug
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze \
+	    $(MAKE) test
+
+check:
+	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+
 # stub
 release: | $(RELEASE)
 	@echo "release build not implemented yet"
@@ -39,8 +48,7 @@ clean:
 	@rm -rf $(BUILD)
 	@rm -rf $(LOG)/*.log
 
-check:
-	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+
 
 .PHONY: test release clean
 

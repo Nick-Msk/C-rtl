@@ -34,6 +34,11 @@ list:
 test:  $(addprefix test-,$(PROJECTS))
 clean: $(addprefix clean-,$(PROJECTS))
 check: $(addprefix check-,$(PROJECTS))
+analyze: $(addprefix analyze-,$(PROJECTS))
+
+$(addprefix analyze-,$(PROJECTS)): analyze-%:
+	@echo "==> analyze $*"
+	@$(MAKE) -C $* analyze
 
 $(addprefix test-,$(PROJECTS)): test-%:
 	@echo "==> test $*"
