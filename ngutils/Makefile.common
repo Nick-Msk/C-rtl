@@ -10,9 +10,14 @@ $(error PROJNAME is not set — define it before including Makefile.common)
 endif
 
 CC            ?= gcc
-CFLAGS        ?= -Wall -Wextra -Iinclude
-CRIT_CFLAGS   ?= $(shell pkg-config --cflags criterion)
-CRIT_LIBS     ?= $(shell pkg-config --libs criterion)
+CFLAGS        += -Wall -Wextra -std=gnu11 -Iinclude
+CRIT_CFLAGS   ?= $(shell pkg-config --cflags criterion 2>/dev/null)
+CRIT_LIBS     ?= $(shell pkg-config --libs criterion  2>/dev/null)
+
+# Detect Criterion once; skip tests gracefully if it is missing unless
+# REQUIRE_CRITERION=1 is set (useful in CI).
+HAVE_CRITERION := $(shell pkg-config --exists criterion 2>/dev/null && echo yes)
+REQUIRE_CRITERION ?= 0
 
 CLANG_TIDY   ?= clang-tidy
 SCAN_BUILD   ?= scan-build
@@ -64,6 +69,8 @@ $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 
 # --- test ---
 
+ifeq ($(HAVE_CRITERION),yes)
+
 test: $(TEST_BIN)
 	@$(TEST_BIN)
 
@@ -72,6 +79,22 @@ $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
 
 $(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
 	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+else
+
+test:
+ifeq ($(REQUIRE_CRITERION),1)
+	@echo "ERROR: Criterion not found, REQUIRE_CRITERION=1" >&2
+	@exit 1
+else
+
+	@echo "SKIP: Criterion not installed (pkg-config --exists criterion failed)"
+	@echo "      Install with: brew install criterion  (macOS)"
+	@echo "                    apt install libcriterion-dev  (Debian/Ubuntu)"
+
+endif
+
+endif
 
 # --- release lib ---
 

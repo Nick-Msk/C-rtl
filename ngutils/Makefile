@@ -121,7 +121,9 @@ build-docker:
 
 test-docker:
 	@docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
-	    sh -c 'BUILD_DIR=/tmp/build $(MAKE) clean && BUILD_DIR=/tmp/build $(MAKE) test'
+	    sh -c 'BUILD_DIR=/tmp/build REQUIRE_CRITERION=1 \
+	           $(MAKE) clean && \
+	           BUILD_DIR=/tmp/build REQUIRE_CRITERION=1 $(MAKE) test'
 
 listall:
 	@echo "# Generic targets:"
