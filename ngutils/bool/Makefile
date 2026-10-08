@@ -1,81 +1,103 @@
-CC      = gcc
-CFLAGS  = -Wall -Wextra -Iinclude
-CRIT_CFLAGS = $(shell pkg-config --cflags criterion)
-CRIT_LIBS   = $(shell pkg-config --libs criterion)
+CC            = gcc
+CFLAGS        = -Wall -Wextra -Iinclude
+CRIT_CFLAGS   = $(shell pkg-config --cflags criterion)
+CRIT_LIBS     = $(shell pkg-config --libs criterion)
 
-CLANG_TIDY ?= clang-tidy
-SCAN_BUILD ?= scan-build
+MAKEFLAGS 	 += --no-print-directory
+PROJNAME	  = bool
+CLANG_TIDY   ?= clang-tidy
+SCAN_BUILD   ?= scan-build
 
-BUILD_DIR ?= build
-BUILD   := $(BUILD_DIR)
-LOG		= logs
-DEBUG   = $(BUILD)/debug
-RELEASE = $(BUILD)/release
-OBJ      = $(BUILD_DIR)/obj
+BUILD_DIR     = build
+DEBUG         = $(BUILD_DIR)/debug
+RELEASE       = $(BUILD_DIR)/release
+DBG_OBJ       = $(DEBUG)/obj
+REL_OBJ       = $(RELEASE)/obj
 
-SRC 	 = src/bool.c
-TEST_SRC = test/test_bool.c
-HDR      = include/bool.h
+DBG_CFLAGS    = -g -O0
+REL_CFLAGS    = -O2 -DNDEBUG
 
-#SRC = $(wildcard src/*.c)
-#SRC_OBJ = $(patsubst src/%.c,$(OBJ)/%.o,$(SRC))
-SRC_OBJ       = $(OBJ)/bool.o
-TEST_OBJ      = $(OBJ)/test_bool.o
-TEST_BIN      = $(DEBUG)/test_bool
-LIB           = $(BUILD_DIR)/libbool.a
-DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d)
+SRC           = $(wildcard src/*.c)
+TEST_SRC      = test/test_$(PROJNAME).c
+SRC_HDR       = include/$(PROJNAME).h
 
-# --- compile ---
+SRC_OBJ       = $(patsubst src/%.c,$(DBG_OBJ)/%.o,$(SRC))
+TEST_OBJ      = $(DBG_OBJ)/test_$(PROJNAME).o
+TEST_BIN      = $(DEBUG)/test_$(PROJNAME)
+LIB           = $(DEBUG)/lib$(PROJNAME).a
 
-$(SRC_OBJ): $(SRC) $(HDR) | $(OBJ)
-	$(CC) $(CFLAGS) -g -O0 -MMD -MP -c $< -o $@
+REL_SRC_OBJ   = $(patsubst src/%.c,$(REL_OBJ)/%.o,$(SRC))
+REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
 
-$(TEST_OBJ): $(TEST_SRC) $(HDR) | $(OBJ)
-	$(CC) $(CFLAGS) $(CRIT_CFLAGS) -g -O0 -MMD -MP -c $< -o $@
+DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
 
-$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
-	$(CC) -o $@ $(SRC_OBJ) $(TEST_OBJ) $(CRIT_LIBS)
+.PHONY: all lib librelease test check analyze clean list clean-logs
 
-$(OBJ) $(DEBUG) $(RELEASE):
-	@mkdir -p $@
+# --- default: lib, then test, then librelease ---
 
--include $(DEPS)
+all:
+	@$(MAKE) lib
+	@$(MAKE) test
+	@$(MAKE) librelease
 
-# --- tasks ---
+# --- debug lib ---
 
-.PHONY: lib all test check analyze release clean clean-logs
+lib: $(LIB)
 
-all: $(SRC_OBJ)
-	@echo "Built: $(SRC_OBJ)"
+$(LIB): $(SRC_OBJ) | $(DEBUG)
+	@ar rcs $@ $^
+	@echo "Built: $@"
+
+$(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
+	$(CC) $(CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- test ---
 
 test: $(TEST_BIN)
 	@$(TEST_BIN)
 
-lib: $(LIB)
+$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
+	$(CC) -o $@ $^ $(CRIT_LIBS)
 
-$(LIB): $(SRC_OBJ) | $(BUILD_DIR)
+$(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- release lib ---
+
+librelease: $(REL_LIB)
+
+$(REL_LIB): $(REL_SRC_OBJ) | $(RELEASE)
 	@ar rcs $@ $^
 	@echo "Built: $@"
+
+$(REL_OBJ)/%.o: src/%.c $(SRC_HDR) | $(REL_OBJ)
+	$(CC) $(CFLAGS) $(REL_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- dirs ---
+
+$(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
+	@mkdir -p $@
+
+# --- analysis ---
 
 check:
 	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
 analyze:
 	@mkdir -p $(BUILD_DIR)/analyze
-	@rm -rf $(DEBUG) $(OBJ)
+	@rm -rf $(DEBUG)
 	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze $(MAKE) test
 
-# stub
-release: | $(RELEASE)
-	@echo "release build not implemented yet"
+# --- clean ---
 
 clean:
-	@rm -rf $(BUILD)
-	@rm -rf $(LOG)/*.log
+	@rm -rf $(BUILD_DIR)
+
+-include $(DEPS)
 
 clean-logs:
 	@rm -f logs/*.log
 
-no_targets__:
 list:
-	sh -c "$(MAKE) -p no_targets__ | awk -F':' '/^[a-zA-Z0-9][^\$$#\/\\t=]*:([^=]|$$)/ {split(\$$1,A,/ /);for(i in A)print A[i]}' | grep -v '__\$$' | sort"
+	@echo "Targets:"
+	@grep -E '^[a-zA-Z][a-zA-Z0-9_-]*:' Makefile | sed 's/:.*//' | sort -u | sed 's/^/  /'
