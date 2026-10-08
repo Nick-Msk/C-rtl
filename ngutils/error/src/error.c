@@ -135,8 +135,7 @@ err_increase(void)
  *  - **ERR_USER** – `msg`/`ap` formatted directly.
  *  - **ERR_SYS**  – `strerror(errno)` + `": "` + `msg`/`ap`.
  *
- * If the stack is full the buffer is grown; on growth failure the record
- * is silently dropped.
+ * Caller (err_raise) must ensure capacity before calling this function.
  *
  * @param tp       Error class.
  * @param errcode  Application-level code (ignored for ERR_SYS; errno used).
