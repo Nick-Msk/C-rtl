@@ -29,7 +29,7 @@ REQUIRE_CRITERION ?= 0
 CLANG_TIDY  ?= clang-tidy
 SCAN_BUILD  ?= scan-build
 
-MAKEFLAGS += --no-print-directory
+MAKEFLAGS   += --no-print-directory
 
 # --- cross-utility dependencies ---
 #
@@ -78,7 +78,7 @@ REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
 
 DEPFILES      = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
 
-.PHONY: all lib librelease test check analyze clean list
+.PHONY: all lib librelease test check clean list analyze analyze-lib analyze-test
 
 # --- default ---
 
@@ -146,10 +146,21 @@ $(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
 check:
 	$(CLANG_TIDY) $(SRC) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
-analyze:
+# Analyze the library sources with clang static analyzer.
+analyze: analyze-lib
+
+analyze-lib:
 	@mkdir -p $(BUILD_DIR)/analyze
 	@rm -rf $(DEBUG)
-	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze $(MAKE) test
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze \
+	    $(MAKE) lib
+
+# Analyze tests as well (slower, noisier — Criterion macros)
+analyze-test:
+	@mkdir -p $(BUILD_DIR)/analyze-test
+	@rm -rf $(DEBUG)
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze-test \
+		$(MAKE) $(TEST_BIN)
 
 # --- misc ---
 

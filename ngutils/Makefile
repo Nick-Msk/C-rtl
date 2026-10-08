@@ -5,7 +5,7 @@ MAKEFLAGS += --no-print-directory
 PROJECTS        := $(patsubst %/Makefile,%,$(wildcard */Makefile))
 PROJECTS 		:= $(filter-out skeleton,$(PROJECTS))
 
-FORWARD_TARGETS := all test check analyze
+FORWARD_TARGETS := all test check analyze analyze-test
 
 BUILD_DEBUG    	:= build/debug
 BUILD_RELEASE  	:= build/release
@@ -17,7 +17,7 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
         $(addprefix lib-,$(PROJECTS)) \
-	$(addprefix librelease-,$(PROJECTS))
+		$(addprefix librelease-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -29,6 +29,7 @@ help:
 	@echo "  make test             run tests in all projects"
 	@echo "  make check            run clang-tidy in all projects"
 	@echo "  make analyze          run clang static analyzer in all projects"
+	@echo "  make analyze-test     run clang static analyzer for test suite in all projects"
 	@echo "  make clean            clean all projects"
 	@echo "  make install          install libngutils.a + headers to PREFIX"
 	@echo "  make <target>-<name>  run one target in one project"
@@ -103,6 +104,10 @@ $(addprefix check-,$(PROJECTS)): check-%:
 $(addprefix analyze-,$(PROJECTS)): analyze-%:
 	@echo "==> analyze $*"
 	@$(MAKE) -C $* analyze
+
+$(addprefix analyze-test-,$(PROJECTS)): analyze-test-%:
+	@echo "==> analyze-test $*"
+	@$(MAKE) -C $* analyze-test
 
 $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
