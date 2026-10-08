@@ -13,7 +13,9 @@ BUILD_RELEASE  	:= build/release
 NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
-.PHONY: help list listall docs build-docker test-docker lib librelease install install-release clean \
+.PHONY: help list listall docs \
+		build-docker test-docker clean-docker \
+		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
         $(addprefix lib-,$(PROJECTS)) \
@@ -35,6 +37,7 @@ help:
 	@echo "  make <target>-<name>  run one target in one project"
 	@echo "  make docs             build doxygen HTML"
 	@echo "  make build-docker     build the Linux dev image"
+	@echo "  make clean-docker     delete the Linux dev image"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
 	@echo ""
 	@echo "Projects:"
@@ -77,7 +80,7 @@ librelease: $(addprefix librelease-,$(PROJECTS))
 	@echo "Built: $(NGUTILS_LIB_RELEASE)"
 
 clean: $(addprefix clean-,$(PROJECTS))
-	@rm -rf build
+	@find build -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@echo "Cleaned: build"
 
 # Static pattern rules
@@ -127,10 +130,17 @@ build-docker:
 	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
 
 test-docker:
-	@docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
-	    sh -c 'BUILD_DIR=/tmp/build REQUIRE_CRITERION=1 \
+	@mkdir -p /tmp/ngutils-docker-build
+	@docker run --rm \
+		-v "$(CURDIR):/work" \
+		-v /tmp/ngutils-docker-build:/work/build \
+		-w /work $(DOCKER_IMAGE) \
+	    sh -c 'REQUIRE_CRITERION=1 \
 	           make clean && \
-	           BUILD_DIR=/tmp/build REQUIRE_CRITERION=1 make test'
+	           REQUIRE_CRITERION=1 make test'
+
+clean-docker:
+	@rm -rf /tmp/ngutils-docker-build
 
 listall:
 	@echo "# Generic targets:"

@@ -55,7 +55,7 @@ $(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
 
 # --- layout ---
 
-BUILD_DIR     = build
+BUILD_DIR    ?= build
 DEBUG         = $(BUILD_DIR)/debug
 RELEASE       = $(BUILD_DIR)/release
 DBG_OBJ       = $(DEBUG)/obj
@@ -165,7 +165,7 @@ analyze-test:
 # --- misc ---
 
 clean:
-	@rm -rf $(BUILD_DIR)
+	@find $(BUILD_DIR) -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 
 clean-logs:
 	@rm -f logs/*.log
