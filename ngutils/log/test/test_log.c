@@ -52,6 +52,7 @@ static int has(const char *needle) {
 static int mute(void) {
     fflush(stderr);
     int saved = dup(fileno(stderr));
+    cr_assert_geq(saved, 0, "dup(stderr) failed");
     freopen("/dev/null", "w", stderr);
     return saved;
 }
