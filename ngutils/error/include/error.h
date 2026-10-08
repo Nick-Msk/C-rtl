@@ -194,7 +194,7 @@ err_sethandler(sig_t handler);
 static inline bool
 err_resetenv()
 {
-	return err_getexception_info()->init_flag = 0;
+	return (err_getexception_info()->init_flag = 0);
 }
 
 // ----------------- PRINTERS ----------------------
