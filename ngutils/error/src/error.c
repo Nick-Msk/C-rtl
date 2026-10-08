@@ -2,38 +2,63 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <stdarg.h>
+
+#include "bool.h"
 #include "log.h"
-#include "common.h"
 #include "error.h"
 
 /********************************************************************
-                 ERROR MODULE IMPLEMENTATION
-********************************************************************/
+ * @file    error.c
+ * @brief   Per-thread error stack and signal-based exception mechanism.
+ *
+ * Implements a growable, thread-local stack of error records and a
+ * setjmp/longjmp-based "exception" facility that lets a signal handler
+ * unwind to the most recent try() call-site.
+ ********************************************************************/
 
 // static globals
 
+/** Growth step (number of Error slots) used when the heap buffer is extended. */
 static const int                        ERROR_DEFAULT_INCREMENT  = 16;
-static const int						ERROR_INIT_COUNT		 = 100;
+
+/** Size of the static (stack-allocated) initial buffer. */
+static const int						ERROR_INIT_COUNT		 = 10;
+
+/** Jump code passed via longjmp from the default signal handler. */
 static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
 
 // internal types
 
+/**
+ * @brief A single error record in the per-thread stack.
+ */
 typedef struct {
-        ErrorType               		type;                // not used for now, reserved for future use
-        int                     		code;
-        char                    		msg[ERROR_MESSAGE_MAX_LENGTH];                         // TODO: to be replaced to 'fs'
+    ErrorType   type;                            ///< Error class (ERR_USER / ERR_SYS).
+    int         code;                            ///< Numeric code (app code or errno).
+    char        msg[ERROR_MESSAGE_MAX_LENGTH];   ///< Formatted human-readable message.
 } Error;
 
-static _Thread_local Error				g_error_init[ERROR_INIT_COUNT];
-static _Thread_local Error             *g_error = NULL;
-static _Thread_local int                g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
+/** @brief Static initial buffer (one per thread). */
+static _Thread_local Error            g_error_init[ERROR_INIT_COUNT];
 
-static _Thread_local ExceptionData   	g_env;			// for longjmp
+/** @brief Pointer to the active buffer (static or heap). */
+static _Thread_local Error           *g_error = NULL;
+
+/** @brief Number of slots in use / total allocated capacity. */
+static _Thread_local int              g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
+
+/** @brief Thread-local setjmp/longjmp environment. */
+static _Thread_local ExceptionData    g_env;
 
 // ---------- pseudo-header for utility procedures -----------------
 
 // ------------------------------ Utilities ------------------------
 
+/**
+ * @brief Convert an ErrorType to a printable string.
+ * @param t  The error type.
+ * @return   "ERR_USER", "ERR_SYS", or "Unknown".
+ */
 static inline const char *
 err_type_text(ErrorType t)
 {
@@ -44,6 +69,10 @@ err_type_text(ErrorType t)
 	}
 }
 
+/**
+ * @brief Check whether the thread still uses the static initial buffer.
+ * @return true if g_error points to g_error_init.
+ */
 static inline bool
 err_isinit(void)
 {
@@ -51,6 +80,11 @@ err_isinit(void)
 	return g_error == g_error_init;
 }
 
+/**
+ * @brief Raise a signal, falling back to SIGTERM on failure.
+ * @param sig  Signal number to deliver.
+ * @return     Always -1 (caller should treat this as "flow interrupted").
+ */
 static int
 err_raisesig(int sig)
 {
@@ -64,7 +98,13 @@ err_raisesig(int sig)
 	return -1;
 }
 
-// returns 0 if unable to allocate
+/**
+ * @brief Grow the per-thread error array by one increment block.
+ *
+ * First call allocates a new heap array and copies existing entries.
+ * Subsequent calls use realloc.
+ * @return New capacity on success, 0 on allocation failure.
+ */
 static int
 err_increase(void)
 {
@@ -88,8 +128,21 @@ err_increase(void)
     return logsimpleret(g_allocerr, "Error array is increased to %d", g_allocerr);
 }
 
-// put new error at the top of error stack
-// TODO: refactor here! переделать, с помощью fs
+/**
+ * @brief Push a new error record onto the top of the per-thread stack.
+ *
+ * Message rendering depends on @p tp:
+ *  - **ERR_USER** – `msg`/`ap` formatted directly.
+ *  - **ERR_SYS**  – `strerror(errno)` + `": "` + `msg`/`ap`.
+ *
+ * If the stack is full the buffer is grown; on growth failure the record
+ * is silently dropped.
+ *
+ * @param tp       Error class.
+ * @param errcode  Application-level code (ignored for ERR_SYS; errno used).
+ * @param msg      printf-style format string.
+ * @param ap       Already-started va_list matching msg.
+ */
 static void
 err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
@@ -140,6 +193,16 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 }
 
 //  setjmp/longsmp API
+
+/**
+ * @brief Default SIGINT handler: longjmp back to the active try() site.
+ *
+ * If no try() environment is active:
+ *  - SIGINT → silently ignored.
+ *  - any other signal → raise SIGSTOP to park the process.
+ *
+ * @param sig  Signal number that triggered this handler.
+ */
 static void
 err_default_handler(int sig)
 {
@@ -161,7 +224,15 @@ err_default_handler(int sig)
 
 // -------------------------- (Utility) printers -------------------
 
-// print particular error
+/**
+ * @brief Format and write a single error record to a stream.
+ *
+ * Output: `TYPE: [code] message\n`
+ *
+ * @param[out] out  Destination stream (must be non-NULL).
+ * @param[in]  err  Error record to print.
+ * @return Number of characters written, or negative on I/O error.
+ */
 static inline int
 err_fprinterr(FILE *restrict out, const Error *err)
 {
@@ -170,6 +241,12 @@ err_fprinterr(FILE *restrict out, const Error *err)
 
 // --------------------------- API ---------------------------------
 
+/**
+ * @brief Reset the per-thread error stack to its initial (empty) state.
+ *
+ * @param force  When true and a heap buffer is in use, it is freed.
+ *               When false, indices are rewound but heap memory is kept.
+ */
 void
 err_clean(bool force){
 	if (force && !err_isinit())
@@ -180,6 +257,19 @@ err_clean(bool force){
     logsimple("Error stack is cleaned");
 }
 
+/**
+ * @brief Record an error and optionally raise a signal.
+ *
+ * Main entry-point for all error reporting. The message is pushed onto the
+ * per-thread stack; if @p raise is non-zero the corresponding signal is
+ * delivered (interceptable by a try() block).
+ *
+ * @param tp       Error class (ERR_USER / ERR_SYS).
+ * @param raise    Signal number to raise, or 0 to suppress.
+ * @param errcode  Application error code (see ErrorCode); ignored for ERR_SYS.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments matching @p msg.
+ */
 extern void
 err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)
 {
@@ -202,12 +292,25 @@ err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)
 }
 
 // setjmp/longjmp API
+
+/**
+ * @brief Obtain a pointer to the current thread's exception environment.
+ * @return Pointer to the thread-local ExceptionData (valid for thread lifetime).
+ */
 ExceptionData*
 err_getexception_info()
 {
     return &g_env;      // access to global
 }
 
+/**
+ * @brief Install a signal handler for SIGINT.
+ *
+ * Passing NULL installs the built-in err_default_handler (longjmp-based).
+ *
+ * @param handler  User handler, or 0/NULL for the default.
+ * @return true on success; false (and an error is raised) on failure.
+ */
 bool
 err_sethandler(sig_t handler)
 {
@@ -222,6 +325,14 @@ err_sethandler(sig_t handler)
 
 // -------------------------- (API) printers -----------------------
 
+/**
+ * @brief Dump the full per-thread error stack to a stream.
+ *
+ * Each entry is printed as `[index]: TYPE: [code] message`.
+ *
+ * @param[out] out  Destination stream.
+ * @return Total characters written, or negative on I/O error.
+ */
 extern int
 err_fprintstacktrace(FILE *out)
 {
@@ -238,247 +349,3 @@ err_fprintstacktrace(FILE *out)
 	res += fprintf(out, "\n------------- PRINT STACK TRACE END -------------\n\n");
 	return logautoret(res);
 }
-
-// ------------------ general functions ----------------------------
-
-// -------------------------------Testing --------------------------
-#ifdef ERRORTESTING
-
-#include "test.h"
-
-//types for testing
-
-static int						g_get_sig = 0;
-
-static void
-sugnal_handler1(int	sig)
-{
-	logsimple("Signal %d (%s) is catched", sig, sig_str(sig));
-	g_get_sig++;
-}
-
-// ------------------------- TEST 1 ---------------------------------
-
-// Bare err_raise test (w/o wrapper)
-static TestStatus
-tf1(const char *name)
-{
-    logenter("%s: Bare err_raise test (w/o wrapper)", name);
-
-	err_raise(ERR_USER, 0, 10, "Test err %d", 10);
-
-	err_printstacktrace();
-	if (g_currerr != 1)
-		return logactret(err_clean(true), TEST_FAILED, "g_currerr = %d but must be = 1", g_currerr);
-
-	err_clean(true);
-
-    return logret(TEST_MANUAL, "done"); // TEST_FAILED
-}
-
-// ------------------------- TEST 2 ---------------------------------
-
-// Create several vals test (via macro, with junt retcode)
-static TestStatus
-tf2(const char *name)
-{
-    logenter("%s: Create several vals test (via macro, with junt retcode)", name);
-
-	const int 		cnt = 500;
-	// 50 more than 20
-	for (int i = 0; i < cnt; i++)
-		userraise(0, 100 + i, "Error number 100 + %d", i);		// TODO: ???
-
-	if (g_currerr != cnt)
-		return logactret(err_clean(true), TEST_FAILED, "g_currerr = %d but must be = %d", g_currerr, cnt);
-
-	err_printstacktrace();
-
-	err_clean(true);
-
-	return logret(TEST_MANUAL, "done"); // TEST_FAILED
-}
-
-// ------------------------- TEST 3 ---------------------------------
-// Interrupt raising test
-static TestStatus
-tf3(const char *name)
-{
-	logenter("%s: Interrupt raising test", name);
-	sig_t 	prev_action = signal(SIGINT, sugnal_handler1);
-
-	logmsg("prev action = %p, SIG_ERR = %p", prev_action, SIG_ERR);
-
-	if (prev_action == SIG_ERR)
-		return logacterr(err_clean(true), TEST_FAILED, "Can't set up signal handler (%p)", SIG_ERR);
-
-	userraiseint(15, "Hadled interrupt");
-
-	if (g_get_sig != 1)
-		return logactret(err_clean(true), TEST_FAILED, "g_get_sig = %d, but must be equal 1", g_get_sig);
-
-	err_printstacktrace();
-	err_clean(true);
-
-	return logret(TEST_PASSED, "Signal is catched"); // TEST_FAILED
-}
-
-// ------------------------- TEST 4 ---------------------------------
-//System error raising test (w/o exception)
-
-static TestStatus
-tf4(const char *name)
-{
-	logenter("%s: System error raising test (w/o exception)", name);
-
-	const char *fname = "aaa.bbb.ccc";
-	// try to open some non-existent file fname
-	FILE * f = fopen(fname, "r");
-
-	logauto(errno);
-	if (!f)
-		sysraise(0, "Unable to open file ... %s", fname);		// TODO: think about how to inject automatic logging here
-
-	if (g_currerr != 1)
-        return logactret(err_clean(true), TEST_FAILED, "g_currerr = %d but must be = 1", g_currerr);
-
-	err_printstacktrace();
-	err_clean(true);
-
-	return logret(TEST_PASSED, "done"); // TEST_FAILED
-}
-
-// ------------------------- TEST 5 ---------------------------------
-// ACTION return test
-
-static int tf5_check_int(void)
-{
-	logsimple("....... return 55 as retcode, 30 as error code");
-	return userraiseact(55, printf("Helllo world from %s\n", __func__), 30, "from tf5 checker");
-}
-
-static void tf5_check_void(void)
-{
-	logsimple("....... return void, 40 as error code");
-	userraiseact(0, printf("Helllo world from %s\n", __func__), 40, "from tf5 checker");		// TODO: подумать... спорно тут на счёт фиктивного 0
-}
-
-static TestStatus
-tf5(const char *name)
-{
-	logenter("%s: ACTION return test", name);
-
-	int res, errcode, res_val = 55, res_errcode = 30, errcount;
-
-	logmsg("exec tf5_check_raise");
-
-	errcount = g_currerr;
-	res = tf5_check_int();
-
-	if (g_currerr != errcount + 1)
-        return logactret(err_clean(true), TEST_FAILED, "g_currerr = %d but must be = %d", g_currerr, errcount + 1);
-
-	// checking errnum
-	if ( (errcode = g_error[g_currerr - 1].code) != res_errcode)
-		return logacterr(err_clean(true), TEST_FAILED, "error code of tf5_check_int = %d, but must be %d", errcode, res_errcode);
-
-	if (res != 55)
-		return logacterr(err_clean(true), TEST_FAILED, "result of tf5_check_int = %d, but must be %d", res, res_val);
-
-	logmsg("exec tf5_check_void");
-
-	errcount = g_currerr;
-	tf5_check_void();
-
-	if (g_currerr != errcount + 1)
-        return logactret(err_clean(true), TEST_FAILED, "g_currerr = %d but must be = %d", g_currerr, errcount + 1);
-
-	res_errcode = 40;
-	// checking errnum  TODO: inv2 can be used here
-    if ( (errcode = g_error[g_currerr - 1].code) != res_errcode) {
-        return logacterr(err_clean(true), TEST_FAILED, "error code of tf5_check_void = %d, but must be %d", errcode, res_errcode);
-	}
-
-	err_printstacktrace();
-
-	err_clean(true);
-	return logret(TEST_PASSED, "done"); // TEST_FAILED
-}
-
-// ------------------------- TEST 6 ---------------------------------
-// Default handler test
-
-static TestStatus
-tf6(const char *name)
-{
-	logenter("%s: Default handler test", name);
-
-	if (!errsethandler())
-		return logerr(TEST_FAILED, "Unable to setup handler");
-
-    if (!try() ){
-	    // 35 as errcode
-	    userraiseint(35, "Raising smth");
-    } else
-	    err_printstacktrace();
-
-	err_clean(true);
-    return logret(TEST_PASSED, "done"); // TEST_FAILED
-}
-
-// ------------------------- TEST 7 ---------------------------------
-// Try + catch  test
-static TestStatus
-tf7(const char *name)
-{
-	logenter("%s: Try + catch  test", name);
-	int		check_if_exception = 0;
-
-	if (!errsethandler())
-        return logerr(TEST_FAILED, "Unable to setup handler");
-
-	if (!try())
-	{
-		logmsg("Hello, World!");
-		logmsg("Something goes wrong... userraiseint here with errcode 10!");
-		userraiseint(10, "Fail...");
-	} else
-	{
-		logmsg("Exception occurs !!!!!!!");
-		err_fprintstacktrace(logfile);
-		check_if_exception++;
-	}
-
-	if (check_if_exception == 0)
-		return logacterr(err_clean(true), TEST_FAILED, "No exception occures check_if_exception=%d", check_if_exception);
-	else
-		logmsg("Exception handled normally");
-
-	err_clean(true);
-    return logret(TEST_PASSED, "done"); // TEST_FAILED
-}
-
-// ------------------------------------------------------------------
-int
-main( /*int argc, const char *argv[]*/ )
-{
-    LOG("log");
-    //logsimpleinit("Start");
-
-        testenginestd(
-            testnew(.f2 = tf1, .num = 1, .name = "Bare err_raise test"		, .desc = "Bare err_raise test (w/o wrapper)."				, .mandatory=true)
-          , testnew(.f2 = tf2, .num = 2, .name = "Several error raise test"	, .desc = "Several test (via macro, with junt retcode = 0).", .mandatory=true)
-          , testnew(.f2 = tf3, .num = 3, .name = "Interrupt raising test"	, .desc = "Exception test."									, .mandatory=true)
-		  , testnew(.f2 = tf4, .num = 4, .name = "System error test" 		, .desc = "System error raising test (w/o exception)."		, .mandatory=true)
-          , testnew(.f2 = tf5, .num = 5, .name = "Return with action test"  , .desc = "Just raise with ACTION."							, .mandatory=true)
-		  , testnew(.f2 = tf6, .num = 6, .name = "Default handler test"  	, .desc = "Trying default handler."                         , .mandatory=true)
-		  , testnew(.f2 = tf7, .num = 7, .name = "Try + catch local  test"	, .desc = "Full local cycle with catching and longjmp."     , .mandatory=true)
-        );
-
-        logclose("end...");
-    return 0;
-}
-
-
-#endif /* ERRTESTING */
-

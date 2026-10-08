@@ -1,7 +1,16 @@
-#ifndef _ERROR_H
-#define _ERROR_H
+#ifndef ERROR_H
+#define ERROR_H
 // ---------------------------------------------------------------------------------
-// --------------------------- Public Error API ------------------------------------
+// @file    error.h
+// @brief   Public API for the per-thread error stack and signal-based exceptions.
+//
+// Provides:
+//  - A growable per-thread error record stack (err_raise, err_clean,
+//    err_fprintstacktrace).
+//  - A setjmp/longjmp "exception" facility via try() and err_sethandler().
+//  - Convenience macro families: userraise / sysraise / *act* / *int*.
+//
+// @see     error.c for implementation details.
 // ---------------------------------------------------------------------------------
 
 #include <stdio.h>
@@ -13,95 +22,173 @@
 
 // ----------- CONSTANTS AND GLOBALS ---------------
 
-// typedef struct { int errcode; const char *errm; bool iserror; } Error;
-// TODO: make a enum from that: typedef enum { {ERR_NULLABLE_PTR, "Nullable pointer", true}, ... {WARN_MEM_LEAK_DETECTED, "Memory leak detected", false} } Errors;
-
-// ----------- CONSTANTS AND GLOBALS ---------------
-
+/** Maximum length (including NUL terminator) of a single formatted error message. */
 static const int ERROR_MESSAGE_MAX_LENGTH = 512;
 
 // ------------------- TYPES -----------------------
 
+/**
+ * @brief Application-level error and warning codes.
+ *
+ * Grouped by numeric range:
+ *  - 10 – 30    : core / parameter validation
+ *  - 50 – 70    : file & stream I/O
+ *  - 100 – 200  : invariants / unimplemented features
+ *  - 1001       : warnings (non-fatal)
+ *  - 10001+     : domain-specific (fs, generators, interfaces)
+ */
 typedef enum {
     // --- Core / Standard Errors ---
-    ERR_NULLABLE_PTR            = 10,
-    ERR_OUT_OF_RANGE            = 11,
-    ERR_OUT_OF_BUFFER           = 12,
-    ERR_UNABLE_ALLOCATE         = 15,
-    ERR_NULL_OUTPUT             = 16,
-    ERR_NULL_INPUT              = 17,
-    //
-    ERR_WRONG_INPUT_FORMAT      = 20,
-    ERR_NOT_ENOGH_VALUES        = 21,
-    ERR_WRONG_PARAMETER         = 22,
-    ERR_TYPES_MISMATCH          = 23,
-    ERR_INVALID_BINARY_DATA     = 24,
-    // FILE ERRORS
-    ERR_UNABLE_OPEN_FILE        = 50,
-    ERR_UNABLE_OPEN_FILE_READ   = 51,
-    ERR_UNABLE_OPEN_FILE_WRITE  = 52,
-    ERR_STREAM_ERROR            = 53,
-    ERR_IRREGULAR_STREAM        = 54,
-    ERR_UNABLE_SET_FILE_PARAM   = 55,
-    ERR_CANT_GET_STAT           = 56,
-    // 
-    ERR_WRONG_INPUT_PARAMETERS  = 60,
-    ERR_SHELL_NOT_AVAILABLE     = 65,
-    ERRNUM_INVARIANT_VIOLATION  = 100,
-    ERR_NOT_IMPLEMENTED_FEATURE = 200,
+    ERR_NULLABLE_PTR            = 10,   ///< A pointer argument is NULL where non-NULL is required.
+    ERR_OUT_OF_RANGE            = 11,   ///< A numeric value is outside the valid range.
+    ERR_OUT_OF_BUFFER           = 12,   ///< An operation would exceed a buffer boundary.
+    ERR_UNABLE_ALLOCATE         = 15,   ///< Memory allocation (malloc/calloc/realloc) failed.
+    ERR_NULL_OUTPUT             = 16,   ///< Output pointer/stream is NULL.
+    ERR_NULL_INPUT              = 17,   ///< Input pointer/data is NULL.
 
-    // --- Warnings ---
-    WARN_MEM_LEAK_DETECTED      = 1001,
+    ERR_WRONG_INPUT_FORMAT      = 20,   ///< Input does not match the expected format.
+    ERR_NOT_ENOGH_VALUES        = 21,   ///< Not enough values were provided.
+    ERR_WRONG_PARAMETER         = 22,   ///< A parameter value is semantically wrong.
+    ERR_TYPES_MISMATCH          = 23,   ///< Unexpected type was passed.
+    ERR_INVALID_BINARY_DATA     = 24,   ///< Binary data failed integrity validation.
 
-    // --- Custom / Domain Errors ---
-    ERR_FS_NOT_ALLOC_FLAG       = 10001,
-    ERR_TOO_LONG_LINE           = 10010,
-    ERR_GUARD_RAISE             = 10100,
-    ERR_ACTION_NOT_APPLICABLE   = 10200,
-    ERR_UNABLE_ALLOCATE_SEQ     = 10201,
-    ERR_UNABLE_LOAD_FSARRAY     = 10220,
-    //
-    ERR_UNSUPPORTED_TYPE        = 10230,
-    ERR_UNSUPPORTED_TYPE_CONV   = 10231,
-    ERR_INVALID_CONVERSION      = 10232,
-    ERR_UNKNOWN_TYPE            = 10233,
-    ERR_UNABLE_PARSE_DATA       = 10234,
-    ERR_VALIDATION_FAILED       = 10235,
-    ERR_UNSUPPORTED_GENERATOR   = 10236,
-    ERR_UNSUPPORTED_INTERFACE   = 10237,
-    //
-    ERR_UNABLE_TO_EXEC_FILE     = 10300,
-    ERR_UNABLE_TO_RUN_MAKE      = 10301
+    // --- File / Stream Errors ---
+    ERR_UNABLE_OPEN_FILE        = 50,   ///< Could not open a file (generic).
+    ERR_UNABLE_OPEN_FILE_READ   = 51,   ///< Could not open a file for reading.
+    ERR_UNABLE_OPEN_FILE_WRITE  = 52,   ///< Could not open a file for writing.
+    ERR_STREAM_ERROR            = 53,   ///< Generic stream I/O error.
+    ERR_IRREGULAR_STREAM        = 54,   ///< Stream is in an inconsistent state.
+    ERR_UNABLE_SET_FILE_PARAM   = 55,   ///< Could not set a file/stream parameter.
+    ERR_CANT_GET_STAT           = 56,   ///< stat() / fstat() failed.
+
+    ERR_WRONG_INPUT_PARAMETERS  = 60,   ///< Combination of input parameters is invalid.
+    ERR_SHELL_NOT_AVAILABLE     = 65,   ///< Required shell / command is not available.
+
+    ERRNUM_INVARIANT_VIOLATION  = 100,  ///< Internal invariant was violated (logic bug).
+    ERR_NOT_IMPLEMENTED_FEATURE = 200,  ///< Requested feature is not yet implemented.
+
+    // --- Warnings (non-fatal) ---
+    WARN_MEM_LEAK_DETECTED      = 1001, ///< Memory leak detected during diagnostics.
+
+    // --- Domain-specific ---
+    ERR_FS_NOT_ALLOC_FLAG       = 10001,///< FastString alloc flag is not set.
+    ERR_TOO_LONG_LINE           = 10010,///< Input line exceeds the maximum allowed length.
+    ERR_GUARD_RAISE             = 10100,///< A guard / assertion was triggered.
+    ERR_ACTION_NOT_APPLICABLE   = 10200,///< Requested action is not applicable in current state.
+    ERR_UNABLE_ALLOCATE_SEQ     = 10201,///< Could not allocate a sequence container.
+    ERR_UNABLE_LOAD_FSARRAY     = 10220,///< Could not load a FastStringArray.
+
+    ERR_UNSUPPORTED_TYPE        = 10230,///< Requested type is not supported by the subsystem.
+    ERR_UNSUPPORTED_TYPE_CONV   = 10231,///< Type conversion for the given type is not supported.
+    ERR_INVALID_CONVERSION      = 10232,///< Type conversion produced an invalid result.
+    ERR_UNKNOWN_TYPE            = 10233,///< Encountered an unrecognised type tag.
+    ERR_UNABLE_PARSE_DATA       = 10234,///< Could not parse the supplied data.
+    ERR_VALIDATION_FAILED       = 10235,///< Data failed validation checks.
+    ERR_UNSUPPORTED_GENERATOR   = 10236,///< Requested generator type is not supported.
+    ERR_UNSUPPORTED_INTERFACE   = 10237,///< Requested interface is not supported.
+
+    ERR_UNABLE_TO_EXEC_FILE     = 10300,///< Could not execute the specified file.
+    ERR_UNABLE_TO_RUN_MAKE      = 10301,///< Could not invoke the build system (make).
 } ErrorCode;
 
-// ------------------- TYPES -----------------------
-
+/**
+ * @brief Error class: user-defined (application) vs. system (errno).
+ *
+ * Determines how the message is rendered in err_put():
+ *  - ERR_USER → the format string is used as-is.
+ *  - ERR_SYS  → strerror(errno) is prepended, then ": " + format string.
+ */
 typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
 
-// TODO: подумать, можно ли спрятать это в error.c...
+/**
+ * @brief Thread-local environment for the setjmp/longjmp "exception" mechanism.
+ *
+ * Usage pattern:
+ * @code
+ *   if (try() == 0) {
+ *       // "try" block – setjmp captured here
+ *       do_work_that_may_raise();
+ *   } else {
+ *       // "catch" block – reached via longjmp from signal handler
+ *       handle_exception();
+ *   }
+ * @endcode
+ *
+ * `init_flag` distinguishes an active setjmp site from a fresh/uninitialised
+ * environment. The signal handler checks this flag before longjmp'ing.
+ */
 typedef struct ExceptionData
 {
-    jmp_buf                             env;
-    bool                                init_flag;      // true when env is filled with data
+    jmp_buf     env;          ///< setjmp buffer (captured at try() call-site).
+    bool        init_flag;    ///< true while a try() block is active.
 } ExceptionData;
 
-// ------------- CONSTRUCTOTS/DESTRUCTORS ----------
+// ------------- CONSTRUCTORS / DESTRUCTORS ----------
 
 // -------------- ACCESS AND MODIFICATION ----------
 
-// general raise function
+/**
+ * @brief Record an error on the per-thread stack and optionally raise a signal.
+ *
+ * This is the central entry-point for all error reporting in the library.
+ * The formatted message is pushed onto the per-thread error stack.
+ * If @p raise is non-zero the corresponding signal is delivered to the
+ * current process (which may be intercepted by an active `try()` block).
+ *
+ * @param tp       Error class: ERR_USER or ERR_SYS.
+ * @param raise    Signal number to raise (e.g. SIGINT, SIGTERM), or 0 to
+ *                 suppress the signal (record-only).
+ * @param errcode  Application-level error code from ErrorCode.
+ *                 Ignored when @p tp is ERR_SYS (errno is used instead).
+ * @param msg      printf-style format string for the error message.
+ * @param ...      Variadic arguments matching @p msg.
+ *
+ * @note The format string is validated at compile-time via
+ *       `__attribute__((format(printf, 4, 5)))`.
+ */
 extern void
-err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 4, 5)));;
+err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 4, 5)));
 
+/**
+ * @brief Reset the per-thread error stack to its initial (empty) state.
+ *
+ * @param force  When `true` and a heap-allocated buffer is in use, it is
+ *               freed. When `false`, indices are rewound but the heap
+ *               memory is retained for future use.
+ */
 extern void
 err_clean(bool force);
 
+/**
+ * @brief Obtain a pointer to the current thread's exception environment.
+ *
+ * The returned pointer is valid for the lifetime of the calling thread.
+ * Use the `errenv` macro for convenient access.
+ *
+ * @return Pointer to the thread-local `ExceptionData`.
+ */
 extern ExceptionData*
 err_getexception_info();
 
+/**
+ * @brief Install a signal handler for SIGINT.
+ *
+ * Passing NULL (0) installs the built-in default handler which performs a
+ * `longjmp` back to the most recent `try()` call-site.
+ *
+ * @param handler  User-supplied handler, or 0/NULL for the built-in default.
+ * @return `true` on success; `false` (and a system error is raised) on failure.
+ */
 extern bool
 err_sethandler(sig_t handler);
 
+/**
+ * @brief Reset the exception environment flag (inline convenience).
+ *
+ * Equivalent to setting `errenv.init_flag = false`.
+ *
+ * @return Always `false` (the new value of init_flag).
+ */
 static inline bool
 err_resetenv()
 {
@@ -110,16 +197,34 @@ err_resetenv()
 
 // ----------------- PRINTERS ----------------------
 
-// printstacktrace
+/**
+ * @brief Dump the full per-thread error stack (stack trace) to a stream.
+ *
+ * Each entry is printed as: `[index]: TYPE: [code] message\n`
+ *
+ * @param[out] out  Destination stream (e.g. stderr, stdout, a file).
+ * @return Total number of characters written, or a negative value on I/O error.
+ */
 extern int
 err_fprintstacktrace(FILE *out);
 
+/**
+ * @brief Print the error stack to stderr (convenience wrapper).
+ * @return Same as err_fprintstacktrace(stderr).
+ */
 static inline int
 err_printstacktrace(void)
 {
 	return err_fprintstacktrace(stderr);
 }
 
+// -------------- SIGNAL HELPERS --------------------
+
+/**
+ * @brief Convert a signal number to its symbolic name.
+ * @param signal  Signal number (e.g. SIGINT).
+ * @return Static string like "SIGINT", "SIGSEGV", or "Unknown sig".
+ */
 static inline const char *
 sig_str(int signal)
 {
@@ -159,6 +264,11 @@ sig_str(int signal)
     }
 }
 
+/**
+ * @brief Convert a signal number to a human-readable description.
+ * @param signal  Signal number.
+ * @return Short description string (e.g. "interrupt program").
+ */
 static inline const char *
 sig_str_desc(int signal)
 {
@@ -198,17 +308,51 @@ sig_str_desc(int signal)
     }
 }
 
-
 // ------------------ ETC. -------------------------
 
 // setjmp/longjmp API
-#define errenv 														(*err_getexception_info())
 
-#define errsethandler()												err_sethandler(0)
+/**
+ * @brief Convenience accessor for the thread-local exception environment.
+ *
+ * Expands to `(*err_getexception_info())`, giving lvalue access to the
+ * `ExceptionData` fields (`.env`, `.init_flag`).
+ */
+#define errenv              (*err_getexception_info())
 
-// TODO: #define try try()
+/**
+ * @brief Install the default signal handler (shorthand for err_sethandler(0)).
+ * @return Same as err_sethandler(0): true on success, false on failure.
+ */
+#define errsethandler()     err_sethandler(0)
 
-// NOT sure aboud 9999, probably better to raise SIGTERM/SIGSTOP
+/**
+ * @brief Begin a "try" block (setjmp-based exception catch point).
+ *
+ * This GCC statement-expression macro captures the current PC in
+ * `errenv.env` via `setjmp`. It returns:
+ *  - `0`  on the **first** pass (normal execution, "try" body).
+ *  - A **non-zero** jump code on return from a `longjmp` in the signal
+ *    handler (entering the "catch" / else branch).
+ *
+ * **Usage:**
+ * @code
+ *   errsethandler();  // install handler once
+ *   if (try() == 0) {
+ *       // normal path – code that may trigger a signal
+ *       risky_operation();
+ *   } else {
+ *       // catch path – reached after longjmp
+ *       err_printstacktrace();
+ *   }
+ * @endcode
+ *
+ * @note If `errenv.init_flag` is already set (nested try), the macro does
+ *       NOT call setjmp again; it returns a sentinel (9999) to signal a
+ *       programming error.
+ *
+ * @return 0 on first entry; non-zero (jump code) when returning from longjmp.
+ */
 #define try() ({\
 	int res;\
     if (errenv.init_flag)\
@@ -222,9 +366,37 @@ sig_str_desc(int signal)
 })
 
 
+/**
+ * @brief Log a formatted message to the internal log AND to stderr.
+ *
+ * Used internally by the raise macros to ensure the error is visible both
+ * in the application log and immediately on the terminal.
+ *
+ * @param msg  printf-style format string.
+ * @param ...  Variadic arguments matching @p msg.
+ */
 #define _log_and_print(msg, ...) { logsimple(msg, ##__VA_ARGS__); fprintf(stderr, msg, ##__VA_ARGS__); /* fprintf(stderr, "\n"); */}
 
-// TODO: why ACTION in log module
+/**
+ * @brief Internal: generic raise with ACTION and signal.
+ *
+ * Shared implementation for all public raise macros. Performs:
+ *  1. If ERR_SYS – prints `strerror(errno)` to log + stderr.
+ *  2. Executes the ACTION statement (cleanup / rollback).
+ *  3. Prints the user message to log + stderr.
+ *  4. Calls `err_raise()` to record the error and optionally raise a signal.
+ *  5. Evaluates to @p retcode.
+ *
+ * @param retcode  Value the macro expands to (return / assignment target).
+ * @param TYPE     ErrorType (ERR_USER or ERR_SYS).
+ * @param ACTION   Statement to execute before raising (e.g. `free(p);`).
+ * @param sig      Signal to raise, or 0 to suppress.
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments for @p msg.
+ *
+ * @note This is an internal macro; use the public wrappers below.
+ */
 #define	_generalraiseactsig(retcode, TYPE, ACTION, sig, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
                                                                                 if (TYPE == ERR_SYS){\
                                                                                     _log_and_print("%s\t", strerror(errno));\
@@ -239,42 +411,202 @@ sig_str_desc(int signal)
 
 // USER block
 // user with ACTION and signal (common)
+
+/**
+ * @brief Internal: user error with ACTION and explicit signal.
+ *
+ * @param retcode  Value to return/assign after the raise.
+ * @param ACTION   Cleanup statement (e.g. `free(buf);`).
+ * @param sig      Signal number to raise (e.g. SIGINT), or 0.
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ */
 #define _userraiseactsig(retcode, ACTION, sig, errcode, msg, ...)	_generalraiseactsig(retcode, ERR_USER, ACTION, sig	, errcode, msg, ##__VA_ARGS__)
 
-// user with ACTION w/o exception
+/**
+ * @brief Raise a user error with a cleanup ACTION, no signal.
+ *
+ * Records the error, executes @p ACTION, and evaluates to @p retcode.
+ * No signal is raised; control returns normally.
+ *
+ * **Usage:**
+ * @code
+ *   int *p = malloc(n);
+ *   if (!p) return userraiseact(0, free(p), ERR_UNABLE_ALLOCATE, "alloc %d failed", n);
+ * @endcode
+ *
+ * @param retcode  Value the expression evaluates to.
+ * @param ACTION   Statement executed before the raise (cleanup / rollback).
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments for @p msg.
+ * @return         @p retcode (after side-effects).
+ */
 #define	userraiseact(retcode, ACTION, errcode, msg, ...)			_userraiseactsig(retcode, ACTION, 0					, errcode, msg, ##__VA_ARGS__)
 
-// user with ACTION with exception (interrupt)
+/**
+ * @brief Raise a user error with cleanup ACTION and SIGINT (interrupt/exception).
+ *
+ * Same as userraiseact but raises SIGINT, which will be intercepted by
+ * an active `try()` block (longjmp).
+ *
+ * **Usage:**
+ * @code
+ *   if (try() == 0) {
+ *       userraiseactint(free(p), ERR_GUARD_RAISE, "invariant broken");
+ *       // normal path...
+ *   } else {
+ *       // caught here
+ *   }
+ * @endcode
+ *
+ * @param ACTION   Cleanup statement.
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ * @return         0 (always; signal causes the actual control transfer).
+ */
 #define userraiseactint(ACTION, errcode, msg, ...)         			_userraiseactsig(0, ACTION, SIGINT					, errcode, msg, ##__VA_ARGS__)
 
-// user with signal (common)
+/**
+ * @brief Internal: user error with signal, no ACTION.
+ *
+ * @param retcode  Value to return/assign after the raise.
+ * @param sig      Signal number to raise, or 0.
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ */
 #define _userraisesig(retcode, sig, errcode, msg, ...)				_userraiseactsig(retcode, , sig						, errcode, msg, ##__VA_ARGS__)
 
-// user error w/o exception
+/**
+ * @brief Raise a user error, no ACTION, no signal.
+ *
+ * Records the error and evaluates to @p retcode. Control returns normally.
+ *
+ * **Usage:**
+ * @code
+ *   if (!ptr) return userraise(0, ERR_NULLABLE_PTR, "ptr is NULL in %s", __func__);
+ * @endcode
+ *
+ * @param retcode  Value the expression evaluates to.
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ * @return         @p retcode.
+ */
 #define userraise(retcode, errcode, msg, ...)          				_userraisesig(retcode, 0							, errcode, msg, ##__VA_ARGS__)
 
-// user with exception (interrupt)
+/**
+ * @brief Raise a user error with SIGINT (exception / interrupt), no ACTION.
+ *
+ * Records the error and raises SIGINT. If a `try()` is active, control
+ * transfers to the catch block via longjmp.
+ *
+ * **Usage:**
+ * @code
+ *   if (invalid) userraiseint(ERR_INVALID_BINARY_DATA, "bad magic at offset %d", off);
+ * @endcode
+ *
+ * @param errcode  ErrorCode value.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ * @return         0 (signal causes actual control transfer).
+ */
 #define	userraiseint(errcode, msg, ...)								_userraisesig(0, SIGINT								, errcode, msg, ##__VA_ARGS__)
 
 
 // SYSTEM block
 // system, with action and signal (common)
+
+/**
+ * @brief Internal: system error with ACTION and signal.
+ *
+ * For system errors the numeric code is always `errno` (passed as 0 to
+ * `_generalraiseactsig` which substitutes it internally).
+ *
+ * @param retcode  Value to return/assign after the raise.
+ * @param ACTION   Cleanup statement.
+ * @param sig      Signal to raise, or 0.
+ * @param msg      printf-style format string (strerror is prepended automatically).
+ * @param ...      Variadic arguments.
+ */
 #define	_sysraiseactsig(retcode, ACTION, sig, msg, ...)      		_generalraiseactsig(retcode, ERR_SYS, ACTION, sig, 0, msg, ##__VA_ARGS__)
 
-// system with ACTION w/o expection
+/**
+ * @brief Raise a system error with cleanup ACTION, no signal.
+ *
+ * Records `errno` + message, executes @p ACTION, evaluates to @p retcode.
+ *
+ * **Usage:**
+ * @code
+ *   FILE *f = fopen(path, "r");
+ *   if (!f) return sysraiseact(NULL, fclose(f), "cannot open %s", path);
+ * @endcode
+ *
+ * @param retcode  Value the expression evaluates to.
+ * @param ACTION   Cleanup statement.
+ * @param msg      printf-style format string (appended after strerror).
+ * @param ...      Variadic arguments.
+ * @return         @p retcode.
+ */
 #define	sysraiseact(retcode, ACTION, msg, ...)            			_sysraiseactsig(retcode, ACTION, 0					, msg, ##__VA_ARGS__)
 
-// system with ACTION with exception (interrupt)
+/**
+ * @brief Raise a system error with cleanup ACTION and SIGINT (exception).
+ *
+ * Same as sysraiseact but raises SIGINT for try() interception.
+ *
+ * @param ACTION   Cleanup statement.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ * @return         0.
+ */
 #define	sysraiseactint(ACTION, msg, ...)							_sysraiseactsig(0, ACTION, SIGINT					, msg, ##__VA_ARGS__)
 
-// system with signal (common)
+/**
+ * @brief Internal: system error with signal, no ACTION.
+ *
+ * @param retcode  Value to return/assign after the raise.
+ * @param sig      Signal to raise, or 0.
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ */
 #define	_sysraisesig(retcode, sig, msg, ...)               			_sysraiseactsig(retcode, , sig						, msg, ##__VA_ARGS__)
 
-// system w/o exception
+/**
+ * @brief Raise a system error, no ACTION, no signal.
+ *
+ * Records `errno` + message, evaluates to @p retcode. Control returns normally.
+ *
+ * **Usage:**
+ * @code
+ *   if (write(fd, buf, n) == -1) return sysraise(0, "write to fd %d failed", fd);
+ * @endcode
+ *
+ * @param retcode  Value the expression evaluates to.
+ * @param msg      printf-style format string (strerror prepended).
+ * @param ...      Variadic arguments.
+ * @return         @p retcode.
+ */
 #define sysraise(retcode, msg, ...)									_sysraisesig(retcode, 0								, msg, ##__VA_ARGS__)
 
-// system with exception (interrupt)
+/**
+ * @brief Raise a system error with SIGINT (exception / interrupt), no ACTION.
+ *
+ * Records `errno` + message and raises SIGINT. If a `try()` is active,
+ * control transfers to the catch block via longjmp.
+ *
+ * **Usage:**
+ * @code
+ *   if (read(fd, buf, sz) == -1) sysraiseint("unexpected read failure on fd %d", fd);
+ * @endcode
+ *
+ * @param msg      printf-style format string.
+ * @param ...      Variadic arguments.
+ * @return         0 (signal causes actual control transfer).
+ */
 #define sysraiseint(msg, ...)										_sysraisesig(0, SIGINT								, msg, ##__VA_ARGS__)
 
-#endif /* !_ERROR_H */
-
+#endif /* !ERROR_H */
