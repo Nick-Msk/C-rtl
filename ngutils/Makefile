@@ -3,10 +3,12 @@
 MAKEFLAGS += --no-print-directory
 
 PROJECTS        := $(patsubst %/Makefile,%,$(wildcard */Makefile))
+PROJECTS 		:= $(filter-out skeleton,$(PROJECTS))
+
 FORWARD_TARGETS := all test check analyze
 
-BUILD_DEBUG    := build/debug
-BUILD_RELEASE  := build/release
+BUILD_DEBUG    	:= build/debug
+BUILD_RELEASE  	:= build/release
 
 NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a

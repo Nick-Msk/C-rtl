@@ -4,25 +4,56 @@
 #
 #     PROJNAME = bool
 #     include ../Makefile.common
+#
+# Optional, for projects that depend on siblings:
+#
+#     PROJNAME = error
+#     REQUIRES = log bool
+#     include ../Makefile.common
 
 ifeq ($(PROJNAME),)
 $(error PROJNAME is not set — define it before including Makefile.common)
 endif
 
-CC            ?= gcc
-CFLAGS        += -Wall -Wextra -std=gnu11 -Iinclude
-CRIT_CFLAGS   ?= $(shell pkg-config --cflags criterion 2>/dev/null)
-CRIT_LIBS     ?= $(shell pkg-config --libs criterion  2>/dev/null)
+# --- toolchain & flags ---
 
-# Detect Criterion once; skip tests gracefully if it is missing unless
-# REQUIRE_CRITERION=1 is set (useful in CI).
+CC          ?= cc
+CFLAGS      += -Wall -Wextra -std=gnu11 -Iinclude
+
+CRIT_CFLAGS ?= $(shell pkg-config --cflags criterion 2>/dev/null)
+CRIT_LIBS   ?= $(shell pkg-config --libs   criterion 2>/dev/null)
+
 HAVE_CRITERION := $(shell pkg-config --exists criterion 2>/dev/null && echo yes)
 REQUIRE_CRITERION ?= 0
 
-CLANG_TIDY   ?= clang-tidy
-SCAN_BUILD   ?= scan-build
+CLANG_TIDY  ?= clang-tidy
+SCAN_BUILD  ?= scan-build
 
 MAKEFLAGS += --no-print-directory
+
+# --- cross-utility dependencies ---
+#
+# REQUIRES lists sibling utilities this project depends on. Each name
+# adds -I../<name>/include to CFLAGS and ../<name>/build/debug/lib<name>.a
+# to link dependencies.
+
+REQUIRES     ?=
+REQ_INCLUDES  = $(addprefix -I../,$(addsuffix /include,$(REQUIRES)))
+REQ_ARCHIVES  = $(foreach req,$(REQUIRES),../$(req)/build/debug/lib$(req).a)
+
+CFLAGS       += $(REQ_INCLUDES)
+
+# Build required archives on demand via sub-make.
+# Generate one explicit rule per requirement, so the project path is
+# known directly and we never rely on path-walking through `..`.
+define REQ_RULE
+../$(1)/build/debug/lib$(1).a:
+	@$$(MAKE) -C ../$(1) lib
+endef
+
+$(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
+
+# --- layout ---
 
 BUILD_DIR     = build
 DEBUG         = $(BUILD_DIR)/debug
@@ -45,7 +76,7 @@ LIB           = $(DEBUG)/lib$(PROJNAME).a
 REL_SRC_OBJ   = $(patsubst src/%.c,$(REL_OBJ)/%.o,$(SRC))
 REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
 
-DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
+DEPFILES      = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
 
 .PHONY: all lib librelease test check analyze clean list
 
@@ -74,7 +105,7 @@ ifeq ($(HAVE_CRITERION),yes)
 test: $(TEST_BIN)
 	@$(TEST_BIN)
 
-$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
+$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) -o $@ $^ $(CRIT_LIBS)
 
 $(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
@@ -87,11 +118,9 @@ ifeq ($(REQUIRE_CRITERION),1)
 	@echo "ERROR: Criterion not found, REQUIRE_CRITERION=1" >&2
 	@exit 1
 else
-
 	@echo "SKIP: Criterion not installed (pkg-config --exists criterion failed)"
 	@echo "      Install with: brew install criterion  (macOS)"
 	@echo "                    apt install libcriterion-dev  (Debian/Ubuntu)"
-
 endif
 
 endif
@@ -115,7 +144,7 @@ $(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
 # --- analysis ---
 
 check:
-	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+	$(CLANG_TIDY) $(SRC) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
 analyze:
 	@mkdir -p $(BUILD_DIR)/analyze
@@ -134,4 +163,5 @@ list:
 	@echo "Targets:"
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | sed 's/:.*//' | sort -u | sed 's/^/  /'
 
--include $(DEPS)
+-include $(DEPFILES)
+
