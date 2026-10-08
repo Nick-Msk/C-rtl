@@ -200,7 +200,7 @@ log_preambule(
 			act_msg = "";
 		break;
 		default:
-			fprintf(stderr, "Preambule: Incorrect act = [%u]\n", act);
+			fprintf(stderr, "Preambule: Incorrect act = [%d]\n", act);
 			return false;
 	}
 	assert(lv >= 0);
@@ -213,7 +213,7 @@ log_preambule(
 		switch(g_format_schema)     // TODO: it should be for module, but not global
 		{
 			case LOG_FORMAT_EMPTY:
-                fprintf(g_logfile, "%*c", lv + 1, '\0');
+                fprintf(g_logfile, "%*c", lv + 1, ' ');
 			break;
 			case LOG_FORMAT_ALL:
 				fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s(%s): ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
@@ -370,7 +370,7 @@ log_modload(const char *name)
 	for (int i = 0; i < modcnt; i++)
 	{
 		int	lv, idx;
-		if (fscanf(f, MODULE_DESC, &idx, g_modules[i].module, &lv) < 3 || lv > LOGALL || lv < LOGOFF)
+		if (fscanf(f, MODULE_DESC_IN, &idx, g_modules[i].module, &lv) < 3 || lv > (int)LOGALL || lv < (int)LOGOFF)
 		{
 			fprintf(stderr, "Wrong input in line %d (by pattern [%s])\n", i + 1, MODULE_DESC);
 			fclose(f);
@@ -552,7 +552,7 @@ log_msg(LogAction            act,
  * @param funcname  `__func__`.
  * @param lineno    `__LINE__`.
  * @param msg       printf format string (may be NULL).
- * @param ap        Pre-started va_list; this function calls va_end() on it.
+ * "@param ap        Pre-started va_list; caller is responsible for va_end().
  * @return Current g_offset on success, -1 on failure.
  */
 int
@@ -591,7 +591,7 @@ log_msg_ap(
  *
  * Prints digits as-is, other bytes as characters. Always appends a newline.
  *
- * @bug Current code reads `bytes[sz]` (off-by-one / OOB) instead of `bytes[i]`.
+ * @note Uses isdigit() for a simple printable-digit filter.
  *
  * @param act       LogAction flags.
  * @param lv        Level / indent hint.
@@ -623,7 +623,7 @@ log_numbers(LogAction            act,
 	for (int i = 0; i < sz; i++)
 	{
 		char 	c = bytes[i];
-		if (isdigit(c))
+		if (isdigit((unsigned char)c))
 			putc(c + '0', g_logfile);
 		else
 			putc(c, g_logfile);

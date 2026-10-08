@@ -161,7 +161,7 @@ log_offset(void);
 /**
  * @brief Globally switch logging on/off at runtime.
  * @param logon_mode  true = enable, false = silence everything.
- * @return 0 on success.
+ * @return The previous on/off state (1 = was on, 0 = was off).
  */
 extern int
 log_prog_switch(bool logon_mode);
