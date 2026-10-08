@@ -213,7 +213,6 @@ log_preambule(
 		switch(g_format_schema)     // TODO: it should be for module, but not global
 		{
 			case LOG_FORMAT_EMPTY:
-                fprintf(g_logfile, "%*c", lv + 1, ' ');
 			break;
 			case LOG_FORMAT_ALL:
 				fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s(%s): ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
@@ -622,8 +621,8 @@ log_numbers(LogAction            act,
 	// print only valuable data for now
 	for (int i = 0; i < sz; i++)
 	{
-		char 	c = bytes[i];
-		if (isdigit((unsigned char)c))
+		unsigned char 	c = bytes[i];
+		if (c <= 9)
 			putc(c + '0', g_logfile);
 		else
 			putc(c, g_logfile);
