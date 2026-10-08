@@ -22,7 +22,7 @@
 static const int                        ERROR_DEFAULT_INCREMENT  = 16;
 
 /** Size of the static (stack-allocated) initial buffer. */
-static const int						ERROR_INIT_COUNT		 = 10;
+enum { ERROR_INIT_COUNT = 10 };
 
 /** Jump code passed via longjmp from the default signal handler. */
 static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
@@ -114,7 +114,7 @@ err_increase(void)
 	if (err_isinit())
 	{
 		if ( (err = malloc(newalloc * sizeof(Error))) == 0)
-			return logsimple(0, "Unable to init alloc of %d elements", newalloc);
+			return logsimpleret(0, "Unable to init alloc of %d elements", newalloc);
 		// copy prev
 		memcpy(err, g_error_init, g_currerr * sizeof(Error));
 	}
@@ -159,7 +159,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
         }
     }
 
-	Error 	*err = g_error + g_currerr++;		// currect error, must be valid pointer
+	Error 	*err = g_error + g_currerr++;		// current error, must be valid pointer
 	logauto(err->type = tp);
 	logsimple("%s", msg);	// logsimple(msg, ap) ??? TODO:
 

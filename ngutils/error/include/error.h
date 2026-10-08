@@ -20,10 +20,12 @@
 #include <string.h>
 #include <sys/errno.h>
 
+#include "log.h"
+
 // ----------- CONSTANTS AND GLOBALS ---------------
 
 /** Maximum length (including NUL terminator) of a single formatted error message. */
-static const int ERROR_MESSAGE_MAX_LENGTH = 512;
+enum { ERROR_MESSAGE_MAX_LENGTH = 512 };
 
 // ------------------- TYPES -----------------------
 
@@ -47,7 +49,7 @@ typedef enum {
     ERR_NULL_INPUT              = 17,   ///< Input pointer/data is NULL.
 
     ERR_WRONG_INPUT_FORMAT      = 20,   ///< Input does not match the expected format.
-    ERR_NOT_ENOGH_VALUES        = 21,   ///< Not enough values were provided.
+    ERR_NOT_ENOUGH_VALUES        = 21,   ///< Not enough values were provided.
     ERR_WRONG_PARAMETER         = 22,   ///< A parameter value is semantically wrong.
     ERR_TYPES_MISMATCH          = 23,   ///< Unexpected type was passed.
     ERR_INVALID_BINARY_DATA     = 24,   ///< Binary data failed integrity validation.
@@ -68,27 +70,27 @@ typedef enum {
     ERR_NOT_IMPLEMENTED_FEATURE = 200,  ///< Requested feature is not yet implemented.
 
     // --- Warnings (non-fatal) ---
-    WARN_MEM_LEAK_DETECTED      = 1001, ///< Memory leak detected during diagnostics.
+    WARN_MEM_LEAK_DETECTED      = 1001,     ///< Memory leak detected during diagnostics.
 
     // --- Domain-specific ---
-    ERR_FS_NOT_ALLOC_FLAG       = 10001,///< FastString alloc flag is not set.
-    ERR_TOO_LONG_LINE           = 10010,///< Input line exceeds the maximum allowed length.
-    ERR_GUARD_RAISE             = 10100,///< A guard / assertion was triggered.
-    ERR_ACTION_NOT_APPLICABLE   = 10200,///< Requested action is not applicable in current state.
-    ERR_UNABLE_ALLOCATE_SEQ     = 10201,///< Could not allocate a sequence container.
-    ERR_UNABLE_LOAD_FSARRAY     = 10220,///< Could not load a FastStringArray.
+    ERR_FS_NOT_ALLOC_FLAG       = 10001,    ///< FastString alloc flag is not set.
+    ERR_TOO_LONG_LINE           = 10010,    ///< Input line exceeds the maximum allowed length.
+    ERR_GUARD_RAISE             = 10100,    ///< A guard / assertion was triggered.
+    ERR_ACTION_NOT_APPLICABLE   = 10200,    ///< Requested action is not applicable in current state.
+    ERR_UNABLE_ALLOCATE_SEQ     = 10201,    ///< Could not allocate a sequence container.
+    ERR_UNABLE_LOAD_FSARRAY     = 10220,    ///< Could not load a FastStringArray.
 
-    ERR_UNSUPPORTED_TYPE        = 10230,///< Requested type is not supported by the subsystem.
-    ERR_UNSUPPORTED_TYPE_CONV   = 10231,///< Type conversion for the given type is not supported.
-    ERR_INVALID_CONVERSION      = 10232,///< Type conversion produced an invalid result.
-    ERR_UNKNOWN_TYPE            = 10233,///< Encountered an unrecognised type tag.
-    ERR_UNABLE_PARSE_DATA       = 10234,///< Could not parse the supplied data.
-    ERR_VALIDATION_FAILED       = 10235,///< Data failed validation checks.
-    ERR_UNSUPPORTED_GENERATOR   = 10236,///< Requested generator type is not supported.
-    ERR_UNSUPPORTED_INTERFACE   = 10237,///< Requested interface is not supported.
+    ERR_UNSUPPORTED_TYPE        = 10230,    ///< Requested type is not supported by the subsystem.
+    ERR_UNSUPPORTED_TYPE_CONV   = 10231,    ///< Type conversion for the given type is not supported.
+    ERR_INVALID_CONVERSION      = 10232,    ///< Type conversion produced an invalid result.
+    ERR_UNKNOWN_TYPE            = 10233,    ///< Encountered an unrecognised type tag.
+    ERR_UNABLE_PARSE_DATA       = 10234,    ///< Could not parse the supplied data.
+    ERR_VALIDATION_FAILED       = 10235,    ///< Data failed validation checks.
+    ERR_UNSUPPORTED_GENERATOR   = 10236,    ///< Requested generator type is not supported.
+    ERR_UNSUPPORTED_INTERFACE   = 10237,    ///< Requested interface is not supported.
 
-    ERR_UNABLE_TO_EXEC_FILE     = 10300,///< Could not execute the specified file.
-    ERR_UNABLE_TO_RUN_MAKE      = 10301,///< Could not invoke the build system (make).
+    ERR_UNABLE_TO_EXEC_FILE     = 10300,    ///< Could not execute the specified file.
+    ERR_UNABLE_TO_RUN_MAKE      = 10301,    ///< Could not invoke the build system (make).
 } ErrorCode;
 
 /**
@@ -235,7 +237,9 @@ sig_str(int signal)
         case SIGILL     : return "SIGILL";
         case SIGTRAP    : return "SIGTRAP";
         case SIGABRT    : return "SIGABRT";
+#ifdef SIGEMT
         case SIGEMT     : return "SIGEMT";
+#endif        
         case SIGFPE     : return "SIGFPE";
         case SIGKILL    : return "SIGKILL";
         case SIGBUS     : return "SIGBUS";
@@ -257,7 +261,9 @@ sig_str(int signal)
         case SIGVTALRM  : return "SIGVTALRM";
         case SIGPROF    : return "SIGPROF";
         case SIGWINCH   : return "SIGWINCH";
+#ifdef SIGINFO
         case SIGINFO    : return "SIGINFO";
+#endif        
         case SIGUSR1    : return "SIGUSR1";
         case SIGUSR2    : return "SIGUSR2";
         default         : return "Unknown sig";
@@ -279,7 +285,9 @@ sig_str_desc(int signal)
         case SIGILL     : return "illegal instruction";
         case SIGTRAP    : return "trace trap";
         case SIGABRT    : return "abort program (formerly SIGIOT)";
+#ifdef SIGEMT
         case SIGEMT     : return "emulate instruction executed";
+#endif        
         case SIGFPE     : return "floating-point exception";
         case SIGKILL    : return "kill program";
         case SIGBUS     : return "bus error";
@@ -301,7 +309,9 @@ sig_str_desc(int signal)
         case SIGVTALRM  : return "virtual time alarm";
         case SIGPROF    : return "profiling timer alarm";
         case SIGWINCH   : return "Window size change";
+#ifdef SIGINFO
         case SIGINFO    : return "status request from keyboard";
+#endif        
         case SIGUSR1    : return "User defined signal 1";
         case SIGUSR2    : return "User defined signal 2";
         default         : return "";
