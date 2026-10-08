@@ -29,6 +29,44 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+#define LOG_VERSION_MAJOR 0
+#define LOG_VERSION_MINOR 1
+#define LOG_VERSION_PATCH 0
+
+#define LOG_STRINGIFY_(x) #x
+#define LOG_STRINGIFY(x)  LOG_STRINGIFY_(x)
+
+/**
+ * @brief Current version as a string literal, e.g. @c "0.1.0" .
+ */
+#define LOG_VERSION \
+    LOG_STRINGIFY(LOG_VERSION_MAJOR) "." \
+    LOG_STRINGIFY(LOG_VERSION_MINOR) "." \
+    LOG_STRINGIFY(LOG_VERSION_PATCH)
+
+/**
+ * @brief Current version string, e.g. @c "0.1.0" .
+ *
+ * Equivalent to @c *log_versions() .
+ *
+ * @return Pointer to a static string literal; do not free.
+ */
+extern const char *log_version(void);
+
+/**
+ * @brief Published versions, newest first, terminated by @c NULL .
+ *
+ * @c versions[0] is always the current version. Array and elements are
+ * read-only; do not free.
+ *
+ * @return Pointer to a static, NULL-terminated array of strings.
+ */
+extern const char *const *log_versions(void);
+
 /** Maximum length of a module name (NUL-terminated). */
 enum { MAX_MODULE = 64 };		// for gcc
 

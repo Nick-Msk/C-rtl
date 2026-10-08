@@ -339,3 +339,28 @@ Test(log, modsave_writes_file) {
 
     remove(path);
 }
+
+/* -------------------------------------------------------------------------
+ * Version
+ * ------------------------------------------------------------------------- */
+
+Test(log, version_string_matches_macro) {
+    cr_assert_str_eq(log_version(), LOG_VERSION);
+    cr_assert_str_eq(log_version(), "0.1.0");
+}
+
+Test(log, version_is_top_of_list) {
+    const char *const *v = log_versions();
+    cr_assert_not_null(v);
+    cr_assert_not_null(v[0]);
+    cr_assert_str_eq(v[0], log_version());
+    cr_assert_str_eq(v[0], LOG_VERSION);
+}
+
+Test(log, versions_terminated_by_null) {
+    const char *const *v = log_versions();
+    size_t n = 0;
+    while (v[n]) ++n;
+    cr_assert_geq(n, 1);
+    cr_assert_null(v[n]);
+}

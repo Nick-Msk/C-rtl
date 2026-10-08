@@ -80,6 +80,23 @@ static			bool			g_logon_mode		= true;				// program switch on/off mode
 /** Current preambule format (TODO: should be per-module). */
 static			LogFormat		g_format_schema		= LOG_FORMAT_ALL;	// TODO: it should be for module, but not general
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static const char *const versions[] = {
+    LOG_VERSION,   /* current — always computed from macros */
+    NULL
+};
+
+const char *const *log_versions(void) {
+    return versions;
+}
+
+const char *log_version(void) {
+    return versions[0];
+}
+
 // ── Internal utilities ───────────────────────────────────────────────────────
 
 /**
