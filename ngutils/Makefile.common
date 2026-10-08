@@ -1,0 +1,114 @@
+# Shared build rules for ngutils/* subprojects.
+#
+# Each project's Makefile sets PROJNAME and includes this file:
+#
+#     PROJNAME = bool
+#     include ../Makefile.common
+
+ifeq ($(PROJNAME),)
+$(error PROJNAME is not set — define it before including Makefile.common)
+endif
+
+CC            ?= gcc
+CFLAGS        ?= -Wall -Wextra -Iinclude
+CRIT_CFLAGS   ?= $(shell pkg-config --cflags criterion)
+CRIT_LIBS     ?= $(shell pkg-config --libs criterion)
+
+CLANG_TIDY   ?= clang-tidy
+SCAN_BUILD   ?= scan-build
+
+MAKEFLAGS += --no-print-directory
+
+BUILD_DIR     = build
+DEBUG         = $(BUILD_DIR)/debug
+RELEASE       = $(BUILD_DIR)/release
+DBG_OBJ       = $(DEBUG)/obj
+REL_OBJ       = $(RELEASE)/obj
+
+DBG_CFLAGS    = -g -O0
+REL_CFLAGS    = -O2 -DNDEBUG
+
+SRC           = $(wildcard src/*.c)
+TEST_SRC      = test/test_$(PROJNAME).c
+SRC_HDR       = include/$(PROJNAME).h
+
+SRC_OBJ       = $(patsubst src/%.c,$(DBG_OBJ)/%.o,$(SRC))
+TEST_OBJ      = $(DBG_OBJ)/test_$(PROJNAME).o
+TEST_BIN      = $(DEBUG)/test_$(PROJNAME)
+LIB           = $(DEBUG)/lib$(PROJNAME).a
+
+REL_SRC_OBJ   = $(patsubst src/%.c,$(REL_OBJ)/%.o,$(SRC))
+REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
+
+DEPS          = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
+
+.PHONY: all lib librelease test check analyze clean list
+
+# --- default ---
+
+all:
+	@$(MAKE) lib
+	@$(MAKE) test
+	@$(MAKE) librelease
+
+# --- debug lib ---
+
+lib: $(LIB)
+
+$(LIB): $(SRC_OBJ) | $(DEBUG)
+	@ar rcs $@ $^
+	@echo "Built: $@"
+
+$(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
+	$(CC) $(CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- test ---
+
+test: $(TEST_BIN)
+	@$(TEST_BIN)
+
+$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) | $(DEBUG)
+	$(CC) -o $@ $^ $(CRIT_LIBS)
+
+$(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- release lib ---
+
+librelease: $(REL_LIB)
+
+$(REL_LIB): $(REL_SRC_OBJ) | $(RELEASE)
+	@ar rcs $@ $^
+	@echo "Built: $@"
+
+$(REL_OBJ)/%.o: src/%.c $(SRC_HDR) | $(REL_OBJ)
+	$(CC) $(CFLAGS) $(REL_CFLAGS) -MMD -MP -c $< -o $@
+
+# --- dirs ---
+
+$(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
+	@mkdir -p $@
+
+# --- analysis ---
+
+check:
+	$(CLANG_TIDY) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+
+analyze:
+	@mkdir -p $(BUILD_DIR)/analyze
+	@rm -rf $(DEBUG)
+	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze $(MAKE) test
+
+# --- misc ---
+
+clean:
+	@rm -rf $(BUILD_DIR)
+
+clean-logs:
+	@rm -f logs/*.log
+
+list:
+	@echo "Targets:"
+	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | sed 's/:.*//' | sort -u | sed 's/^/  /'
+
+-include $(DEPS)
