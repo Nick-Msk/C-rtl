@@ -1,137 +1,341 @@
 #include <criterion/criterion.h>
-#include <criterion/new/assert.h>
 
 #include "log.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>   /* getpid */
+#include <unistd.h>
 
-/*
- * Each test gets its own file in /tmp, keyed by PID (Criterion forks
- * per test by default, so PIDs are unique). teardown closes the logger
- * and removes the file.
- */
-static char test_log_path[256];
+/* -------------------------------------------------------------------------
+ * Fixtures
+ * ------------------------------------------------------------------------- */
+
+static char log_path[256];
 
 static void setup(void) {
-    snprintf(test_log_path, sizeof(test_log_path),
-             "/tmp/test_log_%d.log", (int)getpid());
-    remove(test_log_path);
+    snprintf(log_path, sizeof(log_path),
+             "/tmp/ngutils_log_%d.log", (int)getpid());
+    remove(log_path);
 }
 
 static void teardown(void) {
     log_close();
-    remove(test_log_path);
+    remove(log_path);
 }
 
 TestSuite(log, .init = setup, .fini = teardown);
 
-/* --- pure function: no file needed --- */
+/* -------------------------------------------------------------------------
+ * Helpers
+ * ------------------------------------------------------------------------- */
 
-Test(log, levelstr_known) {
-    cr_assert_str_eq(log_levelstr(LOGOFF), "LOGOFF");
-    cr_assert_str_eq(log_levelstr(LOGERR), "LOGERR");
+static char   out_buf[4096];
+static size_t out_len = 0;
+
+static size_t slurp(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { out_len = 0; out_buf[0] = '\0'; return 0; }
+    out_len = fread(out_buf, 1, sizeof(out_buf) - 1, f);
+    fclose(f);
+    out_buf[out_len] = '\0';
+    return out_len;
+}
+
+static int has(const char *needle) {
+    size_t m = strlen(needle);
+    if (m == 0 || m > out_len) return 0;
+    for (size_t i = 0; i + m <= out_len; i++)
+        if (memcmp(out_buf + i, needle, m) == 0) return 1;
+    return 0;
+}
+
+static int mute(void) {
+    fflush(stderr);
+    int saved = dup(fileno(stderr));
+    freopen("/dev/null", "w", stderr);
+    return saved;
+}
+static void unmute(int saved) {
+    fflush(stderr);
+    dup2(saved, fileno(stderr));
+    close(saved);
+}
+
+/* -------------------------------------------------------------------------
+ * log_levelstr
+ * ------------------------------------------------------------------------- */
+
+Test(log, levelstr_all_known) {
+    cr_assert_str_eq(log_levelstr(LOGOFF),  "LOGOFF");
+    cr_assert_str_eq(log_levelstr(LOGERR),  "LOGERR");
     cr_assert_str_eq(log_levelstr(LOGWARN), "LOGWARN");
-    cr_assert_str_eq(log_levelstr(LOGALL), "LOGALL");
+    cr_assert_str_eq(log_levelstr(LOGALL),  "LOGALL");
 }
 
 Test(log, levelstr_unknown) {
-    cr_assert_str_eq(log_levelstr((Loglevel)42), "Unknown log level");
+    cr_assert_str_eq(log_levelstr((Loglevel)99), "Unknown log level");
 }
 
-/* --- lifecycle --- */
+/* -------------------------------------------------------------------------
+ * Lifecycle
+ * ------------------------------------------------------------------------- */
 
 Test(log, init_close) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
     cr_assert(log_isinit());
     cr_assert_not_null(log_file());
+
     log_close();
+
     cr_assert_not(log_isinit());
     cr_assert_null(log_file());
 }
 
-Test(log, init_idempotent) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
+Test(log, init_is_idempotent) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
     FILE *first = log_file();
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL)); /* 2nd call is no-op */
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
     cr_assert_eq(log_file(), first);
 }
 
-/* --- global switches --- */
+Test(log, close_resets_offset) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+    logenter("x");
+    (void)_LG_LV;
+    cr_assert_eq(log_offset(), 4);
 
-Test(log, offset_starts_zero) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
+    log_close();
     cr_assert_eq(log_offset(), 0);
 }
 
-Test(log, format_accepts_valid) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
-    cr_assert(log_format(LOG_FORMAT_EMPTY));
-    cr_assert(log_format(LOG_FORMAT_ONLY_FUNC));
-    cr_assert(log_format(LOG_FORMAT_ONLY_TIME));
+/* -------------------------------------------------------------------------
+ * Writing
+ * ------------------------------------------------------------------------- */
+
+Test(log, simple_message_verbatim) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "hello %s", "world");
+
+    log_close();
+    cr_assert_eq(slurp(log_path), 12);
+    cr_assert_str_eq(out_buf, "hello world\n");
 }
 
-Test(log, format_rejects_invalid) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
+Test(log, nonewline_suppresses_trailing_newline) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
 
-    /* library writes to stderr on purpose; silence it for this test */
-    fflush(stderr);
-    int saved_stderr = dup(fileno(stderr));
-    cr_assert_geq(saved_stderr, 0);
-    freopen("/dev/null", "w", stderr);
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE | LOG_NONEWLINE, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "abc");
 
-    cr_assert_not(log_format((LogFormat)999));
-
-    fflush(stderr);
-    dup2(saved_stderr, fileno(stderr));
-    close(saved_stderr);
+    log_close();
+    cr_assert_eq(slurp(log_path), 3);
+    cr_assert_str_eq(out_buf, "abc");
 }
 
-Test(log, prog_switch_returns_previous) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
-    /* default is "on" (true == 1) */
+Test(log, two_messages_appended) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "a");
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "b");
+
+    log_close();
+    cr_assert_eq(slurp(log_path), 4);
+    cr_assert_str_eq(out_buf, "a\nb\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Global switch
+ * ------------------------------------------------------------------------- */
+
+Test(log, switch_off_returns_prev_and_blocks) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
     cr_assert_eq(log_prog_switch(false), 1);
-    cr_assert_eq(log_prog_switch(true),  0);
-}
-
-/* --- writing and reading back --- */
-
-Test(log, write_simple_message) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
 
     log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
-            DEFAULT_MOD, __FILE__, __func__, __LINE__,
-            "hello %s", "world");
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "hidden");
     log_close();
 
-    FILE *f = fopen(test_log_path, "r");
-    cr_assert_not_null(f, "cannot open %s", test_log_path);
-
-    char buf[256] = {0};
-    cr_assert_not_null(fgets(buf, sizeof(buf), f));
-    fclose(f);
-
-    cr_assert_str_eq(buf, "hello world\n");
+    cr_assert_eq(slurp(log_path), 0);
 }
 
-Test(log, write_two_messages) {
-    cr_assert(log_init(test_log_path, false, LOG_FORMAT_ALL));
+Test(log, switch_on_restores_output) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+    log_prog_switch(false);
+
+    cr_assert_eq(log_prog_switch(true), 0);
 
     log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
-            DEFAULT_MOD, __FILE__, __func__, __LINE__, "first");
-    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
-            DEFAULT_MOD, __FILE__, __func__, __LINE__, "second");
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "yes");
     log_close();
 
-    FILE *f = fopen(test_log_path, "r");
-    cr_assert_not_null(f);
+    cr_assert_eq(slurp(log_path), 4);
+    cr_assert_str_eq(out_buf, "yes\n");
+}
 
-    char line1[64] = {0}, line2[64] = {0};
-    cr_assert_not_null(fgets(line1, sizeof(line1), f));
-    cr_assert_not_null(fgets(line2, sizeof(line2), f));
-    fclose(f);
+/* -------------------------------------------------------------------------
+ * Format selection
+ * ------------------------------------------------------------------------- */
 
-    cr_assert_str_eq(line1, "first\n");
-    cr_assert_str_eq(line2, "second\n");
+Test(log, format_rejects_out_of_range) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+    int saved = mute();
+    cr_assert_not(log_format((LogFormat)999));
+    unmute(saved);
+}
+
+Test(log, format_only_func_prefix) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ONLY_FUNC));
+
+    log_msg(LOG_MSG, 0, LOGALL,
+            DEFAULT_MOD, "some.c", "myfunc", 42, "body");
+
+    log_close();
+    cr_assert_gt(slurp(log_path), 0);
+    cr_assert(has("myfunc(42)"));
+    cr_assert(has("body"));
+}
+
+Test(log, format_only_file_prefix) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ONLY_FILE));
+
+    log_msg(LOG_MSG, 0, LOGALL,
+            DEFAULT_MOD, "src/some.c", "fn", 7, "msg");
+
+    log_close();
+    cr_assert_gt(slurp(log_path), 0);
+    cr_assert(has("src/some.c"));
+    cr_assert(has("msg"));
+}
+
+/* -------------------------------------------------------------------------
+ * Indentation
+ * ------------------------------------------------------------------------- */
+
+Test(log, enter_increments_offset) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+    cr_assert_eq(log_offset(), 0);
+
+    logenter("enter");
+    (void)_LG_LV;
+
+    cr_assert_eq(log_offset(), 4);
+}
+
+Test(log, leave_returns_offset_to_zero) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    log_msg(LOG_ENTER, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "enter");
+    cr_assert_eq(log_offset(), 4);
+
+    log_msg(LOG_LEAVE, 4, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "leave");
+    cr_assert_eq(log_offset(), 0);
+}
+
+Test(log, simple_enter_does_not_change_offset) {
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    log_msg(LOG_ENTER | LOG_SIMPLE, 0, LOGALL,
+            DEFAULT_MOD, __FILE__, __func__, __LINE__, "x");
+    cr_assert_eq(log_offset(), 0);
+}
+
+/* -------------------------------------------------------------------------
+ * Module filtering
+ * ------------------------------------------------------------------------- */
+
+Test(log, known_module_logall_emits) {
+    LogModlevel mods[] = {
+        { .module = "mymod", .level = LOGALL },
+        { .module = "",      .level = _LOGSTOP }
+    };
+    cr_assert(log_modinit(mods));
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            "mymod", __FILE__, __func__, __LINE__, "visible");
+    log_close();
+
+    cr_assert_eq(slurp(log_path), 8);
+    cr_assert_str_eq(out_buf, "visible\n");
+}
+
+Test(log, known_module_logoff_suppresses) {
+    LogModlevel mods[] = {
+        { .module = "mymod", .level = LOGOFF },
+        { .module = "",      .level = _LOGSTOP }
+    };
+    cr_assert(log_modinit(mods));
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    int saved = mute();
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            "mymod", __FILE__, __func__, __LINE__, "hidden");
+    unmute(saved);
+    log_close();
+
+    cr_assert_eq(slurp(log_path), 0);
+}
+
+Test(log, unknown_module_suppresses) {
+    LogModlevel mods[] = {
+        { .module = "known", .level = LOGALL },
+        { .module = "",      .level = _LOGSTOP }
+    };
+    cr_assert(log_modinit(mods));
+    cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
+
+    int saved = mute();
+    log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
+            "unknown", __FILE__, __func__, __LINE__, "hidden");
+    unmute(saved);
+    log_close();
+
+    cr_assert_eq(slurp(log_path), 0);
+}
+
+Test(log, modinit_rejects_double_init) {
+    LogModlevel mods[] = {
+        { .module = "m", .level = LOGALL },
+        { .module = "",  .level = _LOGSTOP }
+    };
+    int saved = mute();
+    cr_assert(log_modinit(mods));
+    cr_assert_not(log_modinit(mods));
+    unmute(saved);
+}
+
+Test(log, modinit_null_uses_default) {
+    cr_assert(log_modinit(NULL));
+}
+
+/* -------------------------------------------------------------------------
+ * Persistence
+ * ------------------------------------------------------------------------- */
+
+Test(log, modsave_writes_file) {
+    LogModlevel mods[] = {
+        { .module = "alpha", .level = LOGALL },
+        { .module = "beta",  .level = LOGOFF },
+        { .module = "",      .level = _LOGSTOP }
+    };
+    cr_assert(log_modinit(mods));
+
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/ngutils_mods_%d.txt", (int)getpid());
+    remove(path);
+
+    cr_assert(log_modsave(path));
+    cr_assert_gt(slurp(path), 0);
+    cr_assert(has("Total modules"));
+    cr_assert(has("alpha"));
+    cr_assert(has("beta"));
+
+    remove(path);
 }
