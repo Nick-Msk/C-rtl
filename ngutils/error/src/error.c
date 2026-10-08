@@ -152,14 +152,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 		g_currerr = 0, g_allocerr = ERROR_INIT_COUNT; 
 	}
 
-	if (g_currerr >= g_allocerr) {
-        if (!err_increase()) {
-            // Если не смогли расшириться — просто не записываем новую ошибку
-            return; 
-        }
-    }
-
-	Error 	*err = g_error + g_currerr++;		// current error, must be valid pointer
+	Error 	*err = g_error + g_currerr++;		// guaranteed valid: growth checked in err_raise()
 	logauto(err->type = tp);
 	logsimple("%s", msg);	// logsimple(msg, ap) ??? TODO:
 
@@ -192,7 +185,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 	}
 }
 
-//  setjmp/longsmp API
+//  setjmp/longjmp API
 
 /**
  * @brief Default SIGINT handler: longjmp back to the active try() site.
@@ -276,10 +269,7 @@ err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)
 	// put data into stack and raise sig (????)
 	if (g_currerr >= g_allocerr)
 		if (!err_increase())
-		{
-			logsimpleact(fprintf(stderr, "Unable to allocate more size\n"), "Unable");		// ?? TODO: logsimple ? or logstderr
-			err_raisesig(SIGTERM);
-		}
+			abort();	// heap exhausted — no safe way to continue
 
 	va_list		ap;
 	va_start(ap, msg);

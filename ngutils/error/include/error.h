@@ -121,8 +121,8 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
  */
 typedef struct ExceptionData
 {
-    jmp_buf     env;          ///< setjmp buffer (captured at try() call-site).
-    bool        init_flag;    ///< true while a try() block is active.
+    jmp_buf                 env;          ///< setjmp buffer (captured at try() call-site).
+    volatile sig_atomic_t   init_flag;    ///< true while a try() block is active.
 } ExceptionData;
 
 // ------------- CONSTRUCTORS / DESTRUCTORS ----------
@@ -194,7 +194,7 @@ err_sethandler(sig_t handler);
 static inline bool
 err_resetenv()
 {
-	return err_getexception_info()->init_flag = false;
+	return err_getexception_info()->init_flag = 0;
 }
 
 // ----------------- PRINTERS ----------------------
@@ -366,12 +366,14 @@ sig_str_desc(int signal)
 #define try() ({\
 	int res;\
     if (errenv.init_flag)\
-        logsimpleact(res = 9999, "Env buf is alredy activated");\
+        logsimpleact(res = 9999, "Env buf is already activated");\
 	else {\
     	res = setjmp(errenv.env);\
-    	if (res == 0) logsimpleact(errenv.init_flag = true, "Activating env buffer");\
-    	else logsimpleact(errenv.init_flag = false, "Returning from handler now! (res = %d) Clean env buffer", res);\
-	}\
+    	if (res == 0)\
+    		errenv.init_flag = 1;\
+    	else\
+    		errenv.init_flag = 0;\
+    }\
     res;\
 })
 
@@ -415,7 +417,7 @@ sig_str_desc(int signal)
 																				ACTION;\
                                                                                 _log_and_print(msg,  ##__VA_ARGS__);\
                                                                                 _log_and_print("%s", "\n");\
-																				err_raise(ERR_USER, sig, errcode, msg, ##__VA_ARGS__);\
+																				err_raise(TYPE, sig, errcode, msg, ##__VA_ARGS__);\
 																				_RETCODE;\
 																			})
 
