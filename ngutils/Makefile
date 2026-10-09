@@ -124,23 +124,29 @@ docs:
 
 # --- Docker ---
 
-DOCKER_IMAGE := ngutils-dev
+DOCKER_IMAGE 		:= ngutils-dev
+DOCKER_BUILD_DIR 	:= /tmp/ngutils-docker-build
 
 build-docker:
 	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
 
 test-docker:
-	@mkdir -p /tmp/ngutils-docker-build
+	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
+	    echo "too many projects for a single docker run" >&2; \
+	    exit 1; \
+	fi
+	@mkdir -p $(DOCKER_BUILD_DIR)
+	@$(foreach p,$(PROJECTS),mkdir -p $(DOCKER_BUILD_DIR)/$(p);)
 	@docker run --rm \
 		-v "$(CURDIR):/work" \
-		-v /tmp/ngutils-docker-build:/work/build \
+		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
+		-v $(DOCKER_BUILD_DIR):/work/build \
 		-w /work $(DOCKER_IMAGE) \
-	    sh -c 'REQUIRE_CRITERION=1 \
-	           make clean && \
-	           REQUIRE_CRITERION=1 make test'
+		sh -c 'REQUIRE_CRITERION=1 make test' 
 
 clean-docker:
-	@rm -rf /tmp/ngutils-docker-build
+	@rm -rf $(DOCKER_BUILD_DIR)
+	@echo "Cleaned: $(DOCKER_BUILD_DIR)"
 
 listall:
 	@echo "# Generic targets:"
