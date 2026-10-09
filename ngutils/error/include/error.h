@@ -28,7 +28,7 @@
 enum { ERROR_MESSAGE_MAX_LENGTH = 512 };
 
 /** Maximum nesting depth of try() blocks (static, thread-safe, no heap). */
-enum { ERR_MAX_TRY_CNT = 8 };
+enum { ERR_MAX_TRY_CNT = 16 };
 
 // ------------------- TYPES -----------------------
 
