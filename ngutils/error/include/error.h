@@ -22,6 +22,44 @@
 
 #include "log.h"
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+#define ERROR_VERSION_MAJOR 0
+#define ERROR_VERSION_MINOR 1
+#define ERROR_VERSION_PATCH 0
+
+#define ERROR_STRINGIFY_(x) #x
+#define ERROR_STRINGIFY(x)  ERROR_STRINGIFY_(x)
+
+/**
+ * @brief Current version as a string literal, e.g. @c "0.1.0" .
+ */
+#define ERROR_VERSION \
+    ERROR_STRINGIFY(ERROR_VERSION_MAJOR) "." \
+    ERROR_STRINGIFY(ERROR_VERSION_MINOR) "." \
+    ERROR_STRINGIFY(ERROR_VERSION_PATCH)
+
+/**
+ * @brief Current version string, e.g. @c "0.1.0" .
+ *
+ * Equivalent to @c *err_versions() .
+ *
+ * @return Pointer to a static string literal; do not free.
+ */
+extern const char *err_version(void);
+
+/**
+ * @brief Published versions, newest first, terminated by @c NULL .
+ *
+ * @c versions[0] is always the current version. Array and elements are
+ * read-only; do not free.
+ *
+ * @return Pointer to a static, NULL-terminated array of strings.
+ */
+extern const char *const *err_versions(void);
+
 // ----------- CONSTANTS AND GLOBALS ---------------
 
 /** Maximum length (including NUL terminator) of a single formatted error message. */

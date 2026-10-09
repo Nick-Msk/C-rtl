@@ -16,6 +16,25 @@
  * unwind to the most recent try() call-site.
  ********************************************************************/
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static const char 				*const versions[] = {
+    ERROR_VERSION,   /* current — always computed from macros */
+    NULL
+};
+
+const char *const *
+err_versions(void) {
+    return versions;
+}
+
+const char *
+err_version(void) {
+    return versions[0];
+}
+
 // static globals
 
 /** Growth step (number of Error slots) used when the heap buffer is extended. */
