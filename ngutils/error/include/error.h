@@ -27,6 +27,9 @@
 /** Maximum length (including NUL terminator) of a single formatted error message. */
 enum { ERROR_MESSAGE_MAX_LENGTH = 512 };
 
+/** Maximum nesting depth of try() blocks (static, thread-safe, no heap). */
+enum { ERR_MAX_TRY_CNT = 8 };
+
 // ------------------- TYPES -----------------------
 
 /**
@@ -105,24 +108,40 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
 /**
  * @brief Thread-local environment for the setjmp/longjmp "exception" mechanism.
  *
- * Usage pattern:
+ * Supports up to @ref ERR_MAX_TRY_CNT nested try() blocks via a static
+ * stack of jmp_bufs (thread-safe, no heap allocation). The signal handler
+ * always longjmps to the most recent (innermost) capture site.
+ *
+ * Usage pattern (single level):
  * @code
  *   if (try() == 0) {
- *       // "try" block – setjmp captured here
  *       do_work_that_may_raise();
  *   } else {
- *       // "catch" block – reached via longjmp from signal handler
  *       handle_exception();
  *   }
  * @endcode
  *
- * `init_flag` distinguishes an active setjmp site from a fresh/uninitialised
- * environment. The signal handler checks this flag before longjmp'ing.
+ * Usage pattern (nested):
+ * @code
+ *   if (try() == 0) {          // depth 0
+ *       outer_work();
+ *       if (try() == 0) {      // depth 1
+ *           inner_work();      // longjmp lands at innermost (depth 1) first
+ *       } else {
+ *           // inner catch
+ *       }
+ *   } else {
+ *       // outer catch
+ *   }
+ * @endcode
+ *
+ * `depth` tracks the number of currently active try() blocks. The signal
+ * handler checks this before longjmp'ing to `env[depth-1]`.
  */
 typedef struct ExceptionData
 {
-    jmp_buf                 env;          ///< setjmp buffer (captured at try() call-site).
-    volatile sig_atomic_t   init_flag;    ///< true while a try() block is active.
+    jmp_buf                 env[ERR_MAX_TRY_CNT];   ///< Stack of setjmp buffers.
+    volatile sig_atomic_t   depth;                  ///< Number of active try() blocks (0 = none).
 } ExceptionData;
 
 // ------------- CONSTRUCTORS / DESTRUCTORS ----------
@@ -187,14 +206,14 @@ err_sethandler(sig_t handler);
 /**
  * @brief Reset the exception environment flag (inline convenience).
  *
- * Equivalent to setting `errenv.init_flag = false`.
+ * Wounds the try-stack depth to zero, effectively cancelling all active try() blocks.
  *
- * @return Always `false` (the new value of init_flag).
+ * @return Always `false` (depth is now 0).
  */
 static inline bool
 err_resetenv()
 {
-	return (err_getexception_info()->init_flag = 0);
+	return (err_getexception_info()->depth = 0);
 }
 
 // ----------------- PRINTERS ----------------------
@@ -326,7 +345,7 @@ sig_str_desc(int signal)
  * @brief Convenience accessor for the thread-local exception environment.
  *
  * Expands to `(*err_getexception_info())`, giving lvalue access to the
- * `ExceptionData` fields (`.env`, `.init_flag`).
+ * `ExceptionData` fields ( `.env[]`, `.depth` ).
  */
 #define errenv              (*err_getexception_info())
 
@@ -357,22 +376,21 @@ sig_str_desc(int signal)
  *   }
  * @endcode
  *
- * @note If `errenv.init_flag` is already set (nested try), the macro does
- *       NOT call setjmp again; it returns a sentinel (9999) to signal a
- *       programming error.
+ * @note If `errenv.depth >= ERR_MAX_TRY_CNT` (too many nested try blocks),
+ *       the macro returns a sentinel (9999) to signal a programming error.
  *
  * @return 0 on first entry; non-zero (jump code) when returning from longjmp.
  */
 #define try() ({\
 	int res;\
-    if (errenv.init_flag)\
+    if (errenv.depth >= ERR_MAX_TRY_CNT)\
         logsimpleact(res = 9999, "Env buf is already activated");\
 	else {\
-    	res = setjmp(errenv.env);\
+    	res = setjmp(errenv.env[errenv.depth]);\
     	if (res == 0)\
-    		errenv.init_flag = 1;\
+    		errenv.depth++;\
     	else\
-    		errenv.init_flag = 0;\
+    		errenv.depth--;\
     }\
     res;\
 })

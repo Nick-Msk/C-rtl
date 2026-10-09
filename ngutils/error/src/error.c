@@ -194,7 +194,6 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 		break;
 	}
 
-	logsimple("%s", err->msg);
 }
 
 //  setjmp/longjmp API
@@ -202,7 +201,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 /**
  * @brief Default SIGINT handler: longjmp back to the active try() site.
  *
- * If no try() environment is active:
+ * If no try() block is active (depth == 0):
  *  - SIGINT → silently ignored.
  *  - any other signal → raise SIGSTOP to park the process.
  *
@@ -211,12 +210,12 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 static void
 err_default_handler(int sig)
 {
-    if (!errenv.init_flag)
+    if (errenv.depth == 0)
     {
 		if (sig != SIGINT)
 			raise(SIGSTOP);
     } else {
-    	longjmp(errenv.env, ERR_DEFHANDLER_JUMP_CODE);
+    	longjmp(errenv.env[errenv.depth - 1], ERR_DEFHANDLER_JUMP_CODE);
     }
 }
 
