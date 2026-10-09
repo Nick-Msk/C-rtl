@@ -55,6 +55,22 @@ static _Thread_local ExceptionData    g_env;
 // ------------------------------ Utilities ------------------------
 
 /**
+ * @brief Ensure g_error points to a valid buffer (first call per thread).
+ *
+ * _Thread_local pointers start as NULL; this lazily binds to the static
+ * initial buffer. Call at the top of any function that dereferences g_error.
+ */
+static inline void
+err_ensurebuf(void)
+{
+    if (g_error == NULL) {
+        g_error    = g_error_init;
+        g_currerr  = 0;
+        g_allocerr = ERROR_INIT_COUNT;
+    }
+}
+
+/**
  * @brief Convert an ErrorType to a printable string.
  * @param t  The error type.
  * @return   "ERR_USER", "ERR_SYS", or "Unknown".
@@ -76,7 +92,7 @@ err_type_text(ErrorType t)
 static inline bool
 err_isinit(void)
 {
-	logsimple("%s", bool_str(g_error == g_error_init));
+	err_ensurebuf();
 	return g_error == g_error_init;
 }
 
@@ -145,11 +161,7 @@ err_increase(void)
 static void
 err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
-	// TEMPORARY SOLUTION TO RESOLV thread local
-	if (g_error == NULL) {
-		g_error = g_error_init;
-		g_currerr = 0, g_allocerr = ERROR_INIT_COUNT; 
-	}
+	err_ensurebuf();
 
 	Error 	*err = g_error + g_currerr++;		// guaranteed valid: growth checked in err_raise()
 	logauto(err->type = tp);
@@ -326,6 +338,7 @@ extern int
 err_fprintstacktrace(FILE *out)
 {
 	int		res = 0;
+	err_ensurebuf();
 	logauto(g_currerr);
 
 	res += fprintf(out, "\n------------- PRINT STACK TRACE START -----------\n\n");
