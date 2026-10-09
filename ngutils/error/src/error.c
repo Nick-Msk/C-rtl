@@ -210,18 +210,11 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 static void
 err_default_handler(int sig)
 {
-    logsimple("HANDLER %d", sig);
     if (!errenv.init_flag)
     {
-        logsimple("Env buffer is empty");
-		if (sig == SIGINT)
-			logsimple("No env buffer - just working as igrone SIGINT");
-		else {
-			logsimpleerr(0, "terminating SIGSTOP");
-        	raise(SIGSTOP);
-		}
+		if (sig != SIGINT)
+			raise(SIGSTOP);
     } else {
-        logsimple("make a longjmp... init flag %s, code %d", bool_str(errenv.init_flag), ERR_DEFHANDLER_JUMP_CODE);
     	longjmp(errenv.env, ERR_DEFHANDLER_JUMP_CODE);
     }
 }
