@@ -126,6 +126,8 @@ docs:
 
 DOCKER_IMAGE 		:= ngutils-dev
 DOCKER_BUILD_DIR 	:= /tmp/ngutils-docker-build
+# Strip jobserver flags that are host-specific and meaningless in a container
+DOCKER_MAKEFLAGS = $(filter-out --jobserver%,$(MAKEFLAGS))
 
 build-docker:
 	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
@@ -138,6 +140,7 @@ test-docker:
 	@mkdir -p $(DOCKER_BUILD_DIR)
 	@$(foreach p,$(PROJECTS),mkdir -p $(DOCKER_BUILD_DIR)/$(p);)
 	@docker run --rm \
+		-e MAKEFLAGS="$(DOCKER_MAKEFLAGS)" \
 		-v "$(CURDIR):/work" \
 		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
 		-v $(DOCKER_BUILD_DIR):/work/build \
