@@ -165,7 +165,6 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 
 	Error 	*err = g_error + g_currerr++;		// guaranteed valid: growth checked in err_raise()
 	logauto(err->type = tp);
-	logsimple("%s", msg);	// logsimple(msg, ap) ??? TODO:
 
 	switch (tp){
 		case ERR_USER:
@@ -194,6 +193,8 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 			snprintf(err->msg, sizeof err->msg, "Unknown error type (%d)", tp);
 		break;
 	}
+
+	logsimple("%s", err->msg);
 }
 
 //  setjmp/longjmp API
