@@ -14,7 +14,7 @@ NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
 .PHONY: help list listall docs \
-		build-docker test-docker clean-docker \
+		build-docker test-docker clean-docker check-docker \
 		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
@@ -38,6 +38,7 @@ help:
 	@echo "  make docs             build doxygen HTML"
 	@echo "  make build-docker     build the Linux dev image"
 	@echo "  make clean-docker     delete the Linux dev image"
+	@echo "  make check-docker     verify docker CLI + daemon"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
 	@echo ""
 	@echo "Projects:"
@@ -124,22 +125,40 @@ docs:
 
 # --- Docker ---
 
+DOCKER 				?= docker
 DOCKER_IMAGE 		:= ngutils-dev
 DOCKER_BUILD_DIR 	:= /tmp/ngutils-docker-build
 # Strip jobserver flags that are host-specific and meaningless in a container
 DOCKER_MAKEFLAGS = $(filter-out --jobserver%,$(MAKEFLAGS))
 
-build-docker:
-	docker build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
+# --- docker helpers ---
+# Check that the Docker CLI is present and the daemon responds.
+check-docker:
+	@command -v $(DOCKER) >/dev/null 2>&1 || { \
+	    echo "ERROR: docker CLI not found in PATH" >&2; \
+	    echo "  macOS:  brew install --cask docker  (or: brew install colima)" >&2; \
+	    echo "  Debian: sudo apt install docker.io" >&2; \
+	    echo "  Fedora: sudo dnf install docker" >&2; \
+	    exit 1; \
+	}
+	@$(DOCKER) info >/dev/null 2>&1 || { \
+	    echo "ERROR: docker daemon is not running" >&2; \
+	    echo "  macOS:  open -a Docker   (wait until the menu bar icon stops animating)" >&2; \
+	    echo "  Linux:  sudo systemctl start docker" >&2; \
+	    exit 1; \
+	}
 
-test-docker:
+build-docker: check-docker
+	$(DOCKER) build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
+
+test-docker: check-docker
 	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
 	    echo "too many projects for a single docker run" >&2; \
 	    exit 1; \
 	fi
 	@mkdir -p $(DOCKER_BUILD_DIR)
 	@$(foreach p,$(PROJECTS),mkdir -p $(DOCKER_BUILD_DIR)/$(p);)
-	@docker run --rm \
+	@$(DOCKER) run --rm \
 		-e MAKEFLAGS="$(DOCKER_MAKEFLAGS)" \
 		-v "$(CURDIR):/work" \
 		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
