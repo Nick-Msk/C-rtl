@@ -706,3 +706,66 @@ Test(error_threads, per_thread_stack) {
     /* main thread's stack must be untouched by workers */
     cr_assert_eq(err_count(), 0);
 }
+
+static void
+deep_worker(int depth)
+{
+    if (depth == 0) {
+        err_raise(ERR_USER, ERR_OUT_OF_RANGE, "bottom reached");
+        return;   /* unreachable in practice (err_raise never returns
+                   * here — it either siglongjmps or raises SIGINT),
+                   * but tells the compiler the path terminates. */
+    }
+    deep_worker(depth - 1);
+}
+
+static int
+cross_function_try(int depth)
+{
+    volatile int caught = 0;
+    TRY() {
+        deep_worker(depth);
+    } else {
+        caught = 1;
+    }
+    return caught;
+}
+
+Test(error_try, cross_function_siglongjmp) {
+    cr_assert_eq(cross_function_try(10), 1);
+    cr_assert_eq(errenv.depth, 0);
+    cr_assert_eq(errenv.overallcnt, 0);
+}
+
+Test(error_trace, long_message_truncates_safely) {
+    err_clean(true);
+
+    char big[4096];
+    memset(big, 'x', sizeof big - 1);
+    big[sizeof big - 1] = '\0';
+
+    TRY() {
+        err_raise(ERR_USER, ERR_NULLABLE_PTR, "%s", big);
+    } else {}
+
+    cr_assert_eq(err_count(), 1);
+
+    char buf[8192] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "xxxx") != NULL, "buf: %s", buf);
+    
+    size_t trace_len = strlen(buf);
+    cr_assert_lt(trace_len, sizeof buf - 1);
+}
+
+Test(error_try, try_without_else) {
+    volatile int reached = 0;
+    TRY() {
+        err_raise(ERR_USER, ERR_NULLABLE_PTR, "boom");
+        reached = 1;   /* не должно выполниться */
+    }
+    cr_assert_eq(reached, 0);
+    cr_assert_eq(errenv.depth, 0);
+}
+
