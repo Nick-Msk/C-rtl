@@ -9,6 +9,46 @@
 #include <unistd.h>
 
 /* -------------------------------------------------------------------------
+ * Fixtures
+ * ------------------------------------------------------------------------- */
+
+static char log_path[256];
+static int  g_saved_stderr = -1;
+
+static void setup(void) {
+    snprintf(log_path, sizeof(log_path),
+             "/tmp/test_error_%d.log", (int)getpid());
+    log_init(log_path, false, LOG_FORMAT_EMPTY);
+    err_clean(true);
+    err_resetenv();
+
+    /* Silence stderr: the raise macros print diagnostics there by design.
+     * Without this, every err_raise in a test floods Criterion output. */
+    fflush(stderr);
+    g_saved_stderr = dup(fileno(stderr));
+    freopen("/dev/null", "w", stderr);
+}
+
+static void teardown(void) {
+    err_clean(true);
+    err_resetenv();
+    log_close();
+    remove(log_path);
+
+    fflush(stderr);
+    if (g_saved_stderr >= 0) {
+        dup2(g_saved_stderr, fileno(stderr));
+        close(g_saved_stderr);
+        g_saved_stderr = -1;
+    }
+}
+
+TestSuite(error_try,   .init = setup, .fini = teardown);
+TestSuite(error_trace, .init = setup, .fini = teardown);
+TestSuite(error_sys,   .init = setup, .fini = teardown);
+TestSuite(error,       .init = setup, .fini = teardown);   /* version tests */
+
+/* -------------------------------------------------------------------------
  * Version
  * ------------------------------------------------------------------------- */
 
@@ -32,29 +72,6 @@ Test(error, versions_terminated_by_null) {
     cr_assert_geq(n, 1);
     cr_assert_null(v[n]);
 }
-
-/* -------------------------------------------------------------------------
- * Fixtures
- * ------------------------------------------------------------------------- */
-
-static char log_path[256];
-
-static void setup(void) {
-    snprintf(log_path, sizeof(log_path),
-             "/tmp/test_error_%d.log", (int)getpid());
-    log_init(log_path, false, LOG_FORMAT_EMPTY);
-    err_clean(true);
-    err_resetenv();
-}
-
-static void teardown(void) {
-    err_clean(true);
-    err_resetenv();
-    log_close();
-    remove(log_path);
-}
-
-TestSuite(error_try, .init = setup, .fini = teardown);
 
 /* -------------------------------------------------------------------------
  * TRY: normal path, catch on raise, loop stability
