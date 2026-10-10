@@ -43,6 +43,8 @@ enum { ERROR_INIT_COUNT = 128 };
 /** Jump code passed via longjmp from the default signal handler. */
 static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
 
+static const int						ERR_DEFAULT_INCREMENT  	 = 16;
+
 // internal types
 
 /**
@@ -112,6 +114,33 @@ err_isinit(void)
 	return g_error == g_error_init;
 }
 
+static int
+err_increase(void)
+{
+	if (g_currerr < g_allocerr)
+		return g_allocerr;
+
+    Error   *err;
+    int      newalloc = g_allocerr + ERR_DEFAULT_INCREMENT;
+
+    if (err_isinit())
+    {
+        if ( (err = malloc(newalloc * sizeof(Error))) == 0)
+            return logsimple(0, "Unable to init alloc of %d elements", newalloc);
+        // copy prev
+        memcpy(err, g_error_init, g_currerr * sizeof(Error));
+    }
+    else {
+        if ( (err = realloc(g_error, newalloc * sizeof(Error))) == 0)
+            return logsimpleerr(0, "Unable to extend error array to %d", newalloc);
+    }
+
+    g_error    = err;
+    g_allocerr = newalloc;
+    return logsimpleret(g_allocerr, "Error array is increased to %d", g_allocerr);
+}
+
+
 /**
  * @brief Push a new error record onto the top of the per-thread stack.
  *
@@ -131,6 +160,11 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
 	int saved_errno = errno;
 	err_ensurebuf();
+
+    if (!err_increase()) {
+		logsimple("Unable to increase err buffer");
+        return; 
+    }
 
 	Error 	*err = g_error + g_currerr++;
 	err->type = tp;
