@@ -467,7 +467,6 @@ err_getcurrsigbuf () {
  * @param retcode  Value the macro expands to (return / assignment target).
  * @param TYPE     ErrorType (ERR_USER or ERR_SYS).
  * @param ACTION   Statement to execute before raising (e.g. `free(p);`).
- * @param sig      Signal to raise, or 0 to suppress.
  * @param errcode  ErrorCode value.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments for @p msg.
@@ -494,12 +493,11 @@ err_getcurrsigbuf () {
  *
  * @param retcode  Value to return/assign after the raise.
  * @param ACTION   Cleanup statement (e.g. `free(buf);`).
- * @param sig      Signal number to raise (e.g. SIGINT), or 0.
  * @param errcode  ErrorCode value.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments.
  */
-#define _userraiseactsig(retcode, ACTION, sig, errcode, msg, ...)	_generalraiseactsig(retcode, ERR_USER, ACTION, sig	, errcode, msg, ##__VA_ARGS__)
+#define _userraiseactsig(retcode, ACTION, errcode, msg, ...)	_generalraiseactsig(retcode, ERR_USER, ACTION, errcode, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a user error with a cleanup ACTION, no signal.
@@ -520,42 +518,17 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments for @p msg.
  * @return         @p retcode (after side-effects).
  */
-#define	userraiseact(retcode, ACTION, errcode, msg, ...)			_userraiseactsig(retcode, ACTION, 0					, errcode, msg, ##__VA_ARGS__)
-
-/**
- * @brief Raise a user error with cleanup ACTION and SIGINT (interrupt/exception).
- *
- * Same as userraiseact but raises SIGINT, which will be intercepted by
- * an active `try()` block (longjmp).
- *
- * **Usage:**
- * @code
- *   if (try() == 0) {
- *       userraiseactint(free(p), ERR_GUARD_RAISE, "invariant broken");
- *       // normal path...
- *   } else {
- *       // caught here
- *   }
- * @endcode
- *
- * @param ACTION   Cleanup statement.
- * @param errcode  ErrorCode value.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- * @return         0 (always; signal causes the actual control transfer).
- */
-#define userraiseactint(ACTION, errcode, msg, ...)         			_userraiseactsig(0, ACTION, SIGINT					, errcode, msg, ##__VA_ARGS__)
+#define	userraiseact(retcode, ACTION, errcode, msg, ...)			_userraiseactsig(retcode, ACTION, errcode, msg, ##__VA_ARGS__)
 
 /**
  * @brief Internal: user error with signal, no ACTION.
  *
  * @param retcode  Value to return/assign after the raise.
- * @param sig      Signal number to raise, or 0.
  * @param errcode  ErrorCode value.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments.
  */
-#define _userraisesig(retcode, sig, errcode, msg, ...)				_userraiseactsig(retcode, , sig						, errcode, msg, ##__VA_ARGS__)
+#define _userraisesig(retcode, errcode, msg, ...)				_userraiseactsig(retcode, , errcode, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a user error, no ACTION, no signal.
@@ -573,26 +546,7 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define userraise(retcode, errcode, msg, ...)          				_userraisesig(retcode, 0							, errcode, msg, ##__VA_ARGS__)
-
-/**
- * @brief Raise a user error with SIGINT (exception / interrupt), no ACTION.
- *
- * Records the error and raises SIGINT. If a `try()` is active, control
- * transfers to the catch block via longjmp.
- *
- * **Usage:**
- * @code
- *   if (invalid) userraiseint(ERR_INVALID_BINARY_DATA, "bad magic at offset %d", off);
- * @endcode
- *
- * @param errcode  ErrorCode value.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- * @return         0 (signal causes actual control transfer).
- */
-#define	userraiseint(errcode, msg, ...)								_userraisesig(0, SIGINT								, errcode, msg, ##__VA_ARGS__)
-
+#define userraise(retcode, errcode, msg, ...)          				_userraisesig(retcode, errcode, msg, ##__VA_ARGS__)
 
 // SYSTEM block
 // system, with action and signal (common)
@@ -605,11 +559,10 @@ err_getcurrsigbuf () {
  *
  * @param retcode  Value to return/assign after the raise.
  * @param ACTION   Cleanup statement.
- * @param sig      Signal to raise, or 0.
  * @param msg      printf-style format string (strerror is prepended automatically).
  * @param ...      Variadic arguments.
  */
-#define	_sysraiseactsig(retcode, ACTION, sig, msg, ...)      		_generalraiseactsig(retcode, ERR_SYS, ACTION, sig, 0, msg, ##__VA_ARGS__)
+#define	_sysraiseactsig(retcode, ACTION, msg, ...)      		_generalraiseactsig(retcode, ERR_SYS, ACTION, 0, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a system error with cleanup ACTION, no signal.
@@ -628,29 +581,16 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define	sysraiseact(retcode, ACTION, msg, ...)            			_sysraiseactsig(retcode, ACTION, 0					, msg, ##__VA_ARGS__)
-
-/**
- * @brief Raise a system error with cleanup ACTION and SIGINT (exception).
- *
- * Same as sysraiseact but raises SIGINT for try() interception.
- *
- * @param ACTION   Cleanup statement.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- * @return         0.
- */
-#define	sysraiseactint(ACTION, msg, ...)							_sysraiseactsig(0, ACTION, SIGINT					, msg, ##__VA_ARGS__)
+#define	sysraiseact(retcode, ACTION, msg, ...)            			_sysraiseactsig(retcode, ACTION, msg, ##__VA_ARGS__)
 
 /**
  * @brief Internal: system error with signal, no ACTION.
  *
  * @param retcode  Value to return/assign after the raise.
- * @param sig      Signal to raise, or 0.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments.
  */
-#define	_sysraisesig(retcode, sig, msg, ...)               			_sysraiseactsig(retcode, , sig						, msg, ##__VA_ARGS__)
+#define	_sysraisesig(retcode, msg, ...)               			_sysraiseactsig(retcode, , msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a system error, no ACTION, no signal.
@@ -667,23 +607,6 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define sysraise(retcode, msg, ...)									_sysraisesig(retcode, 0								, msg, ##__VA_ARGS__)
-
-/**
- * @brief Raise a system error with SIGINT (exception / interrupt), no ACTION.
- *
- * Records `errno` + message and raises SIGINT. If a `try()` is active,
- * control transfers to the catch block via longjmp.
- *
- * **Usage:**
- * @code
- *   if (read(fd, buf, sz) == -1) sysraiseint("unexpected read failure on fd %d", fd);
- * @endcode
- *
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- * @return         0 (signal causes actual control transfer).
- */
-#define sysraiseint(msg, ...)										_sysraisesig(0, SIGINT								, msg, ##__VA_ARGS__)
+#define sysraise(retcode, msg, ...)									_sysraisesig(retcode, msg, ##__VA_ARGS__)
 
 #endif /* !ERROR_H */
