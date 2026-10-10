@@ -180,7 +180,16 @@ typedef struct ExceptionData
 {
     sigjmp_buf              env[ERR_MAX_TRY_CNT];   ///< Stack of setjmp buffers.
     int                     depth;                  ///< Number of active try() blocks (0 = none).
+    int                     overallcnt;             ///< Number of crossing ERR_MAX_TRY_CNT.
 } ExceptionData;
+
+/**
+ * @brief Convenience accessor for the thread-local exception environment.
+ *
+ * Expands to `(*err_getexception_info())`, giving lvalue access to the
+ * `ExceptionData` fields ( `.env[]`, `.depth` ).
+ */
+#define errenv              (*err_getexception_info())
 
 // ------------- CONSTRUCTORS / DESTRUCTORS ----------
 
@@ -234,12 +243,13 @@ err_getexception_info(void);
  *
  * Wounds the try-stack depth to zero, effectively cancelling all active try() blocks.
  *
- * @return Always `false` (depth is now 0).
  */
-static inline bool
+static inline void
 err_resetenv()
 {
-	return (err_getexception_info()->depth = 0);
+	errenv.depth = 0;
+    errenv.overallcnt = 0;
+    // free error buf? THINK:
 }
 
 /**
@@ -378,28 +388,27 @@ sig_str_desc(int signal)
 
 // ------------------ ETC. -------------------------
 
-// setjmp/longjmp API
-
-/**
- * @brief Convenience accessor for the thread-local exception environment.
- *
- * Expands to `(*err_getexception_info())`, giving lvalue access to the
- * `ExceptionData` fields ( `.env[]`, `.depth` ).
- */
-#define errenv              (*err_getexception_info())
-
 static inline int
 err_prevcnt(void) {
-	if (--errenv.depth < 0)
-		errenv.depth = ERR_MAX_TRY_CNT;
+	if (--errenv.depth < 0) {
+		errenv.depth = ERR_MAX_TRY_CNT - 1;
+        errenv.overallcnt--;
+    }
 	return errenv.depth;
 }
 
 static inline int
 err_nextcnt(void) {
-	if (++errenv.depth >= ERR_MAX_TRY_CNT)
+	if (++errenv.depth >= ERR_MAX_TRY_CNT) {
 		errenv.depth = 0;
+        errenv.overallcnt++;
+    }
 	return errenv.depth;
+}
+
+static inline sigjmp_buf *
+err_getcurrsigbuf () {
+    return errenv.env + errenv.depth;
 }
 
 /**
@@ -429,7 +438,7 @@ err_nextcnt(void) {
  * @return 0 on first entry; non-zero (jump code) when returning from longjmp.
  */
 #define TRY() \
-    if (sigsetjmp(errenv.env[errenv.depth % ERR_TRY_RING], 1) == 0) \
+    if (sigsetjmp(*err_getcurrsigbuf(), 1) == 0) \
         for (int _once = (err_nextcnt(), 1); \
              _once; \
              _once = (err_prevcnt(), 0))
@@ -465,7 +474,7 @@ err_nextcnt(void) {
  *
  * @note This is an internal macro; use the public wrappers below.
  */
-#define	_generalraiseactsig(retcode, TYPE, ACTION, sig, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
+#define	_generalraiseactsig(retcode, TYPE, ACTION, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
                                                                                 if (TYPE == ERR_SYS){\
                                                                                     _log_and_print("%s\t", strerror(errno));\
                                                                                     _log_and_print("%s", "\n");\
@@ -473,7 +482,7 @@ err_nextcnt(void) {
 																				ACTION;\
                                                                                 _log_and_print(msg,  ##__VA_ARGS__);\
                                                                                 _log_and_print("%s", "\n");\
-																				err_raise(TYPE, sig, errcode, msg, ##__VA_ARGS__);\
+																				err_raise(TYPE, errcode, msg, ##__VA_ARGS__);\
 																				_RETCODE;\
 																			})
 

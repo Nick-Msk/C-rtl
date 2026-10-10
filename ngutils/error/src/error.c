@@ -126,7 +126,7 @@ err_increase(void)
     if (err_isinit())
     {
         if ( (err = malloc(newalloc * sizeof(Error))) == 0)
-            return logsimple(0, "Unable to init alloc of %d elements", newalloc);
+            return logsimpleerr(0, "Unable to init alloc of %d elements", newalloc);
         // copy prev
         memcpy(err, g_error_init, g_currerr * sizeof(Error));
     }
@@ -271,7 +271,7 @@ err_clean(bool force){
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments matching @p msg.
  */
-extern void
+void
 err_raise(ErrorType tp, int errcode, const char *msg, ...)
 {
 	va_list		ap;
@@ -280,9 +280,16 @@ err_raise(ErrorType tp, int errcode, const char *msg, ...)
 	err_put(tp, errcode, msg, ap);
 	va_end(ap);
 
+	if (errenv.overallcnt == 0 && errenv.depth == 0) {
+        /* No active TRY — cannot siglongjmp. Raise a real SIGINT so a
+         * debugger or core dump can show what happened. */
+        logsimple("err_raise: no active TRY block");
+        raise(SIGINT);
+        return;
+    }
 
-   	errenv.depth--;
-    siglongjmp(errenv.env[errenv.depth], ERR_DEFHANDLER_JUMP_CODE);
+	err_prevcnt();
+    siglongjmp(*err_getcurrsigbuf(), ERR_DEFHANDLER_JUMP_CODE);
 }
 
 // setjmp/longjmp API
@@ -307,7 +314,7 @@ err_getexception_info(void)
  * @param[out] out  Destination stream.
  * @return Total characters written, or negative on I/O error.
  */
-extern int
+int
 err_fprintstacktrace(FILE *out)
 {
 	int		res = 0;
