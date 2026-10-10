@@ -507,3 +507,36 @@ Test(error_sys, sysraise_retcode_when_outside_try, .signal = SIGINT) {
     /* killed by SIGINT — .signal flag makes this a pass */
 }
 
+Test(error_sys, sysraise_preserves_errno) {
+    err_clean(true);
+    errno = ENOENT;
+
+    TRY() {
+        sysraise(0, "cannot open");
+    } else {}
+
+    char buf[2048] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "[2]") != NULL,
+              "errno must be ENOENT(2), buf: %s", buf);
+    cr_assert(strstr(buf, "No such file or directory") != NULL,
+              "strerror missing, buf: %s", buf);
+}
+
+static void clobber_errno(void) { errno = EINVAL; }
+
+Test(error_sys, sysraiseact_action_does_not_clobber_errno) {
+    err_clean(true);
+    errno = ENOENT;
+
+    TRY() {
+        sysraiseact(0, clobber_errno(), "cannot open");
+    } else {}
+
+    char buf[2048] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "[2]") != NULL,
+              "ACTION clobbered errno; expected ENOENT(2), buf: %s", buf);
+}

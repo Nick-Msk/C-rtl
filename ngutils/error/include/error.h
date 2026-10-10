@@ -473,17 +473,20 @@ err_getcurrsigbuf () {
  *
  * @note This is an internal macro; use the public wrappers below.
  */
-#define	_generalraiseact(retcode, TYPE, ACTION, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
-                                                                                if (TYPE == ERR_SYS){\
-                                                                                    _log_and_print("%s\t", strerror(errno));\
-                                                                                    _log_and_print("%s", "\n");\
-                                                                                }\
-																				ACTION;\
-                                                                                _log_and_print(msg,  ##__VA_ARGS__);\
-                                                                                _log_and_print("%s", "\n");\
-																				err_raise(TYPE, errcode, msg, ##__VA_ARGS__);\
-																				_RETCODE;\
-																			})
+#define	_generalraiseact(retcode, TYPE, ACTION, errcode, msg, ...) \
+	({ 	typeof(retcode) _RETCODE = (retcode);\
+        int _err_save = errno; \
+        if (TYPE == ERR_SYS){ \
+            _log_and_print("%s\t", strerror(_err_save)); \
+            _log_and_print("%s", "\n"); \
+        } \
+        ACTION; \
+        _log_and_print(msg,  ##__VA_ARGS__); \
+        _log_and_print("%s", "\n"); \
+        errno = _err_save; \
+        err_raise(TYPE, errcode, msg, ##__VA_ARGS__); \
+        _RETCODE; \
+    })
 
 /**
  * @brief Raise a user error with a cleanup ACTION, no signal.
