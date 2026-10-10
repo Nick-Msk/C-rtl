@@ -215,7 +215,7 @@ err_msg(int code, char *buf, size_t sz)
     }
     return (int)strlen(buf);
 #else
-    if (strerror_r(code, buf, sz) != 0) {
+    if (strerror_r(code, buf, sz) == 0) {
         int n = snprintf(buf, sz, "errno %d", code);
         return n < 0 ? 0 : (n < (int)sz ? n : (int)sz - 1);
     }
