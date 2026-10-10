@@ -25,6 +25,9 @@ all:
 rnd_test: src/rnd_test.c
 	$(CC) $(CFLAGS) $^ -o out/$@_test
 
+strerr_check: src/strerr_check.c
+	$(CC) $(CFLAGS) $^ -o out/$@_test
+
 malloc_test: src/malloc_test.c
 	$(CC) $(CFLAGS) $^ -o out/$@_test
 
