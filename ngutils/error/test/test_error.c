@@ -466,3 +466,44 @@ Test(error_trace, message_buffer_grows_beyond_initial) {
     cr_assert(strstr(buf, "entry 199") != NULL, "last entry missing");
 }
 
+/* -------------------------------------------------------------------------
+ * sys raise
+ * ------------------------------------------------------------------------- */
+
+Test(error_sys, sysraise_records_errno) {
+    err_clean(true);
+    errno = ENOENT;
+
+    TRY() {
+        sysraise(0, "cannot open %s", "/tmp/nope");
+    } else {}
+
+    char buf[2048] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "ERR_SYS")                != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "[2]")                    != NULL, "buf: %s", buf);  /* ENOENT == 2 */
+    cr_assert(strstr(buf, "No such file or directory") != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "cannot open /tmp/nope")  != NULL, "buf: %s", buf);
+}
+
+Test(error_sys, sysraiseact_runs_cleanup) {
+    err_clean(true);
+    errno = EACCES;
+
+    volatile int cleaned = 0;
+
+    TRY() {
+        sysraiseact(0, cleaned = 1, "permission denied");
+    } else {}
+
+    cr_assert_eq(cleaned, 1, "ACTION must run before raise");
+}
+
+Test(error_sys, sysraise_retcode_when_outside_try, .signal = SIGINT) {
+    err_resetenv();
+    errno = ENOENT;
+    sysraise(0, "no try");
+    /* killed by SIGINT — .signal flag makes this a pass */
+}
+
