@@ -10,7 +10,7 @@ link the whole set as a single archive.
 |---|---|---|
 | [`bool`](bool/)   | 0.2.0 | `bool` ↔ string conversion (`bool_str`, `bool_tryparse`, `bool_parsedef`) |
 | [`log`](log/)     | 0.1.0 | File-based logging with per-module levels and indent-aware macros |
-| [`error`](error/) | 0.2.0 | Per-thread error stack and setjmp/longjmp exceptions (`TRY`, `err_raise`, `userraise`, `sysraise`) |
+| [`error`](error/) | 0.2.0 | Per-thread error stack and setjmp/longjmp exceptions (`TRY`, `err_raise`, `userraise`, `sysraise`, `err_last`, `err_count`, `err_pop`) |
 
 Each utility has its own `README.md`, `CHANGELOG.md`, and version API
 (`bool_version()`, `log_version()`). They are not required to be used
