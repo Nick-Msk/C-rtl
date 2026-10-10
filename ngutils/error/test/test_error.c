@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 /* -------------------------------------------------------------------------
  * Fixtures
@@ -635,4 +636,73 @@ Test(error_stack, pop_to_zero) {
     cr_assert(err_pop());
     cr_assert_eq(err_count(), 0);
     cr_assert_not(err_pop());
+}
+
+/* -------------------------------------------------------------------------
+ * Per-thread stacks
+ * ------------------------------------------------------------------------- */
+
+typedef struct {
+    int id;
+    int count_before;
+    int count_after;
+    int last_code;
+} ThreadResult;
+
+static void *
+thread_worker(void *arg)
+{
+    ThreadResult *r = arg;
+
+    r->count_before = err_count();
+    r->count_after  = -1;
+    r->last_code    = -1;
+
+    for (int i = 0; i < 5; i++) {
+        TRY() {
+            err_raise(ERR_USER, ERR_NULLABLE_PTR + i,
+                      "thread %d entry %d", r->id, i);
+        } else {
+            /* caught, continue */
+        }
+    }
+
+    r->count_after = err_count();
+
+    ErrorInfo info;
+    if (err_last(&info))
+        r->last_code = info.code;
+
+    err_clean(true);
+    return NULL;
+}
+
+Test(error_threads, per_thread_stack) {
+    enum { N = 4 };
+
+    pthread_t    threads[N];
+    ThreadResult results[N];
+
+    memset(results, 0, sizeof results);
+    for (int i = 0; i < N; i++) {
+        results[i].id = i;
+        cr_assert_eq(pthread_create(&threads[i], NULL, thread_worker, &results[i]),
+                     0, "pthread_create(%d) failed", i);
+    }
+    for (int i = 0; i < N; i++)
+        pthread_join(threads[i], NULL);
+
+    for (int i = 0; i < N; i++) {
+        cr_assert_eq(results[i].count_before, 0,
+                     "thread %d started with %d entries", i, results[i].count_before);
+        cr_assert_eq(results[i].count_after, 5,
+                     "thread %d ended with %d entries, expected 5",
+                     i, results[i].count_after);
+        cr_assert_eq(results[i].last_code, ERR_NULLABLE_PTR + 4,
+                     "thread %d saw last code %d, expected %d",
+                     i, results[i].last_code, ERR_NULLABLE_PTR + 4);
+    }
+
+    /* main thread's stack must be untouched by workers */
+    cr_assert_eq(err_count(), 0);
 }
