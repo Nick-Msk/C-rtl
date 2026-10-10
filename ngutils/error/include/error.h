@@ -254,6 +254,19 @@ err_resetenv()
 	return (err_getexception_info()->depth = 0);
 }
 
+/**
+ * @brief Fill @p buf with the system message for @p code .
+ *
+ * Thread-safe (uses strerror_r). Falls back to "errno <N>" if the
+ * message cannot be retrieved.
+ *
+ * @param code  System error code (errno value).
+ * @param buf   Destination buffer.
+ * @param sz    Size of @p buf (must be > 0).
+ * @return      Number of characters written (excluding NUL).
+ */
+extern int err_msg(int code, char *buf, size_t sz);
+
 // ----------------- PRINTERS ----------------------
 
 /**
@@ -422,7 +435,7 @@ sig_str_desc(int signal)
 #define try() ({\
 	int res;\
     if (errenv.depth >= ERR_MAX_TRY_CNT)\
-        logsimpleact(res = 9999, "Env buf is already activated");\
+        logsimpleact(res = 9999, "try() nesting exceeded ERR_MAX_TRY_CNT");\
 	else {\
     	res = setjmp(errenv.env[errenv.depth]);\
     	if (res == 0)\

@@ -180,10 +180,11 @@ err_increase(void)
 static void
 err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
+	int saved_errno = errno;
 	err_ensurebuf();
 
 	Error 	*err = g_error + g_currerr++;		// guaranteed valid: growth checked in err_raise()
-	logauto(err->type = tp);
+	err->type = tp;
 
 	switch (tp){
 		case ERR_USER:
@@ -191,7 +192,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 			vsnprintf(err->msg, sizeof err->msg, msg, ap);
 		break;
 		case ERR_SYS:
-			err->code = errno;		// system error number
+			err->code = saved_errno;		// system error number
 			if (strerror_r(err->code, err->msg, sizeof err->msg) != ERANGE)		// enough space in the buffer
 			{
 				int		 len = strlen(err->msg);	// length of system error message
@@ -231,11 +232,37 @@ err_default_handler(int sig)
 {
     if (errenv.depth == 0)
     {
-		if (sig != SIGINT)
-			raise(SIGSTOP);
+		if (sig != SIGINT) {
+			signal(sig, SIG_DFL);
+			raise(sig);
+		}
     } else {
     	longjmp(errenv.env[errenv.depth - 1], ERR_DEFHANDLER_JUMP_CODE);
     }
+}
+
+int
+err_msg(int code, char *buf, size_t sz)
+{
+    if (!buf || sz == 0)
+        return 0;
+#if defined(__GLIBC__) && defined(_GNU_SOURCE)
+    const char *s = strerror_r(code, buf, sz);
+    if (s != buf) {
+        size_t n = strlen(s);
+        if (n >= sz) n = sz - 1;
+        memcpy(buf, s, n);
+        buf[n] = '\0';
+        return (int)n;
+    }
+    return (int)strlen(buf);
+#else
+    if (strerror_r(code, buf, sz) != 0) {
+        int n = snprintf(buf, sz, "errno %d", code);
+        return n < 0 ? 0 : (n < (int)sz ? n : (int)sz - 1);
+    }
+    return (int)strlen(buf);
+#endif
 }
 
 // -------------------------- (Utility) printers -------------------
@@ -311,7 +338,7 @@ err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)
  * @return Pointer to the thread-local ExceptionData (valid for thread lifetime).
  */
 ExceptionData*
-err_getexception_info()
+err_getexception_info(void)
 {
     return &g_env;      // access to global
 }
