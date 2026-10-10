@@ -473,7 +473,7 @@ err_getcurrsigbuf () {
  *
  * @note This is an internal macro; use the public wrappers below.
  */
-#define	_generalraiseactsig(retcode, TYPE, ACTION, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
+#define	_generalraiseact(retcode, TYPE, ACTION, errcode, msg, ...)	({ 	typeof(retcode) _RETCODE = (retcode);\
                                                                                 if (TYPE == ERR_SYS){\
                                                                                     _log_and_print("%s\t", strerror(errno));\
                                                                                     _log_and_print("%s", "\n");\
@@ -484,20 +484,6 @@ err_getcurrsigbuf () {
 																				err_raise(TYPE, errcode, msg, ##__VA_ARGS__);\
 																				_RETCODE;\
 																			})
-
-// USER block
-// user with ACTION and signal (common)
-
-/**
- * @brief Internal: user error with ACTION and explicit signal.
- *
- * @param retcode  Value to return/assign after the raise.
- * @param ACTION   Cleanup statement (e.g. `free(buf);`).
- * @param errcode  ErrorCode value.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- */
-#define _userraiseactsig(retcode, ACTION, errcode, msg, ...)	_generalraiseactsig(retcode, ERR_USER, ACTION, errcode, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a user error with a cleanup ACTION, no signal.
@@ -518,17 +504,8 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments for @p msg.
  * @return         @p retcode (after side-effects).
  */
-#define	userraiseact(retcode, ACTION, errcode, msg, ...)			_userraiseactsig(retcode, ACTION, errcode, msg, ##__VA_ARGS__)
-
-/**
- * @brief Internal: user error with signal, no ACTION.
- *
- * @param retcode  Value to return/assign after the raise.
- * @param errcode  ErrorCode value.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- */
-#define _userraisesig(retcode, errcode, msg, ...)				_userraiseactsig(retcode, , errcode, msg, ##__VA_ARGS__)
+#define _userraiseact(retcode, ACTION, errcode, msg, ...) \
+    _generalraiseact(retcode, ERR_USER, ACTION, errcode, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a user error, no ACTION, no signal.
@@ -546,23 +523,14 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define userraise(retcode, errcode, msg, ...)          				_userraisesig(retcode, errcode, msg, ##__VA_ARGS__)
+#define userraise(retcode, errcode, msg, ...) \
+    _userraiseact(retcode, , errcode, msg, ##__VA_ARGS__)
 
 // SYSTEM block
 // system, with action and signal (common)
 
-/**
- * @brief Internal: system error with ACTION and signal.
- *
- * For system errors the numeric code is always `errno` (passed as 0 to
- * `_generalraiseactsig` which substitutes it internally).
- *
- * @param retcode  Value to return/assign after the raise.
- * @param ACTION   Cleanup statement.
- * @param msg      printf-style format string (strerror is prepended automatically).
- * @param ...      Variadic arguments.
- */
-#define	_sysraiseactsig(retcode, ACTION, msg, ...)      		_generalraiseactsig(retcode, ERR_SYS, ACTION, 0, msg, ##__VA_ARGS__)
+#define _sysraiseact(retcode, ACTION, msg, ...) \
+    _generalraiseact(retcode, ERR_SYS, ACTION, 0, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a system error with cleanup ACTION, no signal.
@@ -581,16 +549,8 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define	sysraiseact(retcode, ACTION, msg, ...)            			_sysraiseactsig(retcode, ACTION, msg, ##__VA_ARGS__)
-
-/**
- * @brief Internal: system error with signal, no ACTION.
- *
- * @param retcode  Value to return/assign after the raise.
- * @param msg      printf-style format string.
- * @param ...      Variadic arguments.
- */
-#define	_sysraisesig(retcode, msg, ...)               			_sysraiseactsig(retcode, , msg, ##__VA_ARGS__)
+#define sysraiseact(retcode, ACTION, msg, ...) \
+    _sysraiseact(retcode, ACTION, msg, ##__VA_ARGS__)
 
 /**
  * @brief Raise a system error, no ACTION, no signal.
@@ -607,6 +567,7 @@ err_getcurrsigbuf () {
  * @param ...      Variadic arguments.
  * @return         @p retcode.
  */
-#define sysraise(retcode, msg, ...)									_sysraisesig(retcode, msg, ##__VA_ARGS__)
+#define sysraise(retcode, msg, ...) \
+    _sysraiseact(retcode, , msg, ##__VA_ARGS__)
 
 #endif /* !ERROR_H */

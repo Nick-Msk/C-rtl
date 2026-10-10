@@ -329,3 +329,140 @@ Test(error_try, userraise_no_try_signals_sigint, .signal = SIGINT) {
     err_resetenv();
     userraise(0, ERR_NULLABLE_PTR, "no try via userraise");
 }
+
+/* -------------------------------------------------------------------------
+ * err_fprintstacktrace
+ * ------------------------------------------------------------------------- */
+
+static char trace_path[256];
+
+static int capture_trace(char *buf, size_t cap) {
+    snprintf(trace_path, sizeof(trace_path),
+             "/tmp/test_error_trace_%d.txt", (int)getpid());
+    FILE *f = fopen(trace_path, "w");
+    cr_assert_not_null(f);
+    int rc = err_fprintstacktrace(f);
+    fclose(f);
+
+    FILE *r = fopen(trace_path, "r");
+    cr_assert_not_null(r);
+    size_t n = fread(buf, 1, cap - 1, r);
+    buf[n] = '\0';
+    fclose(r);
+    remove(trace_path);
+    return rc;
+}
+
+Test(error_trace, empty_stack_no_entries) {
+    err_clean(true);
+
+    char buf[1024] = {0};
+    int rc = capture_trace(buf, sizeof buf);
+
+    cr_assert_gt(rc, 0);
+    cr_assert(strstr(buf, "PRINT STACK TRACE START") != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "PRINT STACK TRACE END")   != NULL, "buf: %s", buf);
+    /* no numbered entries like "[   0]: ..." */
+    cr_assert(strstr(buf, "[   0]:") == NULL, "buf: %s", buf);
+}
+
+Test(error_trace, one_user_raise) {
+    err_clean(true);
+
+    volatile int caught = 0;
+    TRY() {
+        err_raise(ERR_USER, ERR_NULLABLE_PTR, "pointer is NULL");
+    } else {
+        caught = 1;
+    }
+    cr_assert_eq(caught, 1, "should have caught");
+
+    char buf[1024] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "ERR_USER")        != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "[10]")            != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "pointer is NULL") != NULL, "buf: %s", buf);
+}
+
+Test(error_trace, sys_raise_has_errno) {
+    err_clean(true);
+    errno = ENOENT;
+
+    TRY() {
+        err_raise(ERR_SYS, 0, "opening file");
+    } else {}
+
+    char buf[2048] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "ERR_SYS")      != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "opening file") != NULL, "buf: %s", buf);
+}
+
+Test(error_trace, multiple_entries_in_order) {
+    err_clean(true);
+
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "first");  } else {}
+    TRY() { err_raise(ERR_USER, ERR_OUT_OF_RANGE, "second"); } else {}
+    TRY() { err_raise(ERR_USER, ERR_NULL_INPUT,   "third");  } else {}
+
+    char buf[2048] = {0};
+    capture_trace(buf, sizeof buf);
+
+    const char *p1 = strstr(buf, "first");
+    const char *p2 = strstr(buf, "second");
+    const char *p3 = strstr(buf, "third");
+    cr_assert_not_null(p1, "buf: %s", buf);
+    cr_assert_not_null(p2, "buf: %s", buf);
+    cr_assert_not_null(p3, "buf: %s", buf);
+    cr_assert(p1 < p2 && p2 < p3, "entries out of order: %s", buf);
+
+    cr_assert(strstr(buf, "[   0]:") != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "[   1]:") != NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "[   2]:") != NULL, "buf: %s", buf);
+}
+
+Test(error_trace, clean_clears_entries) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "will be cleared"); } else {}
+    err_clean(true);
+
+    char buf[1024] = {0};
+    capture_trace(buf, sizeof buf);
+
+    cr_assert(strstr(buf, "will be cleared") == NULL, "buf: %s", buf);
+    cr_assert(strstr(buf, "[   0]:")         == NULL, "buf: %s", buf);
+}
+
+Test(error_trace, return_value_grows_with_entries) {
+    err_clean(true);
+    char buf[4096] = {0};
+
+    int rc0 = capture_trace(buf, sizeof buf);
+
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "one"); } else {}
+    int rc1 = capture_trace(buf, sizeof buf);
+
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "two"); } else {}
+    int rc2 = capture_trace(buf, sizeof buf);
+
+    cr_assert_gt(rc0, 0);
+    cr_assert_gt(rc1, rc0, "rc1=%d rc0=%d", rc1, rc0);
+    cr_assert_gt(rc2, rc1, "rc2=%d rc1=%d", rc2, rc1);
+}
+
+Test(error_trace, message_buffer_grows_beyond_initial) {
+    err_clean(true);
+    for (int i = 0; i < 200; i++) {
+        TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "entry %d", i); } else {}
+    }
+
+    char buf[64 * 1024] = {0};
+    int rc = capture_trace(buf, sizeof buf);
+
+    cr_assert_gt(rc, 0);
+    cr_assert(strstr(buf, "entry 0")   != NULL, "first entry missing");
+    cr_assert(strstr(buf, "entry 199") != NULL, "last entry missing");
+}
+
