@@ -135,14 +135,45 @@ if (!f)
 | `void err_clean(bool force)` | Reset the stack. `force=true` frees heap buffer. |
 | `int err_fprintstacktrace(FILE *out)` | Dump all records to a stream. |
 | `int err_msg(int code, char *buf, size_t sz)` | Thread-safe `strerror`. |
+| `int err_count(void)` | Number of records currently on the stack. |
+| `bool err_last(ErrInfo *out)` | Fetch type + code of the top record. `out` may be NULL. |
+| `bool err_pop(void)` | Remove the top record. |
+
+`ErrInfo` is a small struct (defined in `error.h`):
+
+```c
+typedef struct {
+    ErrorType   type;   /* ERR_USER or ERR_SYS */
+    int         code;   /* app code or errno */
+} ErrInfo;
+```
+
+Example — check what happened without dumping the whole stack:
+
+```c
+TRY() { risky(); } else {
+    ErrInfo info;
+    if (err_last(&info) && info.type == ERR_SYS && info.code == ENOENT) {
+        /* special handling for "file not found" */
+    }
+    err_clean(true);
+}
+
+/* later: how many errors accumulated? */
+if (err_count() > 0)
+    err_printstacktrace();
+
+/* drop the last record and continue */
+err_pop();
+```
 
 ### Exception environment
 
 | Function / macro | Description |
 |---|---|
 | `TRY()` | Open a try block (see above). |
-| `errenv` | Accessor macro: `ExceptionData` lvalue. |
-| `ExceptionData *err_getexception_info(void)` | Pointer to the thread-local env. |
+| `errenv` | Accessor macro: `ErrorExceptionData` lvalue. |
+| `ErrorExceptionData *err_getexception_info(void)` | Pointer to the thread-local env. |
 | `err_resetenv()` | Reset `depth` and `overallcnt` to 0. |
 
 ### Signal helpers
@@ -161,7 +192,7 @@ if (!f)
 
 ## Thread safety
 
-- The error stack and `ExceptionData` are `_Thread_local` — each thread
+- The error stack and `ErrorExceptionData` are `_Thread_local` — each thread
   has its own.
 - `err_raise` / `TRY()` from multiple threads is safe as long as each
   thread manages its own TRY blocks.

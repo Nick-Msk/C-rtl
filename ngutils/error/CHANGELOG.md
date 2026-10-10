@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+
+- `err_count()` — number of records on the per-thread error stack.
+- `err_last(ErrInfo *)` — fetch type and code of the top record.
+- `err_pop()` — remove the top record.
+- `ErrInfo` struct — shared `{ type, code }` pair, used by `err_last`
+  and internally as the first member of the stack `Error` record.
+
+### Fixed
+
+- `err_msg()` — rewrite using buffer-emptiness check instead of relying
+  on the return value of `strerror_r`, which varies between glibc, the
+  GNU variant, and the macOS SDK. Fallback to `strerror()` when the
+  buffer stays empty.
+- `err_put()` for `ERR_SYS` — restore user message after the system
+  message (`"<strerror>: <fmt>"`), lost during the last refactor.
+
 ## [0.2.0] - 2026-10-10
 
 ### Changed
@@ -35,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The remaining set is `userraise`, `userraiseact`, `sysraise`,
   `sysraiseact`.
 
-- **`ExceptionData` layout changed.** Now holds `sigjmp_buf env[128]`,
+- **`ErrorExceptionData` layout changed.** Now holds `sigjmp_buf env[128]`,
   `int depth`, `int overallcnt`. The `depth` field is a ring index,
   `overallcnt` counts wraps.
 
@@ -64,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **22 new tests** (30 total):
   - TRY: normal path, catch, nested, three levels, 1000-iteration
-    loops, `return` / `break` leaks, ring overflow (`ERR_MAX_TRY_CNT`,
+    loops, `return` / `break` leaks, ring overflow (`ERR_CYCLE_CNT`,
     10 full wraps, 1.5 wraps).
   - trace: `err_fprintstacktrace` output for empty/user/system stacks,
     ordering, `err_clean`, return-value growth, heap growth past
@@ -77,9 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `try()` now supports multiple nesting levels (up to `ERR_MAX_TRY_CNT = 8`)
+- `try()` now supports multiple nesting levels (up to `ERR_CYCLE_CNT = 8`)
   via a static per-thread stack of `jmp_buf`s. No heap allocation.
-- `ExceptionData` uses `env[ERR_MAX_TRY_CNT]` + `depth` instead of a single
+- `ErrorExceptionData` uses `env[ERR_CYCLE_CNT]` + `depth` instead of a single
   `jmp_buf` + `init_flag`.
 - `err_default_handler` longjmps to `env[depth-1]` (innermost try).
 - `err_resetenv()` zeroes `depth` (cancels all active try blocks).

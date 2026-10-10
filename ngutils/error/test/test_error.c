@@ -54,7 +54,7 @@ TestSuite(error,       .init = setup, .fini = teardown);   /* version tests */
 
 Test(error, version_string_matches_macro) {
     cr_assert_str_eq(err_version(), ERROR_VERSION);
-    cr_assert_str_eq(err_version(), "0.1.0");
+    cr_assert_str_eq(err_version(), "0.2.0");
 }
 
 Test(error, version_is_top_of_list) {
@@ -274,14 +274,14 @@ Test(error_try, raise_outside_try_signals_sigint) {
 }
 
 /* -------------------------------------------------------------------------
- * Ring overflow: leaking ERR_MAX_TRY_CNT frames wraps cleanly
+ * Ring overflow: leaking ERR_CYCLE_CNT frames wraps cleanly
  * ------------------------------------------------------------------------- */
 
 Test(error_try, leak_full_ring_then_recover) {
     err_resetenv();
 
     /* Leak exactly one full ring via break (for-increment skipped) */
-    for (int i = 0; i < ERR_MAX_TRY_CNT; i++) {
+    for (int i = 0; i < ERR_CYCLE_CNT; i++) {
         TRY() { break; } else { cr_assert_fail("unexpected catch at %d", i); }
     }
     cr_assert_eq(errenv.depth,      0);
@@ -304,7 +304,7 @@ Test(error_try, leak_full_ring_then_recover) {
 
 Test(error_try, leak_many_wraps) {
     err_resetenv();
-    const int n = ERR_MAX_TRY_CNT * 10;
+    const int n = ERR_CYCLE_CNT * 10;
 
     for (int i = 0; i < n; i++) {
         TRY() { break; } else { cr_assert_fail("at %d", i); }
@@ -318,12 +318,12 @@ Test(error_try, leak_many_wraps) {
 
 Test(error_try, leak_ring_plus_half) {
     err_resetenv();
-    const int n = ERR_MAX_TRY_CNT + ERR_MAX_TRY_CNT / 2;   /* 1.5 rings */
+    const int n = ERR_CYCLE_CNT + ERR_CYCLE_CNT / 2;   /* 1.5 rings */
 
     for (int i = 0; i < n; i++) {
         TRY() { break; } else { cr_assert_fail("at %d", i); }
     }
-    cr_assert_eq(errenv.depth,      ERR_MAX_TRY_CNT / 2);
+    cr_assert_eq(errenv.depth,      ERR_CYCLE_CNT / 2);
     cr_assert_eq(errenv.overallcnt, 1);
 
     err_resetenv();
@@ -556,4 +556,83 @@ Test(error_sys, sysraiseact_action_does_not_clobber_errno) {
 
     cr_assert(strstr(buf, "[2]") != NULL,
               "ACTION clobbered errno; expected ENOENT(2), buf: %s", buf);
+}
+
+/* -------------------------------------------------------------------------
+ * err_count / err_last / err_pop
+ * ------------------------------------------------------------------------- */
+
+Test(error_stack, count_empty) {
+    err_clean(true);
+    cr_assert_eq(err_count(), 0);
+}
+
+Test(error_stack, count_after_raises) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "a"); } else {}
+    TRY() { err_raise(ERR_USER, ERR_OUT_OF_RANGE, "b"); } else {}
+    TRY() { err_raise(ERR_USER, ERR_NULL_INPUT,   "c"); } else {}
+    cr_assert_eq(err_count(), 3);
+}
+
+Test(error_stack, last_empty) {
+    err_clean(true);
+    ErrorInfo info = {0};
+    cr_assert_not(err_last(&info));
+}
+
+Test(error_stack, last_picks_top) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "first");  } else {}
+    TRY() { err_raise(ERR_USER, ERR_OUT_OF_RANGE, "second"); } else {}
+
+    ErrorInfo info = {0};
+    cr_assert(err_last(&info));
+    cr_assert_eq(info.type, ERR_USER);
+    cr_assert_eq(info.code, ERR_OUT_OF_RANGE);
+}
+
+Test(error_stack, last_null_out_ok) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "x"); } else {}
+    cr_assert(err_last(NULL));
+}
+
+Test(error_stack, last_sys_reports_errno) {
+    err_clean(true);
+    errno = ENOENT;
+
+    TRY() { err_raise(ERR_SYS, 0, "cannot open"); } else {}
+
+    ErrorInfo info = {0};
+    cr_assert(err_last(&info));
+    cr_assert_eq(info.type, ERR_SYS);
+    cr_assert_eq(info.code, ENOENT);
+}
+
+Test(error_stack, pop_empty) {
+    err_clean(true);
+    cr_assert_not(err_pop());
+}
+
+Test(error_stack, pop_removes_top) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "a"); } else {}
+    TRY() { err_raise(ERR_USER, ERR_OUT_OF_RANGE, "b"); } else {}
+    cr_assert_eq(err_count(), 2);
+
+    cr_assert(err_pop());
+    cr_assert_eq(err_count(), 1);
+
+    ErrorInfo info;
+    cr_assert(err_last(&info));
+    cr_assert_eq(info.code, ERR_NULLABLE_PTR);
+}
+
+Test(error_stack, pop_to_zero) {
+    err_clean(true);
+    TRY() { err_raise(ERR_USER, ERR_NULLABLE_PTR, "a"); } else {}
+    cr_assert(err_pop());
+    cr_assert_eq(err_count(), 0);
+    cr_assert_not(err_pop());
 }

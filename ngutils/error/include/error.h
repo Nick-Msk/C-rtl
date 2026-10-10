@@ -7,7 +7,7 @@
 // Provides:
 //  - A growable per-thread error record stack (err_raise, err_clean,
 //    err_fprintstacktrace).
-//  - A sigsetjmp/siglongjmp "exception" facility via try().
+//  - A sigsetjmp/siglongjmp "exception" facility via the TRY() macro.
 //  - Convenience macro families: userraise / sysraise / *act* / *int*.
 //
 // @see     error.c for implementation details.
@@ -27,14 +27,14 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 #define ERROR_VERSION_MAJOR 0
-#define ERROR_VERSION_MINOR 1
+#define ERROR_VERSION_MINOR 2
 #define ERROR_VERSION_PATCH 0
 
 #define ERROR_STRINGIFY_(x) #x
 #define ERROR_STRINGIFY(x)  ERROR_STRINGIFY_(x)
 
 /**
- * @brief Current version as a string literal, e.g. @c "0.1.0" .
+ * @brief Current version as a string literal, e.g. @c "0.2.0" .
  */
 #define ERROR_VERSION \
     ERROR_STRINGIFY(ERROR_VERSION_MAJOR) "." \
@@ -65,8 +65,8 @@ extern const char *const *err_versions(void);
 /** Maximum length (including NUL terminator) of a single formatted error message. */
 enum { ERR_MESSAGE_MAX_LENGTH = 1024 };
 
-/** Cycled try() blocks (static, thread-safe, no heap). */
-enum { ERR_MAX_TRY_CNT = 128 };
+/** Maximum number of nested TRY() blocks (static, thread-safe, no heap). */
+enum { ERR_CYCLE_CNT = 128 };
 
 // ------------------- TYPES -----------------------
 
@@ -146,13 +146,13 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
 /**
  * @brief Thread-local environment for the setjmp/longjmp "exception" mechanism.
  *
- * Supports up to @ref ERR_MAX_TRY_CNT nested try() blocks via a static
- * stack of jmp_bufs (thread-safe, no heap allocation). The signal handler
+ * Supports up to @ref ERR_CYCLE_CNT nested TRY() blocks via a static
+ * stack of sigjmp_bufs (thread-safe, no heap allocation). `err_raise()`
  * always longjmps to the most recent (innermost) capture site.
  *
  * Usage pattern (single level):
  * @code
- *   if (try() == 0) {
+ *   TRY() {
  *       do_work_that_may_raise();
  *   } else {
  *       handle_exception();
@@ -161,9 +161,9 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
  *
  * Usage pattern (nested):
  * @code
- *   if (try() == 0) {          // depth 0
+ *   TRY() {                    // depth 0
  *       outer_work();
- *       if (try() == 0) {      // depth 1
+ *       TRY() {                // depth 1
  *           inner_work();      // longjmp lands at innermost (depth 1) first
  *       } else {
  *           // inner catch
@@ -173,21 +173,31 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
  *   }
  * @endcode
  *
- * `depth` tracks the number of currently active try() blocks. The signal
- * handler checks this before longjmp'ing to `env[depth-1]`.
+ * `depth` tracks the number of currently active TRY() blocks.
+ * `overallcnt` tracks how many times depth wrapped around
+ * `ERR_CYCLE_CNT` (a very large number of nested blocks).
  */
-typedef struct ExceptionData
+typedef struct ErrorExceptionData
 {
-    sigjmp_buf              env[ERR_MAX_TRY_CNT];   ///< Stack of setjmp buffers.
-    int                     depth;                  ///< Number of active try() blocks (0 = none).
-    int                     overallcnt;             ///< Number of crossing ERR_MAX_TRY_CNT.
-} ExceptionData;
+    sigjmp_buf              env[ERR_CYCLE_CNT];   ///< Stack of setjmp buffers.
+    int                     depth;                  ///< Number of active TRY() blocks (0 = none).
+    int                     overallcnt;             ///< Number of crossing ERR_CYCLE_CNT.
+} ErrorExceptionData;
+
+/**
+ * @brief Type and code of a single error record (no message).
+ */
+typedef struct {
+    ErrorType   type;   ///< ERR_USER or ERR_SYS.
+    int         code;   ///< App code or errno, depending on type.
+} ErrorInfo;
+
 
 /**
  * @brief Convenience accessor for the thread-local exception environment.
  *
  * Expands to `(*err_getexception_info())`, giving lvalue access to the
- * `ExceptionData` fields ( `.env[]`, `.depth` ).
+ * `ErrorExceptionData` fields ( `.env[]`, `.depth` ).
  */
 #define errenv              (*err_getexception_info())
 
@@ -196,23 +206,28 @@ typedef struct ExceptionData
 // -------------- ACCESS AND MODIFICATION ----------
 
 /**
- * @brief Record an error on the per-thread stack and optionally raise a signal.
+ * @brief Record an error on the per-thread stack and longjmp to the
+ *        innermost active TRY() block.
  *
  * This is the central entry-point for all error reporting in the library.
- * The formatted message is pushed onto the per-thread error stack.
- * If @p raise is non-zero the corresponding signal is delivered to the
- * current process (which may be intercepted by an active `try()` block).
+ * The formatted message is pushed onto the per-thread error stack, then:
+ *  - If an active TRY() block exists (`errenv.depth > 0`), the function
+ *    performs `siglongjmp` to the innermost capture site.
+ *  - If **no** TRY() block is active, the function raises `SIGINT` as a
+ *    last-resort so a debugger or core dump can show what happened.
  *
  * @param tp       Error class: ERR_USER or ERR_SYS.
- * @param raise    Signal number to raise (e.g. SIGINT, SIGTERM), or 0 to
- *                 suppress the signal (record-only).
  * @param errcode  Application-level error code from ErrorCode.
  *                 Ignored when @p tp is ERR_SYS (errno is used instead).
  * @param msg      printf-style format string for the error message.
  * @param ...      Variadic arguments matching @p msg.
  *
  * @note The format string is validated at compile-time via
- *       `__attribute__((format(printf, 4, 5)))`.
+ *       `__attribute__((format(printf, 3, 4)))`.
+ *
+ * @note This function does **not** return normally when a TRY() block
+ *       is active (it longjmps). When no TRY() is active it returns
+ *       after raising SIGINT.
  */
 extern void
 err_raise(ErrorType tp, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 3, 4)));
@@ -233,15 +248,15 @@ err_clean(bool force);
  * The returned pointer is valid for the lifetime of the calling thread.
  * Use the `errenv` macro for convenient access.
  *
- * @return Pointer to the thread-local `ExceptionData`.
+ * @return Pointer to the thread-local `ErrorExceptionData`.
  */
-extern ExceptionData*
+extern ErrorExceptionData*
 err_getexception_info(void);
 
 /**
  * @brief Reset the exception environment flag (inline convenience).
  *
- * Wounds the try-stack depth to zero, effectively cancelling all active try() blocks.
+ * Winds the try-stack depth to zero, effectively cancelling all active TRY() blocks.
  *
  */
 static inline void
@@ -249,21 +264,30 @@ err_resetenv()
 {
 	errenv.depth = 0;
     errenv.overallcnt = 0;
-    // free error buf? THINK:
 }
 
 /**
- * @brief Fill @p buf with the system message for @p code .
- *
- * Thread-safe (uses strerror_r). Falls back to "errno <N>" if the
- * message cannot be retrieved.
- *
- * @param code  System error code (errno value).
- * @param buf   Destination buffer.
- * @param sz    Size of @p buf (must be > 0).
- * @return      Number of characters written (excluding NUL).
+ * @brief Number of records currently on the per-thread error stack.
+ * @return Count (>= 0).
  */
-extern int err_msg(int code, char *buf, size_t sz);
+extern int
+err_count(void);
+
+/**
+ * @brief Fetch type and code of the most recent record.
+ *
+ * @param[out] out  Destination; may be NULL if only existence matters.
+ * @return true if a record exists, false if the stack is empty.
+ */
+extern bool
+err_last(ErrorInfo *out);
+
+/**
+ * @brief Remove the most recent record from the stack.
+ * @return true if a record was removed, false if the stack was empty.
+ */
+extern bool
+err_pop(void);
 
 // ----------------- PRINTERS ----------------------
 
@@ -391,7 +415,7 @@ sig_str_desc(int signal)
 static inline int
 err_prevcnt(void) {
 	if (--errenv.depth < 0) {
-		errenv.depth = ERR_MAX_TRY_CNT - 1;
+		errenv.depth = ERR_CYCLE_CNT - 1;
         errenv.overallcnt--;
     }
 	return errenv.depth;
@@ -399,7 +423,7 @@ err_prevcnt(void) {
 
 static inline int
 err_nextcnt(void) {
-	if (++errenv.depth >= ERR_MAX_TRY_CNT) {
+	if (++errenv.depth >= ERR_CYCLE_CNT) {
 		errenv.depth = 0;
         errenv.overallcnt++;
     }
@@ -412,30 +436,53 @@ err_getcurrsigbuf () {
 }
 
 /**
- * @brief Begin a "try" block (setjmp-based exception catch point).
+ * @brief Begin a TRY block (setjmp-based exception catch point).
  *
- * This GCC statement-expression macro captures the current PC in
- * `errenv.env` via `setjmp`. It returns:
- *  - `0`  on the **first** pass (normal execution, "try" body).
- *  - A **non-zero** jump code on return from a `longjmp` in the signal
- *    handler (entering the "catch" / else branch).
+ * Captures the current PC in `errenv.env[depth]` via `sigsetjmp` and
+ * increments `errenv.depth`. On normal (first) entry the test value is
+ * `0` and the `for` loop runs exactly once; on return from a
+ * `siglongjmp` the test value is non-zero (the jump code, currently
+ * `ERR_DEFHANDLER_JUMP_CODE` = 10) and the `for` loop body is skipped,
+ * but its cleanup (`err_prevcnt()`) still runs — so `depth` is balanced
+ * in both paths.
  *
- * **Usage:**
+ * **Usage (single level):**
  * @code
- *   errsethandler();  // install handler once
- *   if (try() == 0) {
- *       // normal path – code that may trigger a signal
+ *   TRY() {
+ *       // normal path – code that may call err_raise()
  *       risky_operation();
  *   } else {
- *       // catch path – reached after longjmp
+ *       // catch path – reached after siglongjmp from err_raise()
  *       err_printstacktrace();
  *   }
  * @endcode
  *
- * @note If `errenv.depth >= ERR_MAX_TRY_CNT` (too many nested try blocks),
- *       the macro returns a sentinel (9999) to signal a programming error.
+ * **Usage (nested):**
+ * @code
+ *   TRY() {
+ *       outer_work();
+ *       TRY() {
+ *           inner_work();   // longjmp lands at innermost first
+ *       } else {
+ *           // inner catch
+ *       }
+ *   } else {
+ *       // outer catch
+ *   }
+ * @endcode
  *
- * @return 0 on first entry; non-zero (jump code) when returning from longjmp.
+ * **Mechanics:**
+ *  - `sigsetjmp(env, 1)` — the `1` tells the runtime to reset signal
+ *    handlers to their saved state on longjmp.
+ *  - `err_nextcnt()` — increments `errenv.depth`; if it wraps past
+ *    `ERR_CYCLE_CNT` it re-wraps to 0 and increments `overallcnt`.
+ *  - `err_prevcnt()` — decrements `errenv.depth` (the `for` cleanup);
+ *    if it underflows below 0 it re-wraps to `ERR_CYCLE_CNT - 1` and
+ *    decrements `overallcnt`.
+ *
+ * @note The `else` branch of the enclosing `if` is the "catch" path.
+ *       It is reached only when `siglongjmp` (from `err_raise`) returns
+ *       a non-zero value.
  */
 #define TRY() \
     if (sigsetjmp(*err_getcurrsigbuf(), 1) == 0) \
@@ -455,18 +502,22 @@ err_getcurrsigbuf () {
 #define _log_and_print(msg, ...) { logsimple(msg, ##__VA_ARGS__); fprintf(stderr, msg, ##__VA_ARGS__); /* fprintf(stderr, "\n"); */}
 
 /**
- * @brief Internal: generic raise with ACTION and signal.
+ * @brief Internal: generic raise with cleanup ACTION.
  *
  * Shared implementation for all public raise macros. Performs:
- *  1. If ERR_SYS – prints `strerror(errno)` to log + stderr.
- *  2. Executes the ACTION statement (cleanup / rollback).
- *  3. Prints the user message to log + stderr.
- *  4. Calls `err_raise()` to record the error and optionally raise a signal.
- *  5. Evaluates to @p retcode.
+ *  1. Saves `errno` into a local (so that ACTION cannot clobber it).
+ *  2. If ERR_SYS – prints `strerror(saved_errno)` to log + stderr.
+ *  3. Executes the ACTION statement (cleanup / rollback).
+ *  4. Prints the user message to log + stderr.
+ *  5. Restores `errno` (so `err_raise` sees the original value).
+ *  6. Calls `err_raise()` which records the error and longjmps to the
+ *     innermost active TRY() block (or raises SIGINT if none).
+ *  7. Evaluates to @p retcode.
  *
  * @param retcode  Value the macro expands to (return / assignment target).
  * @param TYPE     ErrorType (ERR_USER or ERR_SYS).
  * @param ACTION   Statement to execute before raising (e.g. `free(p);`).
+ *                 May be empty (`,`) for the no-action variants.
  * @param errcode  ErrorCode value.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments for @p msg.

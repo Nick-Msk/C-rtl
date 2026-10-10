@@ -12,8 +12,8 @@
  * @brief   Per-thread error stack and signal-based exception mechanism.
  *
  * Implements a growable, thread-local stack of error records and a
- * setjmp/longjmp-based "exception" facility that lets a signal handler
- * unwind to the most recent try() call-site.
+ * sigsetjmp/siglongjmp-based "exception" facility that lets err_raise()
+ * unwind to the most recent TRY() call-site.
  ********************************************************************/
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -21,7 +21,8 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 static const char 				*const versions[] = {
-    ERROR_VERSION,   /* current — always computed from macros */
+    ERROR_VERSION,
+	"0.1.0",
     NULL
 };
 
@@ -37,12 +38,13 @@ err_version(void) {
 
 // static globals
 
-/** Size of the static (stack-allocated) TOTAL buffer. */
+/** Size of the static (stack-allocated) buffer. */
 enum { ERROR_INIT_COUNT = 128 };
 
-/** Jump code passed via longjmp from the default signal handler. */
+/** Jump code passed via siglongjmp from err_raise. */
 static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
 
+/** Increment used when growing the error array on the heap. */
 static const int						ERR_DEFAULT_INCREMENT  	 = 16;
 
 // internal types
@@ -51,22 +53,21 @@ static const int						ERR_DEFAULT_INCREMENT  	 = 16;
  * @brief A single error record in the per-thread stack.
  */
 typedef struct {
-    ErrorType   type;                            ///< Error class (ERR_USER / ERR_SYS).
-    int         code;                            ///< Numeric code (app code or errno).
-    char        msg[ERR_MESSAGE_MAX_LENGTH];     ///< Formatted human-readable message.
+	ErrorInfo	info; 							///< Error class (ERR_USER / ERR_SYS) and error code.
+    char        msg[ERR_MESSAGE_MAX_LENGTH];    ///< Formatted human-readable message.
 } Error;
 
 /** @brief Static initial buffer (one per thread). */
-static _Thread_local Error            g_error_init[ERROR_INIT_COUNT];
+static _Thread_local Error            		g_error_init[ERROR_INIT_COUNT];
 
 /** @brief Pointer to the active buffer (static or heap). */
-static _Thread_local Error           *g_error = NULL;
+static _Thread_local Error           	   *g_error = NULL;
 
 /** @brief Number of slots in use / total allocated capacity. */
-static _Thread_local int              g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
+static _Thread_local int              		g_currerr = 0, g_allocerr = ERROR_INIT_COUNT;
 
 /** @brief Thread-local setjmp/longjmp environment. */
-static _Thread_local ExceptionData    g_env;
+static _Thread_local ErrorExceptionData    	g_env;
 
 // ---------- pseudo-header for utility procedures -----------------
 
@@ -114,6 +115,17 @@ err_isinit(void)
 	return g_error == g_error_init;
 }
 
+/**
+ * @brief Ensure the error buffer has capacity for at least one more entry.
+ *
+ * If `g_currerr < g_allocerr` the buffer already has space and the
+ * current capacity is returned unchanged. Otherwise the buffer is grown:
+ *  - Static buffer → allocated a new heap buffer (copying existing records).
+ *  - Heap buffer   → `realloc`'d to a larger size.
+ *
+ * @return Current total capacity (number of slots) on success, or 0 on
+ *         allocation failure.
+ */
 static int
 err_increase(void)
 {
@@ -140,15 +152,50 @@ err_increase(void)
     return logsimpleret(g_allocerr, "Error array is increased to %d", g_allocerr);
 }
 
+/**
+ * @brief Fill @p buf with the system message for @p code .
+ *
+ * Thread-safe (uses strerror_r). Falls back to "errno <N>" if the
+ * message cannot be retrieved.
+ *
+ * @param code  System error code (errno value).
+ * @param buf   Destination buffer.
+ * @param sz    Size of @p buf (must be > 0).
+ * @return      Number of characters written (excluding NUL).
+ */
+static size_t
+err_msg(int code, char *buf, size_t sz)
+{
+    if (!buf || sz == 0)
+        return 0;
+#if defined(__GLIBC__) && defined(_GNU_SOURCE)
+    const char *s = strerror_r(code, buf, sz);
+    if (s != buf) {
+        size_t n = strlen(s);
+        if (n >= sz) n = sz - 1;
+        memcpy(buf, s, n);
+        buf[n] = '\0';
+        return n;
+    }
+    return strlen(buf);
+#else
+    if (strerror_r(code, buf, sz) != 0) {
+        snprintf(buf, sz - 1, "Errno %d", code);
+        //return n < 0 ? 0 : (n < (int) sz ? n : (int) sz - 1);
+    }
+    return strlen(buf);
+#endif
+}
 
 /**
  * @brief Push a new error record onto the top of the per-thread stack.
  *
  * Message rendering depends on @p tp:
  *  - **ERR_USER** – `msg`/`ap` formatted directly.
- *  - **ERR_SYS**  – `strerror(errno)` + `": "` + `msg`/`ap`.
+ *  - **ERR_SYS**  – `strerror(saved_errno)` + `": "` + `msg`/`ap`.
  *
- * Caller (err_raise) must ensure capacity before calling this function.
+ * Capacity is managed internally via `err_increase()`; if the buffer
+ * cannot be grown the record is silently dropped (a warning is logged).
  *
  * @param tp       Error class.
  * @param errcode  Application-level code (ignored for ERR_SYS; errno used).
@@ -167,60 +214,30 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
     }
 
 	Error 	*err = g_error + g_currerr++;
-	err->type = tp;
+	err->info.type = tp;
 
 	switch (tp){
 		case ERR_USER:
-			err->code = errcode;
+			err->info.code = errcode;
 			vsnprintf(err->msg, sizeof err->msg, msg, ap);
 		break;
 		case ERR_SYS:
-			err->code = saved_errno;		// system error number
-			if (strerror_r(err->code, err->msg, sizeof err->msg) != ERANGE)		// enough space in the buffer
-			{
-				int		 len = strlen(err->msg);	// length of system error message
-				char 	*pos 	= err->msg + len;
-				int		 sz 	= sizeof err->msg - len - 1;
-				if (sz > 0){							// TODO: not sure if this is good implementation, better to use faststring!
-					len = snprintf(pos, sz, ": ");
-					pos += len;
-					sz  -= len;
-					if (sz > 0)
-						vsnprintf(pos, sz, msg, ap);		// TODO: not sure about -1, it depends on how exactly sprintf works
-				} else
-					logsimple("Not enough space for user message (%zu, offset %ld)", sizeof err->msg, pos - err->msg);
-			} else
-				logsimple("Not enough space for system message strerror (%zu)", sizeof err->msg);
+			err->info.code = saved_errno;
+			size_t len = err_msg(err->info.code, err->msg, ERR_MESSAGE_MAX_LENGTH);
+			if (len + 2 < sizeof err->msg) {
+				err->msg[len]     = ':';
+				err->msg[len + 1] = ' ';
+				err->msg[len + 2] = '\0';
+				vsnprintf(err->msg + len + 2,
+						sizeof err->msg - len - 3, msg, ap);
+				err->msg[ERR_MESSAGE_MAX_LENGTH - 1] = '\0';
+			}
 		break;
 		default:
 			snprintf(err->msg, sizeof err->msg, "Unknown error type (%d)", tp);
 		break;
 	}
 
-}
-
-int
-err_msg(int code, char *buf, size_t sz)
-{
-    if (!buf || sz == 0)
-        return 0;
-#if defined(__GLIBC__) && defined(_GNU_SOURCE)
-    const char *s = strerror_r(code, buf, sz);
-    if (s != buf) {
-        size_t n = strlen(s);
-        if (n >= sz) n = sz - 1;
-        memcpy(buf, s, n);
-        buf[n] = '\0';
-        return (int)n;
-    }
-    return (int)strlen(buf);
-#else
-    if (strerror_r(code, buf, sz) == 0) {
-        int n = snprintf(buf, sz, "errno %d", code);
-        return n < 0 ? 0 : (n < (int)sz ? n : (int)sz - 1);
-    }
-    return (int)strlen(buf);
-#endif
 }
 
 // -------------------------- (Utility) printers -------------------
@@ -237,7 +254,7 @@ err_msg(int code, char *buf, size_t sz)
 static inline int
 err_fprinterr(FILE *restrict out, const Error *err)
 {
-	return fprintf(out, "%s: [%d] %s\n", err_type_text(err->type), err->code, err->msg);		// TODO: think about mapping between code and message!
+	return fprintf(out, "%s: [%d] %s\n", err_type_text(err->info.type), err->info.code, err->msg);
 }
 
 // --------------------------- API ---------------------------------
@@ -251,7 +268,7 @@ err_fprinterr(FILE *restrict out, const Error *err)
 void
 err_clean(bool force){
 	if (force && !err_isinit())
-    	free(g_error);	// if NULL then ok
+    	free(g_error);
     g_error = g_error_init;
     g_currerr = 0;
 	g_allocerr = ERROR_INIT_COUNT;
@@ -259,17 +276,23 @@ err_clean(bool force){
 }
 
 /**
- * @brief Record an error and optionally raise a siglongjmp.
+ * @brief Record an error on the per-thread stack and longjmp to the
+ *        innermost active TRY() block.
  *
- * Main entry-point for all error reporting. The message is pushed onto the
- * per-thread stack; if @p raise is non-zero the corresponding signal is
- * delivered (interceptable by a try() block).
+ * Main entry-point for all error reporting. The formatted message is
+ * pushed onto the per-thread error stack, then:
+ *  - If an active TRY() block exists (`errenv.depth > 0`), performs
+ *    `siglongjmp` to the innermost capture site.
+ *  - If **no** TRY() block is active, raises `SIGINT` as a last-resort
+ *    so a debugger or core dump can show what happened.
  *
  * @param tp       Error class (ERR_USER / ERR_SYS).
- * @param raise    Signal number to raise, or 0 to suppress.
  * @param errcode  Application error code (see ErrorCode); ignored for ERR_SYS.
  * @param msg      printf-style format string.
  * @param ...      Variadic arguments matching @p msg.
+ *
+ * @note Does not return normally when a TRY() block is active (longjmps).
+ *       When no TRY() is active, returns after raising SIGINT.
  */
 void
 err_raise(ErrorType tp, int errcode, const char *msg, ...)
@@ -283,7 +306,7 @@ err_raise(ErrorType tp, int errcode, const char *msg, ...)
 	if (errenv.overallcnt == 0 && errenv.depth == 0) {
         /* No active TRY — cannot siglongjmp. Raise a real SIGINT so a
          * debugger or core dump can show what happened. */
-        logsimple("err_raise: no active TRY block");
+        logsimple("no active TRY block, SIGINT will be raised!");
         raise(SIGINT);
         return;
     }
@@ -296,12 +319,38 @@ err_raise(ErrorType tp, int errcode, const char *msg, ...)
 
 /**
  * @brief Obtain a pointer to the current thread's exception environment.
- * @return Pointer to the thread-local ExceptionData (valid for thread lifetime).
+ * @return Pointer to the thread-local ErrorExceptionData (valid for thread lifetime).
  */
-ExceptionData*
+ErrorExceptionData*
 err_getexception_info(void)
 {
-    return &g_env;      // access to global
+    return &g_env;
+}
+
+int
+err_count(void) {
+    err_ensurebuf();
+    return g_currerr;
+}
+
+bool
+err_last(ErrorInfo *out) {
+    err_ensurebuf();
+    if (g_currerr == 0)
+        return false;
+    if (out)
+		*out = g_error[g_currerr - 1].info;
+       
+    return true;
+}
+
+bool
+err_pop(void) {
+    err_ensurebuf();
+    if (g_currerr == 0)
+        return false;
+    g_currerr--;
+    return true;
 }
 
 // -------------------------- (API) printers -----------------------
@@ -309,10 +358,10 @@ err_getexception_info(void)
 /**
  * @brief Dump the full per-thread error stack to a stream.
  *
- * Each entry is printed as `[index]: TYPE: [code] message`.
+ * Each entry is printed as `[index]: TYPE: [code] message\n`.
  *
- * @param[out] out  Destination stream.
- * @return Total characters written, or negative on I/O error.
+ * @param[out] out  Destination stream (e.g. stderr, stdout, a file).
+ * @return Total number of characters written, or a negative value on I/O error.
  */
 int
 err_fprintstacktrace(FILE *out)
@@ -324,8 +373,8 @@ err_fprintstacktrace(FILE *out)
 	res += fprintf(out, "\n------------- PRINT STACK TRACE START -----------\n\n");
 	for (int i = 0; i < g_currerr; i++)
 	{
-		res += fprintf(out, "[%4d]: ", i);					// имя функции???
-		res += err_fprinterr(out, g_error +i);
+		res += fprintf(out, "[%4d]: ", i);
+		res += err_fprinterr(out, g_error + i);
 	}
 
 	res += fprintf(out, "\n------------- PRINT STACK TRACE END -------------\n\n");
