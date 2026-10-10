@@ -7,7 +7,7 @@
 // Provides:
 //  - A growable per-thread error record stack (err_raise, err_clean,
 //    err_fprintstacktrace).
-//  - A setjmp/longjmp "exception" facility via try() and err_sethandler().
+//  - A sigsetjmp/siglongjmp "exception" facility via try().
 //  - Convenience macro families: userraise / sysraise / *act* / *int*.
 //
 // @see     error.c for implementation details.
@@ -63,10 +63,10 @@ extern const char *const *err_versions(void);
 // ----------- CONSTANTS AND GLOBALS ---------------
 
 /** Maximum length (including NUL terminator) of a single formatted error message. */
-enum { ERROR_MESSAGE_MAX_LENGTH = 512 };
+enum { ERR_MESSAGE_MAX_LENGTH = 1024 };
 
-/** Maximum nesting depth of try() blocks (static, thread-safe, no heap). */
-enum { ERR_MAX_TRY_CNT = 16 };
+/** Cycled try() blocks (static, thread-safe, no heap). */
+enum { ERR_MAX_TRY_CNT = 128 };
 
 // ------------------- TYPES -----------------------
 
@@ -178,8 +178,8 @@ typedef enum {ERR_USER = 1, ERR_SYS} ErrorType;
  */
 typedef struct ExceptionData
 {
-    jmp_buf                 env[ERR_MAX_TRY_CNT];   ///< Stack of setjmp buffers.
-    volatile sig_atomic_t   depth;                  ///< Number of active try() blocks (0 = none).
+    sigjmp_buf              env[ERR_MAX_TRY_CNT];   ///< Stack of setjmp buffers.
+    int                     depth;                  ///< Number of active try() blocks (0 = none).
 } ExceptionData;
 
 // ------------- CONSTRUCTORS / DESTRUCTORS ----------
@@ -206,7 +206,7 @@ typedef struct ExceptionData
  *       `__attribute__((format(printf, 4, 5)))`.
  */
 extern void
-err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 4, 5)));
+err_raise(ErrorType tp, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 3, 4)));
 
 /**
  * @brief Reset the per-thread error stack to its initial (empty) state.
@@ -227,19 +227,7 @@ err_clean(bool force);
  * @return Pointer to the thread-local `ExceptionData`.
  */
 extern ExceptionData*
-err_getexception_info();
-
-/**
- * @brief Install a signal handler for SIGINT.
- *
- * Passing NULL (0) installs the built-in default handler which performs a
- * `longjmp` back to the most recent `try()` call-site.
- *
- * @param handler  User-supplied handler, or 0/NULL for the built-in default.
- * @return `true` on success; `false` (and a system error is raised) on failure.
- */
-extern bool
-err_sethandler(sig_t handler);
+err_getexception_info(void);
 
 /**
  * @brief Reset the exception environment flag (inline convenience).
@@ -400,11 +388,19 @@ sig_str_desc(int signal)
  */
 #define errenv              (*err_getexception_info())
 
-/**
- * @brief Install the default signal handler (shorthand for err_sethandler(0)).
- * @return Same as err_sethandler(0): true on success, false on failure.
- */
-#define errsethandler()     err_sethandler(0)
+static inline int
+err_prevcnt(void) {
+	if (--errenv.depth < 0)
+		errenv.depth = ERR_MAX_TRY_CNT;
+	return errenv.depth;
+}
+
+static inline int
+err_nextcnt(void) {
+	if (++errenv.depth >= ERR_MAX_TRY_CNT)
+		errenv.depth = 0;
+	return errenv.depth;
+}
 
 /**
  * @brief Begin a "try" block (setjmp-based exception catch point).
@@ -432,20 +428,11 @@ sig_str_desc(int signal)
  *
  * @return 0 on first entry; non-zero (jump code) when returning from longjmp.
  */
-#define try() ({\
-	int res;\
-    if (errenv.depth >= ERR_MAX_TRY_CNT)\
-        logsimpleact(res = 9999, "try() nesting exceeded ERR_MAX_TRY_CNT");\
-	else {\
-    	res = setjmp(errenv.env[errenv.depth]);\
-    	if (res == 0)\
-    		errenv.depth++;\
-    	else\
-    		errenv.depth--;\
-    }\
-    res;\
-})
-
+#define TRY() \
+    if (sigsetjmp(errenv.env[errenv.depth % ERR_TRY_RING], 1) == 0) \
+        for (int _once = (err_nextcnt(), 1); \
+             _once; \
+             _once = (err_prevcnt(), 0))
 
 /**
  * @brief Log a formatted message to the internal log AND to stderr.

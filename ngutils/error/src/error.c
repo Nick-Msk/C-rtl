@@ -37,11 +37,8 @@ err_version(void) {
 
 // static globals
 
-/** Growth step (number of Error slots) used when the heap buffer is extended. */
-static const int                        ERROR_DEFAULT_INCREMENT  = 16;
-
-/** Size of the static (stack-allocated) initial buffer. */
-enum { ERROR_INIT_COUNT = 10 };
+/** Size of the static (stack-allocated) TOTAL buffer. */
+enum { ERROR_INIT_COUNT = 128 };
 
 /** Jump code passed via longjmp from the default signal handler. */
 static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
@@ -54,7 +51,7 @@ static const int                    	ERR_DEFHANDLER_JUMP_CODE = 10;
 typedef struct {
     ErrorType   type;                            ///< Error class (ERR_USER / ERR_SYS).
     int         code;                            ///< Numeric code (app code or errno).
-    char        msg[ERROR_MESSAGE_MAX_LENGTH];   ///< Formatted human-readable message.
+    char        msg[ERR_MESSAGE_MAX_LENGTH];     ///< Formatted human-readable message.
 } Error;
 
 /** @brief Static initial buffer (one per thread). */
@@ -116,54 +113,6 @@ err_isinit(void)
 }
 
 /**
- * @brief Raise a signal, falling back to SIGTERM on failure.
- * @param sig  Signal number to deliver.
- * @return     Always -1 (caller should treat this as "flow interrupted").
- */
-static int
-err_raisesig(int sig)
-{
-	logsimple("raise %d [%s: %s]", sig, sig_str(sig), sig_str_desc(sig));
-	if (raise(sig) == -1)
-	{
-		logsimple("unable to raise %d signal, will try to raise SIGTERM %d", sig, SIGTERM);
-		if (raise(SIGTERM) == -1)
-			logsimple("unable to raise SIGTERM");
-	}
-	return -1;
-}
-
-/**
- * @brief Grow the per-thread error array by one increment block.
- *
- * First call allocates a new heap array and copies existing entries.
- * Subsequent calls use realloc.
- * @return New capacity on success, 0 on allocation failure.
- */
-static int
-err_increase(void)
-{
-    Error   *err;
-    int      newalloc = g_allocerr + ERROR_DEFAULT_INCREMENT;
-
-	if (err_isinit())
-	{
-		if ( (err = malloc(newalloc * sizeof(Error))) == 0)
-			return logsimpleret(0, "Unable to init alloc of %d elements", newalloc);
-		// copy prev
-		memcpy(err, g_error_init, g_currerr * sizeof(Error));
-	}
-	else {
-       	if ( (err = realloc(g_error, newalloc * sizeof(Error))) == 0)
-           	return logsimpleerr(0, "Unable to extend error array to %d", newalloc);
-	}
-
-    g_error    = err;
-	g_allocerr = newalloc;
-    return logsimpleret(g_allocerr, "Error array is increased to %d", g_allocerr);
-}
-
-/**
  * @brief Push a new error record onto the top of the per-thread stack.
  *
  * Message rendering depends on @p tp:
@@ -183,7 +132,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 	int saved_errno = errno;
 	err_ensurebuf();
 
-	Error 	*err = g_error + g_currerr++;		// guaranteed valid: growth checked in err_raise()
+	Error 	*err = g_error + g_currerr++;
 	err->type = tp;
 
 	switch (tp){
@@ -214,31 +163,6 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 		break;
 	}
 
-}
-
-//  setjmp/longjmp API
-
-/**
- * @brief Default SIGINT handler: longjmp back to the active try() site.
- *
- * If no try() block is active (depth == 0):
- *  - SIGINT → silently ignored.
- *  - any other signal → raise SIGSTOP to park the process.
- *
- * @param sig  Signal number that triggered this handler.
- */
-static void
-err_default_handler(int sig)
-{
-    if (errenv.depth == 0)
-    {
-		if (sig != SIGINT) {
-			signal(sig, SIG_DFL);
-			raise(sig);
-		}
-    } else {
-    	longjmp(errenv.env[errenv.depth - 1], ERR_DEFHANDLER_JUMP_CODE);
-    }
 }
 
 int
@@ -301,7 +225,7 @@ err_clean(bool force){
 }
 
 /**
- * @brief Record an error and optionally raise a signal.
+ * @brief Record an error and optionally raise a siglongjmp.
  *
  * Main entry-point for all error reporting. The message is pushed onto the
  * per-thread stack; if @p raise is non-zero the corresponding signal is
@@ -314,21 +238,17 @@ err_clean(bool force){
  * @param ...      Variadic arguments matching @p msg.
  */
 extern void
-err_raise(ErrorType tp, int raise, int errcode, const char *msg, ...)
+err_raise(ErrorType tp, int errcode, const char *msg, ...)
 {
-	// put data into stack and raise sig (????)
-	if (g_currerr >= g_allocerr)
-		if (!err_increase())
-			abort();	// heap exhausted — no safe way to continue
-
 	va_list		ap;
 	va_start(ap, msg);
 
 	err_put(tp, errcode, msg, ap);
 	va_end(ap);
 
-	if (raise)
-		err_raisesig(raise);
+
+   	errenv.depth--;
+    siglongjmp(errenv.env[errenv.depth], ERR_DEFHANDLER_JUMP_CODE);
 }
 
 // setjmp/longjmp API
@@ -341,26 +261,6 @@ ExceptionData*
 err_getexception_info(void)
 {
     return &g_env;      // access to global
-}
-
-/**
- * @brief Install a signal handler for SIGINT.
- *
- * Passing NULL installs the built-in err_default_handler (longjmp-based).
- *
- * @param handler  User handler, or 0/NULL for the default.
- * @return true on success; false (and an error is raised) on failure.
- */
-bool
-err_sethandler(sig_t handler)
-{
-    if (!handler)
-        handler = err_default_handler;
-
-    if (signal(SIGINT, handler) == SIG_ERR)
-        return sysraise(false, "Unable to setup err_default_handler for SIGINT\n");
-
-    return logsimpleret(true, "err_default_handler is activated\n");
 }
 
 // -------------------------- (API) printers -----------------------
