@@ -28,6 +28,7 @@ help:
 	@echo "  make all              run lib + test + librelease in all projects"
 	@echo "  make lib              per-project debug .a + build/debug/libngutils.a"
 	@echo "  make librelease       per-project release .a + build/release/libngutils.a"
+	@echo ""
 	@echo "  make test             run tests in all projects"
 	@echo "  make check            run clang-tidy in all projects"
 	@echo "  make analyze          run clang static analyzer in all projects"
@@ -36,10 +37,13 @@ help:
 	@echo "  make install          install libngutils.a + headers to PREFIX"
 	@echo "  make <target>-<name>  run one target in one project"
 	@echo "  make docs             build doxygen HTML"
+	@echo ""
 	@echo "  make build-docker     build the Linux dev image"
 	@echo "  make clean-docker     delete the Linux dev image"
 	@echo "  make check-docker     verify docker CLI + daemon"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
+	@echo ""
+	@echo "  make cloneproj NAME=x  create new utility from skeleton"
 	@echo ""
 	@echo "Projects:"
 	@for p in $(PROJECTS); do echo "  - $$p"; done
@@ -179,3 +183,6 @@ listall:
 	  for t in $(FORWARD_TARGETS); do echo "  $$t-$$p"; done; \
 	done
 
+cloneproj:
+	@test -n "$(NAME)" || { echo "usage: make cloneproj NAME=<name>" >&2; exit 1; }
+	@scripts/cloneproj.sh $(NAME)
