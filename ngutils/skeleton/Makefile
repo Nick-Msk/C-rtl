@@ -1,2 +1,3 @@
-PROJNAME = <projname>
+# replace to real project name
+PROJNAME = skeleton
 include ../Makefile.common
