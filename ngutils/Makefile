@@ -14,7 +14,7 @@ NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
 .PHONY: help list listall docs \
-		build-docker test-docker clean-docker check-docker \
+		build-docker test-docker clean-docker check-docker delete-docker \
 		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
@@ -42,6 +42,7 @@ help:
 	@echo "  make clean-docker     delete the Linux dev image"
 	@echo "  make check-docker     verify docker CLI + daemon"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
+	@echo "  make delete-docker    remove the $(DOCKER_IMAGE) image"
 	@echo ""
 	@echo "  make cloneproj NAME=x  create new utility from skeleton"
 	@echo ""
@@ -173,6 +174,16 @@ test-docker: check-docker
 clean-docker:
 	@rm -rf $(DOCKER_BUILD_DIR)
 	@echo "Cleaned: $(DOCKER_BUILD_DIR)"
+
+delete-docker:
+	@running=$$($(DOCKER) ps -q --filter ancestor=$(DOCKER_IMAGE)); \
+	 if [ -n "$$running" ]; then \
+	    echo "ERROR: running containers use $(DOCKER_IMAGE)" >&2; \
+	    echo "       stop them first: docker stop $$running" >&2; \
+	    exit 1; \
+	 fi
+	@$(DOCKER) image rm $(DOCKER_IMAGE) 2>/dev/null || true
+	@echo "Deleted: $(DOCKER_IMAGE)"
 
 listall:
 	@echo "# Generic targets:"
