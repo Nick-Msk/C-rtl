@@ -208,3 +208,28 @@ Test(common, qsort_with_pchar_cmp) {
     qsort(buf, 3, 1, pchar_revcmp);
     cr_assert_str_eq(buf, "cba");
 }
+
+/* -------------------------------------------------------------------------
+ * Version
+ * ------------------------------------------------------------------------- */
+
+Test(common, version_string_matches_macro) {
+    cr_assert_str_eq(common_version(), COMMON_VERSION);
+    cr_assert_str_eq(common_version(), "0.1.0");
+}
+
+Test(common, version_is_top_of_list) {
+    const char *const *v = common_versions();
+    cr_assert_not_null(v);
+    cr_assert_not_null(v[0]);
+    cr_assert_str_eq(v[0], common_version());
+    cr_assert_str_eq(v[0], COMMON_VERSION);
+}
+
+Test(common, versions_terminated_by_null) {
+    const char *const *v = common_versions();
+    size_t n = 0;
+    while (v[n]) ++n;
+    cr_assert_geq(n, 1);
+    cr_assert_null(v[n]);
+}

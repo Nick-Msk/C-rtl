@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Parsing:** `try_parse_int`, `try_parse_long`, `try_parse_ulong`,
     `try_parse_double`.
   - **Comparators:** `pchar_cmp`, `pchar_revcmp`.
-- **26 unit tests** covering all of the above.
+  - **26 unit tests** covering all of the above.
+  - **Version API:** `common_version()`, `common_versions()`,
+    `COMMON_VERSION` macro.
 
 ### Notes
 

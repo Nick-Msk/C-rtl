@@ -10,6 +10,27 @@
 #include "common.h"
 #include "log.h"
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static const char *const versions[] = {
+    COMMON_VERSION,   /* current — always computed from macros */
+    NULL
+};
+
+const char *const *
+common_versions(void)
+{
+    return versions;
+}
+
+const char *
+common_version(void)
+{
+    return versions[0];
+}
+
 /* -------------------------------------------------------------------------
  * Size growth
  * ------------------------------------------------------------------------- */

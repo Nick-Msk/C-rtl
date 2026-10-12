@@ -16,6 +16,42 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+
+#define COMMON_VERSION_MAJOR 0
+#define COMMON_VERSION_MINOR 1
+#define COMMON_VERSION_PATCH 0
+
+#define COMMON_STRINGIFY_(x) #x
+#define COMMON_STRINGIFY(x)  COMMON_STRINGIFY_(x)
+
+/**
+ * @brief Current version as a string literal, e.g. @c "0.1.0" .
+ */
+#define COMMON_VERSION \
+    COMMON_STRINGIFY(COMMON_VERSION_MAJOR) "." \
+    COMMON_STRINGIFY(COMMON_VERSION_MINOR) "." \
+    COMMON_STRINGIFY(COMMON_VERSION_PATCH)
+
+/**
+ * @brief Current version string, e.g. @c "0.1.0" .
+ *
+ * Equivalent to @c *common_versions() .
+ *
+ * @return Pointer to a static string literal; do not free.
+ */
+extern const char *common_version(void);
+
+/**
+ * @brief Published versions, newest first, terminated by @c NULL .
+ *
+ * @c versions[0] is always the current version. Array and elements are
+ * read-only; do not free.
+ *
+ * @return Pointer to a static, NULL-terminated array of strings.
+ */
+extern const char *const *common_versions(void);
+
+
 /* -------------------------------------------------------------------------
  * Generic macros
  * ------------------------------------------------------------------------- */

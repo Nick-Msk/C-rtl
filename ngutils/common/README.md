@@ -114,6 +114,16 @@ All `try_parse_*` functions share the same contract:
 | `try_parse_ulong(str, &v)` | Uses `strtoul`; leading `-` is rejected. |
 | `try_parse_double(str, &v)` | Uses `strtod`. |
 
+### Version
+
+| Function | Description |
+|---|---|
+| `const char *common_version(void)` | Current version string, e.g. `"0.1.0"`. |
+| `const char *const *common_versions(void)` | NULL-terminated array of published versions, newest first. |
+
+`common_versions()[0]` is always the current version. The array is
+static, read-only, and must not be freed.
+
 ### Comparators for `qsort` / `bsearch`
 
 Byte-wise comparators over `unsigned char`:
