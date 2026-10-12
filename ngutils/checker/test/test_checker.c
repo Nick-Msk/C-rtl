@@ -242,3 +242,28 @@ Test(checker, inv_fprintf_int_writes_to_stream) {
     cr_assert(strstr(buf, "ptr != NULL") != NULL, "buf: %s", buf);
     cr_assert(strstr(buf, "ptr was null") != NULL, "buf: %s", buf);
 }
+
+/* -------------------------------------------------------------------------
+ * Version
+ * ------------------------------------------------------------------------- */
+
+Test(checker, version_string_matches_macro) {
+    cr_assert_str_eq(checker_version(), CHECKER_VERSION);
+    cr_assert_str_eq(checker_version(), "0.1.0");
+}
+
+Test(checker, version_is_top_of_list) {
+    const char *const *v = checker_versions();
+    cr_assert_not_null(v);
+    cr_assert_not_null(v[0]);
+    cr_assert_str_eq(v[0], checker_version());
+    cr_assert_str_eq(v[0], CHECKER_VERSION);
+}
+
+Test(checker, versions_terminated_by_null) {
+    const char *const *v = checker_versions();
+    size_t n = 0;
+    while (v[n]) ++n;
+    cr_assert_geq(n, 1);
+    cr_assert_null(v[n]);
+}

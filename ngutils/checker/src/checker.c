@@ -12,6 +12,27 @@
                  CHECK MODULE IMPLEMENTATION
 ********************************************************************/
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static const char *const versions[] = {
+    CHECKER_VERSION,   /* current — always computed from macros */
+    NULL
+};
+
+const char *const *
+checker_versions(void)
+{
+    return versions;
+}
+
+const char *
+checker_version(void)
+{
+    return versions[0];
+}
+
 /* -------------------------------------------------------------------------
  * Core printing
  * ------------------------------------------------------------------------- */

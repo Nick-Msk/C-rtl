@@ -9,11 +9,43 @@
 
 #include "log.h"
 
-// ----------- CONSTANTS AND GLOBALS ---------------
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
 
-// ------------------- TYPES -----------------------
+#define CHECKER_VERSION_MAJOR 0
+#define CHECKER_VERSION_MINOR 1
+#define CHECKER_VERSION_PATCH 0
 
-// ------------- CONSTRUCTOTS/DESTRUCTORS ----------
+#define CHECKER_STRINGIFY_(x) #x
+#define CHECKER_STRINGIFY(x)  CHECKER_STRINGIFY_(x)
+
+/**
+ * @brief Current version as a string literal, e.g. @c "0.1.0" .
+ */
+#define CHECKER_VERSION \
+    CHECKER_STRINGIFY(CHECKER_VERSION_MAJOR) "." \
+    CHECKER_STRINGIFY(CHECKER_VERSION_MINOR) "." \
+    CHECKER_STRINGIFY(CHECKER_VERSION_PATCH)
+
+/**
+ * @brief Current version string, e.g. @c "0.1.0" .
+ *
+ * Equivalent to @c *checker_versions() .
+ *
+ * @return Pointer to a static string literal; do not free.
+ */
+extern const char *checker_version(void);
+
+/**
+ * @brief Published versions, newest first, terminated by @c NULL .
+ *
+ * @c versions[0] is always the current version. Array and elements are
+ * read-only; do not free.
+ *
+ * @return Pointer to a static, NULL-terminated array of strings.
+ */
+extern const char *const *checker_versions(void);
 
 // -------------- ACCESS AND MODIFICATION ----------
 

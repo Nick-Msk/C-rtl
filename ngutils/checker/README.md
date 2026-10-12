@@ -160,6 +160,16 @@ equal and prints both on mismatch.
 | `bool inv_str_bool(FILE *, const char *, const char *)` | C strings (NULL-safe) |
 | `bool inv_ptr_bool(FILE *, const void *, const void *)` | Any object pointer |
 
+### Version
+
+| Function | Description |
+|---|---|
+| `const char *checker_version(void)` | Current version string, e.g. `"0.1.0"`. |
+| `const char *const *checker_versions(void)` | NULL-terminated array of published versions, newest first. |
+
+`checker_versions()[0]` is always the current version. The array is
+static, read-only, and must not be freed.
+
 ## Usage
 
 ```c
