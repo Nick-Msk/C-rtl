@@ -8,9 +8,11 @@ link the whole set as a single archive.
 
 | Utility | Version | Description |
 |---|---|---|
-| [`bool`](bool/)   | 0.2.0 | `bool` ↔ string conversion (`bool_str`, `bool_tryparse`, `bool_parsedef`) |
-| [`log`](log/)     | 0.1.0 | File-based logging with per-module levels and indent-aware macros |
-| [`error`](error/) | 0.2.0 | Per-thread error stack and setjmp/longjmp exceptions (`TRY`, `err_raise`, `userraise`, `sysraise`, `err_last`, `err_count`, `err_pop`) |
+| [`bool`](bool/)       | 0.2.0 | `bool` ↔ string conversion (`bool_str`, `bool_tryparse`, `bool_parsedef`) |
+| [`log`](log/)         | 0.1.0 | File-based logging with per-module levels and indent-aware macros |
+| [`error`](error/)     | 0.2.0 | Per-thread error stack and TRY/CATCH exceptions (`err_raise`, `userraise`, `sysraise`) |
+| [`checker`](checker/) | 0.1.0 | Assert-style invariants (`inv`, `invraise`, `inv2`) and runtime validators (`check_arg`) |
+| [`common`](common/)   | 0.1.0 | Cross-utility helpers: `MIN`/`MAX`, `try_parse_*`, `round_up_2`, `pchar_cmp` |
 
 Each utility has its own `README.md`, `CHANGELOG.md`, and version API
 (`bool_version()`, `log_version()`). They are not required to be used
@@ -33,19 +35,19 @@ Only the symbols you use get pulled in from the archive — no extra
 overhead for unused utilities.
 
 If the utility has `REQUIRES` (declared in its `Makefile`), you also
-need those siblings' archives. For example, `error` depends on `log`
-and `bool`, so linking `liberror.a` alone is not enough:
+need those siblings' archives. For example, `checker` requires `log`:
 
 ```
-cc -Ipath/to/ngutils/error/include \
+cc -Ipath/to/ngutils/checker/include \
    -Ipath/to/ngutils/log/include \
-   -Ipath/to/ngutils/bool/include \
    main.c \
-   -Lpath/to/ngutils/log/build/debug -llog \
-   -Lpath/to/ngutils/bool/build/debug -lbool \
-   -Lpath/to/ngutils/error/build/debug -lerror \
+   -Lpath/to/ngutils/log/build/debug     -llog \
+   -Lpath/to/ngutils/checker/build/debug -lchecker \
    -o main
 ```
+
+The `REQUIRES` line in each utility's Makefile is authoritative —
+check it if linking fails with unresolved symbols.
 
 ## Using the whole set
 

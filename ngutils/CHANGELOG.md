@@ -8,6 +8,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-10-12]
+
+### Added
+
+- `checker` — assert-style invariants (`inv`, `invraise`, `inv2`,
+  `inv2raise`) with `_Generic` dispatch, and runtime validators
+  (`check_arg`). Aborts on invariant violation; compiles out with
+  `-DNOINVARIANT`.
+- `common` — minimal cross-utility helpers, subset of the old
+  monolithic `common.h`: `MIN`/`MAX`/`CASE_RETURN`, `G_GLOB_AVERAGE`,
+  `Tincrease`/`round_up_2`/`calcnewsize`, `clower`/`cupper`,
+  `rndint`/`rnd*char`, `reverse`, `try_parse_*`, `pchar_cmp`.
+- `cloneproj` script + `make cloneproj NAME=x` — scaffold a new
+  utility from `skeleton/`.
+- `delete-docker` target — removes the `ngutils-dev` image.
+- `clean-docker` target — wipes `/tmp/ngutils-docker-build`.
+- `install`/`install-release` targets with `PREFIX` / `DESTDIR`.
+- `analyze-test` target — clang static analyzer on tests (opt-in).
+
+### Changed
+
+- All five utilities now expose a uniform version API:
+  `<prefix>_version()` / `<prefix>_versions()` and a
+  `<PREFIX>_VERSION` macro. `versions[0]` is always the current one.
+- `Makefile.common`: `BUILD_DIR ?= build`, `CFLAGS +=` instead of
+  `?=`, `-std=gnu11` explicit, Criterion guard with
+  `REQUIRE_CRITERION=1`.
+- `test-docker` isolates per-project `build/` via bind-mounts to
+  `/tmp/ngutils-docker-build/<project>`.
+
+### Fixed
+
+- `error`: `errno` preserved across `ACTION` and logging in raise
+  macros.
+- `error`: `err_msg()` no longer trusts `strerror_r`'s return value
+  (macOS SDK quirk); falls back to `strerror()` if the buffer stays
+  empty.
+- `error`: `err_raise` outside TRY no longer jumps to a stale slot.
+
 ## [2026-10-09]
 
 ### Added
