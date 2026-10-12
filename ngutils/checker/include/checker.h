@@ -65,7 +65,7 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
  * Both arguments must have compatible types; the dispatcher looks at @p a .
  */
 #define inv_any_bool(out, a, b) _Generic((a),     \
-    char:               inv_char_bool             \
+    char:               inv_char_bool,            \
     int:                inv_int_bool,             \
     long:               inv_long_bool,            \
     long long:          inv_long_bool,            \
@@ -77,7 +77,8 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
     char *:             inv_str_bool,             \
     const char *:       inv_str_bool,             \
     void *:             inv_ptr_bool,             \
-    const void *:       inv_ptr_bool              \
+    const void *:       inv_ptr_bool,              \
+    default:            inv_ptr_bool              \
 )(out, (a), (b))
 
 // ------------------ ETC. -------------------------
@@ -85,7 +86,7 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
 #ifndef NOINVARIANT
 
 /** @internal Boolean invariant engine (inv / invraise). */
-#define _invraise(do_raise, expr, msg, ...)                  \
+#define _invraise(do_raise, expr, msg, ...)                           \
     ({  bool _INV_RES = (expr);                                       \
         if (!_INV_RES) {                                              \
             inv_fprintf_int(stderr, #expr, _INV_RES,                  \
@@ -99,7 +100,7 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
         _INV_RES; })
 
 /** @internal Two-value invariant engine (inv2 / inv2raise). */
-#define _inv2raise(do_raise, a, b, msg, ...)                 \
+#define _inv2raise(do_raise, a, b, msg, ...)                          \
     ({  bool _INV_OK = inv_any_bool(stderr, (a), (b));                \
         if (!_INV_OK) {                                               \
             inv_fprintf_int(stderr, #a " == " #b, _INV_OK,            \

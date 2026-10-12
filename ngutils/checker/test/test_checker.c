@@ -1,11 +1,12 @@
 #include <criterion/criterion.h>
 
-#include "checker.h"
-#include "log.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+
+#include "checker.h"
+#include "log.h"
 
 /* -------------------------------------------------------------------------
  * Fixtures — silence stderr, init log
