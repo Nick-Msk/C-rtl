@@ -16,6 +16,9 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
 
 #define COMMON_VERSION_MAJOR 0
 #define COMMON_VERSION_MINOR 1
