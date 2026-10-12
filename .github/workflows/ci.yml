@@ -14,8 +14,16 @@ on:
 
 jobs:
   test:
-    name: Test ngutils
+    name: Test (${{ matrix.cc }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+
+    env:
+      CC: ${{ matrix.cc }}
 
     steps:
       - uses: actions/checkout@v5
@@ -23,7 +31,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcriterion-dev pkg-config
+          sudo apt-get install -y \
+              build-essential \
+              clang \
+              libcriterion-dev \
+              pkg-config
 
       - name: Build debug libraries
         working-directory: ngutils
@@ -38,3 +50,4 @@ jobs:
       - name: Build release libraries
         working-directory: ngutils
         run: make librelease
+
