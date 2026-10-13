@@ -123,7 +123,7 @@ registry_remove_by_inode(dev_t d, ino_t i)
 	}
 }
 
-// ── Global state ─────────────────────────────────────────────────────────────
+// ── Global (per thread) state ─────────────────────────────────────────────────────────────
 
 /** Current indentation offset (in spaces). */
 static			__thread int			g_offset			= 0;			// current logging offset (per-thread)
