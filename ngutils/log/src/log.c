@@ -2,19 +2,25 @@
  * @file log.c
  * @brief Implementation of the file-based logging engine declared in @ref log.h.
  *
- * Maintains a single global log FILE*, a sorted module-level table,
- * and a recursive indentation offset. All public functions are thread-unsafe
- * by design (single-writer assumption).
+ * Thread-safe by design: all mutable state (FILE*, offset, module table,
+ * format) is per-thread (__thread).  A shared inode registry (dev_t+ino_t,
+ * mutex-protected) prevents the same file from being opened by two threads —
+ * handles symlinks and hardlinks transparently.  The mutex is only held
+ * during log_init / log_close (cold path); the hot path (log_msg) is lock-free.
  */
 
 #include "log.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
-#include <assert.h>
+
 #include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <unistd.h>
 
 /* ---------------------------------------------------------------------------------
 
@@ -48,37 +54,106 @@ enum { LOG_TIME_SZ = 100 };
 static			const int		OFFSET_INC			= 4;
 static 			const int 		LOG_MAXMODS 		= 4096;
 
+// ── File registry (prevents same-inode double-open across threads) ──────────
+
+#define LOG_MAX_REGISTRY 64
+
+typedef struct {
+    dev_t   st_dev;
+    ino_t   st_ino;
+    int     fd;
+    char    path[LOG_MAX_SZ];
+} LogFileEntry;
+
+static LogFileEntry       g_file_registry[LOG_MAX_REGISTRY];
+static int                g_file_registry_count = 0;
+static pthread_mutex_t    g_file_registry_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * @brief Check if inode is already registered. Must hold g_file_registry_mtx.
+ */
+static bool
+registry_contains(const struct stat *st)
+{
+	for (int i = 0; i < g_file_registry_count; i++) {
+		if (g_file_registry[i].st_dev == st->st_dev
+		 && g_file_registry[i].st_ino == st->st_ino)
+			return true;
+	}
+	return false;
+}
+
+/**
+ * @brief Add entry to registry. Must hold g_file_registry_mtx.
+ */
+static bool
+registry_add(const struct stat *st, int fd, const char *path)
+{
+	if (g_file_registry_count >= LOG_MAX_REGISTRY) {
+		fprintf(stderr, "log: registry full (%d), cannot track %s\n",
+		        LOG_MAX_REGISTRY, path);
+		return false;
+	}
+	LogFileEntry *e = &g_file_registry[g_file_registry_count++];
+	e->st_dev = st->st_dev;
+	e->st_ino = st->st_ino;
+	e->fd     = fd;
+	strncpy(e->path, path, LOG_MAX_SZ - 1);
+	e->path[LOG_MAX_SZ - 1] = '\0';
+	return true;
+}
+
+/**
+ * @brief Remove entry by (dev, ino). Must hold g_file_registry_mtx.
+ *
+ * Uses inode as the key (not fd) because the kernel reuses fd numbers:
+ * a thread that called fclose() may have its fd reassigned to another
+ * thread's open() before it calls remove — removing by fd would then
+ * delete the *other* thread's entry.
+ */
+static void
+registry_remove_by_inode(dev_t d, ino_t i)
+{
+	for (int k = 0; k < g_file_registry_count; k++) {
+		if (g_file_registry[k].st_dev == d
+		 && g_file_registry[k].st_ino == i) {
+			g_file_registry[k] = g_file_registry[--g_file_registry_count];
+			return;
+		}
+	}
+}
+
 // ── Global state ─────────────────────────────────────────────────────────────
 
 /** Current indentation offset (in spaces). */
-static			int				g_offset			=0;				// current logging offset
+static			__thread int			g_offset			= 0;			// current logging offset (per-thread)
 
 /** Increment per indent level. */
-static			int				g_offset_inc		=OFFSET_INC;	// currect offset increment
+static			__thread int			g_offset_inc		= OFFSET_INC;	// current offset increment (per-thread)
 
-/** Current log file name. */
-static			char			g_logname[LOG_MAX_SZ]	="default.log";	// current  logging file name
+/** Current log file name (heap; 8 B pointer in TLS instead of 4 KiB array). */
+static			__thread char		   *g_logname			= NULL;		// current logging file name (per-thread)
 
 /** Open log stream (NULL = not initialised). */
-static			FILE		   *g_logfile			=0;				// current logging file (init on 1 exec if null)
+static			__thread FILE		   *g_logfile			= 0;			// current logging file (per-thread)
 
 /** Reusable time-string buffer (avoids malloc per call). */
-static			char			g_time_buf[LOG_TIME_SZ];				// buffer for time print
+static			__thread char			g_time_buf[LOG_TIME_SZ]; // buffer for time print (per-thread)
 
 /** Number of entries in g_modules (including the sentinel). */
-static 			int				g_modcount			= 1;						// count of registered modules
+static			__thread int			g_modcount			= 1;			// count of registered modules (per-thread)
 
-/** Fallback module used when no explicit list is loaded. */
-static          LogModlevel		def_mod				= MOD(DEFAULT_MOD, LOGALL); // structure for default module  TODO: replace to char * later!
+/** Fallback module used when no explicit list is loaded (shared, read-only). */
+static          LogModlevel		def_mod				= MOD(DEFAULT_MOD, LOGALL); // structure for default module
 
 /** Pointer to the active module array (either &def_mod or heap). */
-static      	LogModlevel	   *g_modules			= &def_mod;				// array of registered modules
+static			__thread LogModlevel   *g_modules			= &def_mod;		// array of registered modules (per-thread)
 
 /** Global on/off switch. */
-static			bool			g_logon_mode		= true;				// program switch on/off mode
+static			__thread bool			g_logon_mode		= true;			// program switch on/off mode (per-thread)
 
 /** Current preambule format (TODO: should be per-module). */
-static			LogFormat		g_format_schema		= LOG_FORMAT_ALL;	// TODO: it should be for module, but not general
+static			__thread LogFormat		g_format_schema		= LOG_FORMAT_ALL; // preambule format (per-thread)
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -107,8 +182,9 @@ static inline const char *
 print_time(void)
 {
 	time_t t = time(0);
-	struct tm *now = localtime(&t);
-	strftime(g_time_buf, LOG_TIME_SZ, "%H:%M:%S", now);
+	struct tm now;
+	localtime_r(&t, &now);
+	strftime(g_time_buf, LOG_TIME_SZ, "%H:%M:%S", &now);
 	return g_time_buf;
 }
 
@@ -220,7 +296,10 @@ log_preambule(
 			fprintf(stderr, "Preambule: Incorrect act = [%d]\n", act);
 			return false;
 	}
-	assert(lv >= 0);
+	if (lv < 0) {
+		fprintf(stderr, "log: negative indent %d\n", lv);
+		return false;
+	}
 
 	if (!g_logon_mode)
 		return false;
@@ -427,12 +506,61 @@ log_init(const char *restrict logname
 
 	if (logname)
 	{
-		strncpy(g_logname, logname, LOG_MAX_SZ-1);
-		g_logname[LOG_MAX_SZ - 1] = '\0';	// in case of overflow
+		free(g_logname);
+		size_t len = strlen(logname);
+		if (len >= LOG_MAX_SZ)
+			len = LOG_MAX_SZ - 1;
+		g_logname = malloc(len + 1);
+		if (!g_logname) {
+			fprintf(stderr, "log: unable to allocate name buffer\n");
+			return false;
+		}
+		memcpy(g_logname, logname, len);
+		g_logname[len] = '\0';
 	}
-	if ((g_logfile = fopen(g_logname, append? "a" : "w"))==0)
-		return false;
 
+	const char *path = g_logname ? g_logname : "default.log";
+
+/*
+ * TOCTOU-safe registry check:
+ *  1. fopen under mutex (creates the file if needed — no separate stat/open).
+ *  2. fstat the opened fd to get the *real* inode.
+ *  3. registry_contains on the real inode — catches races with other threads.
+ *  4. registry_add only after the check passes.
+ */
+	pthread_mutex_lock(&g_file_registry_mtx);
+
+	FILE *f = fopen(path, append ? "a" : "w");
+	if (!f) {
+		pthread_mutex_unlock(&g_file_registry_mtx);
+		return false;
+	}
+
+	struct stat st;
+	if (fstat(fileno(f), &st) < 0) {
+		fclose(f);
+		pthread_mutex_unlock(&g_file_registry_mtx);
+		return false;
+	}
+
+	if (registry_contains(&st)) {
+		fclose(f);
+		pthread_mutex_unlock(&g_file_registry_mtx);
+		fprintf(stderr, "log: file %s (dev=%lu ino=%lu) already open by another thread\n",
+		        path, (unsigned long)st.st_dev, (unsigned long)st.st_ino);
+		return false;
+	}
+
+	if (!registry_add(&st, fileno(f), path)) {
+		fclose(f);
+		pthread_mutex_unlock(&g_file_registry_mtx);
+		return false;
+	}
+
+	g_logfile = f;
+	pthread_mutex_unlock(&g_file_registry_mtx);
+
+	/* Outside mutex: per-thread write + possible fprintf(stderr). */
 	log_format(logformat);
 
 	if (setvbuf(g_logfile, 0, _IONBF, 0) != 0)		// unable to setup unbuf mode, put warning
@@ -462,15 +590,29 @@ void
 log_close(void)
 {
 	// close logfile
-	if (g_logfile)
-		fclose(g_logfile);
+	if (g_logfile) {
+		/* fstat BEFORE fclose — the fd is valid while the stream is open.
+		 * After fclose the fd number can be reused by another thread,
+		 * so we capture the inode first, close, then remove by inode. */
+		struct stat st;
+		if (fstat(fileno(g_logfile), &st) == 0) {
+			fclose(g_logfile);
+			pthread_mutex_lock(&g_file_registry_mtx);
+			registry_remove_by_inode(st.st_dev, st.st_ino);
+			pthread_mutex_unlock(&g_file_registry_mtx);
+		} else {
+			fclose(g_logfile);
+		}
+	}
 	g_logfile = 0;			// must be 0 when not initialized
 	g_format_schema = LOG_FORMAT_ALL;
 	g_offset = 0;			// reset indentation
 	g_offset_inc = OFFSET_INC;
 	// free modules
 	log_modclear();
-	*g_logname = '\0';
+	/* g_logname is intentionally NOT cleared:
+	 * log_msg_ap auto-calls log_init(0,…) which reuses g_logname
+	 * to re-open the same file.  Clearing it would make fopen("") fail. */
 }
 
 /**
