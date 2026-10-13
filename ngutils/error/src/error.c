@@ -272,7 +272,6 @@ err_clean(bool force){
     g_error = g_error_init;
     g_currerr = 0;
 	g_allocerr = ERROR_INIT_COUNT;
-    logsimple("Error stack is cleaned");
 }
 
 /**
