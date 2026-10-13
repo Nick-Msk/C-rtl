@@ -504,8 +504,7 @@ log_init(const char *restrict logname
 	if (log_isinit())
 		return true;
 
-	if (logname)
-	{
+	if (logname) {
 		free(g_logname);
 		size_t len = strlen(logname);
 		if (len >= LOG_MAX_SZ)
@@ -517,8 +516,12 @@ log_init(const char *restrict logname
 		}
 		memcpy(g_logname, logname, len);
 		g_logname[len] = '\0';
+	} else {
+		if (g_logname[0] == '\0' || strcmp(g_logname, "default.log") == 0) {
+			snprintf(g_logname, LOG_MAX_SZ - 1, "default-%d.log", (int) getpid());
+		}
 	}
-
+	// actually no need do that
 	const char *path = g_logname ? g_logname : "default.log";
 
 /*
