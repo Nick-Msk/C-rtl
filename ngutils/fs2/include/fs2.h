@@ -1,0 +1,202 @@
+/**
+ * @file fs2.h
+ * @brief Core primitives for a faststring type.
+ *
+ * This is the primitive layer: struct, flags, constructors, move/copy,
+ * adopt, free. Higher-level operations (append, printf, substr, reserve,
+ * comparison helpers) belong in fs2_api.h — this file deliberately stays
+ * minimal so the invariant surface is small and testable.
+ *
+ * Two orthogonal axes:
+ *   1. Where does the string live?   STATIC | LOCAL | ALLOC  (exactly one)
+ *   2. Where does the struct live?   BODYALLOC or not         (independent)
+ *
+ * Plus two state flags, orthogonal to both:
+ *   CONST    — reserved
+ *   DEFUNCT  — moved out; only free / assignment is valid
+ *
+ * Preconditions (NOT checked here — see cfs2.h for a guarded wrapper):
+ *   - No NULL pointers where a valid fs2 is expected.
+ *   - len < sz (except DEFUNCT, where all zero).
+ *   - No arithmetic overflow in size_t computations.
+ *   - No use after fs2_free / fs2_movefrom on a heap value.
+ */
+
+#ifndef FS2_H
+#define FS2_H
+
+#include <stddef.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#include "bool.h"
+#include "error.h"
+#include "common.h"
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Version
+ * ───────────────────────────────────────────────────────────────────────── */
+
+#define FS2_VERSION_MAJOR 0
+#define FS2_VERSION_MINOR 1
+#define FS2_VERSION_PATCH 0
+
+#define FS2_STRINGIFY_(x) #x
+#define FS2_STRINGIFY(x)  FS2_STRINGIFY_(x)
+
+#define FS2_VERSION \
+    FS2_STRINGIFY(FS2_VERSION_MAJOR) "." \
+    FS2_STRINGIFY(FS2_VERSION_MINOR) "." \
+    FS2_STRINGIFY(FS2_VERSION_PATCH)
+
+extern const char           *fs2_version(void);
+extern const char    *const *fs2_versions(void);
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Flags
+ * ───────────────────────────────────────────────────────────────────────── */
+
+typedef enum {
+    FS2_STATIC    = 0x01,   /**< v is external, read-only (literal).        */
+    FS2_CONST     = 0x02,   /**< Reserved.                                  */
+    FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.         */
+    FS2_BODYALLOC = 0x08,   /**< the struct itself is heap-allocated.       */
+    FS2_ALLOC     = 0x10,   /**< v is heap-owned; growable via realloc.     */
+    FS2_DEFUNCT   = 0x20,   /**< moved-out; only free / assignment valid.   */
+} fs2_flags;
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Struct
+ * ───────────────────────────────────────────────────────────────────────── */
+
+typedef struct fs2 {
+    size_t      len;        /**< Logical length, excluding NUL.             */
+    size_t      sz;         /**< Capacity in bytes, including NUL.          */
+    fs2_flags   flags;
+    char       *v;          /**< NUL-terminated; NULL only when DEFUNCT.    */
+} fs2;
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Value macros
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** Empty growable value (stack body, ALLOC, no capacity yet). */
+#define FS2()            (fs2){ .len = 0, .sz = 0, \
+                                .flags = FS2_ALLOC,  .v = NULL }
+
+/** Empty read-only value. Safe to share; fs2_free is a no-op. */
+#define FS2_EMPTY        (fs2){ .len = 0, .sz = 0, \
+                                .flags = FS2_STATIC, .v = (char *)"" }
+
+/** Moved-out marker. Only fs2_free / assignment is valid on it. */
+#define FS2_DEFUNCT_VAL  (fs2){ .len = 0, .sz = 0, \
+                                .flags = FS2_DEFUNCT, .v = NULL }
+
+/** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
+#define FS2_LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
+                                .flags = FS2_STATIC, .v = (char *)(s) }
+
+/** Local: wraps a caller-owned writable buffer (fixed capacity). */
+#define FS2_LOCAL(buf)   (fs2){ .len = 0, .sz = sizeof(buf), \
+                                .flags = FS2_LOCAL,  .v = (buf) }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Getters (all const-safe, no allocation)
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static inline size_t      fs2_len (const fs2 *s) { return s->len; }
+static inline size_t      fs2_sz  (const fs2 *s) { return s->sz;  }
+static inline char       *fs2_str (fs2 *s)       { return s->v;   }
+static inline const char *fs2_cstr(const fs2 *s) { return s->v;   }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Predicates
+ * ───────────────────────────────────────────────────────────────────────── */
+
+static inline bool fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
+static inline bool fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
+static inline bool fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
+static inline bool fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
+static inline bool fs2_is_defunct  (const fs2 *s) { return (s->flags & FS2_DEFUNCT)   != 0; }
+
+/** @brief Logical emptiness: len == 0. */
+static inline bool fs2_is_empty(const fs2 *s) { return s->len == 0 || *s->v == '\0'; }
+
+/**
+ * @brief Null-check: either @p s itself is NULL or its buffer is NULL.
+ *
+ * Defunct values have @c v == NULL and therefore also report as null.
+ */
+static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Constructors — value (stack body)
+ *
+ *   fs2_init(sz)         growable, capacity sz
+ *   fs2_fromstr(s)       copy of a C-string
+ *   fs2_fromstrf(f, ...) printf-formatted copy
+ *   fs2_clone(src)       deep copy of any fs2
+ *   fs2_movefrom(src)    steal from a stack fs2 (src becomes DEFUNCT)
+ *   fs2_movefromstr(p)   steal a heap C-string (p becomes NULL)
+ * ───────────────────────────────────────────────────────────────────────── */
+
+fs2   fs2_init    (size_t sz);
+fs2   fs2_fromstr (const char *src);
+fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+fs2   fs2_clone   (const fs2 *src);
+fs2   fs2_movefrom(fs2 *src);
+fs2   fs2_movefromstr(const char **from);
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Constructors — heap (BODYALLOC set)
+ *
+ * Same operations, but the fs2 struct itself is allocated. Free with
+ * fs2_free (which frees the buffer, the struct, or both, per flags).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+fs2     *fs2_heap          (void);
+fs2     *fs2_heap_init     (size_t sz);
+fs2     *fs2_heap_fromstr  (const char *src);
+fs2     *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+fs2     *fs2_heap_clone    (const fs2 *src);
+fs2     *fs2_heap_movefrom (fs2 *src);
+fs2     *fs2_heap_movefromstr(const char **from);
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Move assignment (not a constructor)
+ *
+ *   to ← from, then from → DEFUNCT. Frees whatever `to` held before.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+fs2   *fs2_move(fs2 *to, fs2 *from);
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Destructor
+ *
+ * Frees the buffer if ALLOC, frees the struct if BODYALLOC. No-op on
+ * STATIC, LOCAL, DEFUNCT. Idempotent for value (non-BODYALLOC) cases.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+void    fs2_free(fs2 *s);
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Unilities
+ * ───────────────────────────────────────────────────────────────────────── */
+static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
+    s->v[s->len = pos] = '\0';
+    return s;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Tech printer
+ * ───────────────────────────────────────────────────────────────────────── */
+long    fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+
+ /* ─────────────────────────────────────────────────────────────────────────
+ * Validator
+ * ───────────────────────────────────────────────────────────────────────── */
+bool    fs2_validate(FILE *restrict out, const fs2 *restrict s);
+
+#endif /* !FS2_H */
