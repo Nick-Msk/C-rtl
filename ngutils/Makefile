@@ -134,7 +134,7 @@ DOCKER 				?= docker
 DOCKER_IMAGE 		:= ngutils-dev
 DOCKER_BUILD_DIR 	:= /tmp/ngutils-docker-build
 # Strip jobserver flags that are host-specific and meaningless in a container
-DOCKER_MAKEFLAGS = $(filter-out --jobserver%,$(MAKEFLAGS))
+DOCKER_MAKEFLAGS 	 = $(filter-out --jobserver%,$(MAKEFLAGS))
 
 # --- docker helpers ---
 # Check that the Docker CLI is present and the daemon responds.
