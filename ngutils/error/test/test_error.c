@@ -44,10 +44,11 @@ static void teardown(void) {
     }
 }
 
-TestSuite(error_try,   .init = setup, .fini = teardown);
-TestSuite(error_trace, .init = setup, .fini = teardown);
-TestSuite(error_sys,   .init = setup, .fini = teardown);
-TestSuite(error,       .init = setup, .fini = teardown);   /* version tests */
+TestSuite(error_try,        .init = setup, .fini = teardown);
+TestSuite(error_trace,      .init = setup, .fini = teardown);
+TestSuite(error_sys,        .init = setup, .fini = teardown);
+TestSuite(error,            .init = setup, .fini = teardown);   /* version tests */
+TestSuite(error_stack,      .init = setup, .fini = teardown);
 
 /* -------------------------------------------------------------------------
  * Version
@@ -340,11 +341,13 @@ Test(error_try, leak_ring_plus_half) {
 
 Test(error_try, err_raise_no_try_signals_sigint, .signal = SIGINT) {
     err_resetenv();
+    log_init("/tmp/test_error_raise_no_try.log", false, LOG_FORMAT_EMPTY);
     err_raise(ERR_USER, ERR_NULLABLE_PTR, "no try");
 }
 
 Test(error_try, userraise_no_try_signals_sigint, .signal = SIGINT) {
     err_resetenv();
+    log_init("/tmp/test_error_userraise_no_try.log", false, LOG_FORMAT_EMPTY);
     userraise(0, ERR_NULLABLE_PTR, "no try via userraise");
 }
 
@@ -520,6 +523,7 @@ Test(error_sys, sysraiseact_runs_cleanup) {
 
 Test(error_sys, sysraise_retcode_when_outside_try, .signal = SIGINT) {
     err_resetenv();
+    log_init("/tmp/test_error_sysraise_no_try.log", false, LOG_FORMAT_EMPTY);
     errno = ENOENT;
     sysraise(0, "no try");
     /* killed by SIGINT — .signal flag makes this a pass */
@@ -769,3 +773,11 @@ Test(error_try, try_without_else) {
     cr_assert_eq(errenv.depth, 0);
 }
 
+// cleaner
+Test(error, cleanup_tmp_logs) {
+    /* best-effort: remove leftover logs from .signal tests */
+    remove("/tmp/test_error_raise_no_try.log");
+    remove("/tmp/test_error_userraise_no_try.log");
+    remove("/tmp/test_error_sysraise_no_try.log");
+    cr_assert(1);
+}
