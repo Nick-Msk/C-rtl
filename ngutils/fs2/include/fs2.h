@@ -63,8 +63,7 @@ typedef enum {
     FS2_CONST     = 0x02,   /**< Reserved.                                  */
     FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.         */
     FS2_BODYALLOC = 0x08,   /**< the struct itself is heap-allocated.       */
-    FS2_ALLOC     = 0x10,   /**< v is heap-owned; growable via realloc.     */
-    FS2_DEFUNCT   = 0x20,   /**< moved-out; only free / assignment valid.   */
+    FS2_ALLOC     = 0x10    /**< v is heap-owned; growable via realloc.     */
 } fs2_flags;
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -74,7 +73,7 @@ typedef enum {
 typedef struct fs2 {
     size_t      len;        /**< Logical length, excluding NUL.             */
     size_t      sz;         /**< Capacity in bytes, including NUL.          */
-    fs2_flags   flags;
+    fs2_flags   flags;      /**< state flags                                */
     char       *v;          /**< NUL-terminated; NULL only when DEFUNCT.    */
 } fs2;
 
@@ -89,10 +88,6 @@ typedef struct fs2 {
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
 #define FS2_EMPTY        (fs2){ .len = 0, .sz = 0, \
                                 .flags = FS2_STATIC, .v = (char *)"" }
-
-/** Moved-out marker. Only fs2_free / assignment is valid on it. */
-#define FS2_DEFUNCT_VAL  (fs2){ .len = 0, .sz = 0, \
-                                .flags = FS2_DEFUNCT, .v = NULL }
 
 /** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
 #define FS2_LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
@@ -119,7 +114,6 @@ static inline bool fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATI
 static inline bool fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
 static inline bool fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
 static inline bool fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
-static inline bool fs2_is_defunct  (const fs2 *s) { return (s->flags & FS2_DEFUNCT)   != 0; }
 
 /** @brief Logical emptiness: len == 0. */
 static inline bool fs2_is_empty(const fs2 *s) { return s->len == 0 || *s->v == '\0'; }

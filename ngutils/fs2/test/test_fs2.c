@@ -68,7 +68,6 @@ Test(fs2, macro_fs2_default) {
     cr_assert(fs2_is_alloc(&s));
     cr_assert_not(fs2_is_static(&s));
     cr_assert_not(fs2_is_bodyalloc(&s));
-    cr_assert_not(fs2_is_defunct(&s));
 }
 
 Test(fs2, macro_empty_static) {
@@ -77,14 +76,6 @@ Test(fs2, macro_empty_static) {
     cr_assert_not(fs2_is_alloc(&s));
     cr_assert_eq(s.len, 0);
     cr_assert_str_eq(s.v, "");
-}
-
-Test(fs2, macro_defunct) {
-    fs2 s = FS2_DEFUNCT_VAL;
-    cr_assert(fs2_is_defunct(&s));
-    cr_assert_null(s.v);
-    cr_assert_eq(s.len, 0);
-    cr_assert_eq(s.sz,  0);
 }
 
 Test(fs2, macro_literal) {
@@ -217,13 +208,6 @@ Test(fs2, free_local_noop) {
     cr_assert(s.v == buf);
 }
 
-Test(fs2, free_defunct_noop) {
-    fs2 s = FS2_DEFUNCT_VAL;
-    fs2_free(&s);
-    cr_assert(fs2_is_defunct(&s));
-    cr_assert_null(s.v);
-}
-
 Test(fs2, free_alloc_releases_buffer) {
     fs2 s = fs2_init(32);
     cr_assert_not_null(s.v);
@@ -293,8 +277,8 @@ Test(fs2, is_null_on_pointer_null) {
     cr_assert(fs2_is_null(NULL));
 }
 
-Test(fs2, is_null_on_defunct) {
-    fs2 s = FS2_DEFUNCT_VAL;
+Test(fs2, is_null) {
+    fs2 s = FS2();
     cr_assert(fs2_is_null(&s));     /* v == NULL */
 }
 

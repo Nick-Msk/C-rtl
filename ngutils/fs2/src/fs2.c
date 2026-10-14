@@ -116,10 +116,9 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
  * ───────────────────────────────────────────────────────────────────────── */
 
 void                                    fs2_free(fs2 *s){
-    if (!s || fs2_is_defunct(s)) {
+    if (!s) {
 #ifdef FS2_TRACE 
-        if (s)
-            logsimple("trying to free NON allocated %d", s->flags);
+        logsimple("trying to free NON allocated %d", s->flags);
 #endif        
         return;
     }
