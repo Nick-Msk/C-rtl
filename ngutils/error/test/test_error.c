@@ -2,6 +2,7 @@
 
 #include "error.h"
 #include "log.h"
+#include "test_common.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -23,11 +24,7 @@ static void setup(void) {
     err_clean(true);
     err_resetenv();
 
-    /* Silence stderr: the raise macros print diagnostics there by design.
-     * Without this, every err_raise in a test floods Criterion output. */
-    fflush(stderr);
-    g_saved_stderr = dup(fileno(stderr));
-    freopen("/dev/null", "w", stderr);
+    g_saved_stderr = test_mute_stderr();
 }
 
 static void teardown(void) {
@@ -36,12 +33,8 @@ static void teardown(void) {
     log_close();
     remove(log_path);
 
-    fflush(stderr);
-    if (g_saved_stderr >= 0) {
-        dup2(g_saved_stderr, fileno(stderr));
-        close(g_saved_stderr);
-        g_saved_stderr = -1;
-    }
+    test_restore_stderr(g_saved_stderr);
+    g_saved_stderr = -1;
 }
 
 TestSuite(error_try,        .init = setup, .fini = teardown);
@@ -355,22 +348,17 @@ Test(error_try, userraise_no_try_signals_sigint, .signal = SIGINT) {
  * err_fprintstacktrace
  * ------------------------------------------------------------------------- */
 
-static char trace_path[256];
-
 static int capture_trace(char *buf, size_t cap) {
-    snprintf(trace_path, sizeof(trace_path),
-             "/tmp/test_error_trace_%d.txt", (int)getpid());
-    FILE *f = fopen(trace_path, "w");
+    char path[256];
+    test_tmpname(path, sizeof path, "test_error_trace", NULL, "txt");
+
+    FILE *f = fopen(path, "w");
     cr_assert_not_null(f);
     int rc = err_fprintstacktrace(f);
     fclose(f);
 
-    FILE *r = fopen(trace_path, "r");
-    cr_assert_not_null(r);
-    size_t n = fread(buf, 1, cap - 1, r);
-    buf[n] = '\0';
-    fclose(r);
-    remove(trace_path);
+    test_read_file(path, buf, cap);
+    remove(path);
     return rc;
 }
 
