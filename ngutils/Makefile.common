@@ -29,7 +29,6 @@ CFLAGS      += -Wall -Wextra -std=gnu11 -Iinclude
 # Convenience targets:
 #   make asan_check   ASan + UBSan, isolated under build/asan/
 #   make asan_leak    ASan + LSan  (SKIP on macOS)
-#   make leaks_check  Apple `leaks --atExit` (SKIP on Linux)
 #
 # SANITIZE and BUILD_DIR are exported to sub-makes for dependency
 # rebuilds — every archive must be built with the same sanitizer set,
@@ -70,32 +69,10 @@ MAKEFLAGS   += --no-print-directory
 REQUIRES     ?=
 REQ_INCLUDES  = $(addprefix -I../,$(addsuffix /include,$(REQUIRES)))
 
-#REQ_ARCHIVES  = $(foreach req,$(REQUIRES),../$(req)/build/debug/lib$(req).a)
-# instead that one
-
 # Paths of required sibling archives, for linking.
 REQ_ARCHIVES = $(foreach req,$(REQUIRES),../$(req)/$(BUILD_DIR)/debug/lib$(req).a)
 
-# One explicit rule per requirement — no $(dir $@)/../.. path walking,
-# which fails when build/asan/debug does not exist yet.
-define REQ_RULE
-../$(1)/$(BUILD_DIR)/debug/lib$(1).a:
-	@$$(MAKE) -C ../$(1) lib BUILD_DIR=$$(BUILD_DIR) SANITIZE=$$(SANITIZE)
-endef
-
-$(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
-
 CFLAGS       += $(REQ_INCLUDES)
-
-# Build required archives on demand via sub-make.
-# Generate one explicit rule per requirement, so the project path is
-# known directly and we never rely on path-walking through `..`.
-define REQ_RULE
-../$(1)/build/debug/lib$(1).a:
-	@$$(MAKE) -C ../$(1) lib
-endef
-
-$(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
 
 # --- layout ---
 
@@ -147,7 +124,7 @@ $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 ifeq ($(HAVE_CRITERION),yes)
 
 test: $(TEST_BIN)
-	@$(SAN_RUN) @$(TEST_BIN)
+	@$(SAN_RUN) $(TEST_BIN)
 
 $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC)  $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
@@ -219,12 +196,12 @@ list:
 	@echo "Targets:"
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | sed 's/:.*//' | sort -u | sed 's/^/  /'
 
-.PHONY: asan_check asan_leak leaks_check
+.PHONY: asan_check asan_lea
 
 # ASan + UBSan. Isolated BUILD_DIR so the normal build/ is untouched.
 asan_check:
 	@echo "==> asan_check $(PROJNAME): ASan + UBSan"
-	@SANITIZE=asan BUILD_DIR=build/asan \
+	@SANITIZE=asan BUILD_DIR=build/asan-ubsan \
 	    $(MAKE) clean test
 
 # Linux only: ASan + LSan. --no-fork so leaks inside Criterion's
@@ -236,25 +213,21 @@ asan_leak:
 	else \
 	    echo "==> asan_leak $(PROJNAME): ASan + LSan"; \
 	    SANITIZE=lsan BUILD_DIR=build/asan $(MAKE) clean; \
-	    SANITIZE=lsan BUILD_DIR=build/asan \
+	    SANITIZE=lsan BUILD_DIR=build/asan-lsan \
 	        ASAN_OPTIONS=detect_leaks=1 $(MAKE) $(TEST_BIN); \
 	    ASAN_OPTIONS=detect_leaks=1 ./$(TEST_BIN); \
 	fi
 
-# macOS only: Apple's `leaks` tool. Requires a non-ASan build, so
-# sanitizer flags are stripped from CFLAGS for this run.
-leaks_check:
-	@if [ "$$(uname)" != "Darwin" ]; then \
-	    echo "SKIP: Apple leaks tool is macOS-only. Use make asan_leak."; \
-	else \
-	    echo "==> leaks_check $(PROJNAME): leaks --atExit"; \
-	    $(MAKE) clean; \
-	    $(MAKE) test CFLAGS="$(CFLAGS_LEAK) -g -O0"; \
-	    MallocStackLogging=1 leaks --atExit -- ./$(TEST_BIN); \
-	fi
+FORCE:
 
-# CFLAGS with sanitizer flags (and -MD/-MP) stripped, for leaks_check.
-CFLAGS_LEAK = $(filter-out -fsanitize=% -fno-omit-frame-pointer -MD -MP,$(CFLAGS))
+define REQ_RULE
+../$(1)/$(BUILD_DIR)/debug/lib$(1).a: FORCE
+	@$$(MAKE) -C ../$(1) lib BUILD_DIR=$$(BUILD_DIR) SANITIZE=$$(SANITIZE)
+endef
+
+$(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
+
+.PHONY: FORCE
 
 -include $(DEPFILES)
 

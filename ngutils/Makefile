@@ -14,13 +14,13 @@ NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
 .PHONY: help list listall docs \
-		build-docker test-docker clean-docker check-docker delete-docker \
+		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak \
 		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
         $(addprefix lib-,$(PROJECTS)) \
 		$(addprefix librelease-,$(PROJECTS)) \
-		asan_check asan_leak leaks_check
+		asan_check asan_leak
 
 help:
 	@echo "ngutils dispatcher"
@@ -43,13 +43,13 @@ help:
 	@echo "  make clean-docker     delete the Linux dev image"
 	@echo "  make check-docker     verify docker CLI + daemon"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
+	@echo "  make test-docker-leak run ASan+LSan across all projects (Linux)"
 	@echo "  make delete-docker    remove the $(DOCKER_IMAGE) image"
 	@echo ""
 	@echo "  make cloneproj NAME=x  create new utility from skeleton"
 	@echo ""
 	@echo "  make asan_check   rebuild with ASan + UBSan (macOS + Linux)"
 	@echo "  make asan_leak    ASan + LSan (Linux only; error skipped)"
-	@echo "  make leaks_check  Apple 'leaks' tool (macOS only; error skipped)"
 	@echo ""
 	@echo "Projects:"
 	@for p in $(PROJECTS); do echo "  - $$p"; done
@@ -176,6 +176,10 @@ test-docker: check-docker
 		-w /work $(DOCKER_IMAGE) \
 		sh -c 'REQUIRE_CRITERION=1 make test' 
 
+test-docker-leak:
+	@docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
+	    sh -c 'SANITIZE=lsan BUILD_DIR=build/asan-lsan make test'
+
 clean-docker:
 	@rm -rf $(DOCKER_BUILD_DIR)
 	@echo "Cleaned: $(DOCKER_BUILD_DIR)"
@@ -211,7 +215,7 @@ LEAK_PROJECTS := $(filter-out $(LEAK_CHECK_SKIP),$(PROJECTS))
 
 asan_check:
 	@echo "==> asan_check: all projects"
-	@SANITIZE=asan BUILD_DIR=build/asan $(MAKE) test
+	@SANITIZE=asan BUILD_DIR=build/asan-ubsan $(MAKE) test
 
 asan_leak:
 	@if [ "$$(uname)" = "Darwin" ]; then \
@@ -225,12 +229,3 @@ asan_leak:
 	    done; \
 	fi
 
-leaks_check:
-	@if [ "$$(uname)" != "Darwin" ]; then \
-	    echo "SKIP: Apple leaks is macOS-only"; \
-	    exit 0; \
-	fi
-	@for p in $(LEAK_PROJECTS); do \
-	    echo "--- $$p ---"; \
-	    $(MAKE) -C $$p leaks_check || exit 1; \
-	done
