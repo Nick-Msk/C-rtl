@@ -177,7 +177,13 @@ test-docker: check-docker
 		sh -c 'REQUIRE_CRITERION=1 make test' 
 
 test-docker-leak:
-	@docker run --rm -v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
+	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
+	    echo "too many projects for a single docker run" >&2; \
+	    exit 1; \
+	fi
+	@$(DOCKER) run --rm \
+		-e MAKEFLAGS="$(DOCKER_MAKEFLAGS)" \
+		-v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
 	    sh -c 'SANITIZE=lsan BUILD_DIR=build/asan-lsan make test'
 
 clean-docker:
