@@ -7,6 +7,7 @@
 
 #include "checker.h"
 #include "log.h"
+#include "test_common.h" 
 
 /* -------------------------------------------------------------------------
  * Fixtures — silence stderr, init log
@@ -19,22 +20,14 @@ static void setup(void) {
     snprintf(log_path, sizeof(log_path),
              "/tmp/test_checker_%d.log", (int)getpid());
     log_init(log_path, false, LOG_FORMAT_EMPTY);
-
-    fflush(stderr);
-    saved_stderr = dup(fileno(stderr));
-    freopen("/dev/null", "w", stderr);
+    saved_stderr = test_mute_stderr();
 }
 
 static void teardown(void) {
     log_close();
     remove(log_path);
-
-    fflush(stderr);
-    if (saved_stderr >= 0) {
-        dup2(saved_stderr, fileno(stderr));
-        close(saved_stderr);
-        saved_stderr = -1;
-    }
+    test_restore_stderr(saved_stderr);
+    saved_stderr = -1;
 }
 
 TestSuite(checker, .init = setup, .fini = teardown);
@@ -220,8 +213,7 @@ Test(checker, inv_fprintf_int_null_out_no_crash) {
 
 Test(checker, inv_fprintf_int_writes_to_stream) {
     char path[256];
-    snprintf(path, sizeof(path),
-             "/tmp/test_checker_fprintf_%d.txt", (int)getpid());
+    test_tmpname(path, sizeof path, "test_checker_fprintf", NULL, "txt");
 
     FILE *f = fopen(path, "w");
     cr_assert_not_null(f);
@@ -231,11 +223,8 @@ Test(checker, inv_fprintf_int_writes_to_stream) {
 
     cr_assert_gt(rc, 0, "expected positive write count");
 
-    FILE *r = fopen(path, "r");
-    cr_assert_not_null(r);
-    char buf[1024] = {0};
-    size_t n = fread(buf, 1, sizeof(buf) - 1, r);
-    fclose(r);
+    char buf[1024];
+    size_t n = test_read_file(path, buf, sizeof buf);
     remove(path);
 
     cr_assert_gt(n, 0);
