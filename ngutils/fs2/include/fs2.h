@@ -127,6 +127,7 @@ static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL;
 
 #define FS2LOCAL(name, n)                          \
     char _fs2_buf_##name[(n)];                     \
+    _fs2_buf_##name[0] = '\0';                     \
     fs2 name = (fs2){ .len = 0, .sz = (n),         \
                       .flags = FS2_LOCAL,          \
                       .v = _fs2_buf_##name }
