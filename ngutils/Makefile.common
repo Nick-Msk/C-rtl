@@ -231,29 +231,27 @@ asan_check:
 # per-test children are actually seen by the parent LSan runtime.
 asan_leak:
 	@if [ "$$(uname)" = "Darwin" ]; then \
-	    echo "SKIP: LeakSanitizer is not available on macOS."; \
+	    echo "SKIP: LeakSanitizer not available on macOS."; \
 	    echo "      Use a Linux box or 'make test-docker'."; \
-	    exit 0; \
+	else \
+	    echo "==> asan_leak $(PROJNAME): ASan + LSan"; \
+	    SANITIZE=lsan BUILD_DIR=build/asan $(MAKE) clean; \
+	    SANITIZE=lsan BUILD_DIR=build/asan \
+	        ASAN_OPTIONS=detect_leaks=1 $(MAKE) $(TEST_BIN); \
+	    ASAN_OPTIONS=detect_leaks=1 ./$(TEST_BIN); \
 	fi
-	@echo "==> asan_leak $(PROJNAME): ASan + LSan (--no-fork)"
-	@SANITIZE=lsan BUILD_DIR=build/asan \
-	    $(MAKE) clean
-	@SANITIZE=lsan BUILD_DIR=build/asan \
-	    ASAN_OPTIONS=detect_leaks=1 \
-	    $(MAKE) $(TEST_BIN)
-	@ASAN_OPTIONS=detect_leaks=1 ./$(TEST_BIN) --no-fork
 
 # macOS only: Apple's `leaks` tool. Requires a non-ASan build, so
 # sanitizer flags are stripped from CFLAGS for this run.
 leaks_check:
 	@if [ "$$(uname)" != "Darwin" ]; then \
 	    echo "SKIP: Apple leaks tool is macOS-only. Use make asan_leak."; \
-	    exit 0; \
+	else \
+	    echo "==> leaks_check $(PROJNAME): leaks --atExit"; \
+	    $(MAKE) clean; \
+	    $(MAKE) test CFLAGS="$(CFLAGS_LEAK) -g -O0"; \
+	    MallocStackLogging=1 leaks --atExit -- ./$(TEST_BIN); \
 	fi
-	@echo "==> leaks_check $(PROJNAME): leaks --atExit"
-	@$(MAKE) clean
-	@$(MAKE) test CFLAGS="$(CFLAGS_LEAK) -g -O0"
-	@MallocStackLogging=1 leaks --atExit -- ./$(TEST_BIN)
 
 # CFLAGS with sanitizer flags (and -MD/-MP) stripped, for leaks_check.
 CFLAGS_LEAK = $(filter-out -fsanitize=% -fno-omit-frame-pointer -MD -MP,$(CFLAGS))

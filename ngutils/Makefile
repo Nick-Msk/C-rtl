@@ -216,12 +216,14 @@ asan_check:
 asan_leak:
 	@if [ "$$(uname)" = "Darwin" ]; then \
 	    echo "SKIP: LeakSanitizer not available on macOS"; \
-	    exit 0; \
+	    echo "      Use Linux or:  make test-docker"; \
+	else \
+	    echo "==> asan_leak: all projects"; \
+	    for p in $(LEAK_PROJECTS); do \
+	        echo "--- $$p ---"; \
+	        $(MAKE) -C $$p asan_leak || exit 1; \
+	    done; \
 	fi
-	@for p in $(LEAK_PROJECTS); do \
-	    echo "--- $$p ---"; \
-	    $(MAKE) -C $$p asan_leak || exit 1; \
-	done
 
 leaks_check:
 	@if [ "$$(uname)" != "Darwin" ]; then \
