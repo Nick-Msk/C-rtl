@@ -14,7 +14,7 @@ NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
 .PHONY: help list listall docs \
-		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak \
+		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak test-docker-ub \
 		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
@@ -43,6 +43,7 @@ help:
 	@echo "  make clean-docker     delete the Linux dev image"
 	@echo "  make check-docker     verify docker CLI + daemon"
 	@echo "  make test-docker      run all tests inside Docker (Linux)"
+	@echo "  make test-docker-ub   ASan + UBSan inside the container (Linux)"
 	@echo "  make test-docker-leak run ASan+LSan across all projects (Linux)"
 	@echo "  make delete-docker    remove the $(DOCKER_IMAGE) image"
 	@echo ""
@@ -161,7 +162,9 @@ check-docker:
 build-docker: check-docker
 	$(DOCKER) build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
 
-test-docker: check-docker
+# Shared recipe for docker-based test runs.
+# Usage: $(call docker-test-recipe,<build_dir>,<sanitize>,<env_prefix>)
+define docker-test-recipe
 	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
 	    echo "too many projects for a single docker run" >&2; \
 	    exit 1; \
@@ -174,22 +177,17 @@ test-docker: check-docker
 		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
 		-v $(DOCKER_BUILD_DIR):/work/build \
 		-w /work $(DOCKER_IMAGE) \
-		sh -c 'REQUIRE_CRITERION=1 make test' 
+		sh -c '$(3) make test'
+endef
+
+test-docker: check-docker
+	$(call docker-test-recipe,build,,REQUIRE_CRITERION=1)
+
+test-docker-ub: check-docker
+	$(call docker-test-recipe,build/asan-ubsan,asan,SANITIZE=asan BUILD_DIR=build/asan-ubsan REQUIRE_CRITERION=1)
 
 test-docker-leak: check-docker
-	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
-	    echo "too many projects for a single docker run" >&2; \
-	    exit 1; \
-	fi
-	@mkdir -p $(DOCKER_BUILD_DIR)
-	@$(foreach p,$(PROJECTS),mkdir -p $(DOCKER_BUILD_DIR)/$(p);)
-	@$(DOCKER) run --rm \
-		-e MAKEFLAGS="$(DOCKER_MAKEFLAGS)" \
-		-v "$(CURDIR):/work" \
-		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
-		-v $(DOCKER_BUILD_DIR):/work/build \
-		-w /work $(DOCKER_IMAGE) \
-		sh -c 'SANITIZE=lsan BUILD_DIR=build/asan-lsan REQUIRE_CRITERION=1 make test'
+	$(call docker-test-recipe,build/asan-lsan,lsan,SANITIZE=lsan BUILD_DIR=build/asan-lsan REQUIRE_CRITERION=1)
 
 clean-docker:
 	@rm -rf $(DOCKER_BUILD_DIR)
