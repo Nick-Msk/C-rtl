@@ -1,6 +1,7 @@
 #include <criterion/criterion.h>
 
 #include "log.h"
+#include "test_common.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,8 +14,7 @@
 static char log_path[256];
 
 static void setup(void) {
-    snprintf(log_path, sizeof(log_path),
-             "/tmp/ngutils_log_%d.log", (int)getpid());
+    test_tmpname(log_path, sizeof log_path, "ngutils_log", NULL, "log");
     remove(log_path);
 }
 
@@ -47,19 +47,6 @@ static int has(const char *needle) {
     for (size_t i = 0; i + m <= out_len; i++)
         if (memcmp(out_buf + i, needle, m) == 0) return 1;
     return 0;
-}
-
-static int mute(void) {
-    fflush(stderr);
-    int saved = dup(fileno(stderr));
-    cr_assert_geq(saved, 0, "dup(stderr) failed");
-    freopen("/dev/null", "w", stderr);
-    return saved;
-}
-static void unmute(int saved) {
-    fflush(stderr);
-    dup2(saved, fileno(stderr));
-    close(saved);
 }
 
 /* -------------------------------------------------------------------------
@@ -184,9 +171,9 @@ Test(log, switch_on_restores_output) {
 
 Test(log, format_rejects_out_of_range) {
     cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
-    int saved = mute();
+    int saved = test_mute_stderr();
     cr_assert_not(log_format((LogFormat)999));
-    unmute(saved);
+    test_restore_stderr(saved);
 }
 
 Test(log, format_only_func_prefix) {
@@ -275,10 +262,10 @@ Test(log, known_module_logoff_suppresses) {
     cr_assert(log_modinit(mods));
     cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
 
-    int saved = mute();
+    int saved = test_mute_stderr();
     log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
             "mymod", __FILE__, __func__, __LINE__, "hidden");
-    unmute(saved);
+    test_restore_stderr(saved);
     log_close();
 
     cr_assert_eq(slurp(log_path), 0);
@@ -292,10 +279,10 @@ Test(log, unknown_module_suppresses) {
     cr_assert(log_modinit(mods));
     cr_assert(log_init(log_path, false, LOG_FORMAT_ALL));
 
-    int saved = mute();
+    int saved = test_mute_stderr();
     log_msg(LOG_MSG | LOG_SIMPLE | LOG_NOPREAMBULE, 0, LOGALL,
             "unknown", __FILE__, __func__, __LINE__, "hidden");
-    unmute(saved);
+    test_restore_stderr(saved);
     log_close();
 
     cr_assert_eq(slurp(log_path), 0);
@@ -306,10 +293,10 @@ Test(log, modinit_rejects_double_init) {
         { .module = "m", .level = LOGALL },
         { .module = "",  .level = _LOGSTOP }
     };
-    int saved = mute();
+    int saved = test_mute_stderr();
     cr_assert(log_modinit(mods));
     cr_assert_not(log_modinit(mods));
-    unmute(saved);
+    test_restore_stderr(saved);
 }
 
 Test(log, modinit_null_uses_default) {
