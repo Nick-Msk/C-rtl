@@ -16,9 +16,8 @@ static char log_path[256];
 static int  saved_stderr = -1;
 
 static void setup(void) {
-    snprintf(log_path, sizeof(log_path),
-             "/tmp/test_fs2_%d.log", (int)getpid());
-    log_init(log_path, false, LOG_FORMAT_EMPTY);
+    log_mkdir("logs");
+    log_init_bypid("logs", "test_fs2", true, LOG_FORMAT_ALL);
     saved_stderr = test_mute_stderr();
 }
 
@@ -465,7 +464,7 @@ Test(fs2, local_two_instances_independent) {
  * ------------------------------------------------------------------------- */
 
 Test(fs2, localfill_empty_format) {
-    FS2LOCALFILL(t, "");
+    FS2LOCALFILL(t, "%s", "");
 
     cr_assert_eq(t.len, 0);
     cr_assert_eq(t.sz, 1);
