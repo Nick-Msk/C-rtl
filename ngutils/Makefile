@@ -176,15 +176,20 @@ test-docker: check-docker
 		-w /work $(DOCKER_IMAGE) \
 		sh -c 'REQUIRE_CRITERION=1 make test' 
 
-test-docker-leak:
+test-docker-leak: check-docker
 	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
 	    echo "too many projects for a single docker run" >&2; \
 	    exit 1; \
 	fi
+	@mkdir -p $(DOCKER_BUILD_DIR)
+	@$(foreach p,$(PROJECTS),mkdir -p $(DOCKER_BUILD_DIR)/$(p);)
 	@$(DOCKER) run --rm \
 		-e MAKEFLAGS="$(DOCKER_MAKEFLAGS)" \
-		-v "$(CURDIR):/work" -w /work $(DOCKER_IMAGE) \
-	    sh -c 'SANITIZE=lsan BUILD_DIR=build/asan-lsan make test'
+		-v "$(CURDIR):/work" \
+		$(foreach p,$(PROJECTS),-v $(DOCKER_BUILD_DIR)/$(p):/work/$(p)/build) \
+		-v $(DOCKER_BUILD_DIR):/work/build \
+		-w /work $(DOCKER_IMAGE) \
+		sh -c 'SANITIZE=lsan BUILD_DIR=build/asan-lsan REQUIRE_CRITERION=1 make test'
 
 clean-docker:
 	@rm -rf $(DOCKER_BUILD_DIR)
