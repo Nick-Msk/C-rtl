@@ -20,19 +20,15 @@ endif
 CC          ?= cc
 CFLAGS      += -Wall -Wextra -std=gnu11 -Iinclude
 
-# ── Sanitizers & leak checking ──────────────────────────────────────────────
+# ── Sanitizers ──────────────────────────────────────────────────────────────
 #
-#   SANITIZE=asan    ASan + UBSan. Works on macOS and Linux.
-#                    On Linux, LeakSanitizer is built into ASan.
-#   SANITIZE=lsan    ASan + explicit leak detection (Linux only).
+#   SANITIZE=asan    ASan + UBSan.  macOS and Linux.
+#   SANITIZE=lsan    ASan + LSan.   Linux only (LeakSanitizer).
 #
-# Convenience targets:
-#   make asan_check   ASan + UBSan, isolated under build/asan/
-#   make asan_leak    ASan + LSan  (SKIP on macOS)
-#
-# SANITIZE and BUILD_DIR are exported to sub-makes for dependency
-# rebuilds — every archive must be built with the same sanitizer set,
-# otherwise ASan's interceptors miss part of the process.
+# SANITIZE and BUILD_DIR must reach sub-makes as make arguments
+# (VAR=value before the goal), not as environment assignments. A
+# parent make already has BUILD_DIR=build from ?=, and passing an env
+# var would be shadowed by the parse-time value.
 
 SANITIZE ?=
 
@@ -61,16 +57,9 @@ SCAN_BUILD  ?= scan-build
 MAKEFLAGS   += --no-print-directory
 
 # --- cross-utility dependencies ---
-#
-# REQUIRES lists sibling utilities this project depends on. Each name
-# adds -I../<name>/include to CFLAGS and ../<name>/build/debug/lib<name>.a
-# to link dependencies.
 
 REQUIRES     ?=
 REQ_INCLUDES  = $(addprefix -I../,$(addsuffix /include,$(REQUIRES)))
-
-# Paths of required sibling archives, for linking.
-REQ_ARCHIVES = $(foreach req,$(REQUIRES),../$(req)/$(BUILD_DIR)/debug/lib$(req).a)
 
 CFLAGS       += $(REQ_INCLUDES)
 
@@ -81,6 +70,8 @@ DEBUG         = $(BUILD_DIR)/debug
 RELEASE       = $(BUILD_DIR)/release
 DBG_OBJ       = $(DEBUG)/obj
 REL_OBJ       = $(RELEASE)/obj
+
+REQ_ARCHIVES = $(foreach req,$(REQUIRES),../$(req)/$(BUILD_DIR)/debug/lib$(req).a)
 
 DBG_CFLAGS    = -g -O0
 REL_CFLAGS    = -O2 -DNDEBUG
@@ -99,7 +90,9 @@ REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
 
 DEPFILES      = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
 
-.PHONY: all lib librelease test check clean list analyze analyze-lib analyze-test
+.PHONY: all lib librelease test check clean list \
+        analyze analyze-lib analyze-test \
+        asan_check asan_leak FORCE
 
 # --- default ---
 
@@ -127,7 +120,7 @@ test: $(TEST_BIN)
 	@$(SAN_RUN) $(TEST_BIN)
 
 $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
-	$(CC)  $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
+	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
 
 $(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
 	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
@@ -167,7 +160,6 @@ $(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
 check:
 	$(CLANG_TIDY) $(SRC) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
 
-# Analyze the library sources with clang static analyzer.
 analyze: analyze-lib
 
 analyze-lib:
@@ -176,18 +168,36 @@ analyze-lib:
 	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze \
 	    $(MAKE) lib
 
-# Analyze tests as well (slower, noisier — Criterion macros)
 analyze-test:
 	@mkdir -p $(BUILD_DIR)/analyze-test
 	@rm -rf $(DEBUG)
 	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze-test \
-		$(MAKE) $(TEST_BIN)
+	    $(MAKE) $(TEST_BIN)
+
+# --- sanitizers ---
+#
+# BUILD_DIR and SANITIZE are passed as make arguments, not env
+# assignments. This ensures $(TEST_BIN) etc. resolve against the
+# sanitizer build tree, and that the value survives $(MAKE) recursion.
+
+asan_check:
+	@echo "==> asan_check $(PROJNAME): ASan + UBSan"
+	@$(MAKE) clean test BUILD_DIR=build/asan-ubsan SANITIZE=asan
+
+asan_leak:
+	@if [ "$$(uname)" = "Darwin" ]; then \
+	    echo "SKIP: LeakSanitizer not available on macOS."; \
+	    echo "      Use 'make test-docker-leak' (Linux container)."; \
+	else \
+	    echo "==> asan_leak $(PROJNAME): ASan + LSan"; \
+	    $(MAKE) clean test BUILD_DIR=build/asan-lsan SANITIZE=lsan; \
+	fi
 
 # --- misc ---
 
 clean:
 	@find $(BUILD_DIR) -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
-	@rm -rf build/asan
+	@rmdir $(BUILD_DIR) 2>/dev/null || true
 
 clean-logs:
 	@rm -f logs/*.log
@@ -196,27 +206,7 @@ list:
 	@echo "Targets:"
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | sed 's/:.*//' | sort -u | sed 's/^/  /'
 
-.PHONY: asan_check asan_lea
-
-# ASan + UBSan. Isolated BUILD_DIR so the normal build/ is untouched.
-asan_check:
-	@echo "==> asan_check $(PROJNAME): ASan + UBSan"
-	@SANITIZE=asan BUILD_DIR=build/asan-ubsan \
-	    $(MAKE) clean test
-
-# Linux only: ASan + LSan. --no-fork so leaks inside Criterion's
-# per-test children are actually seen by the parent LSan runtime.
-asan_leak:
-	@if [ "$$(uname)" = "Darwin" ]; then \
-	    echo "SKIP: LeakSanitizer not available on macOS."; \
-	    echo "      Use a Linux box or 'make test-docker'."; \
-	else \
-	    echo "==> asan_leak $(PROJNAME): ASan + LSan"; \
-	    SANITIZE=lsan BUILD_DIR=build/asan $(MAKE) clean; \
-	    SANITIZE=lsan BUILD_DIR=build/asan-lsan \
-	        ASAN_OPTIONS=detect_leaks=1 $(MAKE) $(TEST_BIN); \
-	    ASAN_OPTIONS=detect_leaks=1 ./$(TEST_BIN); \
-	fi
+# --- cross-project archives ---
 
 FORCE:
 
@@ -226,8 +216,6 @@ define REQ_RULE
 endef
 
 $(foreach req,$(REQUIRES),$(eval $(call REQ_RULE,$(req))))
-
-.PHONY: FORCE
 
 -include $(DEPFILES)
 
