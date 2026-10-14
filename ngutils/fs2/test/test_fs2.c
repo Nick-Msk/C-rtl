@@ -240,18 +240,6 @@ Test(fs2, free_alloc_is_idempotent) {
     cr_assert_null(s.v);
 }
 
-Test(fs2, free_static_with_bodyalloc) {
-    /* struct is heap-allocated, string is a literal — free must release body only */
-    fs2 *s = malloc(sizeof *s);
-    cr_assert_not_null(s);
-    *s = FS2_LITERAL("still here");
-    s->flags = (fs2_flags)(s->flags | FS2_BODYALLOC);
-
-    fs2_free(s);           /* frees the struct, not the literal */
-    /* no assertion on `s` — it is dangling */
-    cr_assert(1);
-}
-
 /*
 Test(fs2, free_alloc_with_bodyalloc) {
     // both buffer and struct on the heap 

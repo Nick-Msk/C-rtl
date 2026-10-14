@@ -116,26 +116,24 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
  * ───────────────────────────────────────────────────────────────────────── */
 
 void                                    fs2_free(fs2 *s){
-    if (!s || !fs2_is_alloc(s)) {    // don't modify literals!
+    if (!s || fs2_is_defunct(s)) {
 #ifdef FS2_TRACE 
         if (s)
             logsimple("trying to free NON allocated %d", s->flags);
 #endif        
         return;
     }
-    bool  bdllloc = fs2_is_bodyalloc(s);  // flags based
-    if (fs2_is_alloc(s) )    // actualy alloc must be a flag, but not statememnt TODO:
-        if (s->v){
-            atomic_fetch_add(&g_free_cnt, 1);
+    bool  body = fs2_is_bodyalloc(s);  // flags based
+    if (fs2_is_alloc(s) && s->v) { // s->v in heap!
+        atomic_fetch_add(&g_free_cnt, 1);
 #ifdef FS2_TRACE 
-            logsimple("freed... %p", s->v);   // WOW, logsimpleact? 
+        logsimple("freed... %p", s->v);   // WOW, logsimpleact? 
 #endif
-            free(s->v);
-        }
-    s->sz = s->len = 0;
-    s->v = 0;    
-    if (bdllloc){
-        s->flags &= ~FS2_BODYALLOC;   // clear  FS_FLAG_BODYALLOC
+        free(s->v);
+        s->sz = s->len = 0;
+        s->v = NULL; 
+    } 
+    if (body){  // s in heap!
         atomic_fetch_add(&g_free_body_cnt, 1);
 #ifdef FS2_TRACE 
         logsimple("fs body %p freed (g_free_body_cnt %d)", s, 
