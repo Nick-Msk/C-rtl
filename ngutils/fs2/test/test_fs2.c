@@ -2,6 +2,7 @@
 
 #include "fs2.h"
 #include "log.h"
+#include "test_common.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,22 +19,14 @@ static void setup(void) {
     snprintf(log_path, sizeof(log_path),
              "/tmp/test_fs2_%d.log", (int)getpid());
     log_init(log_path, false, LOG_FORMAT_EMPTY);
-
-    fflush(stderr);
-    saved_stderr = dup(fileno(stderr));
-    freopen("/dev/null", "w", stderr);
+    saved_stderr = test_mute_stderr();
 }
 
 static void teardown(void) {
     log_close();
     remove(log_path);
-
-    fflush(stderr);
-    if (saved_stderr >= 0) {
-        dup2(saved_stderr, fileno(stderr));
-        close(saved_stderr);
-        saved_stderr = -1;
-    }
+    test_restore_stderr(saved_stderr);
+    saved_stderr = -1;
 }
 
 TestSuite(fs2, .init = setup, .fini = teardown);
