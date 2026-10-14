@@ -403,3 +403,131 @@ Test(fs2, techfprint_null_out_returns_zero) {
     cr_assert_eq(fs_techfprint(NULL, &s, "s"), 0);
 }
 
+/* -------------------------------------------------------------------------
+ * FS2LOCAL — stack buffer, no ownership
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, local_creates_empty) {
+    FS2LOCAL(t, 32);
+
+    cr_assert_not_null(t.v);
+    cr_assert_eq(t.sz, 32);
+    cr_assert_eq(t.len, 0);
+    cr_assert_eq(t.v[0], '\0');
+    cr_assert(fs2_is_local(&t));
+    cr_assert_not(fs2_is_static(&t));
+    cr_assert_not(fs2_is_alloc(&t));
+    cr_assert_not(fs2_is_bodyalloc(&t));
+    cr_assert(fs2_is_empty(&t));
+}
+
+Test(fs2, local_buffer_is_writable) {
+    FS2LOCAL(t, 16);
+
+    memcpy(t.v, "hello", 6);
+    t.len = 5;
+
+    cr_assert_str_eq(t.v, "hello");
+    cr_assert_eq(t.len, 5);
+    cr_assert_eq(t.sz, 16);
+    cr_assert(fs2_is_local(&t));
+}
+
+Test(fs2, local_free_is_noop) {
+    FS2LOCAL(t, 16);
+    memcpy(t.v, "keep me", 8);
+    t.len = 7;
+
+    fs2_free(&t);
+
+    /* STATIC/LOCAL: free must not touch the buffer */
+    cr_assert_str_eq(t.v, "keep me");
+    cr_assert_eq(t.len, 7);
+    cr_assert(fs2_is_local(&t));
+}
+
+Test(fs2, local_two_instances_independent) {
+    FS2LOCAL(a, 8);
+    FS2LOCAL(b, 16);
+
+    memcpy(a.v, "aaa", 4); a.len = 3;
+    memcpy(b.v, "bbbb", 5); b.len = 4;
+
+    cr_assert_str_eq(a.v, "aaa");
+    cr_assert_str_eq(b.v, "bbbb");
+    cr_assert_eq(a.sz, 8);
+    cr_assert_eq(b.sz, 16);
+    cr_assert(a.v != b.v);
+}
+
+/* -------------------------------------------------------------------------
+ * FS2LOCALFILL — format into stack buffer
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, localfill_empty_format) {
+    FS2LOCALFILL(t, "");
+
+    cr_assert_eq(t.len, 0);
+    cr_assert_eq(t.sz, 1);
+    cr_assert_str_eq(t.v, "");
+    cr_assert(fs2_is_local(&t));
+}
+
+Test(fs2, localfill_plain_string) {
+    FS2LOCALFILL(t, "hello world");
+
+    cr_assert_eq(t.len, 11);
+    cr_assert_str_eq(t.v, "hello world");
+    cr_assert_eq(t.sz, 12);
+    cr_assert(fs2_is_local(&t));
+}
+
+Test(fs2, localfill_int) {
+    FS2LOCALFILL(t, "x=%d", 42);
+
+    cr_assert_eq(t.len, 4);
+    cr_assert_str_eq(t.v, "x=42");
+}
+
+Test(fs2, localfill_string_arg) {
+    const char *name = "alice";
+    FS2LOCALFILL(t, "user=%s", name);
+
+    cr_assert_eq(t.len, 10);
+    cr_assert_str_eq(t.v, "user=alice");
+}
+
+Test(fs2, localfill_mixed) {
+    FS2LOCALFILL(t, "%s=%d (%c)", "count", 7, 'x');
+
+    cr_assert_str_eq(t.v, "count=7 (x)");
+    cr_assert_eq(t.len, 11);
+}
+
+Test(fs2, localfill_negative_int) {
+    FS2LOCALFILL(t, "%d", -123);
+
+    cr_assert_str_eq(t.v, "-123");
+    cr_assert_eq(t.len, 4);
+}
+
+Test(fs2, localfill_two_instances) {
+    FS2LOCALFILL(a, "first=%d", 1);
+    FS2LOCALFILL(b, "second=%d", 2);
+
+    cr_assert_str_eq(a.v, "first=1");
+    cr_assert_str_eq(b.v, "second=2");
+    cr_assert(a.v != b.v);
+    cr_assert(fs2_is_local(&a));
+    cr_assert(fs2_is_local(&b));
+}
+
+Test(fs2, localfill_free_is_noop) {
+    FS2LOCALFILL(t, "keep me please");
+
+    fs2_free(&t);
+
+    cr_assert_str_eq(t.v, "keep me please");
+    cr_assert_eq(t.len, strlen("keep me please"));
+    cr_assert(fs2_is_local(&t));
+}

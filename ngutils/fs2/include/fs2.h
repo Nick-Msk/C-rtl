@@ -125,6 +125,23 @@ static inline bool fs2_is_empty(const fs2 *s) { return s->len == 0 || *s->v == '
  */
 static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL; }
 
+#define FS2LOCAL(name, n)                          \
+    char _fs2_buf_##name[(n)];                     \
+    fs2 name = (fs2){ .len = 0, .sz = (n),         \
+                      .flags = FS2_LOCAL,          \
+                      .v = _fs2_buf_##name }
+
+#define FS2LOCALFILL(name, fmt, ...)                                          \
+    char _fs2_internal_buf_##name[snprintf(NULL, 0, fmt, ##__VA_ARGS__) + 1]; \
+    snprintf(_fs2_internal_buf_##name, sizeof(_fs2_internal_buf_##name),      \
+             fmt, ##__VA_ARGS__);                                             \
+    fs2 name = (fs2){                                                         \
+        .len   = sizeof(_fs2_internal_buf_##name) - 1,                        \
+        .sz    = sizeof(_fs2_internal_buf_##name),                            \
+        .flags = FS2_LOCAL,                                                   \
+        .v     = _fs2_internal_buf_##name                                     \
+    }
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — value (stack body)
  *
@@ -135,7 +152,7 @@ static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL;
  *   fs2_movefrom(src)    steal from a stack fs2 (src becomes DEFUNCT)
  *   fs2_movefromstr(p)   steal a heap C-string (p becomes NULL)
  * ───────────────────────────────────────────────────────────────────────── */
-
+ 
 fs2   fs2_init    (size_t sz);
 fs2   fs2_fromstr (const char *src);
 fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
