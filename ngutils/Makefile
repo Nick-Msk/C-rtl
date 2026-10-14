@@ -1,5 +1,24 @@
 # Dispatcher Makefile for ngutils/*
 
+# ── GNU Make version guard ──────────────────────────────────────────────────
+#
+# 4.0+ is required: earlier versions have unreliable $(eval) inside
+# $(foreach), different handling of multiline define/call, and no
+# $(file ...). Apple's shipped Make 3.81 fails on our REQ_RULE and
+# docker-test-recipe patterns.
+#
+# macOS users with Homebrew:
+#     brew install make
+#     export PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"
+
+MAKE_VERSION_MAJOR := $(firstword $(subst ., ,$(MAKE_VERSION)))
+
+ifeq ($(shell test "$(MAKE_VERSION_MAJOR)" -lt 4 && echo old),old)
+$(error GNU Make 4.0 or newer required; found $(MAKE_VERSION). \
+        On macOS: brew install make, then add \
+        /opt/homebrew/opt/make/libexec/gnubin to PATH)
+endif
+
 MAKEFLAGS += --no-print-directory
 
 PROJECTS        := $(patsubst %/Makefile,%,$(wildcard */Makefile))
