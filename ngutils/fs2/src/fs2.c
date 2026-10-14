@@ -118,7 +118,8 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 void                                    fs2_free(fs2 *s){
     if (!s) {
 #ifdef FS2_TRACE 
-        logsimple("trying to free NON allocated %d", s->flags);
+        if (s)
+            logsimple("trying to free NON allocated %d", s->flags);
 #endif        
         return;
     }
@@ -135,9 +136,9 @@ void                                    fs2_free(fs2 *s){
     if (body){  // s in heap!
         atomic_fetch_add(&g_free_body_cnt, 1);
 #ifdef FS2_TRACE 
-        logsimple("fs body %p freed (g_free_body_cnt %d)", s, 
+        logsimple("fs body %p freed (g_free_body_cnt %d)", s, g_free_body_cnt);
 #endif
-        atomic_load_explicit(&g_free_body_cnt, memory_order_relaxed));
+        atomic_load_explicit(&g_free_body_cnt, memory_order_relaxed);
         free(s);
     }
 }   
