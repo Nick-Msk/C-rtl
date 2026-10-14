@@ -1,5 +1,5 @@
 PROJNAME = error
 
-REQUIRES = log bool
+REQUIRES = log bool common
 
 include ../Makefile.common

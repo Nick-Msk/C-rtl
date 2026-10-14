@@ -19,7 +19,8 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
         $(addprefix lib-,$(PROJECTS)) \
-		$(addprefix librelease-,$(PROJECTS))
+		$(addprefix librelease-,$(PROJECTS)) \
+		asan_check asan_leak leaks_check
 
 help:
 	@echo "ngutils dispatcher"
@@ -45,6 +46,10 @@ help:
 	@echo "  make delete-docker    remove the $(DOCKER_IMAGE) image"
 	@echo ""
 	@echo "  make cloneproj NAME=x  create new utility from skeleton"
+	@echo ""
+	@echo "  make asan_check   rebuild with ASan + UBSan (macOS + Linux)"
+	@echo "  make asan_leak    ASan + LSan (Linux only; error skipped)"
+	@echo "  make leaks_check  Apple 'leaks' tool (macOS only; error skipped)"
 	@echo ""
 	@echo "Projects:"
 	@for p in $(PROJECTS); do echo "  - $$p"; done
@@ -197,3 +202,33 @@ listall:
 cloneproj:
 	@test -n "$(NAME)" || { echo "usage: make cloneproj NAME=<name>" >&2; exit 1; }
 	@scripts/cloneproj.sh $(NAME)
+
+# Projects excluded from leak checks — error has .signal tests that
+# abort before teardown, which corrupts the leak report.
+LEAK_CHECK_SKIP := error
+
+LEAK_PROJECTS := $(filter-out $(LEAK_CHECK_SKIP),$(PROJECTS))
+
+asan_check:
+	@echo "==> asan_check: all projects"
+	@SANITIZE=asan BUILD_DIR=build/asan $(MAKE) test
+
+asan_leak:
+	@if [ "$$(uname)" = "Darwin" ]; then \
+	    echo "SKIP: LeakSanitizer not available on macOS"; \
+	    exit 0; \
+	fi
+	@for p in $(LEAK_PROJECTS); do \
+	    echo "--- $$p ---"; \
+	    $(MAKE) -C $$p asan_leak || exit 1; \
+	done
+
+leaks_check:
+	@if [ "$$(uname)" != "Darwin" ]; then \
+	    echo "SKIP: Apple leaks is macOS-only"; \
+	    exit 0; \
+	fi
+	@for p in $(LEAK_PROJECTS); do \
+	    echo "--- $$p ---"; \
+	    $(MAKE) -C $$p leaks_check || exit 1; \
+	done

@@ -166,10 +166,12 @@ Test(fs2, init_large_power_of_two) {
     fs2_free(&s);
 }
 
+#if TEST_NOT_SANITIZED
 Test(fs2, init_large_fails_with_sigint, .signal = SIGINT) {
     /* 2^62 rounds up to 2^63 — malloc will fail on any realistic host */
     (void)fs2_init((size_t)1 << 62);
 }
+#endif
 
 Test(fs2, init_zero_does_not_crash) {
     fs2 s = fs2_init(0);
