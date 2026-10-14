@@ -33,7 +33,7 @@ NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
 .PHONY: help list listall docs \
-		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak test-docker-ub \
+		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak test-docker-ub test-docker-all \
 		lib librelease install install-release clean \
         $(FORWARD_TARGETS) \
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
@@ -65,6 +65,7 @@ help:
 	@echo "  make test-docker-ub   ASan + UBSan inside the container (Linux)"
 	@echo "  make test-docker-leak run ASan+LSan across all projects (Linux)"
 	@echo "  make delete-docker    remove the $(DOCKER_IMAGE) image"
+	@echo "  make test-docker-all  regular + ASan+UBSan + ASan+LSan in Docker"
 	@echo ""
 	@echo "  make cloneproj NAME=x  create new utility from skeleton"
 	@echo ""
@@ -198,6 +199,11 @@ define docker-test-recipe
 		-w /work $(DOCKER_IMAGE) \
 		sh -c '$(3) make test'
 endef
+
+test-docker-all: check-docker
+	@$(MAKE) test-docker
+	@$(MAKE) test-docker-ub
+	@$(MAKE) test-docker-leak
 
 test-docker: check-docker
 	$(call docker-test-recipe,build,,REQUIRE_CRITERION=1)
