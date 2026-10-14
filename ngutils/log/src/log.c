@@ -10,10 +10,10 @@
  */
 
 #include "log.h"
+
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
-
 #include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -161,6 +161,7 @@ static			__thread LogFormat		g_format_schema		= LOG_FORMAT_ALL; // preambule for
 
 static const char *const versions[] = {
     LOG_VERSION,   /* current — always computed from macros */
+	"0.1.0",
     NULL
 };
 
@@ -565,6 +566,58 @@ log_init(const char *restrict logname
 	if (setvbuf(g_logfile, 0, _IONBF, 0) != 0)		// unable to setup unbuf mode, put warning
 		fprintf(g_logfile, "WARNING: unable to setup unbuffered mode!\n");
 	return true;
+}
+
+bool
+log_mkdir(const char *dir)
+{
+    if (!dir || !*dir)
+        return false;
+    if (mkdir(dir, 0755) == 0)
+        return true;
+    return errno == EEXIST;
+}
+
+bool
+log_initf(bool append, LogFormat typ,
+          const char *restrict dir,
+          const char *restrict filename_fmt, ...)
+{
+    char    filename[LOG_MAX_SZ];
+    va_list ap;
+
+    va_start(ap, filename_fmt);
+    int nf = vsnprintf(filename, sizeof filename, filename_fmt, ap);
+    va_end(ap);
+
+    if (nf < 0 || nf >= (int)sizeof filename) {
+        fprintf(stderr, "log_initf: filename too long or format error\n");
+        return false;
+    }
+
+    char path[LOG_MAX_SZ];
+    int  np;
+    if (dir && *dir)
+        np = snprintf(path, sizeof path, "%s/%s", dir, filename);
+    else
+        np = snprintf(path, sizeof path, "%s", filename);
+
+    if (np < 0 || np >= (int)sizeof path) {
+        fprintf(stderr, "log_initf: path too long\n");
+        return false;
+    }
+
+    return log_init(path, append, typ);
+}
+
+bool
+log_init_bypid(const char *restrict dir, const char *restrict base,
+              bool append, LogFormat typ)
+{
+    return log_initf(append, typ, dir,
+                     "%s_%d.log",
+                     (base && *base) ? base : "log",
+                     (int) getpid());
 }
 
 /** @return true if the log file is currently open. */

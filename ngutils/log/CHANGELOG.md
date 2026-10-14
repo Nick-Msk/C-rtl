@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `log_initf()` — open a log file with a printf-formatted filename.
+  Caller controls the uniqueness scheme (pid, tid, timestamp, ...).
+- `log_init_uniq()` — convenience wrapper: PID-suffixed filename.
+- `log_mkdir()` — one-level mkdir (0755); EEXIST is success.
+
 ## [0.1.0] - 2026-10-08
 
 ### Added

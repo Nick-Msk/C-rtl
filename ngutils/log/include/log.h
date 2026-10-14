@@ -34,7 +34,7 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 #define LOG_VERSION_MAJOR 0
-#define LOG_VERSION_MINOR 1
+#define LOG_VERSION_MINOR 2
 #define LOG_VERSION_PATCH 0
 
 #define LOG_STRINGIFY_(x) #x
@@ -152,6 +152,56 @@ log_init(const char *		  logname
 	   , LogFormat			  lformat
        );
 
+/**
+ * @brief Open a log file, formatting the filename with printf-style args.
+ *
+ * The path is built as @c "<dir>/<filename>" . If @p dir is NULL or
+ * empty, the filename is used as-is relative to the current working
+ * directory.
+ *
+ * The caller controls the uniqueness scheme — pid, timestamp, thread
+ * id, test name, whatever fits. The directory must already exist
+ * (see @ref log_mkdir for one-level creation).
+ *
+ * @param append       true = append, false = truncate.
+ * @param typ          Preamble format (see LogFormat).
+ * @param dir          Directory, or NULL / "" for CWD.
+ * @param filename_fmt printf-style filename template.
+ * @param ...          Args for @p filename_fmt .
+ * @return true on success.
+ */
+extern bool
+log_initf(bool append, LogFormat typ,
+          const char *restrict dir,
+          const char *restrict filename_fmt, ...)
+    __attribute__((format(printf, 4, 5)));
+
+/**
+ * @brief Open a log file with a PID-unique suffix.
+ *
+ * Equivalent to
+ * @code log_initf(append, typ, dir, "%s_%d.log", base, (int)getpid()) @endcode
+ *
+ * @param dir    Directory, or NULL / "" for CWD.
+ * @param base   Base filename without extension.
+ * @param append true = append, false = truncate.
+ * @param typ    Preamble format.
+ * @return true on success.
+ */
+extern bool
+log_init_bypid(const char *restrict dir, const char *restrict base,
+              bool append, LogFormat typ);
+
+/**
+ * @brief Ensure a directory exists (single level, mode 0755).
+ *
+ * EEXIST is considered success. No recursive creation.
+ *
+ * @param dir  Directory path. NULL or "" → false.
+ * @return true if @p dir exists or was created.
+ */
+extern bool
+log_mkdir(const char *dir);
 
 /**
  * @brief Register the per-module level list.

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 /* -------------------------------------------------------------------------
  * Fixtures
@@ -47,6 +48,31 @@ static int has(const char *needle) {
     for (size_t i = 0; i + m <= out_len; i++)
         if (memcmp(out_buf + i, needle, m) == 0) return 1;
     return 0;
+}
+
+/* -------------------------------------------------------------------------
+ * Version
+ * ------------------------------------------------------------------------- */
+
+Test(log, version_string_matches_macro) {
+    cr_assert_str_eq(log_version(), LOG_VERSION);
+    cr_assert_str_eq(log_version(), "0.2.0");
+}
+
+Test(log, version_is_top_of_list) {
+    const char *const *v = log_versions();
+    cr_assert_not_null(v);
+    cr_assert_not_null(v[0]);
+    cr_assert_str_eq(v[0], log_version());
+    cr_assert_str_eq(v[0], LOG_VERSION);
+}
+
+Test(log, versions_terminated_by_null) {
+    const char *const *v = log_versions();
+    size_t n = 0;
+    while (v[n]) ++n;
+    cr_assert_geq(n, 1);
+    cr_assert_null(v[n]);
 }
 
 /* -------------------------------------------------------------------------
@@ -329,26 +355,88 @@ Test(log, modsave_writes_file) {
 }
 
 /* -------------------------------------------------------------------------
- * Version
+ * log_mkdir / log_initf / log_init_uniq
  * ------------------------------------------------------------------------- */
 
-Test(log, version_string_matches_macro) {
-    cr_assert_str_eq(log_version(), LOG_VERSION);
-    cr_assert_str_eq(log_version(), "0.1.0");
+Test(log, mkdir_creates) {
+    char path[256];
+    test_tmpname(path, sizeof path, "test_log_mkdir", NULL, "tmp");
+    /* make a directory path under /tmp */
+    snprintf(path, sizeof path, "/tmp/test_log_mkdir_%d", (int)getpid());
+    remove(path);   /* in case */
+    rmdir(path);    /* in case */
+
+    cr_assert(log_mkdir(path));
+    struct stat st;
+    cr_assert_eq(stat(path, &st), 0);
+    cr_assert(S_ISDIR(st.st_mode));
+
+    rmdir(path);
 }
 
-Test(log, version_is_top_of_list) {
-    const char *const *v = log_versions();
-    cr_assert_not_null(v);
-    cr_assert_not_null(v[0]);
-    cr_assert_str_eq(v[0], log_version());
-    cr_assert_str_eq(v[0], LOG_VERSION);
+Test(log, mkdir_existing_ok) {
+    cr_assert(log_mkdir("/tmp"));
+    cr_assert(log_mkdir("/tmp"));   /* idempotent */
 }
 
-Test(log, versions_terminated_by_null) {
-    const char *const *v = log_versions();
-    size_t n = 0;
-    while (v[n]) ++n;
-    cr_assert_geq(n, 1);
-    cr_assert_null(v[n]);
+Test(log, mkdir_null_fails) {
+    cr_assert_not(log_mkdir(NULL));
+    cr_assert_not(log_mkdir(""));
+}
+
+Test(log, initf_plain_filename) {
+    char base[256];
+    snprintf(base, sizeof base, "/tmp/test_logf_%d", (int)getpid());
+
+    cr_assert(log_initf(false, LOG_FORMAT_EMPTY, "/tmp",
+                        "test_logf_%d.log", (int)getpid()));
+    cr_assert(log_isinit());
+    log_close();
+
+    char path[300];
+    snprintf(path, sizeof path, "%s.log", base);
+    cr_assert_eq(access(path, F_OK), 0);
+    remove(path);
+}
+
+Test(log, initf_null_dir_uses_cwd) {
+    char name[256];
+    snprintf(name, sizeof name, "test_logf_cwd_%d.log", (int)getpid());
+
+    cr_assert(log_initf(false, LOG_FORMAT_EMPTY, NULL, "%s", name));
+    cr_assert(log_isinit());
+    log_close();
+
+    cr_assert_eq(access(name, F_OK), 0);
+    remove(name);
+}
+
+Test(log, initf_empty_dir_uses_cwd) {
+    char name[256];
+    snprintf(name, sizeof name, "test_logf_empty_%d.log", (int)getpid());
+
+    cr_assert(log_initf(false, LOG_FORMAT_EMPTY, "", "%s", name));
+    log_close();
+
+    cr_assert_eq(access(name, F_OK), 0);
+    remove(name);
+}
+
+Test(log, init_uniq_creates_pid_named_file) {
+    char dir[256];
+    snprintf(dir, sizeof dir, "/tmp/test_log_uniq_%d", (int)getpid());
+    remove(dir);
+    rmdir(dir);
+
+    cr_assert(log_mkdir(dir));
+    cr_assert(log_init_bypid(dir, "run", false, LOG_FORMAT_EMPTY));
+    cr_assert(log_isinit());
+    log_close();
+
+    char path[300];
+    snprintf(path, sizeof path, "%s/run_%d.log", dir, (int)getpid());
+    cr_assert_eq(access(path, F_OK), 0);
+
+    remove(path);
+    rmdir(dir);
 }
