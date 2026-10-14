@@ -3,8 +3,12 @@
  * @brief Core faststring primitives.
  */
 
-#include "fs2.h"
 #include <stdatomic.h>
+#include <stdarg.h>
+
+#include "fs2.h"
+#include "checker.h"
+#include "error.h"
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -99,23 +103,63 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 #endif
 }
 
+static inline fs2 
+copymem(const char *src, size_t len) {
+    fs2         res = fs2_init(len + 1);
+    memcpy(res.v, src, len);
+    return res;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Value constructors
  * ───────────────────────────────────────────────────────────────────────── */
 
- fs2            fs2_init(size_t sz) {
+ fs2            
+ fs2_init(size_t sz) {
     fs2      res = FS2();     // fsalloc flag
     increasesize(&res, sz, true);   // init mode
     fs2_setlen(&res, 0);
     return res;
 }
 
+// note - unsafe if src has no limit
+fs2   
+fs2_fromstr (const char *src) {
+    invraise(src != NULL, "Null pointer"); 
+
+    size_t      len = strlen(src);
+    return copymem(src, len);
+}
+
+fs2   
+fs2_clone   (const fs2 *src) {
+    invraise(src != NULL, "Null pointer"); 
+
+    size_t      len = src->len;
+    return copymem(src->v, len);
+}
+
+fs2   
+fs2_fromstrf(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int     sz = vsprintf(NULL, fmt, ap);
+    if (sz < 0)
+        userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
+    va_end(ap);
+    fs2         res = fs2_init( (size_t) sz + 1);
+    va_start(ap, fmt);
+    vsprintf(res.v, fmt, ap);
+    va_end(ap);
+    return res;
+}
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Value destructor
  * ───────────────────────────────────────────────────────────────────────── */
 
-void                                    fs2_free(fs2 *s){
+void                                    
+fs2_free(fs2 *s){
     if (!s) {
 #ifdef FS2_TRACE 
         if (s)
@@ -177,7 +221,8 @@ fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict na
   logsimpleerr(false, (msg), ##__VA_ARGS__); \
 })
 
-bool                                    fs2_validate(FILE *restrict out, const fs2 *restrict s){
+bool                                    
+fs2_validate(FILE *restrict out, const fs2 *restrict s){
     if (!s)
         return LOGNPRINTF(out, "null pointer");
     if (!s->v)
