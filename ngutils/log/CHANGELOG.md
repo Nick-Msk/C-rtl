@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `log_initf()` — open a log file with a printf-formatted filename.
-  Caller controls the uniqueness scheme (pid, tid, timestamp, ...).
-- `log_init_uniq()` — convenience wrapper: PID-suffixed filename.
-- `log_mkdir()` — one-level mkdir (0755); EEXIST is success.
+- `log_initf(append, fmt, dir, filename_fmt, ...)` — open a log file
+  with a printf-formatted filename. Caller controls the uniqueness
+  scheme (pid, tid, timestamp, test name).
+- `log_init_bypid(dir, base, append, fmt)` — convenience wrapper:
+  `<dir>/<base>_<pid>.log`. Uses `getpid()` only; for thread-unique
+  files, use `log_initf` with a tid.
+- `log_mkdir(dir)` — one-level `mkdir(0755)`; `EEXIST` is success.
+- `README.md`: full API reference with quick start, macro tables,
+  initialization variants, and notes.
+
+### Changed
+
+- Version bumped 0.1.0 → 0.2.0 (new public API).
+- `.gitignore`: `logs/` (test output).
 
 ## [0.1.0] - 2026-10-08
 

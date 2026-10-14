@@ -2,24 +2,29 @@
 
 [![CI](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml/badge.svg)](https://github.com/Nick-Msk/C-rtl/actions/workflows/ci.yml)
 
-A lightweight file-based logging engine for C with per-module level
-control, configurable preambles, and indentation-aware macros.
+Lightweight file-based logging for C with per-module level control,
+configurable preambles, and indentation-aware macros.
 
-C99+, no dependencies beyond the C standard library. Logging can be
-compiled out entirely with `-DNODEBUG`.
+C99+ with GNU extensions (`__thread`, `({ ... })`,
+`__attribute__((format))`). No dependencies beyond the C standard
+library and POSIX (`pthread`, `strerror_r`).
 
 ## Features
 
-- **Per-module level filtering** — silence noisy modules, keep others verbose
-- **Configurable preamble** — file, function, line, timestamp, or none
-- **Indent-aware** — `logenter` / `logret` / `logerr` adjust indentation
-- **Simple variants** — one-liners without preamble or indent
-- **Auto-formatting** — `logauto` picks a `printf` specifier via `_Generic`
-- **Runtime on/off** — global switch to silence everything
-- **Module persistence** — save/load level tables to text files
-- **Compile-time removal** — `-DNODEBUG` erases all logging calls
+- **Per-module level filtering** — silence noisy modules, keep others
+  verbose.
+- **Configurable preamble** — file, function, line, timestamp, or none.
+- **Indent-aware** — `logenter` / `logret` / `logerr` adjust indentation.
+- **Simple variants** — one-liners without preamble or indent.
+- **Auto-formatting** — `logauto` picks a `printf` specifier via
+  `_Generic`.
+- **Runtime on/off** — global switch to silence everything.
+- **Module persistence** — save/load level tables to text files.
+- **Compile-time removal** — `-DNODEBUG` erases all logging calls.
+- **Per-thread state** — file pointer, offset, module table, format are
+  all `__thread`; each thread logs to its own file.
 
-## Usage
+## Quick start
 
 ```c
 #include <log.h>
@@ -47,18 +52,39 @@ int main(void) {
 Compile with:
 
 ```
-cc -std=c99 -Ipath/to/include main.c path/to/src/log.c -o main
+cc -std=gnu11 -Ipath/to/log/include main.c path/to/log/src/log.c -o main
 ```
 
 ## Initialization
 
-| Macro | Description |
+The most flexible form is `log_initf`: the caller controls the
+filename, including any uniqueness scheme (pid, tid, timestamp).
+
+| Function / macro | Purpose |
 |---|---|
-| `LOG(dir)` | Open `dir/<file>.log` (truncate) and log a start message. |
-| `LOGAPPEND(dir)` | Same, but append instead of truncate. |
-| `loginit(path, append, modules, fmt, ...)` | Explicit init with module list. |
-| `logsimpleinit(fmt, ...)` | Init in `log/` directory (convenience). |
-| `logclose(fmt, ...)` | Log a final message and close the file. |
+| `log_init(path, append, fmt)` | Low-level: open a specific file. |
+| `log_initf(append, fmt, dir, filename_fmt, ...)` | Open `<dir>/<formatted filename>`. `dir` may be NULL/`""` for CWD. |
+| `log_init_bypid(dir, base, append, fmt)` | Convenience: `<dir>/<base>_<pid>.log`. |
+| `log_mkdir(dir)` | One-level `mkdir(0755)`; `EEXIST` is success. |
+| `loginit(path, append, modules, fmt, ...)` | Init with a module list (macro). |
+| `logsimpleinit(fmt, ...)` | Init in `log/` directory. |
+| `logclose(fmt, ...)` | Log a final message and close. |
+
+```c
+/* Typical test fixture */
+log_mkdir("logs");
+log_init_bypid("logs", "run", true, LOG_FORMAT_ALL);
+...
+log_close();
+```
+
+Note: `log_init_bypid` uses `getpid()` only. All threads of a process
+share a pid, so for thread-unique files use `log_initf` with a tid:
+
+```c
+log_initf(true, LOG_FORMAT_ALL, "logs", "run_%d_%lu.log",
+          (int)getpid(), (unsigned long)pthread_self());
+```
 
 ## Logging macros
 
@@ -97,12 +123,6 @@ macros to track indentation.
 
 Supports all scalar types, `char *`, `const char *`, and `void *`.
 
-### Raw buffer
-
-| Macro | Description |
-|---|---|
-| `lognumbers(bytes, sz)` | Dump a byte buffer. **Deprecated** — see `log.h`. |
-
 ## Module levels
 
 ```c
@@ -114,7 +134,7 @@ Loglevel levels[] = {
 log_modinit(levels);
 ```
 
-| Function | Description |
+| Function | Purpose |
 |---|---|
 | `bool log_modinit(LogModlevel *)` | Register a NULL-sentinel-terminated module list. |
 | `bool log_modsave(const char *path)` | Write the current table to a text file. |
@@ -130,21 +150,20 @@ Messages for a module not in the list are suppressed.
 
 ## Runtime control
 
-| Function | Description |
+| Function | Purpose |
 |---|---|
-| `bool log_init(name, append, fmt)` | Open a log file. No-op if already open. |
-| `void log_close(void)` | Close file, reset format and offset, free modules. |
 | `bool log_isinit(void)` | Is the log file currently open? |
 | `FILE *log_file(void)` | The active stream, or `NULL`. |
 | `int log_offset(void)` | Current indentation depth (in spaces). |
 | `int log_prog_switch(bool)` | Globally on/off; returns previous state. |
 | `bool log_format(LogFormat)` | Change the preamble format. |
+| `void log_close(void)` | Close file, reset format and offset, free modules. |
 
 Convenience macros: `logon()`, `logoff()`, `logfile`, `logoffset`.
 
 ## Preamble formats
 
-`LogFormat` values passed to `log_init` or `log_format`:
+`LogFormat` values passed to `log_init` / `log_initf` / `log_format`:
 
 | Value | Preamble |
 |---|---|
@@ -157,9 +176,9 @@ Convenience macros: `logon()`, `logoff()`, `logfile`, `logoffset`.
 
 ## Version
 
-| Function | Description |
+| Function | Purpose |
 |---|---|
-| `const char *log_version(void)` | Current version string, e.g. `"0.1.0"`. |
+| `const char *log_version(void)` | Current version string, e.g. `"0.2.0"`. |
 | `const char *const *log_versions(void)` | NULL-terminated array, newest first. |
 
 `log_versions()[0]` is always the current version. The array is static,
@@ -173,50 +192,49 @@ Compile with `-DNODEBUG` to erase all logging at compile time:
 - No calls into `log.c`, so the linker may drop it entirely.
 - `log_version()` / `log_versions()` still work — they are metadata.
 
-This is useful for release builds where you want zero logging overhead.
+Useful for release builds where you want zero logging overhead.
 
 ## Notes
 
-- Thread-unsafe by design (single-writer assumption).
-- The log stream is set to unbuffered (`_IONBF`); each call flushes.
-- Pointers returned by `log_version` / `log_versions` refer to static
-  string literals — do not free or modify them.
+- Thread state is `__thread`: file pointer, offset, module table,
+  format. Each thread logs independently.
+- A global inode registry (`dev_t` + `ino_t`, mutex-protected) prevents
+  the same file from being opened by two threads at once. The mutex is
+  only held during `log_init` / `log_close`; the hot path (`log_msg`)
+  is lock-free.
+- The log stream is unbuffered (`_IONBF`); each call flushes.
+- `log_init` with `logname == NULL` reuses the current `g_logname` if
+  one is set, otherwise falls back to `default.log` in the CWD.
 
 ## Development
 
-The project uses [Criterion](https://criterion.readthedocs.io/) for unit tests.
+The project uses [Criterion](https://criterion.readthedocs.io/) for
+unit tests.
 
-### Requirements
-
-- A C compiler (`cc`, `gcc`, or `clang`)
-- [Criterion](https://criterion.readthedocs.io/) — `brew install criterion`
-- Optional: `clang-tidy`, `scan-build` for `make check` / `make analyze`
+```
+make test       # build and run unit tests
+make lib        # debug library
+make librelease # release library
+make check      # clang-tidy
+make analyze    # clang static analyzer
+make clean      # remove build artifacts
+make clean-logs # remove logs/*.log
+```
 
 ### Layout
 
 ```
 .
-├── include/log.h        public header (declarations + macros)
-├── src/log.c            implementation
-├── test/test_log.c      unit tests
-├── build/               build artifacts (gitignored)
-├── Makefile
+├── include/log.h       public header
+├── src/log.c           implementation
+├── test/test_log.c     unit tests
+├── build/              artifacts (gitignored)
+├── logs/               test output (gitignored)
+├── Makefile            PROJNAME + REQUIRES
 ├── README.md
 └── CHANGELOG.md
-```
-
-### Commands
-
-```
-make test       # build and run unit tests
-make lib        # build debug library
-make librelease # build release library
-make check      # clang-tidy static analysis
-make analyze    # clang static analyzer (scan-build)
-make clean      # remove build artifacts
 ```
 
 ## License
 
 See the top-level `LICENSE` file.
-
