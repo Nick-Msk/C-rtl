@@ -12,25 +12,7 @@
  * Fixtures — mute stderr, init log
  * ------------------------------------------------------------------------- */
 
-static int saved_stderr = -1;
-
-static void setup(void) {
-    log_mkdir("logs");
-    //log_initf(true, LOG_FORMAT_ALL,
-      //        "logs", "test_fs2_%d.log", (int)getpid());
-    log_init("logs/test_fs2.log", true, LOG_FORMAT_ALL);   /* append=true */
-    saved_stderr = test_mute_stderr();
-}
-
-static void teardown(void) {
-    log_close();
-    test_restore_stderr(saved_stderr);
-    saved_stderr = -1;
-    /* logs/test_fs2_<pid>.log stays — inspect after a run, or clean
-     * with `make clean-logs`. */
-}
-
-TestSuite(fs2, .init = setup, .fini = teardown);
+TestSuite(fs2, .init = test_setup, .fini = test_teardown);
 
 /* -------------------------------------------------------------------------
  * Version

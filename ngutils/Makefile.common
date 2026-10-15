@@ -39,6 +39,11 @@ endif
 CC          ?= cc
 CFLAGS      += -Wall -Wextra -std=gnu11 -Iinclude
 
+# Stringified project name for test_common.h (test_setup uses it to
+# build the log path). Quoting: the shell sees \" which it converts
+# to a literal " before passing to the compiler.
+CFLAGS += -DTEST_PROJNAME=\"$(PROJNAME)\"
+
 # ── Sanitizers ──────────────────────────────────────────────────────────────
 #
 #   SANITIZE=asan    ASan + UBSan.  macOS and Linux.

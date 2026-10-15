@@ -442,4 +442,42 @@ _check_log_num(const char *func, const char *metric,
         cr_assert_leq(_a, _e);                                            \
     } while (0)
 
+/* -------------------------------------------------------------------------
+ * Common test fixture
+ *
+ * Most tests need: a per-project log file, stderr muted (the libraries
+ * under test print diagnostics there on purpose), and a clean shutdown.
+ * Test files just register:
+ *
+ *     TestSuite(myproj, .init = test_setup, .fini = test_teardown);
+ *
+ * The log path is logs/test_<PROJNAME>.log, append=true. Criterion
+ * forks per test, but each child has its own copy of the inode
+ * registry; append + unbuffered writes make lines atomic.
+ * ------------------------------------------------------------------------- */
+
+#ifndef TEST_PROJNAME
+#  error "TEST_PROJNAME must be defined; see Makefile.common"
+#endif
+
+static int test_saved_stderr = -1;
+
+static inline void
+test_setup(void)
+{
+    log_mkdir("logs");
+    log_initf(true, LOG_FORMAT_ALL, "logs", "test_%s.log", TEST_PROJNAME);
+    test_saved_stderr = test_mute_stderr();
+}
+
+static inline void
+test_teardown(void)
+{
+    log_close();
+    test_restore_stderr(test_saved_stderr);
+    test_saved_stderr = -1;
+    /* logs/test_<PROJNAME>.log stays; clean with 'make clean-logs' or
+     * the automatic clean-logs-$(PROJNAME) that runs before 'test'. */
+}
+
 #endif /* !TEST_COMMON_H */
