@@ -379,4 +379,67 @@ _check_log_num(const char *func, const char *metric,
         cr_assert_arr_eq(_a, _b, (int)_n);                                \
     } while (0)
 
+/* ── Ordering ───────────────────────────────────────────────────────────
+ *
+ * Same _Generic + snprintf approach as CHECK_EQ / CHECK_NEQ.
+ * Useful when the exact value is implementation-defined (e.g. sz
+ * after power-of-two growth) but the relation must hold.
+ * ──────────────────────────────────────────────────────────────────── */
+
+#define CHECK_GT(metric, actual, expected)                                \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (!(_a > _e)) {                                                 \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            logsimple("FAIL %s: %s expected > %s got %s",                 \
+                      __func__, (metric), _eb, _ab);                      \
+        }                                                                 \
+        cr_assert_gt(_a, _e);                                             \
+    } while (0)
+
+#define CHECK_GE(metric, actual, expected)                                \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (!(_a >= _e)) {                                                \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            logsimple("FAIL %s: %s expected >= %s got %s",                \
+                      __func__, (metric), _eb, _ab);                      \
+        }                                                                 \
+        cr_assert_geq(_a, _e);                                            \
+    } while (0)
+
+#define CHECK_LT(metric, actual, expected)                                \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (!(_a < _e)) {                                                 \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            logsimple("FAIL %s: %s expected < %s got %s",                 \
+                      __func__, (metric), _eb, _ab);                      \
+        }                                                                 \
+        cr_assert_lt(_a, _e);                                             \
+    } while (0)
+
+#define CHECK_LE(metric, actual, expected)                                \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (!(_a <= _e)) {                                                \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            logsimple("FAIL %s: %s expected <= %s got %s",                \
+                      __func__, (metric), _eb, _ab);                      \
+        }                                                                 \
+        cr_assert_leq(_a, _e);                                            \
+    } while (0)
+
 #endif /* !TEST_COMMON_H */
