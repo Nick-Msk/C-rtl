@@ -111,7 +111,7 @@ DEPFILES      = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
 
 .PHONY: all lib librelease test check clean list \
         analyze analyze-lib analyze-test \
-        asan_check asan_leak FORCE
+        asan_check asan_leak FORCE clean-logs-$(PROJNAME)
 
 # --- default ---
 
@@ -135,8 +135,11 @@ $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 
 ifeq ($(HAVE_CRITERION),yes)
 
-test: $(TEST_BIN)
+test: clean-logs-$(PROJNAME) $(TEST_BIN)
 	@$(SAN_RUN) $(TEST_BIN)
+
+clean-logs-$(PROJNAME):
+	@rm -f logs/test_$(PROJNAME)*.log
 
 $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
@@ -217,9 +220,6 @@ asan_leak:
 clean:
 	@find $(BUILD_DIR) -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@rmdir $(BUILD_DIR) 2>/dev/null || true
-
-clean-logs:
-	@rm -f logs/*.log
 
 list:
 	@echo "Targets:"
