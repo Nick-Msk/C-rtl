@@ -259,8 +259,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_EQ(metric, actual, expected)                                \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (_a != _e) {                                                   \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
@@ -272,8 +272,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_NEQ(metric, actual, expected)                               \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (_a == _e) {                                                   \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
@@ -388,8 +388,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_GT(metric, actual, expected)                                \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (!(_a > _e)) {                                                 \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
@@ -402,8 +402,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_GE(metric, actual, expected)                                \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (!(_a >= _e)) {                                                \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
@@ -416,8 +416,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_LT(metric, actual, expected)                                \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (!(_a < _e)) {                                                 \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
@@ -430,8 +430,8 @@ _check_log_num(const char *func, const char *metric,
 
 #define CHECK_LE(metric, actual, expected)                                \
     do {                                                                  \
-        typeof(actual)   _a = (actual);                                   \
-        typeof(expected) _e = (expected);                                 \
+        typeof((actual) + (expected)) _a = (actual);                                   \
+        typeof((actual) + (expected)) _e = (expected);                                 \
         if (!(_a <= _e)) {                                                \
             char _eb[64], _ab[64];                                        \
             snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
