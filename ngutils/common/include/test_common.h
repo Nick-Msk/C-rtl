@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <stddef.h>
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Sanitizer detection
@@ -213,5 +214,155 @@ test_tmpname(char *out, size_t cap,
     return snprintf(out, cap, "/tmp/%s_%d.%s",
                     prefix, (int)getpid(), ext);
 }
+
+/* -------------------------------------------------------------------------
+ * CHECK_* — assertions with diagnostic logging
+ *
+ * On failure, log test name, metric, expected and actual to the log
+ * file (which survives the run), then delegate to Criterion.
+ *
+ * CHECK_FMT picks the printf specifier by the type of the expression.
+ * Small integer types (char, short, bool) are promoted to int by
+ * variadic argument passing; printf's %hhd / %hd / %d consume the low
+ * bytes correctly, so this stays safe.
+ * ------------------------------------------------------------------------- */
+
+#define CHECK_FMT(x) _Generic((x),    \
+    bool:               "%d",   \
+    char:               "%c",   \
+    signed char:        "%hhd", \
+    unsigned char:      "%hhu", \
+    short:              "%hd",  \
+    unsigned short:     "%hu",  \
+    int:                "%d",   \
+    unsigned:           "%u",   \
+    long:               "%ld",  \
+    unsigned long:      "%lu",  \
+    long long:          "%lld", \
+    unsigned long long: "%llu", \
+    float:              "%f",   \
+    double:             "%f",   \
+    long double:        "%Lf"   \
+)
+
+#define CHECK_EQ(metric, actual, expected)                     \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (_a != _e) {                                                   \
+            logsimple("FAIL %s: %s expected=" CHECK_FMT(_e)               \
+                      " got=" CHECK_FMT(_a),                              \
+                      __func__, (metric), _e, _a);                     \
+        }                                                                 \
+        cr_assert_eq(_a, _e);                                             \
+    } while (0)
+
+#define CHECK_NEQ(metric, actual, expected)                     \
+    do {                                                                  \
+        typeof(actual)   _a = (actual);                                   \
+        typeof(expected) _e = (expected);                                 \
+        if (_a == _e) {                                                   \
+            logsimple("FAIL %s: %s expected=" CHECK_FMT(_e)               \
+                      " got=" CHECK_FMT(_a),                              \
+                      __func__, (metric), _e, _a);                     \
+        }                                                                 \
+        cr_assert_eq(_a, _e);                                             \
+    } while (0)
+
+#define CHECK_STR_EQ(metric, actual, expected)                   \
+    do {                                                                    \
+        const char *_a = (actual);                                          \
+        const char *_e = (expected);                                        \
+        if (!_a || !_e || strcmp(_a, _e) != 0) {                            \
+            logsimple("FAIL %s: %s expected=[%s] got=[%s]",                 \
+                      __func__, (metric),                                \
+                      _e ? _e : "(null)", _a ? _a : "(null)");              \
+        }                                                                   \
+        cr_assert_str_eq(_a, _e);                                           \
+    } while (0)
+
+#define CHECK_STR_NEQ(metric, actual, expected)                   \
+    do {                                                                    \
+        const char *_a = (actual);                                          \
+        const char *_e = (expected);                                        \
+        if (!_a || !_e || strcmp(_a, _e) == 0) {                            \
+            logsimple("FAIL %s: %s expected=[%s] got=[%s]",                 \
+                      __func__, (metric),                                \
+                      _e ? _e : "(null)", _a ? _a : "(null)");              \
+        }                                                                   \
+        cr_assert_str_neq(_a, _e);                                           \
+    } while (0)
+
+#define CHECK_PTR_EQ(metric, actual, expected)                   \
+    do {                                                                    \
+        const void *_a = (const void *)(actual);                            \
+        const void *_e = (const void *)(expected);                          \
+        if (_a != _e) {                                                     \
+            logsimple("FAIL %s: %s expected=%p got=%p",                     \
+                      __func__, (metric), _e, _a);                       \
+        }                                                                   \
+        cr_assert_eq(_a, _e);                                               \
+    } while (0)
+
+#define CHECK_PTR_NEQ(metric, a, b)                              \
+    do {                                                                    \
+        const void *_a = (const void *)(a);                                 \
+        const void *_b = (const void *)(b);                                 \
+        if (_a == _b) {                                                     \
+            logsimple("FAIL %s: %s both = %p (expected distinct)",          \
+                      __func__, (metric), _a);                           \
+        }                                                                   \
+        cr_assert_neq(_a, _b);                                              \
+    } while (0)
+
+#define CHECK_TRUE(metric, cond)                                 \
+    do {                                                                    \
+        if (!(cond)) {                                                      \
+            logsimple("FAIL %s: %s is false", 
+                __func__, (metric));       \
+        }                                                                   \
+        cr_assert(cond);                                                    \
+    } while (0)
+
+#define CHECK_FALSE(metric, cond)                                \
+    do {                                                                    \
+        if (cond) {                                                         \
+            logsimple("FAIL %s: %s is true (expected false)",               \
+                      __func__, (metric));                               \
+        }                                                                   \
+        cr_assert_not(cond);                                                \
+    } while (0)    
+
+#define CHECK_NULL(metric, actual)                             \
+    do {                                                                  \
+        const void *_a = (const void *)(actual);                          \
+        if (_a != NULL) {                                                 \
+            logsimple("FAIL %s: %s expected NULL got %p",                 \
+                      __func__, (metric), _a);                         \
+        }                                                                 \
+        cr_assert_null(_a);                                               \
+    } while (0)
+
+#define CHECK_NOT_NULL(metric, actual)                         \
+    do {                                                                  \
+        const void *_a = (const void *)(actual);                          \
+        if (_a == NULL) {                                                 \
+            logsimple("FAIL %s: %s is NULL", 
+                __func__, (metric));      \
+        }                                                                 \
+        cr_assert_not_null(_a);                                           \
+    } while (0)
+
+#define CHECK_MEM_EQ(metric, a, b, n)                          \
+    do {                                                                  \
+        const void *_a = (a);                                             \
+        const void *_b = (b);                                             \
+        size_t      _n = (n);                                             \
+        if (memcmp(_a, _b, _n) != 0) {                                    \
+            logsimple("FAIL %s: %s differs in %zu bytes",                 \
+                      __func__, (metric), _n);                         \
+        }                                                                 \
+        cr_assert_arr_eq(_a, _b, (int)_n);                                \
+    } while (0)
 
 #endif /* !TEST_COMMON_H */
