@@ -13,24 +13,7 @@
  * Fixtures — silence stderr, init log
  * ------------------------------------------------------------------------- */
 
-static char log_path[256];
-static int  saved_stderr = -1;
-
-static void setup(void) {
-    snprintf(log_path, sizeof(log_path),
-             "/tmp/test_checker_%d.log", (int)getpid());
-    log_init(log_path, false, LOG_FORMAT_EMPTY);
-    saved_stderr = test_mute_stderr();
-}
-
-static void teardown(void) {
-    log_close();
-    remove(log_path);
-    test_restore_stderr(saved_stderr);
-    saved_stderr = -1;
-}
-
-TestSuite(checker, .init = setup, .fini = teardown);
+TestSuite(checker, .init = test_setup, .fini = test_teardown);
 
 /* -------------------------------------------------------------------------
  * inv() — returning boolean invariant
