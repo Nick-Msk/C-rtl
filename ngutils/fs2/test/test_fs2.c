@@ -12,20 +12,22 @@
  * Fixtures — mute stderr, init log
  * ------------------------------------------------------------------------- */
 
-static char log_path[256];
-static int  saved_stderr = -1;
+static int saved_stderr = -1;
 
 static void setup(void) {
     log_mkdir("logs");
-    log_init_bypid("logs", "test_fs2", true, LOG_FORMAT_ALL);
+    //log_initf(true, LOG_FORMAT_ALL,
+      //        "logs", "test_fs2_%d.log", (int)getpid());
+    log_init("logs/test_fs2.log", true, LOG_FORMAT_ALL);   /* append=true */
     saved_stderr = test_mute_stderr();
 }
 
 static void teardown(void) {
     log_close();
-    remove(log_path);
     test_restore_stderr(saved_stderr);
     saved_stderr = -1;
+    /* logs/test_fs2_<pid>.log stays — inspect after a run, or clean
+     * with `make clean-logs`. */
 }
 
 TestSuite(fs2, .init = setup, .fini = teardown);
@@ -35,24 +37,26 @@ TestSuite(fs2, .init = setup, .fini = teardown);
  * ------------------------------------------------------------------------- */
 
 Test(fs2, version_string_matches_macro) {
-    cr_assert_str_eq(fs2_version(), FS2_VERSION);
-    cr_assert_str_eq(fs2_version(), "0.1.0");
+    CHECK_STR_EQ("fs2_version() == FS2_VERSION", fs2_version(), FS2_VERSION);
+    CHECK_STR_EQ("fs2_version()",                fs2_version(), "0.1.0");
 }
 
 Test(fs2, version_is_top_of_list) {
     const char *const *v = fs2_versions();
-    cr_assert_not_null(v);
-    cr_assert_not_null(v[0]);
-    cr_assert_str_eq(v[0], fs2_version());
-    cr_assert_str_eq(v[0], FS2_VERSION);
+
+    CHECK_NOT_NULL("fs2_versions()",  v);
+    CHECK_NOT_NULL("fs2_versions()[0]", v[0]);
+    CHECK_STR_EQ("versions[0] vs fs2_version()", v[0], fs2_version());
+    CHECK_STR_EQ("versions[0] vs FS2_VERSION",   v[0], FS2_VERSION);
 }
 
 Test(fs2, versions_terminated_by_null) {
     const char *const *v = fs2_versions();
     size_t n = 0;
     while (v[n]) ++n;
-    cr_assert_geq(n, 1);
-    cr_assert_null(v[n]);
+
+    CHECK_TRUE("at least one version", n >= 1);
+    CHECK_NULL("versions[n]", v[n]);
 }
 
 /* -------------------------------------------------------------------------
@@ -61,39 +65,43 @@ Test(fs2, versions_terminated_by_null) {
 
 Test(fs2, macro_fs2_default) {
     fs2 s = FS2();
-    cr_assert_eq(s.len, 0);
-    cr_assert_eq(s.sz,  0);
-    cr_assert_null(s.v);
-    cr_assert(fs2_is_alloc(&s));
-    cr_assert_not(fs2_is_static(&s));
-    cr_assert_not(fs2_is_bodyalloc(&s));
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("sz",  s.sz,  0);
+    CHECK_NULL("v", s.v);
+    CHECK_TRUE ("is_alloc",     fs2_is_alloc(&s));
+    CHECK_FALSE("is_static",    fs2_is_static(&s));
+    CHECK_FALSE("is_bodyalloc", fs2_is_bodyalloc(&s));
 }
 
 Test(fs2, macro_empty_static) {
     fs2 s = FS2_EMPTY;
-    cr_assert(fs2_is_static(&s));
-    cr_assert_not(fs2_is_alloc(&s));
-    cr_assert_eq(s.len, 0);
-    cr_assert_str_eq(s.v, "");
+
+    CHECK_TRUE("is_static", fs2_is_static(&s));
+    CHECK_FALSE("is_alloc", fs2_is_alloc(&s));
+    CHECK_EQ("len", s.len, 0);
+    CHECK_STR_EQ("v", s.v, "");
 }
 
 Test(fs2, macro_literal) {
     fs2 s = FS2_LITERAL("hello");
-    cr_assert(fs2_is_static(&s));
-    cr_assert_eq(s.len, 5);
-    cr_assert_eq(s.sz,  6);
-    cr_assert_str_eq(s.v, "hello");
+
+    CHECK_TRUE("is_static", fs2_is_static(&s));
+    CHECK_EQ("len", s.len, 5);
+    CHECK_EQ("sz",  s.sz,  6);
+    CHECK_STR_EQ("v", s.v, "hello");
 }
 
 Test(fs2, macro_local) {
     char buf[32];
     fs2 s = FS2_LOCAL(buf);
-    cr_assert(fs2_is_local(&s));
-    cr_assert_not(fs2_is_static(&s));
-    cr_assert_not(fs2_is_alloc(&s));
-    cr_assert_eq(s.sz, 32);
-    cr_assert_eq(s.len, 0);
-    cr_assert(s.v == buf);
+
+    CHECK_TRUE ("is_local",     fs2_is_local(&s));
+    CHECK_FALSE("is_static",    fs2_is_static(&s));
+    CHECK_FALSE("is_alloc",     fs2_is_alloc(&s));
+    CHECK_EQ("sz",  s.sz,  32);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_PTR_EQ("v points into buf", s.v, buf);
 }
 
 /* -------------------------------------------------------------------------
@@ -102,16 +110,18 @@ Test(fs2, macro_local) {
 
 Test(fs2, getters_literal) {
     fs2 s = FS2_LITERAL("abc");
-    cr_assert_eq(fs2_len(&s), 3);
-    cr_assert_eq(fs2_sz(&s),  4);
-    cr_assert_str_eq(fs2_cstr(&s), "abc");
-    cr_assert(fs2_str(&s) == s.v);
+
+    CHECK_EQ("fs2_len", s.len, 3);
+    CHECK_EQ("fs2_sz",  s.sz,  4);
+    CHECK_STR_EQ("fs2_cstr", fs2_cstr(&s), "abc");
+    CHECK_PTR_EQ("fs2_str == v", fs2_str(&s), s.v);
 }
 
 Test(fs2, getters_empty) {
     fs2 s = FS2_EMPTY;
-    cr_assert_eq(fs2_len(&s), 0);
-    cr_assert_str_eq(fs2_cstr(&s), "");
+
+    CHECK_EQ("fs2_len", s.len, 0);
+    CHECK_STR_EQ("fs2_cstr", fs2_cstr(&s), "");
 }
 
 /* -------------------------------------------------------------------------
@@ -120,32 +130,34 @@ Test(fs2, getters_empty) {
 
 Test(fs2, init_small) {
     fs2 s = fs2_init(8);
-    cr_assert_not_null(s.v);
-    cr_assert(fs2_is_alloc(&s));
-    cr_assert_not(fs2_is_bodyalloc(&s));
-    cr_assert_eq(s.len, 0);
-    cr_assert_eq(s.v[0], '\0');
-    cr_assert_geq(s.sz, 8);   /* power-of-two growth may overshoot */
+
+    CHECK_NOT_NULL("v", s.v);
+    CHECK_TRUE ("is_alloc",    fs2_is_alloc(&s));
+    CHECK_FALSE("is_bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("v[0]", s.v[0], '\0');
+    CHECK_TRUE("sz >= 8 (power-of-two overshoot)", s.sz >= 8);
+
     fs2_free(&s);
 }
 
 Test(fs2, init_is_power_of_two_rounded_up) {
     fs2 s = fs2_init(5);
-    /* round_up_2(5) == 8 -> 16 */
-    cr_assert_eq(s.sz, 16);
+    /* round_up_2(5) == 8 -> floored at FS2_MIN_ALLOC = 16 */
+    CHECK_EQ("sz", s.sz, 16);
     fs2_free(&s);
 }
 
 Test(fs2, init_exact_power_of_two_bumps_up) {
     fs2 s = fs2_init(4);
-    cr_assert_eq(s.sz, 16);
+    CHECK_EQ("sz", s.sz, 16);
     fs2_free(&s);
 }
 
 Test(fs2, init_large_power_of_two) {
     fs2 s = fs2_init(100);
-    /* round_up_2(100) = 128, > FS_MIN_ACCOC → 128 */
-    cr_assert_eq(s.sz, 128);
+    /* round_up_2(100) = 128 */
+    CHECK_EQ("sz", s.sz, 128);
     fs2_free(&s);
 }
 
@@ -158,44 +170,45 @@ Test(fs2, init_large_fails_with_sigint, .signal = SIGINT) {
 
 Test(fs2, init_zero_does_not_crash) {
     fs2 s = fs2_init(0);
-    cr_assert_not_null(s.v);
-    cr_assert_eq(s.len, 0);
-    cr_assert_eq(s.v[0], '\0');
-    cr_assert_eq(s.sz, 16);       /* FS_MIN_ACCOC */
-    cr_assert(fs2_is_alloc(&s));
+
+    CHECK_NOT_NULL("v", s.v);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("v[0]", s.v[0], '\0');
+    CHECK_EQ("sz floored at FS2_MIN_ALLOC", s.sz, 16);
+    CHECK_TRUE("is_alloc", fs2_is_alloc(&s));
     fs2_free(&s);
 }
 
 Test(fs2, init_small_bumps_to_min) {
     fs2 s = fs2_init(5);
-    /* round_up_2(5) = 8, but 8 < 16 → 16 */
-    cr_assert_eq(s.sz, 16);
+    CHECK_EQ("sz", s.sz, 16);
     fs2_free(&s);
 }
-
 
 /* -------------------------------------------------------------------------
  * fs2_free — negatives and idempotency
  * ------------------------------------------------------------------------- */
 
 Test(fs2, free_null_noop) {
-    fs2_free(NULL);       /* must not crash */
-    cr_assert(1);
+    fs2_free(NULL);   /* must not crash */
+    CHECK_TRUE("reached after free(NULL)", 1);
 }
 
 Test(fs2, free_static_noop) {
     fs2 s = FS2_LITERAL("hello");
     fs2_free(&s);
-    cr_assert_str_eq(s.v, "hello");
-    cr_assert_eq(s.len, 5);
-    cr_assert_eq(s.sz,  6);
+
+    CHECK_STR_EQ("v untouched", s.v, "hello");
+    CHECK_EQ("len untouched", s.len, 5);
+    CHECK_EQ("sz  untouched", s.sz,  6);
 }
 
 Test(fs2, free_empty_static_noop) {
     fs2 s = FS2_EMPTY;
     fs2_free(&s);
-    cr_assert(fs2_is_static(&s));
-    cr_assert_str_eq(s.v, "");
+
+    CHECK_TRUE("is_static", fs2_is_static(&s));
+    CHECK_STR_EQ("v", s.v, "");
 }
 
 Test(fs2, free_local_noop) {
@@ -203,35 +216,28 @@ Test(fs2, free_local_noop) {
     fs2 s = FS2_LOCAL(buf);
     s.len = 3;
     fs2_free(&s);
-    cr_assert_str_eq(s.v, "abc");   /* buffer untouched */
-    cr_assert(s.v == buf);
+
+    CHECK_STR_EQ("v untouched", s.v, "abc");
+    CHECK_PTR_EQ("v still points into buf", s.v, buf);
 }
 
 Test(fs2, free_alloc_releases_buffer) {
     fs2 s = fs2_init(32);
-    cr_assert_not_null(s.v);
+    CHECK_NOT_NULL("v before free", s.v);
+
     fs2_free(&s);
-    cr_assert_null(s.v);
-    cr_assert_eq(s.len, 0);
-    cr_assert_eq(s.sz,  0);
+
+    CHECK_NULL("v after free", s.v);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("sz",  s.sz,  0);
 }
 
 Test(fs2, free_alloc_is_idempotent) {
     fs2 s = fs2_init(32);
     fs2_free(&s);
-    fs2_free(&s);          /* must not crash on double free */
-    cr_assert_null(s.v);
+    fs2_free(&s);   /* must not crash on double free */
+    CHECK_NULL("v", s.v);
 }
-
-/*
-Test(fs2, free_alloc_with_bodyalloc) {
-    // both buffer and struct on the heap 
-    fs2 *s = fs2_heap_init(16);
-    cr_assert_not_null(s);
-    cr_assert(fs2_is_bodyalloc(s));
-    fs2_free(s);
-    cr_assert(1);
-}*/
 
 /* -------------------------------------------------------------------------
  * fs2_setlen
@@ -241,10 +247,12 @@ Test(fs2, setlen_truncates) {
     fs2 s = fs2_init(16);
     memcpy(s.v, "hello world", 12);
     s.len = 11;
+
     fs2_setlen(&s, 5);
-    cr_assert_eq(s.len, 5);
-    cr_assert_eq(s.v[5], '\0');
-    cr_assert_str_eq(s.v, "hello");
+
+    CHECK_EQ("len", s.len, 5);
+    CHECK_EQ("v[5] is NUL", s.v[5], '\0');
+    CHECK_STR_EQ("v", s.v, "hello");
     fs2_free(&s);
 }
 
@@ -252,9 +260,11 @@ Test(fs2, setlen_to_zero) {
     fs2 s = fs2_init(16);
     memcpy(s.v, "abc", 4);
     s.len = 3;
+
     fs2_setlen(&s, 0);
-    cr_assert_eq(s.len, 0);
-    cr_assert_str_eq(s.v, "");
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_STR_EQ("v", s.v, "");
     fs2_free(&s);
 }
 
@@ -264,26 +274,26 @@ Test(fs2, setlen_to_zero) {
 
 Test(fs2, is_empty_true_on_zero_len) {
     fs2 s = FS2_LITERAL("");
-    cr_assert(fs2_is_empty(&s));
+    CHECK_TRUE("is_empty", fs2_is_empty(&s));
 }
 
 Test(fs2, is_empty_false_on_nonempty) {
     fs2 s = FS2_LITERAL("x");
-    cr_assert_not(fs2_is_empty(&s));
+    CHECK_FALSE("is_empty", fs2_is_empty(&s));
 }
 
 Test(fs2, is_null_on_pointer_null) {
-    cr_assert(fs2_is_null(NULL));
+    CHECK_TRUE("is_null(NULL)", fs2_is_null(NULL));
 }
 
-Test(fs2, is_null) {
+Test(fs2, is_null_on_empty_alloc) {
     fs2 s = FS2();
-    cr_assert(fs2_is_null(&s));     /* v == NULL */
+    CHECK_TRUE("is_null(FS2())", fs2_is_null(&s));
 }
 
 Test(fs2, is_null_false_on_literal) {
     fs2 s = FS2_LITERAL("ok");
-    cr_assert_not(fs2_is_null(&s));
+    CHECK_FALSE("is_null", fs2_is_null(&s));
 }
 
 /* -------------------------------------------------------------------------
@@ -292,57 +302,53 @@ Test(fs2, is_null_false_on_literal) {
 
 Test(fs2, validate_ok_literal) {
     fs2 s = FS2_LITERAL("hello");
-    cr_assert(fs2_validate(NULL, &s));
+    CHECK_TRUE("validate", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_ok_init) {
     fs2 s = fs2_init(16);
-    cr_assert(fs2_validate(NULL, &s));
+    CHECK_TRUE("validate", fs2_validate(NULL, &s));
     fs2_free(&s);
 }
 
 Test(fs2, validate_null_pointer) {
-    cr_assert_not(fs2_validate(NULL, NULL));
+    CHECK_FALSE("validate(NULL)", fs2_validate(NULL, NULL));
 }
 
 Test(fs2, validate_null_buffer) {
-    fs2 s = FS2();          /* v == NULL */
-    cr_assert_not(fs2_validate(NULL, &s));
+    fs2 s = FS2();   /* v == NULL */
+    CHECK_FALSE("validate(FS2())", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_ge_sz) {
     fs2 s = FS2_LITERAL("abc");
-    s.len = s.sz;           /* len >= sz — forged invariant violation */
-    cr_assert_not(fs2_validate(NULL, &s));
+    s.len = s.sz;   /* len >= sz — forged invariant violation */
+    CHECK_FALSE("validate with len >= sz", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_gt_strlen) {
     fs2 s = FS2_LITERAL("abc");
-    s.len = 100;            /* len > sz too — but check order in impl */
-    cr_assert_not(fs2_validate(NULL, &s));
+    s.len = 100;
+    CHECK_FALSE("validate with len=100", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_writes_to_stream) {
     char path[256];
-    snprintf(path, sizeof(path),
-             "/tmp/test_fs2_validate_%d.txt", (int)getpid());
+    test_tmpname(path, sizeof path, "test_fs2_validate", NULL, "txt");
 
     FILE *f = fopen(path, "w");
-    cr_assert_not_null(f);
+    CHECK_NOT_NULL("fopen write", f);
 
-    fs2 s = FS2();          /* invalid: v == NULL */
-    cr_assert_not(fs2_validate(f, &s));
+    fs2 s = FS2();   /* invalid: v == NULL */
+    CHECK_FALSE("validate(FS2())", fs2_validate(f, &s));
     fclose(f);
 
-    FILE *r = fopen(path, "r");
-    cr_assert_not_null(r);
-    char buf[512] = {0};
-    size_t n = fread(buf, 1, sizeof(buf) - 1, r);
-    fclose(r);
+    char buf[512];
+    size_t n = test_read_file(path, buf, sizeof buf);
     remove(path);
 
-    cr_assert_gt(n, 0);
-    cr_assert(strstr(buf, "nullable") != NULL, "buf: %s", buf);
+    CHECK_TRUE("non-empty output", n > 0);
+    CHECK_NOT_NULL("strstr \"nullable\"", strstr(buf, "nullable"));
 }
 
 /* -------------------------------------------------------------------------
@@ -351,55 +357,49 @@ Test(fs2, validate_writes_to_stream) {
 
 Test(fs2, techfprint_literal) {
     char path[256];
-    snprintf(path, sizeof(path),
-             "/tmp/test_fs2_tech_%d.txt", (int)getpid());
+    test_tmpname(path, sizeof path, "test_fs2_tech", NULL, "txt");
 
     FILE *f = fopen(path, "w");
-    cr_assert_not_null(f);
+    CHECK_NOT_NULL("fopen write", f);
 
-    fs2 s = FS2_LITERAL("payload");
+    fs2  s = FS2_LITERAL("payload");
     long n = fs_techfprint(f, &s, "s");
     fclose(f);
 
-    cr_assert_gt(n, 0);
+    CHECK_TRUE("positive write count", n > 0);
 
-    FILE *r = fopen(path, "r");
-    char buf[512] = {0};
-    size_t got = fread(buf, 1, sizeof(buf) - 1, r);
-    fclose(r);
+    char buf[512];
+    size_t got = test_read_file(path, buf, sizeof buf);
     remove(path);
 
-    cr_assert_gt(got, 0);
-    cr_assert(strstr(buf, "FS2:") != NULL, "buf: %s", buf);
-    cr_assert(strstr(buf, "payload") != NULL, "buf: %s", buf);
+    CHECK_TRUE("non-empty output", got > 0);
+    CHECK_NOT_NULL("strstr \"FS2:\"",   strstr(buf, "FS2:"));
+    CHECK_NOT_NULL("strstr \"payload\"", strstr(buf, "payload"));
 }
 
 Test(fs2, techfprint_null_s) {
     char path[256];
-    snprintf(path, sizeof(path),
-             "/tmp/test_fs2_tech_null_%d.txt", (int)getpid());
+    test_tmpname(path, sizeof path, "test_fs2_tech_null", NULL, "txt");
 
     FILE *f = fopen(path, "w");
-    cr_assert_not_null(f);
+    CHECK_NOT_NULL("fopen write", f);
 
     long n = fs_techfprint(f, NULL, "s");
     fclose(f);
 
-    cr_assert_gt(n, 0);
+    CHECK_TRUE("positive write count", n > 0);
 
-    FILE *r = fopen(path, "r");
-    char buf[512] = {0};
-    size_t got = fread(buf, 1, sizeof(buf) - 1, r);
-    fclose(r);
+    char buf[512];
+    size_t got = test_read_file(path, buf, sizeof buf);
     remove(path);
 
-    cr_assert_gt(got, 0);
-    cr_assert(strstr(buf, "<NULL>") != NULL, "buf: %s", buf);
+    CHECK_TRUE("non-empty output", got > 0);
+    CHECK_NOT_NULL("strstr \"<NULL>\"", strstr(buf, "<NULL>"));
 }
 
 Test(fs2, techfprint_null_out_returns_zero) {
     fs2 s = FS2_LITERAL("x");
-    cr_assert_eq(fs_techfprint(NULL, &s, "s"), 0);
+    CHECK_EQ("fs_techfprint(NULL, ...)", fs_techfprint(NULL, &s, "s"), 0);
 }
 
 /* -------------------------------------------------------------------------
@@ -409,15 +409,15 @@ Test(fs2, techfprint_null_out_returns_zero) {
 Test(fs2, local_creates_empty) {
     FS2LOCAL(t, 32);
 
-    cr_assert_not_null(t.v);
-    cr_assert_eq(t.sz, 32);
-    cr_assert_eq(t.len, 0);
-    cr_assert_eq(t.v[0], '\0');
-    cr_assert(fs2_is_local(&t));
-    cr_assert_not(fs2_is_static(&t));
-    cr_assert_not(fs2_is_alloc(&t));
-    cr_assert_not(fs2_is_bodyalloc(&t));
-    cr_assert(fs2_is_empty(&t));
+    CHECK_NOT_NULL("v", t.v);
+    CHECK_EQ("sz",  t.sz,  32);
+    CHECK_EQ("len", t.len, 0);
+    CHECK_EQ("v[0] is NUL", t.v[0], '\0');
+    CHECK_TRUE ("is_local",     fs2_is_local(&t));
+    CHECK_FALSE("is_static",    fs2_is_static(&t));
+    CHECK_FALSE("is_alloc",     fs2_is_alloc(&t));
+    CHECK_FALSE("is_bodyalloc", fs2_is_bodyalloc(&t));
+    CHECK_TRUE ("is_empty",     fs2_is_empty(&t));
 }
 
 Test(fs2, local_buffer_is_writable) {
@@ -426,10 +426,10 @@ Test(fs2, local_buffer_is_writable) {
     memcpy(t.v, "hello", 6);
     t.len = 5;
 
-    cr_assert_str_eq(t.v, "hello");
-    cr_assert_eq(t.len, 5);
-    cr_assert_eq(t.sz, 16);
-    cr_assert(fs2_is_local(&t));
+    CHECK_STR_EQ("v", t.v, "hello");
+    CHECK_EQ("len", t.len, 5);
+    CHECK_EQ("sz",  t.sz,  16);
+    CHECK_TRUE("is_local", fs2_is_local(&t));
 }
 
 Test(fs2, local_free_is_noop) {
@@ -439,24 +439,24 @@ Test(fs2, local_free_is_noop) {
 
     fs2_free(&t);
 
-    /* STATIC/LOCAL: free must not touch the buffer */
-    cr_assert_str_eq(t.v, "keep me");
-    cr_assert_eq(t.len, 7);
-    cr_assert(fs2_is_local(&t));
+    /* STATIC / LOCAL: free must not touch the buffer */
+    CHECK_STR_EQ("v untouched", t.v, "keep me");
+    CHECK_EQ("len untouched", t.len, 7);
+    CHECK_TRUE("still local", fs2_is_local(&t));
 }
 
 Test(fs2, local_two_instances_independent) {
     FS2LOCAL(a, 8);
     FS2LOCAL(b, 16);
 
-    memcpy(a.v, "aaa", 4); a.len = 3;
+    memcpy(a.v, "aaa",  4); a.len = 3;
     memcpy(b.v, "bbbb", 5); b.len = 4;
 
-    cr_assert_str_eq(a.v, "aaa");
-    cr_assert_str_eq(b.v, "bbbb");
-    cr_assert_eq(a.sz, 8);
-    cr_assert_eq(b.sz, 16);
-    cr_assert(a.v != b.v);
+    CHECK_STR_EQ("a.v", a.v, "aaa");
+    CHECK_STR_EQ("b.v", b.v, "bbbb");
+    CHECK_EQ("a.sz", a.sz, 8);
+    CHECK_EQ("b.sz", b.sz, 16);
+    CHECK_PTR_NEQ("a.v vs b.v", a.v, b.v);
 }
 
 /* -------------------------------------------------------------------------
@@ -466,59 +466,59 @@ Test(fs2, local_two_instances_independent) {
 Test(fs2, localfill_empty_format) {
     FS2LOCALFILL(t, "%s", "");
 
-    cr_assert_eq(t.len, 0);
-    cr_assert_eq(t.sz, 1);
-    cr_assert_str_eq(t.v, "");
-    cr_assert(fs2_is_local(&t));
+    CHECK_EQ("len", t.len, 0);
+    CHECK_EQ("sz",  t.sz,  1);
+    CHECK_STR_EQ("v", t.v, "");
+    CHECK_TRUE("is_local", fs2_is_local(&t));
 }
 
 Test(fs2, localfill_plain_string) {
     FS2LOCALFILL(t, "hello world");
 
-    cr_assert_eq(t.len, 11);
-    cr_assert_str_eq(t.v, "hello world");
-    cr_assert_eq(t.sz, 12);
-    cr_assert(fs2_is_local(&t));
+    CHECK_EQ("len", t.len, 11);
+    CHECK_STR_EQ("v", t.v, "hello world");
+    CHECK_EQ("sz",  t.sz,  12);
+    CHECK_TRUE("is_local", fs2_is_local(&t));
 }
 
 Test(fs2, localfill_int) {
     FS2LOCALFILL(t, "x=%d", 42);
 
-    cr_assert_eq(t.len, 4);
-    cr_assert_str_eq(t.v, "x=42");
+    CHECK_EQ("len", t.len, 4);
+    CHECK_STR_EQ("v", t.v, "x=42");
 }
 
 Test(fs2, localfill_string_arg) {
     const char *name = "alice";
     FS2LOCALFILL(t, "user=%s", name);
 
-    cr_assert_eq(t.len, 10);
-    cr_assert_str_eq(t.v, "user=alice");
+    CHECK_EQ("len", t.len, 10);
+    CHECK_STR_EQ("v", t.v, "user=alice");
 }
 
 Test(fs2, localfill_mixed) {
     FS2LOCALFILL(t, "%s=%d (%c)", "count", 7, 'x');
 
-    cr_assert_str_eq(t.v, "count=7 (x)");
-    cr_assert_eq(t.len, 11);
+    CHECK_STR_EQ("v", t.v, "count=7 (x)");
+    CHECK_EQ("len", t.len, 11);
 }
 
 Test(fs2, localfill_negative_int) {
     FS2LOCALFILL(t, "%d", -123);
 
-    cr_assert_str_eq(t.v, "-123");
-    cr_assert_eq(t.len, 4);
+    CHECK_STR_EQ("v", t.v, "-123");
+    CHECK_EQ("len", t.len, 4);
 }
 
 Test(fs2, localfill_two_instances) {
-    FS2LOCALFILL(a, "first=%d", 1);
+    FS2LOCALFILL(a, "first=%d",  1);
     FS2LOCALFILL(b, "second=%d", 2);
 
-    cr_assert_str_eq(a.v, "first=1");
-    cr_assert_str_eq(b.v, "second=2");
-    cr_assert(a.v != b.v);
-    cr_assert(fs2_is_local(&a));
-    cr_assert(fs2_is_local(&b));
+    CHECK_STR_EQ("a.v", a.v, "first=1");
+    CHECK_STR_EQ("b.v", b.v, "second=2");
+    CHECK_PTR_NEQ("a.v vs b.v", a.v, b.v);
+    CHECK_TRUE("a is_local", fs2_is_local(&a));
+    CHECK_TRUE("b is_local", fs2_is_local(&b));
 }
 
 Test(fs2, localfill_free_is_noop) {
@@ -526,7 +526,252 @@ Test(fs2, localfill_free_is_noop) {
 
     fs2_free(&t);
 
-    cr_assert_str_eq(t.v, "keep me please");
-    cr_assert_eq(t.len, strlen("keep me please"));
-    cr_assert(fs2_is_local(&t));
+    CHECK_STR_EQ("v untouched", t.v, "keep me please");
+    CHECK_EQ("len untouched", t.len, (int)strlen("keep me please"));
+    CHECK_TRUE("still local", fs2_is_local(&t));
+}
+
+/* -------------------------------------------------------------------------
+ * fs2_fromstr / fs2_clone / fs2_fromstrf
+ *
+ * All tests reset the allocation counters first and verify balance at
+ * the end. Requires -DFS2TEST (see fs2/Makefile).
+ * ------------------------------------------------------------------------- */
+
+static void
+assert_balanced(void)
+{
+    int a = -1, f = -1, ba = -1, bf = -1;
+    bool ok = fs2_checkleak(&a, &f, &ba, &bf);
+    if (!ok)
+        logsimple("FAIL %s: alloc=%d freed=%d body_alloc=%d body_freed=%d",
+                  __func__, a, f, ba, bf);
+    cr_assert(ok, "counters not balanced");
+}
+
+/* ── fromstr ────────────────────────────────────────────────────────── */
+
+Test(fs2, fromstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_STR_EQ("v", s.v, "hello");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_GE("sz >= len + 1", s.sz, s.len + 1);
+    CHECK_TRUE ("is_alloc",     fs2_is_alloc(&s));
+    CHECK_FALSE("is_static",    fs2_is_static(&s));
+    CHECK_FALSE("is_bodyalloc", fs2_is_bodyalloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstr_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_GT("sz",  s.sz,  1);
+    CHECK_STR_EQ("v", s.v, "");
+    CHECK_TRUE("is_alloc", fs2_is_alloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstr_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+
+    CHECK_EQ("len", s.len, 1);
+    CHECK_STR_EQ("v", s.v, "x");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstr_longer_than_min_alloc) {
+    __fs2_checkreset();
+    const char *src = "a string longer than FS2_MIN_ALLOC";
+    fs2 s = fs2_fromstr(src);
+
+    CHECK_STR_EQ("v", s.v, src);
+    CHECK_EQ("len", s.len, strlen(src));
+    CHECK_TRUE("sz >= len + 1", s.sz >= s.len + 1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstr_source_is_independent) {
+    __fs2_checkreset();
+    char src[] = "mutable";
+    fs2 s = fs2_fromstr(src);
+
+    src[0] = 'X';                      /* mutate the source */
+    CHECK_STR_EQ("v independent of src", s.v, "mutable");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ── clone ──────────────────────────────────────────────────────────── */
+
+Test(fs2, clone_from_literal) {
+    __fs2_checkreset();
+    fs2 a = FS2_LITERAL("literal");
+    fs2 b = fs2_clone(&a);
+
+    CHECK_STR_EQ("b.v", b.v, "literal");
+    CHECK_EQ("b.len vs a.len", b.len, a.len);
+    CHECK_TRUE("b is_alloc",   fs2_is_alloc(&b));
+    CHECK_PTR_NEQ("b.v vs a.v", b.v, a.v);
+    CHECK_TRUE("a still static", fs2_is_static(&a));
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, clone_from_alloc) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("original");
+    fs2 b = fs2_clone(&a);
+
+    CHECK_STR_EQ("b.v vs a.v", b.v, a.v);
+    CHECK_PTR_NEQ("b.v vs a.v pointer", b.v, a.v);
+    CHECK_EQ("b.len vs a.len", b.len, a.len);
+    CHECK_EQ("b.sz vs a.sz",   b.sz,  a.sz);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, clone_empty_static) {
+    __fs2_checkreset();
+    fs2 a = FS2_EMPTY;
+    fs2 b = fs2_clone(&a);
+
+    CHECK_EQ("len", b.len, 0);
+    CHECK_STR_EQ("v", b.v, "");
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, clone_empty_alloc) {
+    __fs2_checkreset();
+    fs2 a = FS2();
+    fs2 b = fs2_clone(&a);
+
+    CHECK_EQ("len", b.len, 0);
+    CHECK_STR_EQ("v", b.v, "");
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ── fromstrf ───────────────────────────────────────────────────────── */
+
+Test(fs2, fromstrf_int) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("n=%d", 42);
+
+    CHECK_STR_EQ("v", s.v, "n=42");
+    CHECK_EQ("len", s.len, strlen("n=%d"));
+    CHECK_TRUE("is_alloc", fs2_is_alloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstrf_string_arg) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("user=%s", "alice");
+
+    CHECK_STR_EQ("v", s.v, "user=alice");
+    CHECK_EQ("len", s.len, 10);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstrf_mixed) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%s=%d (%c)", "count", -7, 'x');
+
+    CHECK_STR_EQ("v", s.v, "count=-7 (x)");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstrf_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%s", "");   /* %s is safer than "" for -Wformat */
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_STR_EQ("v", s.v, "");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, fromstrf_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%d", -123);
+
+    CHECK_STR_EQ("v", s.v, "-123");
+    CHECK_EQ("len", s.len, 4);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ── round-trips under leak detection ───────────────────────────────── */
+
+Test(fs2, roundtrip_fromstr_clone_100) {
+    __fs2_checkreset();
+    for (int i = 0; i < 100; i++) {
+        fs2 a = fs2_fromstr("round-trip");
+        fs2 b = fs2_clone(&a);
+        fs2_free(&a);
+        fs2_free(&b);
+    }
+    assert_balanced();
+}
+
+Test(fs2, roundtrip_fromstrf_clone_100) {
+    __fs2_checkreset();
+    for (int i = 0; i < 100; i++) {
+        fs2 a = fs2_fromstrf("item %d", i);
+        fs2 b = fs2_clone(&a);
+        CHECK_STR_EQ("a.v vs b.v", a.v, b.v);
+        fs2_free(&a);
+        fs2_free(&b);
+    }
+    assert_balanced();
+}
+
+/* ── fs2_checkleak: negative case ───────────────────────────────────── */
+
+Test(fs2, checkleak_detects_dangling) {
+    __fs2_checkreset();
+
+    fs2 leaky = fs2_fromstr("intentional leak");
+
+    int a = -1, f = -1;
+    CHECK_FALSE("fs2_checkleak on unbalanced", fs2_checkleak(&a, &f, NULL, NULL));
+    CHECK_EQ("alloc - freed", a - f, 1);
+
+    fs2_free(&leaky);       /* cleanup so the next test is not poisoned */
+    assert_balanced();
+}
+
+Test(fs2, checkleak_passes_when_balanced) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("balanced");
+    fs2_free(&s);
+
+    CHECK_TRUE("fs2_checkleak on balanced", fs2_checkleak(NULL, NULL, NULL, NULL));
 }

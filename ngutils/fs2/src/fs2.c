@@ -103,10 +103,12 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 #endif
 }
 
+// internal constructor
 static inline fs2 
 copymem(const char *src, size_t len) {
     fs2         res = fs2_init(len + 1);
     memcpy(res.v, src, len);
+    res.len = len;       // NOT SURE: THINK:
     return res;
 }
 
@@ -116,7 +118,7 @@ copymem(const char *src, size_t len) {
 
  fs2            
  fs2_init(size_t sz) {
-    fs2      res = FS2();     // fsalloc flag
+    fs2         res = FS2();     // fsalloc flag
     increasesize(&res, sz, true);   // init mode
     fs2_setlen(&res, 0);
     return res;
@@ -141,9 +143,11 @@ fs2_clone   (const fs2 *src) {
 
 fs2   
 fs2_fromstrf(const char *fmt, ...) {
+    invraise(fmt != NULL, "Null pointer"); 
+
     va_list ap;
     va_start(ap, fmt);
-    int     sz = vsprintf(NULL, fmt, ap);
+    int         sz = vsnprintf(NULL, 0, fmt, ap);
     if (sz < 0)
         userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
     va_end(ap);
@@ -151,6 +155,7 @@ fs2_fromstrf(const char *fmt, ...) {
     va_start(ap, fmt);
     vsprintf(res.v, fmt, ap);
     va_end(ap);
+    fs2_setlen(&res, sz);
     return res;
 }
 
@@ -238,3 +243,41 @@ fs2_validate(FILE *restrict out, const fs2 *restrict s){
     
     return true;
 }
+
+ /* ─────────────────────────────────────────────────────────────────────────
+ * Leak checking
+ * ───────────────────────────────────────────────────────────────────────── */
+
+bool 
+fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed) {
+    int      lfreecnt = atomic_load_explicit(&g_free_cnt, memory_order_relaxed),
+            lalloccnt = atomic_load_explicit(&g_alloc_cnt, memory_order_relaxed),
+         lfreebodycnt = atomic_load_explicit(&g_free_body_cnt, memory_order_relaxed),
+        lallocbodycnt = atomic_load_explicit(&g_alloc_body_cnt, memory_order_relaxed);
+
+    if (lfreecnt != lalloccnt) {
+        if (alloc)
+            *alloc = lalloccnt;
+        if (freed)
+            *freed = lfreecnt;
+        return logsimpleerr(false, "g_free_cnt %d != g_alloc_cnt %d", 
+                lfreecnt, lalloccnt);
+    }
+    if (lfreebodycnt != lallocbodycnt) {
+        if (bodyalloc)
+            *bodyalloc = lallocbodycnt;
+        if (bodyfreed)
+            *bodyfreed = lfreebodycnt;
+        return logsimpleerr(false, "g_free_body_cnt %d != g_alloc_body_cnt %d", 
+                            lfreebodycnt, lallocbodycnt);
+    }
+    return true;
+}
+
+#ifdef FS2TEST
+// only for the test purpose
+void   __fs2_checkreset(void) {
+    logsimple("Reset allocation counters!!!");
+    g_free_cnt = g_alloc_cnt = g_alloc_body_cnt = g_free_body_cnt;
+}
+#endif /* FS2TEST */

@@ -211,4 +211,15 @@ long    fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *res
  * ───────────────────────────────────────────────────────────────────────── */
 bool    fs2_validate(FILE *restrict out, const fs2 *restrict s);
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Leak checking
+ * ───────────────────────────────────────────────────────────────────────── */
+
+bool   fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
+
+#ifdef FS2TEST
+// only for the test purpose
+void   __fs2_checkreset(void);
+#endif /* FS2TEST */
+
 #endif /* !FS2_H */
