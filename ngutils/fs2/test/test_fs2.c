@@ -409,8 +409,8 @@ Test(fs2, local_buffer_is_writable) {
     t.len = 5;
 
     CHECK_STR_EQ("v", t.v, "hello");
-    CHECK_EQ("len", t.len, 5);
-    CHECK_EQ("sz",  t.sz,  16);
+    CHECK_EQ("len", t.len, (size_t) 5);
+    CHECK_EQ("sz",  t.sz,  (size_t) 16);
     CHECK_TRUE("is_local", fs2_is_local(&t));
 }
 
@@ -634,7 +634,7 @@ Test(fs2, clone_empty_static) {
     fs2 a = FS2_EMPTY;
     fs2 b = fs2_clone(&a);
 
-    CHECK_EQ("len", b.len, 0);
+    CHECK_EQ("len", b.len, (size_t) 0);
     CHECK_STR_EQ("v", b.v, "");
 
     fs2_free(&b);
@@ -646,8 +646,8 @@ Test(fs2, clone_empty_alloc) {
     fs2 a = FS2();
     fs2 b = fs2_clone(&a);
 
-    CHECK_EQ("len", b.len, 0);
-    CHECK_STR_EQ("v", b.v, "");
+    CHECK_EQ("len", b.len, (size_t) 0);
+    CHECK_NULL("v", b.v);
 
     fs2_free(&b);
     assert_balanced();
@@ -672,7 +672,7 @@ Test(fs2, fromstrf_string_arg) {
     fs2 s = fs2_fromstrf("user=%s", "alice");
 
     CHECK_STR_EQ("v", s.v, "user=alice");
-    CHECK_EQ("len", s.len, 10);
+    CHECK_EQ("len", s.len, (size_t) 10);
 
     fs2_free(&s);
     assert_balanced();
@@ -692,7 +692,7 @@ Test(fs2, fromstrf_empty) {
     __fs2_checkreset();
     fs2 s = fs2_fromstrf("%s", "");   /* %s is safer than "" for -Wformat */
 
-    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("len", s.len, (size_t) 0);
     CHECK_STR_EQ("v", s.v, "");
 
     fs2_free(&s);

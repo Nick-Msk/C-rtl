@@ -107,7 +107,7 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 static inline fs2 
 copymem(const char *src, size_t len) {
     fs2         res = fs2_init(len + 1);
-    memcpy(res.v, src, len);
+    memcpy(res.v, src, len + 1);
     res.len = len;       // NOT SURE: THINK:
     return res;
 }
@@ -120,7 +120,7 @@ copymem(const char *src, size_t len) {
  fs2_init(size_t sz) {
     fs2         res = FS2();     // fsalloc flag
     increasesize(&res, sz, true);   // init mode
-    fs2_setlen(&res, 0);
+    fs2_setlen(&res, 0);    // THINK:
     return res;
 }
 
@@ -138,7 +138,10 @@ fs2_clone   (const fs2 *src) {
     invraise(src != NULL, "Null pointer"); 
 
     size_t      len = src->len;
-    return copymem(src->v, len);
+    if (src->v)
+        return copymem(src->v, len);
+    else
+        return FS2();
 }
 
 fs2   
