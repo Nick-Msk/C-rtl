@@ -227,6 +227,9 @@ test_tmpname(char *out, size_t cap,
  * bytes correctly, so this stays safe.
  * ------------------------------------------------------------------------- */
 
+/* _Generic only picks the format string. It is used as the format
+ * argument to snprintf at runtime, not concatenated into a literal. */
+
 #define CHECK_FMT(x) _Generic((x),    \
     bool:               "%d",   \
     char:               "%c",   \
@@ -235,7 +238,7 @@ test_tmpname(char *out, size_t cap,
     short:              "%hd",  \
     unsigned short:     "%hu",  \
     int:                "%d",   \
-    unsigned:           "%u",   \
+    unsigned int:       "%u",   \
     long:               "%ld",  \
     unsigned long:      "%lu",  \
     long long:          "%lld", \
@@ -245,28 +248,39 @@ test_tmpname(char *out, size_t cap,
     long double:        "%Lf"   \
 )
 
-#define CHECK_EQ(metric, actual, expected)                     \
+/* Internal: format both numbers into stack buffers, then log. */
+static inline void
+_check_log_num(const char *func, const char *metric,
+               const char *expected, const char *actual)
+{
+    logsimple("FAIL %s: %s expected=%s got=%s",
+              func, metric, expected, actual);
+}
+
+#define CHECK_EQ(metric, actual, expected)                                \
     do {                                                                  \
         typeof(actual)   _a = (actual);                                   \
         typeof(expected) _e = (expected);                                 \
         if (_a != _e) {                                                   \
-            logsimple("FAIL %s: %s expected=" CHECK_FMT(_e)               \
-                      " got=" CHECK_FMT(_a),                              \
-                      __func__, (metric), _e, _a);                     \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            _check_log_num(__func__, (metric), _eb, _ab);                 \
         }                                                                 \
         cr_assert_eq(_a, _e);                                             \
     } while (0)
 
-#define CHECK_NEQ(metric, actual, expected)                     \
+#define CHECK_NEQ(metric, actual, expected)                               \
     do {                                                                  \
         typeof(actual)   _a = (actual);                                   \
         typeof(expected) _e = (expected);                                 \
         if (_a == _e) {                                                   \
-            logsimple("FAIL %s: %s expected=" CHECK_FMT(_e)               \
-                      " got=" CHECK_FMT(_a),                              \
-                      __func__, (metric), _e, _a);                     \
+            char _eb[64], _ab[64];                                        \
+            snprintf(_eb, sizeof _eb, CHECK_FMT(_e), _e);                 \
+            snprintf(_ab, sizeof _ab, CHECK_FMT(_a), _a);                 \
+            _check_log_num(__func__, (metric), _eb, _ab);                 \
         }                                                                 \
-        cr_assert_eq(_a, _e);                                             \
+        cr_assert_neq(_a, _e);                                            \
     } while (0)
 
 #define CHECK_STR_EQ(metric, actual, expected)                   \
@@ -275,7 +289,7 @@ test_tmpname(char *out, size_t cap,
         const char *_e = (expected);                                        \
         if (!_a || !_e || strcmp(_a, _e) != 0) {                            \
             logsimple("FAIL %s: %s expected=[%s] got=[%s]",                 \
-                      __func__, (metric),                                \
+                      __func__, (metric),                                   \
                       _e ? _e : "(null)", _a ? _a : "(null)");              \
         }                                                                   \
         cr_assert_str_eq(_a, _e);                                           \
@@ -287,10 +301,10 @@ test_tmpname(char *out, size_t cap,
         const char *_e = (expected);                                        \
         if (!_a || !_e || strcmp(_a, _e) == 0) {                            \
             logsimple("FAIL %s: %s expected=[%s] got=[%s]",                 \
-                      __func__, (metric),                                \
+                      __func__, (metric),                                   \
                       _e ? _e : "(null)", _a ? _a : "(null)");              \
         }                                                                   \
-        cr_assert_str_neq(_a, _e);                                           \
+        cr_assert_str_neq(_a, _e);                                          \
     } while (0)
 
 #define CHECK_PTR_EQ(metric, actual, expected)                   \
@@ -299,7 +313,7 @@ test_tmpname(char *out, size_t cap,
         const void *_e = (const void *)(expected);                          \
         if (_a != _e) {                                                     \
             logsimple("FAIL %s: %s expected=%p got=%p",                     \
-                      __func__, (metric), _e, _a);                       \
+                      __func__, (metric), _e, _a);                          \
         }                                                                   \
         cr_assert_eq(_a, _e);                                               \
     } while (0)
@@ -310,7 +324,7 @@ test_tmpname(char *out, size_t cap,
         const void *_b = (const void *)(b);                                 \
         if (_a == _b) {                                                     \
             logsimple("FAIL %s: %s both = %p (expected distinct)",          \
-                      __func__, (metric), _a);                           \
+                      __func__, (metric), _a);                              \
         }                                                                   \
         cr_assert_neq(_a, _b);                                              \
     } while (0)
@@ -318,8 +332,8 @@ test_tmpname(char *out, size_t cap,
 #define CHECK_TRUE(metric, cond)                                 \
     do {                                                                    \
         if (!(cond)) {                                                      \
-            logsimple("FAIL %s: %s is false", 
-                __func__, (metric));       \
+            logsimple("FAIL %s: %s is false",                               \
+                __func__, (metric));                                        \
         }                                                                   \
         cr_assert(cond);                                                    \
     } while (0)
@@ -328,7 +342,7 @@ test_tmpname(char *out, size_t cap,
     do {                                                                    \
         if (cond) {                                                         \
             logsimple("FAIL %s: %s is true (expected false)",               \
-                      __func__, (metric));                               \
+                      __func__, (metric));                                  \
         }                                                                   \
         cr_assert_not(cond);                                                \
     } while (0)    
@@ -338,7 +352,7 @@ test_tmpname(char *out, size_t cap,
         const void *_a = (const void *)(actual);                          \
         if (_a != NULL) {                                                 \
             logsimple("FAIL %s: %s expected NULL got %p",                 \
-                      __func__, (metric), _a);                         \
+                      __func__, (metric), _a);                            \
         }                                                                 \
         cr_assert_null(_a);                                               \
     } while (0)
@@ -347,8 +361,8 @@ test_tmpname(char *out, size_t cap,
     do {                                                                  \
         const void *_a = (const void *)(actual);                          \
         if (_a == NULL) {                                                 \
-            logsimple("FAIL %s: %s is NULL", 
-                __func__, (metric));      \
+            logsimple("FAIL %s: %s is NULL",                              \
+                __func__, (metric));                                      \
         }                                                                 \
         cr_assert_not_null(_a);                                           \
     } while (0)
@@ -360,7 +374,7 @@ test_tmpname(char *out, size_t cap,
         size_t      _n = (n);                                             \
         if (memcmp(_a, _b, _n) != 0) {                                    \
             logsimple("FAIL %s: %s differs in %zu bytes",                 \
-                      __func__, (metric), _n);                         \
+                      __func__, (metric), _n);                            \
         }                                                                 \
         cr_assert_arr_eq(_a, _b, (int)_n);                                \
     } while (0)
