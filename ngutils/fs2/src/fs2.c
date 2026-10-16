@@ -245,6 +245,24 @@ fs2_adopt(char **str)
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Constructors — heap (BODYALLOC set)
+ *
+ * Same operations, but the fs2 struct itself is allocated. Free with
+ * fs2_free (which frees the buffer, the struct, or both, per flags).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+fs2     *fs2_heap          (void) {
+    fs2 *res = malloc(sizeof(fs2));
+    if (!res)
+        userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable allocate fs2");
+
+    *res = FS2();
+    res->flags |= FS2_BODYALLOC;
+    atomic_fetch_add(&g_alloc_body_cnt, 1);
+    return res;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
  *
  *   dst ← src, then src → empty. Frees whatever `to` held before.
@@ -285,12 +303,28 @@ fs2_move(fs2 *dst, fs2 *src) {
 
 // stack <-> heap convertes
 fs2   fs2_heaptostack(fs2 **psrc) {
+    invraise(psrc != NULL && *psrc != NULL, 
+        "Null pointer %p or %p", psrc, psrc ? *psrc : NULL);
 
+    if (!fs2_is_bodyalloc(*psrc))
+        userraise(0, ERR_UNSUPPORTED_TYPE, "Only BODY ALLOC supported");
+    fs2 res = FS2();
+    fs2_move(&res, *psrc);
+    fs2_freebody(*psrc);
+    *psrc = NULL;       // remove origin??? fs2 *s = ...; fs2 stacked = fs2_heaptostack(&s);
+    res.flags &= ~FS2_BODYALLOC;  // probably no need, check
+    return res;
 }
 fs2  *fs2_stacktoheap(fs2 *src) {
+    invraise(src != NULL,  "Null pointer %p", src);
 
+    if (fs2_is_bodyalloc(src))
+        userraise(0, ERR_UNSUPPORTED_TYPE, "Only NOT BODY ALLOC supported");
+
+    fs2 *res = fs2_heap();
+    fs2_move(res, src);  // FS2_BODYALLOC is already set, src is cleared
+    return res;
 }
-
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Value destructor
@@ -389,7 +423,7 @@ fs2_validate(FILE *restrict out, const fs2 *restrict s)
 
     /* 2. Exactly one of STATIC / LOCAL / ALLOC. */
     {
-        int kind = s->flags & (FS2_STATIC | FS2_LOCAL | FS2_ALLOC);
+        fs2_flags kind = s->flags & (FS2_STATIC | FS2_LOCAL | FS2_ALLOC);
         if (kind != FS2_STATIC && kind != FS2_LOCAL && kind != FS2_ALLOC)
             return LOGNPRINTF(out,
                 "exactly one of STATIC/LOCAL/ALLOC required, got 0x%x", kind);

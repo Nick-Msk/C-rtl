@@ -1210,3 +1210,57 @@ Test(fs2, validate_rejects_alloc_null_nonempty) {
     s.len = 5;   /* forged: v == NULL, but len != 0 */
     CHECK_FALSE("alloc null with len", fs2_validate(NULL, &s));
 }
+
+// Test(fs2, heaptostack_no_leak) {
+//     __fs2_checkreset();
+//     fs2 *h = fs2_heap_fromstr("payload");
+//     CHECK_TRUE("chech body alloc status", fs2_is_bodyalloc(h));
+
+//     fs2 s = fs2_heaptostack(&h);
+
+//     CHECK_NULL("caller pointer nulled", h);
+//     CHECK_STR_EQ("s.v", s.v, "payload");
+//     CHECK_TRUE ("s is_alloc",      fs2_is_alloc(&s));
+//     CHECK_FALSE("s not bodyalloc", fs2_is_bodyalloc(&s));
+
+//     fs2_free(&s);
+//     assert_balanced();   /* ловит: alloc_body vs free_body */
+// }
+
+Test(fs2, stacktoheap_value) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("copy up");
+
+    fs2 *h = fs2_stacktoheap(&s);
+
+    CHECK_NOT_NULL("h", h);
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_alloc",     fs2_is_alloc(h));
+    CHECK_STR_EQ("h->v", h->v, "copy up");
+
+    /* src reset to canonical empty */
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, stacktoheap_static) {
+    __fs2_checkreset();
+    fs2 s = FS2_LITERAL("literal");
+    CHECK_TRUE ("validate 1", fs2_validate(logfile, &s) );
+
+    fs2 *h = fs2_stacktoheap(&s);
+    CHECK_TRUE ("validate 2", fs2_validate(logfile, h) );
+
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_static",    fs2_is_static(h));
+    CHECK_STR_EQ("h->v", h->v, "literal");
+
+    /* STATIC source not detached — same rule as fs2_free */
+    CHECK_STR_EQ("s.v untouched", s.v, "literal");
+
+    fs2_free(h);
+    assert_balanced();
+}
