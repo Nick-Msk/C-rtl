@@ -1183,7 +1183,7 @@ Test(fs2, adoptn_no_terminator_yet) {
 }
 
 Test(fs2, validate_accepts_empty_alloc) {
-    fs2 s = FS2();
+    fs2 s = FS2();                 /* ALLOC, v=NULL, len=sz=0 */
     CHECK_TRUE("FS2() is valid", fs2_validate(NULL, &s));
 }
 
