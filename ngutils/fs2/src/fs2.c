@@ -251,10 +251,11 @@ fs2_adopt(char **str)
  * fs2_free (which frees the buffer, the struct, or both, per flags).
  * ───────────────────────────────────────────────────────────────────────── */
 
-fs2     *fs2_heap          (void) {
+fs2     *
+fs2_heap          (void) {
     fs2 *res = malloc(sizeof(fs2));
     if (!res)
-        userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable allocate fs2");
+        return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable allocate fs2");
 
     *res = FS2();
     res->flags |= FS2_BODYALLOC;
@@ -267,7 +268,7 @@ fs2     *fs2_heap          (void) {
  *
  *   dst ← src, then src → empty. Frees whatever `to` held before.
  * ───────────────────────────────────────────────────────────────────────── */
-fs2 *
+fs2    *
 fs2_move(fs2 *dst, fs2 *src) {
     invraise(src != NULL, 
          "Null pointer %p", src);
@@ -302,7 +303,8 @@ fs2_move(fs2 *dst, fs2 *src) {
 }
 
 // stack <-> heap convertes
-fs2   fs2_heaptostack(fs2 **psrc) {
+fs2   
+fs2_heaptostack(fs2 **psrc) {
     invraise(psrc != NULL && *psrc != NULL, 
         "Null pointer %p or %p", psrc, psrc ? *psrc : NULL);
 
@@ -315,7 +317,8 @@ fs2   fs2_heaptostack(fs2 **psrc) {
     res.flags &= ~FS2_BODYALLOC;  // probably no need, check
     return res;
 }
-fs2  *fs2_stacktoheap(fs2 *src) {
+fs2  *
+fs2_stacktoheap(fs2 *src) {
     invraise(src != NULL,  "Null pointer %p", src);
 
     if (fs2_is_bodyalloc(src))
@@ -330,7 +333,8 @@ fs2  *fs2_stacktoheap(fs2 *src) {
  * Value destructor
  * ───────────────────────────────────────────────────────────────────────── */
 // NO check here - MUST be ALLOC
-static inline void fs2_freestr(fs2 *s) {
+static inline void 
+fs2_freestr(fs2 *s) {
     if (s->v) { // s->v in heap!
         int cnt = atomic_fetch_add(&g_free_cnt, 1) + 1;
 #ifdef FS2_TRACE 
@@ -344,7 +348,8 @@ static inline void fs2_freestr(fs2 *s) {
 }
 
 // NO check here - MUST be BODYALLOC
-static inline void fs2_freebody(fs2 *s) {
+static inline void 
+fs2_freebody(fs2 *s) {
     int cnt = atomic_fetch_add(&g_free_body_cnt, 1) + 1;
 #ifdef FS2_TRACE 
     logsimple("fs body freed (g_free_body_cnt %d)", 

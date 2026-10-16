@@ -465,6 +465,9 @@ static int test_saved_stderr = -1;
 static inline void
 test_setup(void)
 {
+    const struct criterion_test *t = criterion_current_test;
+    logsimple("===== BEGIN %s =====", t->name);
+    //
     log_mkdir("logs");
     log_initf(true, LOG_FORMAT_ALL, "logs", "test_%s.log", TEST_PROJNAME);
     test_saved_stderr = test_mute_stderr();
@@ -473,6 +476,8 @@ test_setup(void)
 static inline void
 test_teardown(void)
 {
+    const struct criterion_test *t = criterion_current_test;
+    logsimple("========== END %s ==========", t->name);
     log_close();
     test_restore_stderr(test_saved_stderr);
     test_saved_stderr = -1;
