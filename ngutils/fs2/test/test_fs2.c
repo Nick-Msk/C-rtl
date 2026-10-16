@@ -757,3 +757,250 @@ Test(fs2, checkleak_passes_when_balanced) {
 
     CHECK_TRUE("fs2_checkleak on balanced", fs2_checkleak(NULL, NULL, NULL, NULL));
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_move — value transfer
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, move_alloc_to_alloc) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("owned");
+    fs2 b = FS2();
+
+    fs2 *ret = fs2_move(&b, &a);
+
+    CHECK_PTR_EQ("returned pointer", ret, &b);
+    CHECK_STR_EQ("b.v", b.v, "owned");
+    CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b));
+
+    /* src becomes a canonical empty ALLOC */
+    CHECK_NULL("a.v",  a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_EQ  ("a.sz",  a.sz,  0);
+    CHECK_TRUE("a is_empty", fs2_is_empty(&a));
+
+    fs2_free(&a);   /* no-op on empty */
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, move_alloc_to_static_dst) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("payload");
+    fs2 b = FS2_LITERAL("old");
+
+    fs2_move(&b, &a);
+
+    CHECK_STR_EQ("b.v", b.v, "payload");
+    CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b));
+
+    CHECK_NULL("a.v", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, move_static_to_empty) {
+    __fs2_checkreset();
+    fs2 a = FS2_LITERAL("literal");
+    fs2 b = FS2();
+
+    fs2_move(&b, &a);
+
+    CHECK_STR_EQ("b.v", b.v, "literal");
+    CHECK_TRUE ("b is_static", fs2_is_static(&b));
+
+    /* STATIC source is not detached — same rule as fs2_free */
+    CHECK_STR_EQ("a.v still readable", a.v, "literal");
+    CHECK_EQ   ("a.len unchanged",     a.len, 7);
+    CHECK_TRUE ("a is_static",         fs2_is_static(&a));
+
+    fs2_free(&a);   /* no-op */
+    fs2_free(&b);   /* no-op */
+    assert_balanced();
+}
+
+Test(fs2, move_self_noop) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("keep me");
+
+    fs2 *ret = fs2_move(&a, &a);
+
+    CHECK_PTR_EQ("returned pointer", ret, &a);
+    CHECK_STR_EQ("a.v", a.v, "keep me");
+    CHECK_EQ   ("a.len", a.len, 7);
+
+    fs2_free(&a);
+    assert_balanced();
+}
+
+Test(fs2, move_null_dst_frees_src) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("to be freed");
+
+    fs2 *ret = fs2_move(NULL, &a);
+
+    CHECK_NULL("return value", ret);
+    CHECK_NULL("a.v after free", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_EQ  ("a.sz",  a.sz,  0);
+
+    assert_balanced();
+}
+
+Test(fs2, move_empty_to_empty) {
+    __fs2_checkreset();
+    fs2 a = FS2();
+    fs2 b = FS2();
+
+    fs2_move(&b, &a);
+
+    CHECK_NULL("b.v", b.v);
+    CHECK_EQ  ("b.len", b.len, 0);
+    CHECK_NULL("a.v", a.v);
+
+    assert_balanced();
+}
+
+/* -------------------------------------------------------------------------
+ * fs2_movefrom — return the value, src becomes empty
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, movefrom_alloc) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("transfer me");
+
+    fs2 b = fs2_movefrom(&a);
+
+    CHECK_STR_EQ("b.v", b.v, "transfer me");
+    CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b));
+    CHECK_EQ   ("b.len", b.len, 11);
+
+    /* src reset */
+    CHECK_NULL("a.v", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_EQ  ("a.sz",  a.sz,  0);
+
+    fs2_free(&b);
+    fs2_free(&a);   /* no-op */
+    assert_balanced();
+}
+
+Test(fs2, movefrom_static) {
+    __fs2_checkreset();
+    fs2 a = FS2_LITERAL("static payload");
+
+    fs2 b = fs2_movefrom(&a);
+
+    CHECK_STR_EQ("b.v", b.v, "static payload");
+    CHECK_TRUE ("b is_static", fs2_is_static(&b));
+
+    /* STATIC src keeps its buffer (same rule as fs2_free) */
+    CHECK_STR_EQ("a.v untouched", a.v, "static payload");
+    CHECK_EQ   ("a.len", a.len, 14);
+
+    fs2_free(&a);   /* no-op */
+    fs2_free(&b);   /* no-op */
+    assert_balanced();
+}
+
+Test(fs2, movefrom_empty) {
+    __fs2_checkreset();
+    fs2 a = FS2();
+
+    fs2 b = fs2_movefrom(&a);
+
+    CHECK_NULL("b.v", b.v);
+    CHECK_EQ  ("b.len", b.len, 0);
+    CHECK_TRUE("b is_alloc", fs2_is_alloc(&b));
+
+    CHECK_NULL("a.v", a.v);
+
+    assert_balanced();
+}
+
+// Test(fs2, movefrom_usable_after) {
+//     __fs2_checkreset();
+//     fs2 a = fs2_fromstr("original");
+//     fs2 b = fs2_movefrom(&a);
+
+//     /* src is now a valid empty ALLOC — can be reused */
+//     fs2_appendstr(&a, "new");       /* when appendstr exists */
+//     CHECK_STR_EQ("a.v", a.v, "new");
+
+//     fs2_free(&a);
+//     fs2_free(&b);
+//     assert_balanced();
+// }
+
+/* -------------------------------------------------------------------------
+ * fs2_movefromstr — take a raw char*, flag decides ownership
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, movefromstr_alloc_takes_ownership) {
+    __fs2_checkreset();
+    char *src = strdup("owned string");
+    CHECK_NOT_NULL("strdup result", src);
+
+    fs2 s = fs2_movefromstr((const char **)&src, FS2_ALLOC);
+
+    CHECK_STR_EQ("s.v", s.v, "owned string");
+    CHECK_EQ   ("s.len", s.len, 12);
+    CHECK_EQ   ("s.sz",  s.sz,  13);
+    CHECK_TRUE ("s is_alloc", fs2_is_alloc(&s));
+    CHECK_NULL ("source pointer nulled", src);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, movefromstr_static_keeps_buffer) {
+    __fs2_checkreset();
+    const char *src = "literal-ish";
+
+    fs2 s = fs2_movefromstr(&src, FS2_STATIC);
+
+    CHECK_STR_EQ("s.v", s.v, "literal-ish");
+    CHECK_EQ   ("s.len", s.len, 11);
+    CHECK_TRUE ("s is_static", fs2_is_static(&s));
+    CHECK_NULL ("source pointer nulled", src);   /* caller loses reference */
+
+    fs2_free(&s);   /* no-op, STATIC */
+    assert_balanced();
+}
+
+Test(fs2, movefromstr_null_pointer_raises, .signal = SIGABRT) {
+    fs2_movefromstr(NULL, FS2_ALLOC);
+}
+
+Test(fs2, movefromstr_null_value_raises, .signal = SIGABRT) {
+    const char *src = NULL;
+    fs2_movefromstr(&src, FS2_ALLOC);
+}
+
+Test(fs2, movefromstr_rejects_local_flag, .signal = SIGINT) {
+    const char *src = "x";
+    fs2_movefromstr(&src, FS2_LOCAL);   /* userraise → SIGINT */
+}
+
+Test(fs2, movefromstr_rejects_bodyalloc_flag, .signal = SIGINT) {
+    const char *src = "x";
+    fs2_movefromstr(&src, FS2_BODYALLOC);
+}
+
+Test(fs2, movefromstr_empty_string) {
+    __fs2_checkreset();
+    char *src = strdup("");
+    CHECK_NOT_NULL("strdup result", src);
+
+    fs2 s = fs2_movefromstr((const char **)&src, FS2_ALLOC);
+
+    CHECK_EQ   ("s.len", s.len, 0);
+    CHECK_EQ   ("s.sz",  s.sz,  1);
+    CHECK_STR_EQ("s.v", s.v, "");
+    CHECK_NULL ("source pointer nulled", src);
+
+    fs2_free(&s);
+    assert_balanced();
+}

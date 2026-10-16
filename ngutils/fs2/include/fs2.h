@@ -34,6 +34,7 @@
 #include "bool.h"
 #include "error.h"
 #include "common.h"
+#include "checker.h"
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -66,6 +67,17 @@ typedef enum {
     FS2_ALLOC     = 0x10    /**< v is heap-owned; growable via realloc.     */
 } fs2_flags;
 
+static const char *
+fs2_flag_name(fs2_flags fl) {
+    switch (fl & ~FS2_BODYALLOC) {
+        case FS2_STATIC:    return "FS2_STATIC";
+        case FS2_CONST:     return "FS2_CONST";
+        case FS2_LOCAL:     return "FS2_LOCAL";
+        case FS2_ALLOC:     return "FS2_ALLOC";
+        default:            return "UNKNOWN";
+    }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Struct
  * ───────────────────────────────────────────────────────────────────────── */
@@ -82,7 +94,7 @@ typedef struct fs2 {
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** Empty growable value (stack body, ALLOC, no capacity yet). */
-#define FS2()            (fs2){ .len = 0, .sz = 0, \
+#define FS2()         (fs2){ .len = 0, .sz = 0, \
                                 .flags = FS2_ALLOC,  .v = NULL }
 
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
@@ -116,7 +128,11 @@ static inline bool fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC
 static inline bool fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
 
 /** @brief Logical emptiness: len == 0. */
-static inline bool fs2_is_empty(const fs2 *s) { return s->len == 0 || *s->v == '\0'; }
+static inline bool fs2_is_empty(const fs2 *s) { 
+    invraise(s != NULL, "Null pointers %p %p", s, s ? s->v : NULL);
+
+    return s->len == 0 || *s->v == '\0'; 
+}
 
 /**
  * @brief Null-check: either @p s itself is NULL or its buffer is NULL.
@@ -159,7 +175,7 @@ fs2   fs2_fromstr (const char *src);
 fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 fs2   fs2_clone   (const fs2 *src);
 fs2   fs2_movefrom(fs2 *src);
-fs2   fs2_movefromstr(const char **from);
+fs2   fs2_movefromstr(const char **from, fs2_flags fl);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — heap (BODYALLOC set)
@@ -179,10 +195,14 @@ fs2     *fs2_heap_movefromstr(const char **from);
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
  *
- *   to ← from, then from → DEFUNCT. Frees whatever `to` held before.
+ *   to ← from, then from → empty. Frees whatever `to` held before.
  * ───────────────────────────────────────────────────────────────────────── */
-
+ 
 fs2   *fs2_move(fs2 *to, fs2 *from);
+
+// stack <-> heap convertes
+fs2   fs2_heaptostack(fs2 **psrc);
+fs2  *fs2_stacktoheap(fs2 *src);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Destructor

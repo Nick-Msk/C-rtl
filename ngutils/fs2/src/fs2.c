@@ -7,8 +7,6 @@
 #include <stdarg.h>
 
 #include "fs2.h"
-#include "checker.h"
-#include "error.h"
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -34,6 +32,9 @@ static atomic_int               g_free_body_cnt         = 0;
 // ------------------------------ Utilities --------------------------------
 
 #define FS2_TRACE
+
+static inline void fs2_freestr(fs2 *s);
+static inline void fs2_freebody(fs2 *s);
 
 /**
  * @brief Manages the capacity of an fs object.
@@ -146,7 +147,7 @@ fs2_clone   (const fs2 *src) {
 
 fs2   
 fs2_fromstrf(const char *fmt, ...) {
-    invraise(fmt != NULL, "Null pointer"); 
+    invraise(fmt != NULL, "Null format string"); 
 
     va_list ap;
     va_start(ap, fmt);
@@ -162,37 +163,124 @@ fs2_fromstrf(const char *fmt, ...) {
     return res;
 }
 
+fs2   
+fs2_movefrom(fs2 *src) {
+    fs2 res = FS2();
+    // transfer
+    fs2_move(&res, src);
+    return res;
+}
+// dangerous one, we'he no idea if *from heap-located or static
+// so we TRUST user
+fs2   
+fs2_movefromstr(const char **from, fs2_flags flag) {
+    invraise(from != NULL && *from != NULL, "Null pointer char **");
+
+    if (flag != FS2_STATIC && flag != FS2_ALLOC)
+        userraise(0, ERR_UNSUPPORTED_TYPE, 
+            "%d/%s no supported for %s", flag, fs2_flag_name(flag), __func__);
+
+    size_t  len = strlen(*from);
+    fs2     res = (fs2) {.flags = flag, .v = (char *) *from, .len = len, .sz = len + 1};
+    *from = NULL;
+    return res;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Move assignment (not a constructor)
+ *
+ *   dst ← src, then src → empty. Frees whatever `to` held before.
+ * ───────────────────────────────────────────────────────────────────────── */
+fs2 *
+fs2_move(fs2 *dst, fs2 *src) {
+    invraise(src != NULL, 
+         "Null pointer %p", src);
+
+    if (dst == src)
+        return dst;    
+    if (!dst) {
+        fs2_free(src);
+ #ifdef FS2_TRACE 
+        logsimple("Move to NULL -> src freed!");
+ #endif /* FS2_TRACE */   
+        return NULL;
+    }
+    if (fs2_is_alloc(dst) )
+        fs2_freestr(dst);   // BODYALLOC remains the same
+
+    fs2_flags dst_body = dst->flags & FS2_BODYALLOC;
+    *dst = *src;
+    dst->flags = (fs2_flags) ((dst->flags & ~FS2_BODYALLOC) | dst_body);
+ 
+    /* Detach buffer from src only if we took ownership.
+     * STATIC / LOCAL sources keep pointing at the external buffer —
+     * same rule as fs2_free. */
+    if (fs2_is_alloc(src)) {
+        src->v   = NULL;
+        src->len = 0;
+        src->sz  = 0;
+        /* src's BODYALLOC (if any) stays — src still owns its struct. */
+    }
+
+    return dst; 
+}
+
+// stack <-> heap convertes
+fs2   fs2_heaptostack(fs2 **psrc) {
+
+}
+fs2  *fs2_stacktoheap(fs2 *src) {
+
+}
+
+
  /* ─────────────────────────────────────────────────────────────────────────
  * Value destructor
  * ───────────────────────────────────────────────────────────────────────── */
-
-void                                    
-fs2_free(fs2 *s){
-    if (!s) {
+// NO check here - MUST be ALLOC
+static inline void fs2_freestr(fs2 *s) {
+    if (s->v) { // s->v in heap!
+        int cnt = atomic_fetch_add(&g_free_cnt, 1) + 1;
 #ifdef FS2_TRACE 
-        if (s)
-            logsimple("trying to free NON allocated %d", s->flags);
-#endif        
-        return;
-    }
-    bool  body = fs2_is_bodyalloc(s);  // flags based
-    if (fs2_is_alloc(s) && s->v) { // s->v in heap!
-        atomic_fetch_add(&g_free_cnt, 1);
-#ifdef FS2_TRACE 
-        logsimple("freed... %p", s->v);   // WOW, logsimpleact? 
-#endif
+        logsimple("freed... %p (g_free_cnt %d)", 
+            s->v, cnt);
+#endif /* FS2_TRACE */
         free(s->v);
         s->sz = s->len = 0;
         s->v = NULL; 
     } 
-    if (body){  // s in heap!
-        atomic_fetch_add(&g_free_body_cnt, 1);
+}
+
+// NO check here - MUST be BODYALLOC
+static inline void fs2_freebody(fs2 *s) {
+    int cnt = atomic_fetch_add(&g_free_body_cnt, 1) + 1;
 #ifdef FS2_TRACE 
-        logsimple("fs body %p freed (g_free_body_cnt %d)", s, g_free_body_cnt);
-#endif
-        atomic_load_explicit(&g_free_body_cnt, memory_order_relaxed);
-        free(s);
+    logsimple("fs body freed (g_free_body_cnt %d)", 
+        cnt);
+#endif /* FS2_TRACE */
+    ;
+    free(s);
+}
+
+void                                    
+fs2_free(fs2 *s) {
+    if (!s)
+        return;
+
+    bool body   = fs2_is_bodyalloc(s);
+    bool str    = fs2_is_alloc(s);
+
+    if (!str && !body) {
+#ifdef FS2_TRACE 
+        logsimple("trying to free NON allocated and NOT bodyallocate %d", 
+            s->flags);
+#endif /* FS2_TRACE */  
+        return;
     }
+    if (str)
+        fs2_freestr(s);
+    if (body) 
+        fs2_freebody(s);
 }   
 
  /* ─────────────────────────────────────────────────────────────────────────
