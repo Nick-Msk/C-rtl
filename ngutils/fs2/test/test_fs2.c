@@ -1004,3 +1004,176 @@ Test(fs2, movefromstr_empty_string) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_adopt / fs2_adoptn — take ownership of a heap C-string
+ *
+ * Distinguished from fs2_movefromstr by:
+ *   - no flag argument (always FS2_ALLOC — we take ownership);
+ *   - NULL inputs are accepted (return FS2(), no error);
+ *   - adoptn takes an explicit length, so it works on buffers that are
+ *     not (yet) NUL-terminated and enforces the terminator.
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, adopt_simple) {
+    __fs2_checkreset();
+    char *p = strdup("hello");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 s = fs2_adopt(&p);
+
+    CHECK_NULL ("source pointer", p);
+    CHECK_STR_EQ("s.v",   s.v,   "hello");
+    CHECK_EQ   ("s.len",  s.len, 5);
+    CHECK_EQ   ("s.sz",   s.sz,  6);
+    CHECK_TRUE ("s is_alloc", fs2_is_alloc(&s));
+    CHECK_FALSE("s is_static", fs2_is_static(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adopt_empty) {
+    __fs2_checkreset();
+    char *p = strdup("");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 s = fs2_adopt(&p);
+
+    CHECK_NULL ("source pointer", p);
+    CHECK_EQ   ("s.len", s.len, 0);
+    CHECK_EQ   ("s.sz",  s.sz,  1);
+    CHECK_STR_EQ("s.v", s.v, "");
+    CHECK_TRUE ("s is_alloc", fs2_is_alloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adopt_null_ptr) {
+    __fs2_checkreset();
+    fs2 s = fs2_adopt(NULL);
+
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
+    CHECK_TRUE("s is_alloc", fs2_is_alloc(&s));
+    /* no allocation, no free — balanced */
+    assert_balanced();
+}
+
+Test(fs2, adopt_null_value) {
+    __fs2_checkreset();
+    char *p = NULL;
+    fs2 s = fs2_adopt(&p);
+
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
+    assert_balanced();
+}
+
+/* ── adoptn ─────────────────────────────────────────────────────────── */
+
+Test(fs2, adoptn_explicit_length) {
+    __fs2_checkreset();
+    /* Buffer longer than the "logical" portion; adoptn should cut
+     * at saved_len and enforce NUL there. */
+    char *p = strdup("hello world");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 s = fs2_adoptn(&p, 5);   /* keep "hello" only */
+
+    CHECK_NULL ("source pointer", p);
+    CHECK_STR_EQ("s.v",   s.v,   "hello");
+    CHECK_EQ   ("s.len",  s.len, 5);
+    CHECK_EQ   ("s.sz",   s.sz,  6);
+    CHECK_TRUE ("s is_alloc", fs2_is_alloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_zero_length) {
+    __fs2_checkreset();
+    char *p = strdup("some data");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 s = fs2_adoptn(&p, 0);
+
+    CHECK_NULL ("source pointer", p);
+    CHECK_EQ   ("s.len", s.len, 0);
+    CHECK_EQ   ("s.sz",  s.sz,  1);
+    CHECK_STR_EQ("s.v", s.v, "");   /* NUL enforced at position 0 */
+    CHECK_TRUE ("s is_alloc", fs2_is_alloc(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_full_length) {
+    __fs2_checkreset();
+    const char *src = "exact";
+    char *p = strdup(src);
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 s = fs2_adoptn(&p, strlen(src));
+
+    CHECK_STR_EQ("s.v", s.v, src);
+    CHECK_EQ   ("s.len", s.len, 5);
+    CHECK_NULL ("source pointer", p);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_null_ptr) {
+    __fs2_checkreset();
+    fs2 s = fs2_adoptn(NULL, 10);
+
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_null_value) {
+    __fs2_checkreset();
+    char *p = NULL;
+    fs2 s = fs2_adoptn(&p, 10);
+
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_independent_of_source) {
+    __fs2_checkreset();
+    char *p = strdup("mutable");
+    CHECK_NOT_NULL("strdup", p);
+    char *orig = p;               /* keep the raw pointer to mutate */
+    (void) orig;
+
+    fs2 s = fs2_adoptn(&p, 7);
+
+    /* s.v == orig — same buffer, fs2 now owns it. Mutating via s.v
+     * (or via orig, since they alias) is allowed and visible. */
+    s.v[0] = 'M';
+    CHECK_STR_EQ("s.v after mutation", s.v, "Mutable");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, adoptn_no_terminator_yet) {
+    __fs2_checkreset();
+    char *p = malloc(5);
+    CHECK_NOT_NULL("malloc", p);
+    memcpy(p, "abcde", 5);      /* no NUL in the buffer */
+
+    fs2 s = fs2_adoptn(&p, 3);  /* keep only "abc" */
+
+    CHECK_STR_EQ("s.v", s.v, "abc");
+    CHECK_EQ   ("s.len", s.len, 3);
+    CHECK_NULL ("source pointer", p);
+
+    fs2_free(&s);
+    assert_balanced();
+}

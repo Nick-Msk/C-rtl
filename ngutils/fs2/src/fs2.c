@@ -129,6 +129,8 @@ copymem(const char *src, size_t len) {
 static inline fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 {
+    invraise(buf != NULL, "Null pointer"); 
+
     fs2 s = (fs2){
         .len   = len,
         .sz    = len + 1,
@@ -221,7 +223,7 @@ fs2_adoptn(char **str, size_t saved_len)
 {
     if (!str || !*str) {
 #ifdef FS2_TRACE
-        logsimple("adopt from NULL!");
+        logsimple("adoptn from NULL!");
 #endif /* FS2_TRACE */       
         return FS2();
     }
@@ -233,6 +235,12 @@ fs2_adoptn(char **str, size_t saved_len)
 fs2
 fs2_adopt(char **str)
 {
+    if (!str || !*str) {
+#ifdef FS2_TRACE
+        logsimple("adopt from NULL!");
+#endif /* FS2_TRACE */       
+        return FS2();
+    }
     return fs2_adoptn(str, strlen(*str));
 }
 
