@@ -67,7 +67,7 @@ typedef enum {
     FS2_ALLOC     = 0x10    /**< v is heap-owned; growable via realloc.     */
 } fs2_flags;
 
-static const char *
+static inline const char *
 fs2_flag_name(fs2_flags fl) {
     switch (fl & ~FS2_BODYALLOC) {
         case FS2_STATIC:    return "FS2_STATIC";
@@ -176,6 +176,9 @@ fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 fs2   fs2_clone   (const fs2 *src);
 fs2   fs2_movefrom(fs2 *src);
 fs2   fs2_movefromstr(const char **from, fs2_flags fl);
+
+fs2   fs2_adoptn(char **str, size_t saved_len);
+fs2   fs2_adopt(char **str);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — heap (BODYALLOC set)

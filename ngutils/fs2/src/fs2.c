@@ -80,7 +80,7 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 #ifdef FS2_TRACE 
     logenter("oldsz %zu, newsz %zu, init %s v %p, is alloc? %s", 
             s->sz, newsz, bool_str(init), s->v, bool_str(fs2_is_alloc(s)) );
- #endif
+#endif /* FS2_TRACE */
     if (fs2_is_alloc(s) ) {
         if (init)
             newsz = calcnewsize(SIZE_POWER2, newsz);    // with increase type
@@ -101,7 +101,7 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
     return logret(s, "%s%zu", fs2_is_alloc(s) ? "increased to " :"No change because non-heap ", s->sz);
 #else
     return s;
-#endif
+#endif /* FS2_TRACE */
 }
 
 // internal constructor
@@ -111,6 +111,35 @@ copymem(const char *src, size_t len) {
     memcpy(res.v, src, len + 1);
     res.len = len;       // NOT SURE: THINK:
     return res;
+}
+
+/* -------------------------------------------------------------------------
+ * Low-level constructor — the ONLY place where fs2 is built by hand.
+ *
+ * All public constructors (fs2_init, fs2_fromstr, fs2_adopt, …) go
+ * through here or through FS2()/FS2_LITERAL/FS2_LOCAL macros. Counter
+ * bookkeeping happens here and nowhere else.
+ *
+ * @param buf   Buffer. Must not be NULL.
+ * @param len   Logical length (excluding NUL). buf[len] is assumed
+ *              to be '\0'.
+ * @param flag  Exactly one of FS2_STATIC / FS2_LOCAL / FS2_ALLOC.
+ *              BODYALLOC and DEFUNCT are not valid here.
+ */
+static inline fs2
+fs2_fromraw(char *buf, size_t len, fs2_flags flag)
+{
+    fs2 s = (fs2){
+        .len   = len,
+        .sz    = len + 1,
+        .flags = flag,
+        .v     = buf,
+    };
+    if (flag != FS2_STATIC)
+        buf[len] = '\0';    
+    if (flag == FS2_ALLOC)
+        atomic_fetch_add(&g_alloc_cnt, 1);
+    return s;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -174,16 +203,37 @@ fs2_movefrom(fs2 *src) {
 // so we TRUST user
 fs2   
 fs2_movefromstr(const char **from, fs2_flags flag) {
-    invraise(from != NULL && *from != NULL, "Null pointer char **");
+    invraise(from != NULL && *from != NULL, 
+        "Null pointer char **");
 
     if (flag != FS2_STATIC && flag != FS2_ALLOC)
         userraise(0, ERR_UNSUPPORTED_TYPE, 
             "%d/%s no supported for %s", flag, fs2_flag_name(flag), __func__);
 
     size_t  len = strlen(*from);
-    fs2     res = (fs2) {.flags = flag, .v = (char *) *from, .len = len, .sz = len + 1};
+    fs2     res = fs2_fromraw((char *) *from, len, flag);    
     *from = NULL;
     return res;
+}
+// works even if NULL, *str MUST be heap allocated
+fs2
+fs2_adoptn(char **str, size_t saved_len)
+{
+    if (!str || !*str) {
+#ifdef FS2_TRACE
+        logsimple("adopt from NULL!");
+#endif /* FS2_TRACE */       
+        return FS2();
+    }
+    fs2 s = fs2_fromraw(*str, saved_len, FS2_ALLOC);
+    *str = NULL;
+    return s;
+}
+// works even if NULL, *str MUST be heap allocated
+fs2
+fs2_adopt(char **str)
+{
+    return fs2_adoptn(str, strlen(*str));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
