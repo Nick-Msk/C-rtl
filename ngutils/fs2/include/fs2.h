@@ -60,11 +60,11 @@ extern const char    *const *fs2_versions(void);
  * ───────────────────────────────────────────────────────────────────────── */
 
 typedef enum {
-    FS2_STATIC    = 0x01,   /**< v is external, read-only (literal).        */
-    FS2_CONST     = 0x02,   /**< Reserved.                                  */
-    FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.         */
-    FS2_BODYALLOC = 0x08,   /**< the struct itself is heap-allocated.       */
-    FS2_ALLOC     = 0x10    /**< v is heap-owned; growable via realloc.     */
+    FS2_CONST     = 0x01,   /**< Reserved.                              */
+    FS2_STATIC    = 0x02,   /**< v is external, read-only (literal).    */
+    FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.     */
+    FS2_ALLOC     = 0x08,   /**< v is heap-owned; growable via realloc. */
+    FS2_BODYALLOC = 0x10,   /**< the struct itself is heap-allocated.   */
 } fs2_flags;
 
 static inline const char *

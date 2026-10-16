@@ -298,8 +298,10 @@ Test(fs2, validate_null_pointer) {
 }
 
 Test(fs2, validate_null_buffer) {
-    fs2 s = FS2();   /* v == NULL */
-    CHECK_FALSE("validate(FS2())", fs2_validate(NULL, &s));
+    /* STATIC with v == NULL — invalid (STATIC must have a buffer). */
+    fs2 s = FS2_LITERAL("x");
+    s.v = NULL;
+    CHECK_FALSE("validate on STATIC with NULL v", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_ge_sz) {
@@ -321,8 +323,10 @@ Test(fs2, validate_writes_to_stream) {
     FILE *f = fopen(path, "w");
     CHECK_NOT_NULL("fopen write", f);
 
-    fs2 s = FS2();   /* invalid: v == NULL */
-    CHECK_FALSE("validate(FS2())", fs2_validate(f, &s));
+    fs2 s = FS2_LITERAL("x");
+    s.v = NULL;                    /* STATIC with NULL buffer — invalid */
+
+    CHECK_FALSE("validate(f, STATIC|NULL)", fs2_validate(f, &s));
     fclose(f);
 
     char buf[512];
@@ -330,7 +334,7 @@ Test(fs2, validate_writes_to_stream) {
     remove(path);
 
     CHECK_TRUE("non-empty output", n > 0);
-    CHECK_NOT_NULL("strstr \"nullable\"", strstr(buf, "nullable"));
+    CHECK_NOT_NULL("strstr \"null buffer\"", strstr(buf, "null buffer"));
 }
 
 /* -------------------------------------------------------------------------
@@ -1176,4 +1180,33 @@ Test(fs2, adoptn_no_terminator_yet) {
 
     fs2_free(&s);
     assert_balanced();
+}
+
+Test(fs2, validate_accepts_empty_alloc) {
+    fs2 s = FS2();
+    CHECK_TRUE("FS2() is valid", fs2_validate(NULL, &s));
+}
+
+Test(fs2, validate_rejects_unknown_flag) {
+    fs2 s = FS2_LITERAL("x");
+    s.flags = (fs2_flags)(s.flags | 0x8000);
+    CHECK_FALSE("unknown bit", fs2_validate(NULL, &s));
+}
+
+Test(fs2, validate_rejects_no_kind_flag) {
+    fs2 s = FS2_LITERAL("x");
+    s.flags = (fs2_flags)(s.flags & ~(FS2_STATIC | FS2_LOCAL | FS2_ALLOC));
+    CHECK_FALSE("no kind flag", fs2_validate(NULL, &s));
+}
+
+Test(fs2, validate_rejects_two_kind_flags) {
+    fs2 s = FS2_LITERAL("x");
+    s.flags = (fs2_flags)(s.flags | FS2_ALLOC);   /* STATIC | ALLOC */
+    CHECK_FALSE("two kind flags", fs2_validate(NULL, &s));
+}
+
+Test(fs2, validate_rejects_alloc_null_nonempty) {
+    fs2 s = FS2();
+    s.len = 5;   /* forged: v == NULL, but len != 0 */
+    CHECK_FALSE("alloc null with len", fs2_validate(NULL, &s));
 }

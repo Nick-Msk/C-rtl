@@ -375,21 +375,49 @@ fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict na
   logsimpleerr(false, (msg), ##__VA_ARGS__); \
 })
 
-bool                                    
-fs2_validate(FILE *restrict out, const fs2 *restrict s){
+bool
+fs2_validate(FILE *restrict out, const fs2 *restrict s)
+{
     if (!s)
         return LOGNPRINTF(out, "null pointer");
-    if (!s->v)
-        return LOGNPRINTF(out, "nullable string");
 
-    // depents on which iterator engine is active
+    fs2_flags FS2_ALL_FLAGS = (FS2_CONST | FS2_STATIC | FS2_LOCAL | FS2_ALLOC | FS2_BODYALLOC);
+    
+    /* 1. No unknown bits. */
+    if (s->flags & ~FS2_ALL_FLAGS)
+        return LOGNPRINTF(out, "unknown flag bits in 0x%x", (unsigned)s->flags);
+
+    /* 2. Exactly one of STATIC / LOCAL / ALLOC. */
+    {
+        int kind = s->flags & (FS2_STATIC | FS2_LOCAL | FS2_ALLOC);
+        if (kind != FS2_STATIC && kind != FS2_LOCAL && kind != FS2_ALLOC)
+            return LOGNPRINTF(out,
+                "exactly one of STATIC/LOCAL/ALLOC required, got 0x%x", kind);
+    }
+
+    /* 3. Buffer presence depends on the string kind.
+     *    - STATIC / LOCAL: must have v.
+     *    - ALLOC: v may be NULL only in the canonical empty state
+     *      (len = 0, sz = 0) — a fresh FS2() before any allocation. */
+    if (!s->v) {
+        if (s->flags & FS2_ALLOC) {
+            if (s->len == 0 && s->sz == 0)
+                return true;    /* canonical empty FS2() */
+            return LOGNPRINTF(out, "null buffer but len=%zu, sz=%zu",
+                              s->len, s->sz);
+        }
+        return LOGNPRINTF(out, "null buffer for STATIC/LOCAL string");
+    }
+
+    /* 4. Capacity invariant. */
     if (s->len >= s->sz)
         return LOGNPRINTF(out, "len [%zu] must be < sz [%zu]", s->len, s->sz);
 
+    /* 5. Consistency with C-string content. */
     size_t len = strlen(s->v);
     if (len != s->len)
-        return LOGNPRINTF(out, "srtlen [%zu] can't be more than len [%zu]", len, s->len);
-    
+        return LOGNPRINTF(out, "strlen [%zu] != len [%zu]", len, s->len);
+
     return true;
 }
 
