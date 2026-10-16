@@ -466,18 +466,18 @@ static inline void
 test_setup(void)
 {
     const struct criterion_test *t = criterion_current_test;
-    logsimple("===== BEGIN %s =====", t->name);
-    //
+    const char *name = (t && t->name) ? t->name : "unknown";
+
     log_mkdir("logs");
-    log_initf(true, LOG_FORMAT_ALL, "logs", "test_%s.log", TEST_PROJNAME);
+    log_initf(false, LOG_FORMAT_ALL, "logs",
+        "test_%s_%s.log", TEST_PROJNAME, name);    
+    
     test_saved_stderr = test_mute_stderr();
 }
 
 static inline void
 test_teardown(void)
 {
-    const struct criterion_test *t = criterion_current_test;
-    logsimple("========== END %s ==========", t->name);
     log_close();
     test_restore_stderr(test_saved_stderr);
     test_saved_stderr = -1;
