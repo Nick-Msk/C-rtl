@@ -141,10 +141,14 @@ $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 ifeq ($(HAVE_CRITERION),yes)
 
 test: clean-logs-$(PROJNAME) $(TEST_BIN)
+	@mkdir -p logs/result
 	@$(SAN_RUN) $(TEST_BIN)
+	cat logs/test_$(PROJNAME)_*.log > logs/result/all.log 2>/dev/null || true 
+	echo "Merged: logs/result/all.log"
 
 clean-logs-$(PROJNAME):
 	@rm -f logs/test_$(PROJNAME)*.log
+	@rm -rf logs/result
 
 $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)

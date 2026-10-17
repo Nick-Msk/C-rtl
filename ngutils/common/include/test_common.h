@@ -470,14 +470,19 @@ test_setup(void)
 
     log_mkdir("logs");
     log_initf(false, LOG_FORMAT_ALL, "logs",
-        "test_%s_%s.log", TEST_PROJNAME, name);    
-    
+        "test_%s_%s_%d.log", TEST_PROJNAME, name, (int) getpid());    
+    logsimple("\n\n========== BEGIN %s ==========\n", name);
+
     test_saved_stderr = test_mute_stderr();
 }
 
 static inline void
 test_teardown(void)
 {
+    const struct criterion_test *t = criterion_current_test;
+    const char *name = (t && t->name) ? t->name : "unknown";
+
+    logsimple("\n\n========== END %s ==========\n", name);
     log_close();
     test_restore_stderr(test_saved_stderr);
     test_saved_stderr = -1;
