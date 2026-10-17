@@ -203,9 +203,26 @@ fs2     *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  
 fs2     *fs2_move(fs2 *to, fs2 *from);
 
+/**
+ * @brief Exchange the string values of two fs2 objects.
+ *
+ * Both sides must be FS2_ALLOC — exchanging with STATIC or LOCAL would
+ * leave the ALLOC side pointing at a buffer it does not own (and the
+ * STATIC/LOCAL side pointing at a buffer fs2_free would skip, leaking
+ * it). The BODYALLOC flag of each side is preserved; it describes
+ * where the struct lives, not the value being swapped.
+ *
+ * @param a  First fs2. Must not be NULL, must be FS2_ALLOC.
+ * @param b  Second fs2. Same constraints.
+ *
+ * @note fs2_exch(a, a) is a no-op.
+ * @warning userraise(SIGINT) if either side is not FS2_ALLOC.
+ */
+void        fs2_exch(fs2 *a, fs2 *b);
+
 // stack <-> heap convertes
-fs2      fs2_heaptostack(fs2 **psrc);
-fs2     *fs2_stacktoheap(fs2 *src);
+fs2         fs2_heaptostack(fs2 **psrc);
+fs2        *fs2_stacktoheap(fs2 *src);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Destructor
@@ -214,7 +231,7 @@ fs2     *fs2_stacktoheap(fs2 *src);
  * STATIC, LOCAL. Idempotent for value (non-BODYALLOC) cases.
  * ───────────────────────────────────────────────────────────────────────── */
 
-void    fs2_free(fs2 *s);
+void        fs2_free(fs2 *s);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Utilities

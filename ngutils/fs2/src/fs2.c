@@ -380,6 +380,32 @@ fs2_move(fs2 *dst, fs2 *src) {
     return dst; 
 }
 
+void
+fs2_exch(fs2 *a, fs2 *b)
+{
+    invraise(a != NULL && b != NULL, "Null pointer %p %p", a, b);
+
+    if (a == b)
+        return;
+
+    if (!fs2_is_alloc(a) || !fs2_is_alloc(b))
+        userraise(0, ERR_UNSUPPORTED_TYPE,
+                  "fs2_exch requires both ALLOC, got 0x%x and 0x%x",
+                  (unsigned)a->flags, (unsigned)b->flags);
+
+    /* BODYALLOC describes where the *struct* lives; swapping it would
+     * give each side the other's ownership marker and break fs2_free. */
+    fs2_flags a_body = fs2_getbodyalloc(a);
+    fs2_flags b_body = fs2_getbodyalloc(b);
+
+    fs2 tmp = *a;
+    *a = *b;
+    *b = tmp;
+
+    fs2_setbodyalloc(a, a_body);
+    fs2_setbodyalloc(b, b_body);
+}
+
 // stack <-> heap convertes
 fs2   
 fs2_heaptostack(fs2 **psrc) {

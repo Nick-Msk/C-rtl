@@ -1805,3 +1805,119 @@ Test(fs2, transition_move_self_noop) {
     fs2_free(&a);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_exch — swap two ALLOC values
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, exch_two_alloc) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("AAA");
+    fs2 b = fs2_fromstr("BBB");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    /* capture buffer pointers to prove a real swap, not a copy */
+    char *va = a.v;
+    char *vb = b.v;
+
+    fs2_exch(&a, &b);
+    CHECK_FS2VALID(3, &a);
+    CHECK_FS2VALID(4, &b);
+
+    CHECK_STR_EQ("a.v", a.v, "BBB");
+    CHECK_STR_EQ("b.v", b.v, "AAA");
+    CHECK_PTR_EQ("a.v was b.v", a.v, vb);
+    CHECK_PTR_EQ("b.v was a.v", b.v, va);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, exch_heap_and_stack) {
+    __fs2_checkreset();
+
+    fs2  a = fs2_fromstr("stack-side");
+    fs2 *h = fs2_heap_fromstr("heap-side");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, h);
+
+    fs2_exch(&a, h);
+    CHECK_FS2VALID(3, &a);
+    CHECK_FS2VALID(4, h);
+
+    /* string values swapped */
+    CHECK_STR_EQ("a.v",  a.v,  "heap-side");
+    CHECK_STR_EQ("h->v", h->v, "stack-side");
+
+    /* BODYALLOC stayed with its struct */
+    CHECK_FALSE("a still stack",   fs2_is_bodyalloc(&a));
+    CHECK_TRUE ("h still heap",    fs2_is_bodyalloc(h));
+    CHECK_TRUE ("a still alloc",   fs2_is_alloc(&a));
+    CHECK_TRUE ("h still alloc",   fs2_is_alloc(h));
+
+    fs2_free(h);
+    fs2_free(&a);
+    assert_balanced();
+}
+
+Test(fs2, exch_self_noop) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("keep");
+    char *v = a.v;
+
+    fs2_exch(&a, &a);
+    CHECK_FS2VALID(1, &a);
+    CHECK_STR_EQ("a.v", a.v, "keep");
+    CHECK_PTR_EQ("buffer unchanged", a.v, v);
+
+    fs2_free(&a);
+    assert_balanced();
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
+
+Test(fs2, exch_null_aborts, .signal = SIGABRT) {
+    fs2 a = fs2_fromstr("x");
+    fs2_exch(&a, NULL);           /* invraise → abort */
+    fs2_free(&a);
+}
+
+Test(fs2, exch_static_rejected, .signal = SIGINT) {
+    fs2 a = fs2_fromstr("alloc");
+    fs2 b = FS2_LITERAL("static");
+    fs2_exch(&a, &b);             /* userraise → SIGINT */
+    fs2_free(&a);
+}
+
+Test(fs2, exch_local_rejected, .signal = SIGINT) {
+    fs2 a = fs2_fromstr("alloc");
+    char buf[16];
+    fs2 b = FS2_LOCAL(buf);
+    fs2_exch(&a, &b);
+    fs2_free(&a);
+}
+
+Test(fs2, exch_empty_alloc_allowed) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("data");
+    fs2 b = FS2();                /* canonical empty ALLOC */
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_exch(&a, &b);
+    CHECK_FS2VALID(3, &a);
+    CHECK_FS2VALID(4, &b);
+
+    CHECK_NULL("a.v", a.v);       /* a took the empty state */
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_STR_EQ("b.v", b.v, "data");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
