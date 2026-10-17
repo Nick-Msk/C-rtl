@@ -113,6 +113,22 @@ copymem(const char *src, size_t len) {
     return res;
 }
 
+static inline fs2
+fs2_fromstrf_va(const char *fmt, va_list ap) {
+    va_list ap2;
+    va_copy(ap2, ap);
+
+    int         sz = vsnprintf(NULL, 0, fmt, ap2);
+    if (sz < 0)
+        userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
+    va_end(ap2);
+
+    fs2         res = fs2_init( (size_t) sz + 1);
+    vsnprintf(res.v, res.sz, fmt, ap);
+    fs2_setlen(&res, sz);
+    return res;
+}
+
 /* -------------------------------------------------------------------------
  * Low-level constructor — the ONLY place where fs2 is built by hand.
  *
@@ -182,15 +198,8 @@ fs2_fromstrf(const char *fmt, ...) {
 
     va_list ap;
     va_start(ap, fmt);
-    int         sz = vsnprintf(NULL, 0, fmt, ap);
-    if (sz < 0)
-        userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
+    fs2 res = fs2_fromstrf_va(fmt, ap);
     va_end(ap);
-    fs2         res = fs2_init( (size_t) sz + 1);
-    va_start(ap, fmt);
-    vsprintf(res.v, fmt, ap);
-    va_end(ap);
-    fs2_setlen(&res, sz);
     return res;
 }
 
@@ -265,7 +274,8 @@ fs2_heap          (void) {
     return res;
 }
 
-fs2     *fs2_heap_init     (size_t sz) {
+fs2 *
+fs2_heap_init     (size_t sz) {
     fs2 *res = fs2_heap();  // BODYALLOC only, not a valid fs2 yet
     // no checking here, excaption 'll occurs if OOM
     fs2 s = fs2_init(sz);   // ALLOC
@@ -273,11 +283,37 @@ fs2     *fs2_heap_init     (size_t sz) {
     return res;
 }
 
-fs2     *fs2_heap_clone    (const fs2 *src) {
+fs2 *
+fs2_heap_clone    (const fs2 *src) {
+    invraise(src != NULL, "Null pointer");
+
     fs2     *res = fs2_heap();      // BODYALLOC only, not a valid fs2 yet
     // no checking here, excaption 'll occurs if OOM
     fs2      s = fs2_clone(src);    // ALLOC
     fs2_move(res, &s);              // BODYALLOC + ALLOC
+    return res;
+}
+
+fs2 *
+fs2_heap_fromstr  (const char *src) {
+    fs2     *res = fs2_heap();
+    fs2      s = fs2_fromstr(src);
+
+    fs2_move(res, &s);
+    return res;
+}
+
+fs2 *
+fs2_heap_fromstrf (const char *fmt, ...) {
+    invraise(fmt != NULL, "Null format");
+
+    fs2     *res = fs2_heap();
+    va_list ap;
+    va_start(ap, fmt);
+    fs2      s = fs2_fromstrf_va(fmt, ap);
+    va_end(ap);
+
+    fs2_move(res, &s);
     return res;
 }
 

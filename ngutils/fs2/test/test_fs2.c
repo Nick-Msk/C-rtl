@@ -1352,3 +1352,37 @@ Test(fs2, heap_clone_empty) {
     fs2_free(h);
     assert_balanced();
 }
+
+Test(fs2, fromstrf_va_multiple_args) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%d %d %d %s", 1, 2, 3, "end");
+
+    CHECK_STR_EQ("v", s.v, "1 2 3 end");
+    CHECK_EQ   ("len", s.len, 9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, heap_fromstr_basic) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+
+    CHECK_TRUE ("is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("is_alloc",     fs2_is_alloc(h));
+    CHECK_STR_EQ("h->v", h->v, "hello");
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_fromstrf_multiple) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstrf("%s=%d", "x", 42);
+
+    CHECK_TRUE ("is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_STR_EQ("h->v", h->v, "x=42");
+
+    fs2_free(h);
+    assert_balanced();
+}
