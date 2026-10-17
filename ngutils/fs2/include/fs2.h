@@ -99,7 +99,7 @@ typedef struct fs2 {
                                 .flags = FS2_ALLOC,  .v = NULL }
 
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
-#define FS2_EMPTY        (fs2){ .len = 0, .sz = 0, \
+#define FS2_EMPTY        (fs2){ .len = 0, .sz = 1, \
                                 .flags = FS2_STATIC, .v = (char *)"" }
 
 /** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
@@ -202,11 +202,11 @@ fs2     *fs2_heap_movefromstr(const char **from);
  *   to ← from, then from → empty. Frees whatever `to` held before.
  * ───────────────────────────────────────────────────────────────────────── */
  
-fs2   *fs2_move(fs2 *to, fs2 *from);
+fs2     *fs2_move(fs2 *to, fs2 *from);
 
 // stack <-> heap convertes
-fs2   fs2_heaptostack(fs2 **psrc);
-fs2  *fs2_stacktoheap(fs2 *src);
+fs2      fs2_heaptostack(fs2 **psrc);
+fs2     *fs2_stacktoheap(fs2 *src);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Destructor
