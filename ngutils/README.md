@@ -169,6 +169,58 @@ brew install llvm cppcheck          # optional
 
 See each utility's `README.md` for API details and examples.
 
+## Test fixture (`test_common.h`)
+
+`test_common.h` provides a shared fixture that most projects use:
+
+```c
+#include "test_common.h"
+TestSuite(myproj, .init = test_setup, .fini = test_teardown);
+```
+
+`test_setup` / `test_teardown` handle:
+
+- `logs/` creation,
+- per-test log files (`log_<projname>_<testname>_<pid>.log`),
+- stderr muting during the test run.
+
+After the suite, `Makefile.common` merges per-test logs into
+`logs/result/all.log`.
+
+### Why some projects still use their own fixture
+
+`test_common.h` includes `log.h` (for `log_init`, `log_mkdir`). That
+creates a dependency from the test layer of a project onto `log`.
+For projects that **are** `log`, or whose library is not allowed to
+depend on `log` even at test time, this would be circular or simply
+wrong.
+
+Status:
+
+| Project | Fixture | Reason |
+|---|---|---|
+| `bool` | local (own `setup`/`teardown`) | library must not depend on `log`; pulling `log` into `bool` tests, even via `TEST_REQUIRES`, makes `bool` non-standalone |
+| `log`  | local (own `setup`/`teardown`) | circular dependency (`common` → `log`, `log` → `common`) |
+| `checker` | `test_setup` (migrating) | `log` is already a real dependency of the checker library |
+| `error` | `test_setup` (migrating) | needs `err_clean`/`err_resetenv` on top; keep its own wrapper calling `test_setup` |
+| `common` | under question | `log` is already a real dependency of the `common` library; if `log` moves away from `common`, the fixture can be shared |
+| `fs2` | `test_setup` | every test dep is already a lib dep |
+
+Projects with the local fixture produce no `logs/` output — `cat`
+in `Makefile.common` sees no `log_<proj>_*.log` files and creates an
+empty `logs/result/all.log`. That is expected, not a bug.
+
+### If you migrate a project
+
+1. Delete the local `setup`/`teardown` from `test_<proj>.c`.
+2. Replace `TestSuite(proj, .init = setup, .fini = teardown);`
+   with `TestSuite(proj, .init = test_setup, .fini = test_teardown);`.
+3. Add whatever the project needs **on top** — either call
+   `test_setup()` first from a local wrapper, or accept that the
+   project has no special setup.
+4. Ensure `common` is reachable: `REQUIRES` or `TEST_REQUIRES` must
+   contain `common`, and `log` (`test_common.h` includes it).
+
 ## Disclaimer
 
 See [DISCLAIMER.md](DISCLAIMER.md).
