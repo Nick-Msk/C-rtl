@@ -334,8 +334,8 @@ _check_log_num(const char *func, const char *metric,
         if (!(cond)) {                                                      \
             logsimple("FAIL %s: %s is false",                               \
                 __func__, (metric));                                        \
+             cr_assert_fail("%s is false", (metric));                       \
         }                                                                   \
-        cr_assert(cond);                                                    \
     } while (0)
 
 #define CHECK_FALSE(metric, cond)                                \
@@ -343,8 +343,8 @@ _check_log_num(const char *func, const char *metric,
         if (cond) {                                                         \
             logsimple("FAIL %s: %s is true (expected false)",               \
                       __func__, (metric));                                  \
+            cr_assert_fail("%s is true (expected false)", (metric));        \
         }                                                                   \
-        cr_assert_not(cond);                                                \
     } while (0)    
 
 #define CHECK_NULL(metric, actual)                             \
