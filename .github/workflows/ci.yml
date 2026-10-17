@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload merged logs (success)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-logs-${{ matrix.cc }}
           path: ngutils/*/logs/result/all.log
@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload sanitizer test logs
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sanitize-logs-${{ matrix.sanitize }}
           path: ngutils/*/logs/result/all.log
