@@ -1386,3 +1386,422 @@ Test(fs2, heap_fromstrf_multiple) {
     fs2_free(h);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_heap_movefromstr — take a raw C-string into a heap fs2
+ *
+ * Composes fs2_movefromstr (flag decides ownership) and fs2_heap
+ * (BODYALLOC). *from is nulled in both cases.
+ * ------------------------------------------------------------------------- */
+
+Test(fs2, heap_movefromstr_alloc) {
+    __fs2_checkreset();
+
+    char *p = strdup("owned payload");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 *h = fs2_heap_movefromstr((const char **)&p, FS2_ALLOC);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_alloc",     fs2_is_alloc(h));
+    CHECK_STR_EQ("h->v",          h->v, "owned payload");
+    CHECK_EQ   ("h->len",         h->len, 13);
+    CHECK_NULL ("source pointer", p);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_movefromstr_static) {
+    __fs2_checkreset();
+
+    const char *p = "literal data";
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_STATIC);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_static",    fs2_is_static(h));
+    CHECK_STR_EQ("h->v",          h->v, "literal data");
+    CHECK_EQ   ("h->len",         h->len, 12);
+    CHECK_NULL ("source pointer", p);
+
+    fs2_free(h);       /* body freed, literal untouched */
+    assert_balanced();
+}
+
+Test(fs2, heap_movefromstr_empty_alloc) {
+    __fs2_checkreset();
+
+    char *p = strdup("");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 *h = fs2_heap_movefromstr((const char **)&p, FS2_ALLOC);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_alloc",     fs2_is_alloc(h));
+    CHECK_EQ   ("h->len",         h->len, 0);
+    CHECK_EQ   ("h->sz",          h->sz,  1);
+    CHECK_STR_EQ("h->v",          h->v, "");
+    CHECK_NULL ("source pointer", p);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_movefromstr_empty_static) {
+    __fs2_checkreset();
+
+    const char *p = "";
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_STATIC);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("h is_static",    fs2_is_static(h));
+    CHECK_EQ   ("h->len",         h->len, 0);
+    CHECK_STR_EQ("h->v",          h->v, "");
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
+
+Test(fs2, heap_movefromstr_null_from_aborts, .signal = SIGABRT) {
+    /* invraise(from != NULL && *from != NULL) → abort() */
+    fs2_heap_movefromstr(NULL, FS2_ALLOC);
+}
+
+Test(fs2, heap_movefromstr_null_value_aborts, .signal = SIGABRT) {
+    const char *p = NULL;
+    fs2_heap_movefromstr(&p, FS2_ALLOC);
+}
+
+Test(fs2, heap_movefromstr_rejects_local, .signal = SIGINT) {
+    const char *p = "x";
+    /* fs2_movefromstr: userraise for FS2_LOCAL → SIGINT */
+    fs2_heap_movefromstr(&p, FS2_LOCAL);
+}
+
+Test(fs2, heap_movefromstr_rejects_bodyalloc, .signal = SIGINT) {
+    const char *p = "x";
+    fs2_heap_movefromstr(&p, FS2_BODYALLOC);
+}
+
+/* ── round-trip / independence ─────────────────────────────────────── */
+
+Test(fs2, heap_movefromstr_alloc_independent) {
+    __fs2_checkreset();
+
+    char *orig = strdup("mutable");
+    CHECK_NOT_NULL("strdup", orig);
+
+    fs2 *h = fs2_heap_movefromstr((const char **)&orig, FS2_ALLOC);
+    CHECK_FS2VALID(1, h);
+
+    /* h->v == orig (before nulling) — now owned by h. Mutation via
+     * h->v is allowed and does not need any special handling. */
+    h->v[0] = 'M';
+    CHECK_STR_EQ("h->v after mutation", h->v, "Mutable");
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_movefrom_not_implemented_raises, .signal = SIGINT) {
+    fs2 a = fs2_fromstr("x");
+    fs2_heap_movefrom(&a);   /* userraise → SIGINT */
+}
+
+/* -------------------------------------------------------------------------
+ * Transitions: value ↔ heap, alloc/static/local, chains and swaps
+ *
+ * Each test walks an object through several states, validating after
+ * every step and asserting counters are balanced at the end. This
+ * catches flag loss, double-free, and buffer leaks that single-step
+ * tests do not reach.
+ * ------------------------------------------------------------------------- */
+
+/* ── alloc: stack → heap → stack ──────────────────────────────────── */
+
+Test(fs2, transition_alloc_roundtrip) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("data");
+    CHECK_FS2VALID(1, &a);
+    CHECK_TRUE("a is_alloc", fs2_is_alloc(&a));
+
+    fs2 *h = fs2_stacktoheap(&a);
+    CHECK_FS2VALID(2, h);
+    CHECK_STR_EQ("h->v",   h->v,   "data");
+    CHECK_TRUE ("h is_alloc",     fs2_is_alloc(h));
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_NULL ("a.v", a.v);       /* src reset */
+
+    fs2 b = fs2_heaptostack(&h);
+    CHECK_FS2VALID(3, &b);
+    CHECK_STR_EQ("b.v",    b.v,    "data");
+    CHECK_TRUE ("b is_alloc",     fs2_is_alloc(&b));
+    CHECK_FALSE("b not bodyalloc", fs2_is_bodyalloc(&b));
+    CHECK_NULL ("h", h);           /* caller pointer nulled */
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ── static: stack → heap → stack ─────────────────────────────────── */
+
+Test(fs2, transition_static_roundtrip) {
+    __fs2_checkreset();
+
+    fs2 a = FS2_LITERAL("lit");
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_stacktoheap(&a);
+    CHECK_FS2VALID(2, h);
+    CHECK_TRUE ("h is_static",    fs2_is_static(h));
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_STR_EQ("h->v", h->v, "lit");
+
+    /* STATIC source not detached */
+    CHECK_STR_EQ("a.v", a.v, "lit");
+
+    fs2 b = fs2_heaptostack(&h);
+    CHECK_FS2VALID(3, &b);
+    CHECK_TRUE ("b is_static", fs2_is_static(&b));
+    CHECK_STR_EQ("b.v", b.v, "lit");
+
+    fs2_free(&b);  /* no-op */
+    fs2_free(&a);  /* no-op */
+    assert_balanced();
+}
+
+/* ── local: stack → heap → stack ──────────────────────────────────── */
+
+Test(fs2, transition_local_roundtrip) {
+    __fs2_checkreset();
+
+    FS2LOCAL(a, 32);
+    memcpy(a.v, "on-stack", 9);
+    a.len = 8;
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_stacktoheap(&a);
+    CHECK_FS2VALID(2, h);
+    CHECK_TRUE ("h is_local",     fs2_is_local(h));
+    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_PTR_EQ("h->v == a.v",   h->v, a.v);   /* same buffer */
+
+    fs2 b = fs2_heaptostack(&h);
+    CHECK_FS2VALID(3, &b);
+    CHECK_TRUE("b is_local", fs2_is_local(&b));
+    CHECK_STR_EQ("b.v", b.v, "on-stack");
+
+    fs2_free(&b);
+    fs2_free(&a);
+    assert_balanced();
+}
+
+/* ── movefrom chain: one buffer, many hands ───────────────────────── */
+
+Test(fs2, transition_movefrom_chain) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("chain");
+    CHECK_FS2VALID(1, &a);
+
+    fs2 b = fs2_movefrom(&a);
+    CHECK_FS2VALID(2, &b);
+    CHECK_STR_EQ("b.v", b.v, "chain");
+    CHECK_NULL("a.v", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+
+    fs2 c = fs2_movefrom(&b);
+    CHECK_FS2VALID(3, &c);
+    CHECK_STR_EQ("c.v", c.v, "chain");
+    CHECK_NULL("b.v", b.v);
+
+    fs2 d = fs2_movefrom(&c);
+    CHECK_FS2VALID(4, &d);
+    CHECK_STR_EQ("d.v", d.v, "chain");
+    CHECK_NULL("c.v", c.v);
+
+    fs2_free(&d);
+    /* one alloc, one free — the whole chain carried the same buffer */
+    assert_balanced();
+}
+
+/* ── swap via move (two alloc) ────────────────────────────────────── */
+
+Test(fs2, transition_swap_two_alloc) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("AAA");
+    fs2 b = fs2_fromstr("BBB");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2 t = fs2_movefrom(&a);   /* t=AAA, a=empty */
+    CHECK_FS2VALID(3, &t);
+
+    fs2_move(&a, &b);            /* a=BBB, b=empty */
+    CHECK_FS2VALID(4, &a);
+    CHECK_NULL("b.v", b.v);
+
+    fs2_move(&b, &t);            /* b=AAA, t=empty */
+    CHECK_FS2VALID(5, &b);
+    CHECK_NULL("t.v", t.v);
+
+    CHECK_STR_EQ("a.v", a.v, "BBB");
+    CHECK_STR_EQ("b.v", b.v, "AAA");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ── swap with mixed flags (alloc ↔ static) ───────────────────────── */
+
+Test(fs2, transition_swap_mixed_flags) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("heap");     /* ALLOC */
+    fs2 b = FS2_LITERAL("lit");      /* STATIC */
+
+    fs2 t = fs2_movefrom(&a);        /* t=heap ALLOC, a=empty ALLOC */
+    CHECK_FS2VALID(1, &t);
+
+    fs2_move(&a, &b);
+    /* a=lit STATIC; b still STATIC — STATIC source is not detached */
+    CHECK_FS2VALID(2, &a);
+    CHECK_TRUE ("a is_static", fs2_is_static(&a));
+    CHECK_TRUE ("b is_static", fs2_is_static(&b));
+    CHECK_STR_EQ("a.v", a.v, "lit");
+    CHECK_STR_EQ("b.v", b.v, "lit");
+
+    fs2_move(&b, &t);               /* b=heap ALLOC, t=empty */
+    CHECK_FS2VALID(3, &b);
+    CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b));
+    CHECK_STR_EQ("b.v", b.v, "heap");
+
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ── cyclic rotation of three alloc values ────────────────────────── */
+
+Test(fs2, transition_rotate_three) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("A");
+    fs2 b = fs2_fromstr("B");
+    fs2 c = fs2_fromstr("C");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+    CHECK_FS2VALID(3, &c);
+
+    fs2 t = fs2_movefrom(&a);       /* t=A,   a=empty */
+    fs2_move(&a, &b);                /* a=B,   b=empty */
+    fs2_move(&b, &c);                /* b=C,   c=empty */
+    fs2_move(&c, &t);                /* c=A,   t=empty */
+
+    CHECK_FS2VALID(4, &a);
+    CHECK_FS2VALID(5, &b);
+    CHECK_FS2VALID(6, &c);
+    CHECK_STR_EQ("a.v", a.v, "B");
+    CHECK_STR_EQ("b.v", b.v, "C");
+    CHECK_STR_EQ("c.v", c.v, "A");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* ── heap_movefromstr + stack↔heap chain ──────────────────────────── */
+
+Test(fs2, transition_raw_to_heap_to_stack) {
+    __fs2_checkreset();
+
+    char *p = strdup("raw");
+    CHECK_NOT_NULL("strdup", p);
+
+    fs2 *h1 = fs2_heap_movefromstr((const char **)&p, FS2_ALLOC);
+    CHECK_FS2VALID(1, h1);
+    CHECK_TRUE ("h1 is_bodyalloc", fs2_is_bodyalloc(h1));
+    CHECK_NULL ("p", p);
+
+    fs2 s = fs2_heaptostack(&h1);
+    CHECK_FS2VALID(2, &s);
+    CHECK_STR_EQ("s.v", s.v, "raw");
+    CHECK_FALSE("s not bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_NULL ("h1", h1);
+
+    fs2 *h2 = fs2_stacktoheap(&s);
+    CHECK_FS2VALID(3, h2);
+    CHECK_STR_EQ("h2->v", h2->v, "raw");
+    CHECK_NULL ("s.v", s.v);
+
+    fs2_free(h2);
+    assert_balanced();
+}
+
+/* ── heap clone survives a transition ─────────────────────────────── */
+
+Test(fs2, transition_heap_clone_then_roundtrip) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("origin");
+    fs2 *h = fs2_heap_clone(&a);
+    CHECK_FS2VALID(1, h);
+    CHECK_PTR_NEQ("h->v vs a.v", h->v, a.v);
+
+    fs2 b = fs2_heaptostack(&h);
+    CHECK_FS2VALID(2, &b);
+    CHECK_STR_EQ("b.v", b.v, "origin");
+    CHECK_PTR_NEQ("b.v vs a.v", b.v, a.v);   /* still independent copy */
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ── empty FS2 through the whole cycle ────────────────────────────── */
+
+Test(fs2, transition_empty_roundtrip) {
+    __fs2_checkreset();
+
+    fs2 a = FS2();
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_stacktoheap(&a);
+    CHECK_FS2VALID(2, h);
+    CHECK_NULL("h->v", h->v);
+
+    fs2 b = fs2_heaptostack(&h);
+    CHECK_FS2VALID(3, &b);
+    CHECK_NULL("b.v", b.v);
+
+    fs2_free(&b);
+    assert_balanced();   /* nothing was allocated, nothing freed */
+}
+
+/* ── same pointer passed twice: no-op, no leak ───────────────────── */
+
+Test(fs2, transition_move_self_noop) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("self");
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *ret = fs2_move(&a, &a);
+    CHECK_PTR_EQ("ret == &a", ret, &a);
+    CHECK_FS2VALID(2, &a);
+    CHECK_STR_EQ("a.v", a.v, "self");
+
+    fs2_free(&a);
+    assert_balanced();
+}
