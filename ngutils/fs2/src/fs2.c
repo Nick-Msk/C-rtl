@@ -327,12 +327,6 @@ fs2_heap_fromstrf (const char *fmt, ...) {
 }
 
 fs2 *
-fs2_heap_movefrom (fs2 *src) {
-    (void) src;
-    return userraise(NULL, ERR_NOT_IMPLEMENTED_FEATURE, "Candidate for deleting. Don't use for now.");
-}
-
-fs2 *
 fs2_heap_movefromstr(const char **from, fs2_flags fl) {
     fs2     *res = fs2_heap();
     fs2      s = fs2_movefromstr(from, fl);

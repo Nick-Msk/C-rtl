@@ -1511,10 +1511,10 @@ Test(fs2, heap_movefromstr_alloc_independent) {
     assert_balanced();
 }
 
-Test(fs2, heap_movefrom_not_implemented_raises, .signal = SIGINT) {
-    fs2 a = fs2_fromstr("x");
-    fs2_heap_movefrom(&a);   /* userraise → SIGINT */
-}
+// Test(fs2, heap_movefrom_not_implemented_raises, .signal = SIGINT) {
+//     fs2 a = fs2_fromstr("x");
+//     fs2_heap_movefrom(&a);   /* userraise → SIGINT */
+// }
 
 /* -------------------------------------------------------------------------
  * Transitions: value ↔ heap, alloc/static/local, chains and swaps

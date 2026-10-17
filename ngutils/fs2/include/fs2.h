@@ -192,6 +192,7 @@ fs2     *fs2_heap_init     (size_t sz);
 fs2     *fs2_heap_fromstr  (const char *src);
 fs2     *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 fs2     *fs2_heap_clone    (const fs2 *src);
+[[deprecated]]
 fs2     *fs2_heap_movefrom (fs2 *src);
 fs2     *fs2_heap_movefromstr(const char **from, fs2_flags fl);
 
