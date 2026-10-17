@@ -13,11 +13,10 @@
  *
  * Plus two state flags, orthogonal to both:
  *   CONST    — reserved
- *   DEFUNCT  — moved out; only free / assignment is valid
  *
  * Preconditions (NOT checked here — see cfs2.h for a guarded wrapper):
  *   - No NULL pointers where a valid fs2 is expected.
- *   - len < sz (except DEFUNCT, where all zero).
+ *   - len < sz.
  *   - No arithmetic overflow in size_t computations.
  *   - No use after fs2_free / fs2_movefrom on a heap value.
  */
@@ -87,7 +86,7 @@ typedef struct fs2 {
     size_t      len;        /**< Logical length, excluding NUL.             */
     size_t      sz;         /**< Capacity in bytes, including NUL.          */
     fs2_flags   flags;      /**< state flags                                */
-    char       *v;          /**< NUL-terminated; NULL only when DEFUNCT.    */
+    char       *v;          /**< NUL-terminated;                            */
 } fs2;
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -123,16 +122,14 @@ static inline const char *fs2_cstr(const fs2 *s) { return s->v;   }
  * Predicates
  * ───────────────────────────────────────────────────────────────────────── */
 
-static inline bool fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
-static inline bool fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
-static inline bool fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
-static inline bool fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
+static inline bool          fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
+static inline bool          fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
+static inline bool          fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
+static inline bool          fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
 
 /** @brief Logical emptiness: len == 0. */
-static inline bool fs2_is_empty(const fs2 *s) { 
-    invraise(s != NULL, "Null pointers %p %p", s, s ? s->v : NULL);
-
-    return s->len == 0 || *s->v == '\0'; 
+static inline bool          fs2_is_empty(const fs2 *s) { 
+    return s == NULL || s->len == 0;
 }
 
 /**
@@ -140,7 +137,9 @@ static inline bool fs2_is_empty(const fs2 *s) {
  *
  * Defunct values have @c v == NULL and therefore also report as null.
  */
-static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL; }
+static inline bool          fs2_is_null(const fs2 *s) { 
+    return s == NULL || s->v == NULL; 
+}
 
 #define FS2LOCAL(name, n)                          \
     char _fs2_buf_##name[(n)];                     \
@@ -167,7 +166,7 @@ static inline bool fs2_is_null(const fs2 *s) { return s == NULL || s->v == NULL;
  *   fs2_fromstr(s)       copy of a C-string
  *   fs2_fromstrf(f, ...) printf-formatted copy
  *   fs2_clone(src)       deep copy of any fs2
- *   fs2_movefrom(src)    steal from a stack fs2 (src becomes DEFUNCT)
+ *   fs2_movefrom(src)    steal from a stack fs2
  *   fs2_movefromstr(p)   steal a heap C-string (p becomes NULL)
  * ───────────────────────────────────────────────────────────────────────── */
  
@@ -194,7 +193,7 @@ fs2     *fs2_heap_fromstr  (const char *src);
 fs2     *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 fs2     *fs2_heap_clone    (const fs2 *src);
 fs2     *fs2_heap_movefrom (fs2 *src);
-fs2     *fs2_heap_movefromstr(const char **from);
+fs2     *fs2_heap_movefromstr(const char **from, fs2_flags fl);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
@@ -212,13 +211,13 @@ fs2     *fs2_stacktoheap(fs2 *src);
  * Destructor
  *
  * Frees the buffer if ALLOC, frees the struct if BODYALLOC. No-op on
- * STATIC, LOCAL, DEFUNCT. Idempotent for value (non-BODYALLOC) cases.
+ * STATIC, LOCAL. Idempotent for value (non-BODYALLOC) cases.
  * ───────────────────────────────────────────────────────────────────────── */
 
 void    fs2_free(fs2 *s);
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Unilities
+ * Utilities
  * ───────────────────────────────────────────────────────────────────────── */
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
     s->v[s->len = pos] = '\0';

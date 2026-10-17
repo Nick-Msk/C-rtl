@@ -140,7 +140,7 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
  * @param len   Logical length (excluding NUL). buf[len] is assumed
  *              to be '\0'.
  * @param flag  Exactly one of FS2_STATIC / FS2_LOCAL / FS2_ALLOC.
- *              BODYALLOC and DEFUNCT are not valid here.
+ *              BODYALLOC.
  */
 static inline fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
