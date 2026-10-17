@@ -35,6 +35,7 @@ static atomic_int               g_free_body_cnt         = 0;
 
 static inline void fs2_freestr(fs2 *s);
 static inline void fs2_freebody(fs2 *s);
+
 // bodyalloc flag API
 static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
     return s->flags & FS2_BODYALLOC;
@@ -327,11 +328,16 @@ fs2_heap_fromstrf (const char *fmt, ...) {
 
 fs2 *
 fs2_heap_movefrom (fs2 *src) {
-
+    (void) src;
+    return userraise(NULL, ERR_NOT_IMPLEMENTED_FEATURE, "Candidate for deleting. Don't use for now.");
 }
+
 fs2 *
 fs2_heap_movefromstr(const char **from, fs2_flags fl) {
-
+    fs2     *res = fs2_heap();
+    fs2      s = fs2_movefromstr(from, fl);
+    fs2_move(res, &s);
+    return res;
 }
 
 
@@ -340,7 +346,7 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
  *
  *   dst ← src, then src → empty. Frees whatever `to` held before.
  * ───────────────────────────────────────────────────────────────────────── */
-fs2    *
+fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
     invraise(src != NULL, 
          "Null pointer %p", src);
@@ -389,7 +395,7 @@ fs2_heaptostack(fs2 **psrc) {
     res.flags &= ~FS2_BODYALLOC;  // probably no need, check
     return res;
 }
-fs2  *
+fs2 *
 fs2_stacktoheap(fs2 *src) {
     invraise(src != NULL,  "Null pointer %p", src);
 
