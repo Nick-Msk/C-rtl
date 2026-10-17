@@ -452,6 +452,7 @@ fs2_freestr(fs2 *s) {
 }
 
 // NO check here - MUST be BODYALLOC
+[[clang::suppress]]
 static inline void 
 fs2_freebody(fs2 *s) {
     int cnt = atomic_fetch_add(&g_free_body_cnt, 1) + 1;
@@ -459,7 +460,9 @@ fs2_freebody(fs2 *s) {
     logsimple("fs body freed (g_free_body_cnt %d)", 
         cnt);
 #endif /* FS2_TRACE */
-    ;
+    /* NOLINTNEXTLINE(clang-analyzer-unix.Malloc) — s is always heap;
+     * stack-allocated fs2 never carries BODYALLOC (constructors and
+     * fs2_move/fs2_exch set it only on heap wrappers). */
     free(s);
 }
 
