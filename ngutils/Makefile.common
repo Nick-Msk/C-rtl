@@ -153,10 +153,6 @@ ifeq ($(TEST_LOG),1)
 	echo "Merged: logs/result/all.log"
 endif
 
-clean-logs-$(PROJNAME):
-	@rm -f logs/test_$(PROJNAME)*.log
-	@rm -rf logs/result
-
 $(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
 
@@ -176,6 +172,37 @@ else
 endif
 
 endif
+
+
+# Archive of merged logs from previous runs.
+# Format: logs/archive/<projname>_<YYYYMMDD_HHMMSS>.log.gz
+#
+# LOG_ARCHIVE_TS is := (immediate) so $(shell date) runs once per
+# make invocation. With a recursive = the timestamp would change on
+# every expansion and the gzip output would not match the echo.
+
+LOG_ARCHIVE_DIR   = logs/archive
+LOG_ARCHIVE_TS   := $(shell date +%Y%m%d_%H%M%S)
+LOG_ARCHIVE_FILE  = $(LOG_ARCHIVE_DIR)/$(PROJNAME)_$(LOG_ARCHIVE_TS).log.gz
+
+.PHONY: arch-logs clean-log-archive clean-logs-$(PROJNAME)
+
+# Archive the current logs/result/all.log before clean-logs wipes it.
+# No-op if the file is missing or empty (first run, or TEST_LOG=0).
+arch-logs:
+	@if [ -s logs/result/all.log ]; then \
+	    mkdir -p $(LOG_ARCHIVE_DIR); \
+	    gzip -c logs/result/all.log > $(LOG_ARCHIVE_FILE); \
+	    echo "Archived: $(LOG_ARCHIVE_FILE)"; \
+	fi
+
+clean-log-archive:
+	@rm -rf $(LOG_ARCHIVE_DIR)
+	@echo "Removed: $(LOG_ARCHIVE_DIR)"
+
+clean-logs-$(PROJNAME): arch-logs
+	@rm -f logs/log_$(PROJNAME)*.log
+	@rm -rf logs/result
 
 # --- release lib ---
 
