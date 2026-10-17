@@ -51,19 +51,21 @@ jobs:
         working-directory: ngutils
         run: make librelease
 
-      - name: Upload test logs
+      - name: Upload merged logs (success)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ matrix.cc }}
           path: ngutils/*/logs/result/all.log
+          if-no-files-found: ignore
 
-      - name: Upload failure logs
+      - name: Upload per-test logs (failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: failure-logs-${{ matrix.cc }}
           path: ngutils/*/logs/log_*.log
+          if-no-files-found: ignore
 
   sanitize:
     name: Sanitizers (${{ matrix.sanitize }})
@@ -103,3 +105,18 @@ jobs:
           REQUIRE_CRITERION: "1"
         run: make asan_leak
 
+      - name: Upload sanitizer test logs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitize-logs-${{ matrix.sanitize }}
+          path: ngutils/*/logs/result/all.log
+          if-no-files-found: ignore
+
+      - name: Upload sanitizer failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitize-failure-logs-${{ matrix.sanitize }}
+          path: ngutils/*/logs/log_*.log
+          if-no-files-found: ignore
