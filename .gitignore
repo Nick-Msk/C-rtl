@@ -15,4 +15,5 @@ debug/
 .DS_Store
 build/
 docs/
+*.log.gz
 
