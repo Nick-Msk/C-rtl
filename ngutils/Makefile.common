@@ -143,7 +143,8 @@ ifeq ($(HAVE_CRITERION),yes)
 test: clean-logs-$(PROJNAME) $(TEST_BIN)
 	@mkdir -p logs/result
 	@$(SAN_RUN) $(TEST_BIN)
-	cat logs/test_$(PROJNAME)_*.log > logs/result/all.log 2>/dev/null || true 
+	@cat logs/test_$(PROJNAME)_*.log > logs/result/all.log
+	@rm -f logs/test_$(PROJNAME)_*.log
 	echo "Merged: logs/result/all.log"
 
 clean-logs-$(PROJNAME):
