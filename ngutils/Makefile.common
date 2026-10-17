@@ -137,16 +137,21 @@ $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 	$(CC) $(CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
 
 # --- test ---
+TEST_LOG ?= 1
 
 ifeq ($(HAVE_CRITERION),yes)
 
 test: clean-logs-$(PROJNAME) $(TEST_BIN)
+ifeq ($(TEST_LOG),1)
 	@mkdir -p logs/result
+endif
 	@$(SAN_RUN) $(TEST_BIN)
+ifeq ($(TEST_LOG),1)
 	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
 		-exec cat {} + > logs/result/all.log
 	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' -delete
 	echo "Merged: logs/result/all.log"
+endif
 
 clean-logs-$(PROJNAME):
 	@rm -f logs/test_$(PROJNAME)*.log

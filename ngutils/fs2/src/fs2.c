@@ -201,6 +201,7 @@ fs2_movefrom(fs2 *src) {
     fs2_move(&res, src);
     return res;
 }
+
 // dangerous one, we'he no idea if *from heap-located or static
 // so we TRUST user
 fs2   
@@ -217,6 +218,7 @@ fs2_movefromstr(const char **from, fs2_flags flag) {
     *from = NULL;
     return res;
 }
+
 // works even if NULL, *str MUST be heap allocated
 fs2
 fs2_adoptn(char **str, size_t saved_len)
@@ -251,7 +253,7 @@ fs2_adopt(char **str)
  * fs2_free (which frees the buffer, the struct, or both, per flags).
  * ───────────────────────────────────────────────────────────────────────── */
 
-fs2     *
+fs2 *
 fs2_heap          (void) {
     fs2 *res = malloc(sizeof(fs2));
     if (!res)
