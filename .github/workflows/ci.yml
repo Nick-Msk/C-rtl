@@ -51,6 +51,20 @@ jobs:
         working-directory: ngutils
         run: make librelease
 
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.cc }}
+          path: ngutils/*/logs/result/all.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs-${{ matrix.cc }}
+          path: ngutils/*/logs/log_*.log
+
   sanitize:
     name: Sanitizers (${{ matrix.sanitize }})
     runs-on: ubuntu-latest
