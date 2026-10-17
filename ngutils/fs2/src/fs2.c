@@ -265,6 +265,22 @@ fs2_heap          (void) {
     return res;
 }
 
+fs2     *fs2_heap_init     (size_t sz) {
+    fs2 *res = fs2_heap();  // BODYALLOC only, not a valid fs2 yet
+    // no checking here, excaption 'll occurs if OOM
+    fs2 s = fs2_init(sz);   // ALLOC
+    fs2_move(res, &s);
+    return res;
+}
+
+fs2     *fs2_heap_clone    (const fs2 *src) {
+    fs2     *res = fs2_heap();      // BODYALLOC only, not a valid fs2 yet
+    // no checking here, excaption 'll occurs if OOM
+    fs2      s = fs2_clone(src);    // ALLOC
+    fs2_move(res, &s);              // BODYALLOC + ALLOC
+    return res;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
  *

@@ -1,8 +1,6 @@
 #include <criterion/criterion.h>
 
-#include "fs2.h"
-#include "log.h"
-#include "test_common.h"
+#include "test_fs2.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -1260,6 +1258,96 @@ Test(fs2, stacktoheap_static) {
 
     /* STATIC source not detached — same rule as fs2_free */
     CHECK_STR_EQ("s.v untouched", s.v, "literal");
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_init_basic) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_init(32);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_NOT_NULL("h", h);
+    CHECK_TRUE ("is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("is_alloc",     fs2_is_alloc(h));
+    CHECK_EQ   ("len", h->len, 0);
+    CHECK_EQ   ("v[0]", h->v[0], '\0');
+    CHECK_FS2VALID(2, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_init_zero) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_init(0);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE("is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_EQ  ("sz floored",   h->sz, 16);
+    CHECK_FS2VALID(2, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_clone_from_literal) {
+    __fs2_checkreset();
+
+    fs2 a = FS2_LITERAL("hello");
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_heap_clone(&a);
+    CHECK_FS2VALID(2, h);
+
+    CHECK_TRUE ("is_bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("is_alloc",     fs2_is_alloc(h));
+    CHECK_STR_EQ("h->v",        h->v, "hello");
+    CHECK_EQ   ("len",          h->len, 5);
+    CHECK_PTR_NEQ("h->v vs a.v", h->v, a.v);
+
+    /* source unchanged */
+    CHECK_FS2VALID(3, &a);
+    CHECK_STR_EQ("a.v", a.v, "hello");
+    CHECK_EQ   ("a.len", a.len, 5);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_clone_from_alloc) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("original");
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_heap_clone(&a);
+    CHECK_FS2VALID(2, h);
+
+    CHECK_STR_EQ("h->v", h->v, "original");
+    CHECK_PTR_NEQ("h->v vs a.v", h->v, a.v);
+    CHECK_FS2VALID(3, &a);   /* source не тронут */
+
+    fs2_free(&a);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_clone_empty) {
+    __fs2_checkreset();
+
+    fs2 a = FS2_EMPTY;
+    CHECK_FS2VALID(1, &a);
+
+    fs2 *h = fs2_heap_clone(&a);
+    CHECK_FS2VALID(2, h);
+
+    CHECK_EQ   ("len", h->len, 0);
+    CHECK_STR_EQ("v",  h->v, "");
+    CHECK_TRUE ("is_bodyalloc", fs2_is_bodyalloc(h));
 
     fs2_free(h);
     assert_balanced();
