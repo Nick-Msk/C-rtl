@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload per-test logs (failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: failure-logs-${{ matrix.cc }}
           path: ngutils/*/logs/log_*.log
@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload sanitizer failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sanitize-failure-logs-${{ matrix.sanitize }}
           path: ngutils/*/logs/log_*.log
