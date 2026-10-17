@@ -12,11 +12,14 @@
 #     export PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"
 
 MAKE_VERSION_MAJOR := $(firstword $(subst ., ,$(MAKE_VERSION)))
+MAKE_VERSION_MINOR := $(word 2,$(subst ., ,$(MAKE_VERSION)))
 
-ifeq ($(shell test "$(MAKE_VERSION_MAJOR)" -lt 4 && echo old),old)
-$(error GNU Make 4.0 or newer required; found $(MAKE_VERSION). \
-        On macOS: brew install make, then add \
-        /opt/homebrew/opt/make/libexec/gnubin to PATH)
+ifeq ($(MAKE_VERSION_MAJOR),3)
+  ifneq ($(shell test $(MAKE_VERSION_MINOR) -ge 80 && echo ok),ok)
+    $(error GNU Make 3.80 or newer required; found $(MAKE_VERSION))
+  endif
+else ifneq ($(shell test $(MAKE_VERSION_MAJOR) -ge 4 && echo ok),ok)
+  $(error GNU Make 3.81 or newer required; found $(MAKE_VERSION))
 endif
 
 MAKEFLAGS += --no-print-directory
