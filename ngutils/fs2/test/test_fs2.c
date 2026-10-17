@@ -1921,3 +1921,20 @@ Test(fs2, exch_empty_alloc_allowed) {
     fs2_free(&b);
     assert_balanced();
 }
+
+Test(fs2, move_from_heap_to_stack_clears_bodyalloc) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromstr("payload");
+    CHECK_FS2VALID(1, h);
+
+    fs2 s = FS2();       /* stack, no BODYALLOC */
+    fs2_move(&s, h);     /* s now holds h's value */
+
+    CHECK_FALSE("s is not bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_STR_EQ("s.v", s.v, "payload");
+
+    fs2_free(h);          /* h has BODYALLOC, freed properly */
+    fs2_free(&s);         /* s has no BODYALLOC, only buffer freed */
+    assert_balanced();
+}
