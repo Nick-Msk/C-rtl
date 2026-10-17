@@ -183,7 +183,11 @@ build-docker: check-docker
 	$(DOCKER) build -f Dockerfile.dev -t $(DOCKER_IMAGE) .
 
 # Shared recipe for docker-based test runs.
-# Usage: $(call docker-test-recipe,<build_dir>,<sanitize>,<env_prefix>)
+#
+# $(1) and $(2) are labels only — they appear in the echo for humans,
+#      nothing else uses them.
+# $(3) is the env prefix passed to the inner 'make test' in the
+#      container (SANITIZE=..., BUILD_DIR=..., REQUIRE_CRITERION=1).
 define docker-test-recipe
 	@if [ $(words $(PROJECTS)) -gt 100 ]; then \
 	    echo "too many projects for a single docker run" >&2; \
