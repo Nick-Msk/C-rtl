@@ -35,6 +35,14 @@ static atomic_int               g_free_body_cnt         = 0;
 
 static inline void fs2_freestr(fs2 *s);
 static inline void fs2_freebody(fs2 *s);
+// bodyalloc flag API
+static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
+    return s->flags & FS2_BODYALLOC;
+}
+static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
+    bodyallocflag &= FS2_BODYALLOC;
+    s->flags = ( (s->flags & ~FS2_BODYALLOC) | bodyallocflag);
+}
 
 /**
  * @brief Manages the capacity of an fs object.
@@ -317,6 +325,16 @@ fs2_heap_fromstrf (const char *fmt, ...) {
     return res;
 }
 
+fs2 *
+fs2_heap_movefrom (fs2 *src) {
+
+}
+fs2 *
+fs2_heap_movefromstr(const char **from, fs2_flags fl) {
+
+}
+
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
  *
@@ -339,9 +357,9 @@ fs2_move(fs2 *dst, fs2 *src) {
     if (fs2_is_alloc(dst) )
         fs2_freestr(dst);   // BODYALLOC remains the same
 
-    fs2_flags dst_body = dst->flags & FS2_BODYALLOC;
+    fs2_flags dst_bodyflag = fs2_getbodyalloc(dst);
     *dst = *src;
-    dst->flags = (fs2_flags) ((dst->flags & ~FS2_BODYALLOC) | dst_body);
+    fs2_setbodyalloc(dst, dst_bodyflag);
  
     /* Detach buffer from src only if we took ownership.
      * STATIC / LOCAL sources keep pointing at the external buffer —
