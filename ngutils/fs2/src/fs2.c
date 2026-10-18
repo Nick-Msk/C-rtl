@@ -342,34 +342,27 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
  * ───────────────────────────────────────────────────────────────────────── */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
-    invraise(src != NULL, 
-         "Null pointer %p", src);
+    invraise(dst != NULL && src != NULL, 
+        "Null pointerы %p %p", dst, src);
+
 
     if (dst == src)
         return dst;    
-    if (!dst) {
-        fs2_free(src);
- #ifdef FS2_TRACE 
-        logsimple("Move to NULL -> src freed!");
- #endif /* FS2_TRACE */   
-        return NULL;
-    }
+
+    if (fs2_is_local(src) || fs2_is_local(dst))
+        return userraise(NULL, ERR_UNSUPPORTED_TYPE,
+                  "fs2_move does not support LOCAL (stack buffer)");
+
+    fs2_flags dst_body = fs2_getbodyalloc(dst);
+    fs2_flags src_body = fs2_getbodyalloc(src);
+
     if (fs2_is_alloc(dst) )
         fs2_freestr(dst);   // BODYALLOC remains the same
 
-    fs2_flags dst_bodyflag = fs2_getbodyalloc(dst);
     *dst = *src;
-    fs2_setbodyalloc(dst, dst_bodyflag);
- 
-    /* Detach buffer from src only if we took ownership.
-     * STATIC / LOCAL sources keep pointing at the external buffer —
-     * same rule as fs2_free. */
-    if (fs2_is_alloc(src)) {
-        src->v   = NULL;
-        src->len = 0;
-        src->sz  = 0;
-        /* src's BODYALLOC (if any) stays — src still owns its struct. */
-    }
+    fs2_setbodyalloc(dst, dst_body);
+    *src = FS2();
+    fs2_setbodyalloc(src, src_body); 
 
     return dst; 
 }
@@ -387,17 +380,10 @@ fs2_exch(fs2 *a, fs2 *b)
                   "fs2_exch requires both ALLOC, got 0x%x and 0x%x",
                   (unsigned)a->flags, (unsigned)b->flags);
 
-    /* BODYALLOC describes where the *struct* lives; swapping it would
-     * give each side the other's ownership marker and break fs2_free. */
-    fs2_flags a_body = fs2_getbodyalloc(a);
-    fs2_flags b_body = fs2_getbodyalloc(b);
-
-    fs2 tmp = *a;
-    *a = *b;
-    *b = tmp;
-
-    fs2_setbodyalloc(a, a_body);
-    fs2_setbodyalloc(b, b_body);
+    fs2 tmp = FS2();
+    fs2_move(&tmp, a);
+    fs2_move(a, b);
+    fs2_move(b, &tmp);
 }
 
 // stack <-> heap convertes
@@ -421,6 +407,8 @@ fs2_stacktoheap(fs2 *src) {
 
     if (fs2_is_bodyalloc(src))
         userraise(0, ERR_UNSUPPORTED_TYPE, "Only NOT BODY ALLOC supported");
+    if (fs2_is_local(src))
+        userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot move LOCAL fs2 to heap");
 
     fs2 *res = fs2_heap();
     fs2_move(res, src);  // FS2_BODYALLOC is already set, src is cleared

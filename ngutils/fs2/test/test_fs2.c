@@ -809,17 +809,17 @@ Test(fs2, move_static_to_empty) {
     fs2 b = FS2();
 
     fs2_move(&b, &a);
+    CHECK_FS2VALID(1, &b);
 
     CHECK_STR_EQ("b.v", b.v, "literal");
     CHECK_TRUE ("b is_static", fs2_is_static(&b));
 
-    /* STATIC source is not detached — same rule as fs2_free */
-    CHECK_STR_EQ("a.v still readable", a.v, "literal");
-    CHECK_EQ   ("a.len unchanged",     a.len, 7);
-    CHECK_TRUE ("a is_static",         fs2_is_static(&a));
+    /* Источник теперь пуст */
+    CHECK_NULL("a.v", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_TRUE("a is_alloc", fs2_is_alloc(&a));
 
-    fs2_free(&a);   /* no-op */
-    fs2_free(&b);   /* no-op */
+    fs2_free(&b);
     assert_balanced();
 }
 
@@ -837,18 +837,9 @@ Test(fs2, move_self_noop) {
     assert_balanced();
 }
 
-Test(fs2, move_null_dst_frees_src) {
-    __fs2_checkreset();
+Test(fs2, move_null_dst_aborts, .signal = SIGABRT) {
     fs2 a = fs2_fromstr("to be freed");
-
-    fs2 *ret = fs2_move(NULL, &a);
-
-    CHECK_NULL("return value", ret);
-    CHECK_NULL("a.v after free", a.v);
-    CHECK_EQ  ("a.len", a.len, 0);
-    CHECK_EQ  ("a.sz",  a.sz,  0);
-
-    assert_balanced();
+    fs2_move(NULL, &a);   /* invraise → abort */
 }
 
 Test(fs2, move_empty_to_empty) {
@@ -894,16 +885,17 @@ Test(fs2, movefrom_static) {
     fs2 a = FS2_LITERAL("static payload");
 
     fs2 b = fs2_movefrom(&a);
+    CHECK_FS2VALID(1, &b);
 
     CHECK_STR_EQ("b.v", b.v, "static payload");
     CHECK_TRUE ("b is_static", fs2_is_static(&b));
 
-    /* STATIC src keeps its buffer (same rule as fs2_free) */
-    CHECK_STR_EQ("a.v untouched", a.v, "static payload");
-    CHECK_EQ   ("a.len", a.len, 14);
+    CHECK_NULL("a.v", a.v);
+    CHECK_EQ  ("a.len", a.len, 0);
+    CHECK_TRUE("a is_alloc", fs2_is_alloc(&a));
 
-    fs2_free(&a);   /* no-op */
-    fs2_free(&b);   /* no-op */
+    fs2_free(&b);
+
     assert_balanced();
 }
 
@@ -1250,14 +1242,14 @@ Test(fs2, stacktoheap_static) {
     CHECK_TRUE ("validate 1", fs2_validate(logfile, &s) );
 
     fs2 *h = fs2_stacktoheap(&s);
-    CHECK_TRUE ("validate 2", fs2_validate(logfile, h) );
+    CHECK_FS2VALID(1, h);
 
     CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
     CHECK_TRUE ("h is_static",    fs2_is_static(h));
     CHECK_STR_EQ("h->v", h->v, "literal");
 
-    /* STATIC source not detached — same rule as fs2_free */
-    CHECK_STR_EQ("s.v untouched", s.v, "literal");
+    CHECK_NULL("s.v", s.v);
+    CHECK_EQ  ("s.len", s.len, 0);
 
     fs2_free(h);
     assert_balanced();
@@ -1556,7 +1548,6 @@ Test(fs2, transition_alloc_roundtrip) {
 
 Test(fs2, transition_static_roundtrip) {
     __fs2_checkreset();
-
     fs2 a = FS2_LITERAL("lit");
     CHECK_FS2VALID(1, &a);
 
@@ -1566,43 +1557,28 @@ Test(fs2, transition_static_roundtrip) {
     CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
     CHECK_STR_EQ("h->v", h->v, "lit");
 
-    /* STATIC source not detached */
-    CHECK_STR_EQ("a.v", a.v, "lit");
+    /* УДАЛИТЬ: CHECK_STR_EQ("a.v", a.v, "lit"); */
+    /* Заменить на: */
+    CHECK_NULL("a.v", a.v);
 
     fs2 b = fs2_heaptostack(&h);
     CHECK_FS2VALID(3, &b);
     CHECK_TRUE ("b is_static", fs2_is_static(&b));
     CHECK_STR_EQ("b.v", b.v, "lit");
 
-    fs2_free(&b);  /* no-op */
-    fs2_free(&a);  /* no-op */
+    fs2_free(&b);
     assert_balanced();
 }
 
-/* ── local: stack → heap → stack ──────────────────────────────────── */
+Test(fs2, move_local_rejected, .signal = SIGINT) {
+    FS2LOCAL(a, 16);
+    fs2 b = FS2();
+    fs2_move(&b, &a);
+}
 
-Test(fs2, transition_local_roundtrip) {
-    __fs2_checkreset();
-
-    FS2LOCAL(a, 32);
-    memcpy(a.v, "on-stack", 9);
-    a.len = 8;
-    CHECK_FS2VALID(1, &a);
-
-    fs2 *h = fs2_stacktoheap(&a);
-    CHECK_FS2VALID(2, h);
-    CHECK_TRUE ("h is_local",     fs2_is_local(h));
-    CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
-    CHECK_PTR_EQ("h->v == a.v",   h->v, a.v);   /* same buffer */
-
-    fs2 b = fs2_heaptostack(&h);
-    CHECK_FS2VALID(3, &b);
-    CHECK_TRUE("b is_local", fs2_is_local(&b));
-    CHECK_STR_EQ("b.v", b.v, "on-stack");
-
-    fs2_free(&b);
-    fs2_free(&a);
-    assert_balanced();
+Test(fs2, stacktoheap_local_rejected, .signal = SIGINT) {
+    FS2LOCAL(a, 16);
+    fs2_stacktoheap(&a);
 }
 
 /* ── movefrom chain: one buffer, many hands ───────────────────────── */
@@ -1667,22 +1643,24 @@ Test(fs2, transition_swap_two_alloc) {
 
 Test(fs2, transition_swap_mixed_flags) {
     __fs2_checkreset();
-
     fs2 a = fs2_fromstr("heap");     /* ALLOC */
     fs2 b = FS2_LITERAL("lit");      /* STATIC */
 
     fs2 t = fs2_movefrom(&a);        /* t=heap ALLOC, a=empty ALLOC */
     CHECK_FS2VALID(1, &t);
 
-    fs2_move(&a, &b);
-    /* a=lit STATIC; b still STATIC — STATIC source is not detached */
+    fs2_move(&a, &b);                /* a=lit STATIC, b=empty ALLOC */
     CHECK_FS2VALID(2, &a);
     CHECK_TRUE ("a is_static", fs2_is_static(&a));
-    CHECK_TRUE ("b is_static", fs2_is_static(&b));
-    CHECK_STR_EQ("a.v", a.v, "lit");
-    CHECK_STR_EQ("b.v", b.v, "lit");
+    
+    /* УДАЛИТЬ: CHECK_TRUE("b is_static", fs2_is_static(&b)); */
+    /* Заменить на: */
+    CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b)); 
+    CHECK_NULL ("b.v", b.v);
 
-    fs2_move(&b, &t);               /* b=heap ALLOC, t=empty */
+    CHECK_STR_EQ("a.v", a.v, "lit");
+
+    fs2_move(&b, &t);                /* b=heap ALLOC, t=empty */
     CHECK_FS2VALID(3, &b);
     CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b));
     CHECK_STR_EQ("b.v", b.v, "heap");
@@ -1883,13 +1861,6 @@ Test(fs2, exch_self_noop) {
 Test(fs2, exch_null_aborts, .signal = SIGABRT) {
     fs2 a = fs2_fromstr("x");
     fs2_exch(&a, NULL);           /* invraise → abort */
-    fs2_free(&a);
-}
-
-Test(fs2, exch_static_rejected, .signal = SIGINT) {
-    fs2 a = fs2_fromstr("alloc");
-    fs2 b = FS2_LITERAL("static");
-    fs2_exch(&a, &b);             /* userraise → SIGINT */
     fs2_free(&a);
 }
 
