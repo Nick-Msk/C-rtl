@@ -1909,3 +1909,95 @@ Test(fs2, move_from_heap_to_stack_clears_bodyalloc) {
     fs2_free(&s);         /* s has no BODYALLOC, only buffer freed */
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_exch — exhaustive round-trip (a <-> b <-> a)
+ *
+ * For every pair from the allowed combinations:
+ *     {ALLOC, STATIC} × {stack body, heap body}
+ * exchanging twice must restore both objects exactly: same v pointer,
+ * same flags (including BODYALLOC), same len and sz.
+ * ------------------------------------------------------------------------- */
+
+static void
+check_exch_roundtrip(fs2 *a, fs2 *b)
+{
+    fs2_flags af = a->flags, bf = b->flags;
+    size_t    al = a->len,   bl = b->len;
+    size_t    as = a->sz,    bs = b->sz;
+    char     *av = a->v,     *bv = b->v;
+
+    /* a <-> b */
+    fs2_exch(a, b);
+    CHECK_FS2VALID(1, a);
+    CHECK_FS2VALID(2, b);
+
+    /* b <-> a (reverse) */
+    fs2_exch(a, b);
+    CHECK_FS2VALID(3, a);
+    CHECK_FS2VALID(4, b);
+
+    /* bit-exact restoration */
+    CHECK_TRUE ("a flags restored", a->flags == af);
+    CHECK_TRUE ("b flags restored", b->flags == bf);
+    CHECK_EQ   ("a len restored",   a->len, al);
+    CHECK_EQ   ("b len restored",   b->len, bl);
+    CHECK_EQ   ("a sz restored",    a->sz, as);
+    CHECK_EQ   ("b sz restored",    b->sz, bs);
+    CHECK_PTR_EQ("a v restored",    a->v, av);
+    CHECK_PTR_EQ("b v restored",    b->v, bv);
+}
+
+Test(fs2, exch_roundtrip_matrix) {
+    __fs2_checkreset();
+
+    /* ── A variants ─────────────────────────────────────────────── */
+
+    fs2  a0_val = fs2_fromstr("A0");           /* ALLOC,  stack */
+    fs2 *a0     = &a0_val;
+
+    fs2 *a1     = fs2_heap_fromstr("A1");      /* ALLOC,  heap  */
+
+    fs2  a2_val = FS2_LITERAL("A2");           /* STATIC, stack */
+    fs2 *a2     = &a2_val;
+
+    fs2 *a3     = fs2_heap();                  /* STATIC, heap  */
+    fs2  a3_tmp = FS2_LITERAL("A3");
+    fs2_move(a3, &a3_tmp);
+
+    /* ── B variants ─────────────────────────────────────────────── */
+
+    fs2  b0_val = fs2_fromstr("B0");           /* ALLOC,  stack */
+    fs2 *b0     = &b0_val;
+
+    fs2 *b1     = fs2_heap_fromstr("B1");      /* ALLOC,  heap  */
+
+    fs2  b2_val = FS2_LITERAL("B2");           /* STATIC, stack */
+    fs2 *b2     = &b2_val;
+
+    fs2 *b3     = fs2_heap();                  /* STATIC, heap  */
+    fs2  b3_tmp = FS2_LITERAL("B3");
+    fs2_move(b3, &b3_tmp);
+
+    /* ── all 16 combinations ────────────────────────────────────── */
+
+    fs2 *as[] = { a0, a1, a2, a3 };
+    fs2 *bs[] = { b0, b1, b2, b3 };
+
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            check_exch_roundtrip(as[i], bs[j]);
+
+    /* ── cleanup ────────────────────────────────────────────────── */
+
+    fs2_free(a0);
+    fs2_free(a1);
+    fs2_free(a2);
+    fs2_free(a3);
+    fs2_free(b0);
+    fs2_free(b1);
+    fs2_free(b2);
+    fs2_free(b3);
+
+    assert_balanced();
+}
