@@ -375,10 +375,8 @@ fs2_exch(fs2 *a, fs2 *b)
     if (a == b)
         return;
 
-    if (!fs2_is_alloc(a) || !fs2_is_alloc(b))
-        userraise(0, ERR_UNSUPPORTED_TYPE,
-                  "fs2_exch requires both ALLOC, got 0x%x and 0x%x",
-                  (unsigned)a->flags, (unsigned)b->flags);
+    if (fs2_is_local(a) || fs2_is_local(b))
+        userraise(0, ERR_UNSUPPORTED_TYPE, "fs2_exch does not support LOCAL");
 
     fs2 tmp = FS2();
     fs2_move(&tmp, a);
