@@ -2001,3 +2001,47 @@ Test(fs2, exch_roundtrip_matrix) {
 
     assert_balanced();
 }
+
+Test(fs2, techcmp_identical) {
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("hello");
+    CHECK_TRUE("techcmp", fs2_techcmp(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2, techcmp_different_content) {
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("world");
+    CHECK_FALSE("techcmp", fs2_techcmp(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2, techcmp_different_len) {
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("hell");
+    CHECK_FALSE("techcmp", fs2_techcmp(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2, techcmp_different_flags) {
+    fs2 a = fs2_fromstr("hello");   /* ALLOC */
+    fs2 b = FS2_LITERAL("hello");   /* STATIC */
+    CHECK_FALSE("techcmp", fs2_techcmp(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2, techcmp_empty) {
+    fs2 a = FS2();
+    fs2 b = FS2();
+    CHECK_TRUE("techcmp", fs2_techcmp(&a, &b));
+}
+
+Test(fs2, techcmp_null_aborts, .signal = SIGABRT) {
+    fs2 a = fs2_fromstr("x");
+    fs2_techcmp(&a, NULL);   /* invraise → abort */
+    fs2_free(&a);
+}

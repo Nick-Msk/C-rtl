@@ -252,6 +252,19 @@ long    fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *res
  * ───────────────────────────────────────────────────────────────────────── */
 bool    fs2_validate(FILE *restrict out, const fs2 *restrict s);
 
+/**
+ * @brief Compare two fs2 objects for technical equality.
+ *
+ * Unlike logical comparison (strcmp-style), this also checks flags:
+ * FS2_ALLOC vs FS2_STATIC vs FS2_LOCAL, and BODYALLOC. Two fs2 that
+ * print the same content but have different ownership are considered
+ * different.
+ *
+ * @return true if len, flags and content are identical; false otherwise.
+ * @note invraise(SIGABRT) if either pointer is NULL.
+ */
+bool    fs2_techcmp(const fs2 *s1, const fs2 *s2);
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
  * ───────────────────────────────────────────────────────────────────────── */

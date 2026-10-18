@@ -546,6 +546,22 @@ fs2_validate(FILE *restrict out, const fs2 *restrict s)
     return true;
 }
 
+bool    
+fs2_techcmp(const fs2 *s1, const fs2 *s2) {
+    if (s1 == s2)
+        return true;
+    invraise(s1 != NULL && s2 != NULL,
+        "Null pointers %p %p", s1, s2);
+    if (s1->len != s2->len || s1->flags != s2->flags)
+        return false;
+
+    if (s1->len == 0)
+        return true;
+
+    return memcmp(s1->v, s2->v, s1->len) == 0;
+}
+
+
  /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
  * ───────────────────────────────────────────────────────────────────────── */
