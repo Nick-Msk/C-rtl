@@ -357,6 +357,14 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
     return res;
 }
 
+void
+fs2_reserve(fs2 *s, size_t need)
+{
+    invraise(s != NULL, "Null pointer");
+    if (fs2_is_alloc(s))
+        increasesize(s, need, true);
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)

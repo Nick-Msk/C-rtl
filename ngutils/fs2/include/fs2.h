@@ -254,6 +254,12 @@ static inline bool          fs2_is_null(const fs2 *s) {
         .v     = _fs2_internal_buf_##name                                     \
     }
 
+/**
+ * @brief Ensure capacity for at least `need` bytes (including NUL).
+ * No-op for STATIC/LOCAL (cannot grow external buffers).
+ */
+void    fs2_reserve(fs2 *s, size_t need);
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — value (stack body)
  *
