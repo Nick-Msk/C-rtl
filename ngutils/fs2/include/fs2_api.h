@@ -35,9 +35,12 @@ fs2_elem0(fs2 *s, size_t pos){
 
 extern fs2*             fs_reverse(fs2 *str);
 
-extern void             fs_sort(fs2 *s, bool asc);
-
 extern void             fs_partialsort(fs2 *s, size_t from, size_t to, bool asc);
+
+static inline void      fs_sort(fs2 *str, bool asc) {
+    invraise(str != NULL, "Null pointer");
+    fs_partialsort(str, 0, str->len, asc);
+}
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
 
