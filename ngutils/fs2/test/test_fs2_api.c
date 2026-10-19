@@ -826,9 +826,7 @@ Test(fs2_api, ichr_empty_string) {
 
 Test(fs2_api, ichr_local) {
     __fs2_checkreset();
-    FS2LOCAL(s, 16);
-    memcpy(s.v, "hello", 6);
-    s.len = 5;
+    FS2LOCALFILL(s, "hello");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("H at 0", fs2_ichr(&s, 'H'), 0);
