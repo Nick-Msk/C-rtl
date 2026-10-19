@@ -14,3 +14,11 @@ fs_reverse(fs2 *str) {
     }
     return str;
 }
+
+void             fs_sort(fs2 *str, bool asc) {
+    invraise(str != NULL, "Null pointer");
+    
+    if (fs2_is_static(str))
+        userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot sort STATIC fs2 in-place");
+    qsort(str->v, str->len, 1, asc ? pchar_cmp: pchar_revcmp);
+}
