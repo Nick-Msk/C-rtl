@@ -29,5 +29,28 @@ fs2_elem0(fs2 *s, size_t pos){
     return fs2_get(s, pos);
 }
 
+// ------------------------------------ FS Comparators --------------------------------------
+
+// ----------------------------------- EXCNAHGERS -------------------------------------------
+
+extern fs2*             fs_reverse(fs2 *str);
+
+extern void             fs_sort(fs2 *s, bool asc);
+
+extern void             fs_partialsort(fs2 *s, size_t from, size_t to, bool asc);
+
+// ------------------------------------ CAT/CPY/ETC -----------------------------------------
+
+
+
+extern long           
+fs_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
+    __attribute__ (( format (printf, 2, 3) ) );
+
+extern long           
+fs_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
+    __attribute__ (( format (printf, 2, 3) ) );
+
+
 
 #endif /* !FS2_API_H */
