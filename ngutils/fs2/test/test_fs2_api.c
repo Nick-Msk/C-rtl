@@ -410,3 +410,67 @@ Test(fs2_api, sort_static_rejected, .signal = SIGINT) {
     fs2 s = FS2_LITERAL("static");
     fs_sort(&s, true); /* userraise → SIGINT */
 }
+
+/* -------------------------------------------------------------------------
+ * fs_partialsort — in-place character sort on a sub-range [from, to)
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, partialsort_middle) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XdcbaY");
+    CHECK_FS2VALID(1, &s);
+
+    /* Сортируем только "dcba" (индексы 1,2,3,4), оставляя X и Y на местах */
+    fs_partialsort(&s, 1, 5, true);
+    CHECK_STR_EQ("sorted middle", s.v, "XabcdY");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_desc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XabcdY");
+
+    fs_partialsort(&s, 1, 5, false);
+    CHECK_STR_EQ("sorted middle desc", s.v, "XdcbaY");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_full_range) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("cba");
+    
+    fs_partialsort(&s, 0, 3, true);
+    CHECK_STR_EQ("full range sorted", s.v, "abc");
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_empty_range_valid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("cba");
+    
+    /* from == to, qsort с 0 элементами. Это валидный вызов для qsort */
+    fs_partialsort(&s, 1, 1, true);
+    CHECK_STR_EQ("unchanged", s.v, "cba");
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
+
+Test(fs2_api, partialsort_static_rejected, .signal = SIGINT) {
+    fs2 s = FS2_LITERAL("static");
+    fs_partialsort(&s, 0, 3, true);
+}
+
+Test(fs2_api, partialsort_null_aborts, .signal = SIGABRT) {
+    fs_partialsort(NULL, 0, 1, true);
+}
