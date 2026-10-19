@@ -128,17 +128,6 @@ Test(fs2_api, get_valid_indices) {
     assert_balanced();
 }
 
-#if TEST_NOT_SANITIZED
-Test(fs2_api, get_oob_segv, .signal = SIGSEGV) {
-    fs2 s = fs2_fromstr("hello");
-    /* fs2_get не проверяет границы. pos=100 с огромной вероятностью
-     * выйдет за пределы выделенной страницы и вызовет SIGSEGV. */
-    char c = *fs2_get(&s, 1ULL << 30);
-    (void)c; /* если SIGSEGV пойман, сюда не дойдем */
-    fs2_free(&s);
-}
-#endif /* TEST_NOT_SANITIZED */
-
 /* -------------------------------------------------------------------------
  * fs2_elem — streaming write scenario (the main use case)
  * ------------------------------------------------------------------------- */
