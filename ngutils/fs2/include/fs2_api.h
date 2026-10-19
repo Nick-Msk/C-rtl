@@ -45,6 +45,47 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
 
+// ----------------------------- One Symbol Search ------------------------------------------
+// pointer, sensitive, unlim (library call)
+static inline long           fs2_chr(const fs2 *str, char c) {
+    invraise(str != NULL, "Null pointer");
+
+    const char *p = strchr(str->v, c);
+    return p ? p - str->v : -1;
+}
+// pointer, sensitive, lim
+static inline long           fs2_nchr(const fs2 *str, char c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+
+    const char *p = str->v;
+    while (lim-- > 0 && *p != '\0') {
+        if (*p == c)
+            return p - str->v;
+        p++;
+    }
+    return -1;
+}
+// pointer, insensitive, lim
+static inline long           fs2_nichr(const fs2 *str, char c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+
+    const char *p = str->v;
+    c = tolower(c);
+    while (lim-- > 0 && *p != '\0') {
+        if (*p == c)
+            return p - str->v;
+        p++;
+    }
+    return -1;
+}
+// pointer, insensitive, unlim
+static inline long           fs2_ichr(const fs2 *str, char c) {
+    invraise(str != NULL, "Null pointer");
+
+    return fs2_nichr(str, c, str->len);
+}
+
+// ------------------------------------------------------------------------------------------
 extern long           
 fs_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
     __attribute__ (( format (printf, 2, 3) ) );
