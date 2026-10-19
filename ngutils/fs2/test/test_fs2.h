@@ -32,4 +32,15 @@
         }                                                                 \
     } while (0)
 
+static inline void
+assert_balanced(void)
+{
+    int a = -1, f = -1, ba = -1, bf = -1;
+    bool ok = fs2_checkleak(&a, &f, &ba, &bf);
+    if (!ok)
+        logsimple("FAIL %s: alloc=%d freed=%d body_alloc=%d body_freed=%d",
+                  __func__, a, f, ba, bf);
+    cr_assert(ok, "counters not balanced");
+}    
+
 #endif /* !TEST_FS2_H */
