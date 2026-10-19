@@ -104,3 +104,71 @@ Test(fs2_api, elem0_overwrite_existing) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_get — direct read-only access
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, get_valid_indices) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello"); /* len=5, sz=16 */
+    CHECK_FS2VALID(1, &s);
+
+    // Чтение всех символов
+    CHECK_EQ("char at 0", *fs2_get(&s, 0), 'h');
+    CHECK_EQ("char at 4", *fs2_get(&s, 4), 'o');
+    
+    // Чтение NUL-терминатора (pos == len)
+    CHECK_EQ("char at len", *fs2_get(&s, 5), '\0');
+
+    // Проверка арифметики указателей
+    CHECK_PTR_EQ("pointer math", fs2_get(&s, 2), s.v + 2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+#if TEST_NOT_SANITIZED
+Test(fs2_api, get_oob_segv, .signal = SIGSEGV) {
+    fs2 s = fs2_fromstr("hello");
+    /* fs2_get не проверяет границы. pos=100 с огромной вероятностью
+     * выйдет за пределы выделенной страницы и вызовет SIGSEGV. */
+    char c = *fs2_get(&s, 1ULL << 30);
+    (void)c; /* если SIGSEGV пойман, сюда не дойдем */
+    fs2_free(&s);
+}
+#endif /* TEST_NOT_SANITIZED */
+
+/* -------------------------------------------------------------------------
+ * fs2_elem — streaming write scenario (the main use case)
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, elem_streaming_write) {
+    __fs2_checkreset();
+    fs2 s = FS2(); /* empty ALLOC */
+    CHECK_FS2VALID(1, &s);
+
+    /* Пишем строку "streaming" посимвольно.
+     * fs2_elem расширяет буфер, но не трогает len. */
+    const char *data = "streaming";
+    size_t len = strlen(data);
+    
+    for (size_t i = 0; i < len; i++) {
+        char *p = fs2_elem(&s, i);
+        *p = data[i];
+    }
+
+    /* len все еще 0, строка формально пустая, хотя байты записаны */
+    CHECK_EQ("len unchanged during stream", s.len, 0);
+    
+    /* Один раз обновляем len и ставим NUL */
+    fs2_setlen(&s, len);
+
+    /* Теперь всё валидно и читается */
+    CHECK_FS2VALID(2, &s);
+    CHECK_EQ   ("len updated", s.len, 9);
+    CHECK_STR_EQ("streamed string", s.v, "streaming");
+
+    fs2_free(&s);
+    assert_balanced();
+}
