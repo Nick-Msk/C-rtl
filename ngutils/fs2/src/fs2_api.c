@@ -1,7 +1,7 @@
 #include "fs2_api.h"
 
 fs2*             
-fs_reverse(fs2 *str) {
+fs2_reverse(fs2 *str) {
     invraise(str != NULL, "Null pointer");
 
     if (fs2_is_static(str))
@@ -16,7 +16,7 @@ fs_reverse(fs2 *str) {
 }
 
 void             
-fs_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
+fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
     invraise(str != NULL, "Null pointer");
 
     if (fs2_is_static(str))

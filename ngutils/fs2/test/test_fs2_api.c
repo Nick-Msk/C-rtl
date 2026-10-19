@@ -163,7 +163,7 @@ Test(fs2_api, elem_streaming_write) {
 }
 
 /* -------------------------------------------------------------------------
- * fs_reverse — in-place string reversal
+ * fs2_reverse — in-place string reversal
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, reverse_even_length) {
@@ -171,7 +171,7 @@ Test(fs2_api, reverse_even_length) {
     fs2 s = fs2_fromstr("abcd");
     CHECK_FS2VALID(1, &s);
 
-    fs2 *ret = fs_reverse(&s);
+    fs2 *ret = fs2_reverse(&s);
     
     CHECK_PTR_EQ("returns same pointer", ret, &s);
     CHECK_STR_EQ("reversed", s.v, "dcba");
@@ -187,7 +187,7 @@ Test(fs2_api, reverse_odd_length) {
     fs2 s = fs2_fromstr("abcde");
     CHECK_FS2VALID(1, &s);
 
-    fs_reverse(&s);
+    fs2_reverse(&s);
     
     CHECK_STR_EQ("reversed", s.v, "edcba");
     CHECK_EQ("len unchanged", s.len, 5);
@@ -202,7 +202,7 @@ Test(fs2_api, reverse_single_char) {
     fs2 s = fs2_fromstr("a");
     CHECK_FS2VALID(1, &s);
 
-    fs_reverse(&s);
+    fs2_reverse(&s);
     
     CHECK_STR_EQ("reversed", s.v, "a");
     CHECK_FS2VALID(2, &s);
@@ -216,7 +216,7 @@ Test(fs2_api, reverse_empty) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    fs_reverse(&s);
+    fs2_reverse(&s);
     
     CHECK_STR_EQ("reversed", s.v, "");
     CHECK_FS2VALID(2, &s);
@@ -232,7 +232,7 @@ Test(fs2_api, reverse_local) {
     s.len = 5;
     CHECK_FS2VALID(1, &s);
 
-    fs_reverse(&s);
+    fs2_reverse(&s);
     
     CHECK_STR_EQ("reversed", s.v, "olleh");
     CHECK_FS2VALID(2, &s);
@@ -243,12 +243,12 @@ Test(fs2_api, reverse_local) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, reverse_null_aborts, .signal = SIGABRT) {
-    fs_reverse(NULL);
+    fs2_reverse(NULL);
 }
 
 Test(fs2_api, reverse_static_rejected, .signal = SIGINT) {
     fs2 s = FS2_LITERAL("static");
-    fs_reverse(&s); /* userraise → SIGINT */
+    fs2_reverse(&s); /* userraise → SIGINT */
 }
 
 
@@ -263,7 +263,7 @@ Test(fs2_api, reverse_double_invariant) {
     CHECK_FS2VALID(2, &original);
 
     /* Разворачиваем 1-й раз */
-    fs_reverse(&s);
+    fs2_reverse(&s);
     CHECK_STR_EQ("first reverse", s.v, "racecar"); /* палиндром не меняется */
     
     /* Берем не-палиндром для честной проверки */
@@ -273,12 +273,12 @@ Test(fs2_api, reverse_double_invariant) {
     original = fs2_clone(&s);
 
     /* Разворачиваем 1-й раз */
-    fs_reverse(&s);
+    fs2_reverse(&s);
     CHECK_STR_EQ("first reverse", s.v, "smhtirogla");
     CHECK_FS2VALID(3, &s);
 
     /* Разворачиваем 2-й раз (должно вернуть к оригиналу) */
-    fs_reverse(&s);
+    fs2_reverse(&s);
     
     /* Проверяем, что строка стала байт-в-байт как оригинал */
     CHECK_STR_EQ("double reverse matches original", s.v, original.v);
@@ -295,15 +295,15 @@ Test(fs2_api, reverse_roundtrip_empty_and_single) {
     
     /* Пустая строка */
     fs2 empty = fs2_fromstr("");
-    fs_reverse(&empty);
-    fs_reverse(&empty);
+    fs2_reverse(&empty);
+    fs2_reverse(&empty);
     CHECK_STR_EQ("empty stays empty", empty.v, "");
     CHECK_EQ("empty len", empty.len, 0);
 
     /* Один символ */
     fs2 single = fs2_fromstr("X");
-    fs_reverse(&single);
-    fs_reverse(&single);
+    fs2_reverse(&single);
+    fs2_reverse(&single);
     CHECK_STR_EQ("single stays single", single.v, "X");
     CHECK_EQ("single len", single.len, 1);
 
@@ -313,7 +313,7 @@ Test(fs2_api, reverse_roundtrip_empty_and_single) {
 }
 
 /* -------------------------------------------------------------------------
- * fs_sort — in-place character sort
+ * fs2_sort — in-place character sort
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, sort_ascending) {
@@ -321,7 +321,7 @@ Test(fs2_api, sort_ascending) {
     fs2 s = fs2_fromstr("banana");
     CHECK_FS2VALID(1, &s);
 
-    fs_sort(&s, true);
+    fs2_sort(&s, true);
 
     CHECK_STR_EQ("sorted asc", s.v, "aaabnn");
     CHECK_EQ("len unchanged", s.len, 6);
@@ -336,7 +336,7 @@ Test(fs2_api, sort_descending) {
     fs2 s = fs2_fromstr("banana");
     CHECK_FS2VALID(1, &s);
 
-    fs_sort(&s, false);
+    fs2_sort(&s, false);
 
     CHECK_STR_EQ("sorted desc", s.v, "nnbaaa");
     CHECK_EQ("len unchanged", s.len, 6);
@@ -349,7 +349,7 @@ Test(fs2_api, sort_descending) {
 Test(fs2_api, sort_already_sorted) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
-    fs_sort(&s, true);
+    fs2_sort(&s, true);
     CHECK_STR_EQ("sorted", s.v, "abc");
     fs2_free(&s);
     assert_balanced();
@@ -358,7 +358,7 @@ Test(fs2_api, sort_already_sorted) {
 Test(fs2_api, sort_with_duplicates) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("cbaabc");
-    fs_sort(&s, true);
+    fs2_sort(&s, true);
     CHECK_STR_EQ("sorted", s.v, "aabbcc");
     fs2_free(&s);
     assert_balanced();
@@ -369,7 +369,7 @@ Test(fs2_api, sort_empty) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    fs_sort(&s, true); /* qsort с 0 элементов — безопасно */
+    fs2_sort(&s, true); /* qsort с 0 элементов — безопасно */
 
     CHECK_STR_EQ("still empty", s.v, "");
     CHECK_FS2VALID(2, &s);
@@ -380,7 +380,7 @@ Test(fs2_api, sort_empty) {
 Test(fs2_api, sort_single_char) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("x");
-    fs_sort(&s, true);
+    fs2_sort(&s, true);
     CHECK_STR_EQ("still x", s.v, "x");
     fs2_free(&s);
     assert_balanced();
@@ -393,7 +393,7 @@ Test(fs2_api, sort_local) {
     s.len = 4;
     CHECK_FS2VALID(1, &s);
 
-    fs_sort(&s, true);
+    fs2_sort(&s, true);
     CHECK_STR_EQ("local sorted", s.v, "abcd");
     CHECK_FS2VALID(2, &s);
 
@@ -403,16 +403,16 @@ Test(fs2_api, sort_local) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, sort_null_aborts, .signal = SIGABRT) {
-    fs_sort(NULL, true);
+    fs2_sort(NULL, true);
 }
 
 Test(fs2_api, sort_static_rejected, .signal = SIGINT) {
     fs2 s = FS2_LITERAL("static");
-    fs_sort(&s, true); /* userraise → SIGINT */
+    fs2_sort(&s, true); /* userraise → SIGINT */
 }
 
 /* -------------------------------------------------------------------------
- * fs_partialsort — in-place character sort on a sub-range [from, to)
+ * fs2_partialsort — in-place character sort on a sub-range [from, to)
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, partialsort_middle) {
@@ -421,7 +421,7 @@ Test(fs2_api, partialsort_middle) {
     CHECK_FS2VALID(1, &s);
 
     /* Сортируем только "dcba" (индексы 1,2,3,4), оставляя X и Y на местах */
-    fs_partialsort(&s, 1, 5, true);
+    fs2_partialsort(&s, 1, 5, true);
     CHECK_STR_EQ("sorted middle", s.v, "XabcdY");
     CHECK_FS2VALID(2, &s);
 
@@ -433,7 +433,7 @@ Test(fs2_api, partialsort_desc) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("XabcdY");
 
-    fs_partialsort(&s, 1, 5, false);
+    fs2_partialsort(&s, 1, 5, false);
     CHECK_STR_EQ("sorted middle desc", s.v, "XdcbaY");
     CHECK_FS2VALID(2, &s);
 
@@ -445,7 +445,7 @@ Test(fs2_api, partialsort_full_range) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("cba");
     
-    fs_partialsort(&s, 0, 3, true);
+    fs2_partialsort(&s, 0, 3, true);
     CHECK_STR_EQ("full range sorted", s.v, "abc");
     
     fs2_free(&s);
@@ -457,7 +457,7 @@ Test(fs2_api, partialsort_empty_range_valid) {
     fs2 s = fs2_fromstr("cba");
     
     /* from == to, qsort с 0 элементами. Это валидный вызов для qsort */
-    fs_partialsort(&s, 1, 1, true);
+    fs2_partialsort(&s, 1, 1, true);
     CHECK_STR_EQ("unchanged", s.v, "cba");
     
     fs2_free(&s);
@@ -468,9 +468,9 @@ Test(fs2_api, partialsort_empty_range_valid) {
 
 Test(fs2_api, partialsort_static_rejected, .signal = SIGINT) {
     fs2 s = FS2_LITERAL("static");
-    fs_partialsort(&s, 0, 3, true);
+    fs2_partialsort(&s, 0, 3, true);
 }
 
 Test(fs2_api, partialsort_null_aborts, .signal = SIGABRT) {
-    fs_partialsort(NULL, 0, 1, true);
+    fs2_partialsort(NULL, 0, 1, true);
 }

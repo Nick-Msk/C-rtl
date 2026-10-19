@@ -33,18 +33,17 @@ fs2_elem0(fs2 *s, size_t pos){
 
 // ----------------------------------- EXCNAHGERS -------------------------------------------
 
-extern fs2*             fs_reverse(fs2 *str);
+extern fs2*             fs2_reverse(fs2 *str);
 
-extern void             fs_partialsort(fs2 *s, size_t from, size_t to, bool asc);
+// THINK: fs2_slice
+extern void             fs2_partialsort(fs2 *s, size_t from, size_t to, bool asc);
 
-static inline void      fs_sort(fs2 *str, bool asc) {
+static inline void      fs2_sort(fs2 *str, bool asc) {
     invraise(str != NULL, "Null pointer");
-    fs_partialsort(str, 0, str->len, asc);
+    fs2_partialsort(str, 0, str->len, asc);
 }
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
-
-
 
 extern long           
 fs_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
