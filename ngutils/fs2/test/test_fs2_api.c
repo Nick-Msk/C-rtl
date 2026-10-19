@@ -312,3 +312,101 @@ Test(fs2_api, reverse_roundtrip_empty_and_single) {
     assert_balanced();
 }
 
+/* -------------------------------------------------------------------------
+ * fs_sort — in-place character sort
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, sort_ascending) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_FS2VALID(1, &s);
+
+    fs_sort(&s, true);
+
+    CHECK_STR_EQ("sorted asc", s.v, "aaabnn");
+    CHECK_EQ("len unchanged", s.len, 6);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_descending) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_FS2VALID(1, &s);
+
+    fs_sort(&s, false);
+
+    CHECK_STR_EQ("sorted desc", s.v, "nnbaaa");
+    CHECK_EQ("len unchanged", s.len, 6);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_already_sorted) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs_sort(&s, true);
+    CHECK_STR_EQ("sorted", s.v, "abc");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_with_duplicates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("cbaabc");
+    fs_sort(&s, true);
+    CHECK_STR_EQ("sorted", s.v, "aabbcc");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+    CHECK_FS2VALID(1, &s);
+
+    fs_sort(&s, true); /* qsort с 0 элементов — безопасно */
+
+    CHECK_STR_EQ("still empty", s.v, "");
+    CHECK_FS2VALID(2, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    fs_sort(&s, true);
+    CHECK_STR_EQ("still x", s.v, "x");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sort_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "dcba", 5);
+    s.len = 4;
+    CHECK_FS2VALID(1, &s);
+
+    fs_sort(&s, true);
+    CHECK_STR_EQ("local sorted", s.v, "abcd");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
+
+Test(fs2_api, sort_null_aborts, .signal = SIGABRT) {
+    fs_sort(NULL, true);
+}
+
+Test(fs2_api, sort_static_rejected, .signal = SIGINT) {
+    fs2 s = FS2_LITERAL("static");
+    fs_sort(&s, true); /* userraise → SIGINT */
+}
