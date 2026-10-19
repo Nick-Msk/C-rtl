@@ -489,10 +489,7 @@ fs2_freebody(fs2 *s) {
     logsimple("fs body freed (g_free_body_cnt %d)", 
         cnt);
 #endif /* FS2_TRACE */
-    /* NOLINTNEXTLINE(clang-analyzer-unix.Malloc) — s is always heap;
-     * stack-allocated fs2 never carries BODYALLOC (constructors and
-     * fs2_move/fs2_exch set it only on heap wrappers). */
-    [[clang::suppress]] free(s);
+    free(s);
 }
 
 void                                    

@@ -258,7 +258,7 @@ static inline bool          fs2_is_null(const fs2 *s) {
  * @brief Ensure capacity for at least `need` bytes (including NUL).
  * No-op for STATIC/LOCAL (cannot grow external buffers).
  */
-void    fs2_reserve(fs2 *s, size_t need);
+void        fs2_reserve(fs2 *s, size_t need);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — value (stack body)
@@ -282,7 +282,7 @@ void    fs2_reserve(fs2 *s, size_t need);
  * @return    fs2 value with a fresh heap buffer.
  * @warning   `sysraise` if allocation fails (OOM).
  */
-fs2   fs2_init    (size_t sz);
+fs2         fs2_init(size_t sz);
 
 /**
  * @brief Create a growable fs2 as a deep copy of a C string.
@@ -291,7 +291,7 @@ fs2   fs2_init    (size_t sz);
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
  * @warning    `invraise` if @p src is NULL.
  */
-fs2   fs2_fromstr (const char *src);
+fs2         fs2_fromstr(const char *src);
 
 /**
  * @brief Create a growable fs2 via printf-style formatting.
@@ -301,7 +301,7 @@ fs2   fs2_fromstr (const char *src);
  * @return     fs2 value (ALLOC) containing the formatted result.
  * @warning    `userraise` on format error; `invraise` if @p fmt is NULL.
  */
-fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
  * @brief Deep-copy any fs2 into a new growable one.
@@ -313,7 +313,7 @@ fs2   fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
  * @return     fs2 value (ALLOC) with a heap copy of the source content.
  * @warning    `invraise` if @p src is NULL.
  */
-fs2   fs2_clone   (const fs2 *src);
+fs2         fs2_clone   (const fs2 *src);
 
 /**
  * @brief Steal the buffer from @p src into a new stack fs2.
@@ -326,7 +326,7 @@ fs2   fs2_clone   (const fs2 *src);
  * @return     fs2 value that now owns the former src buffer.
  * @warning    `invraise` if @p src is NULL or FS2_LOCAL.
  */
-fs2   fs2_movefrom(fs2 *src);
+fs2         fs2_movefrom(fs2 *src);
 
 /**
  * @brief Steal a heap or static C string into an fs2.
@@ -341,7 +341,7 @@ fs2   fs2_movefrom(fs2 *src);
  * @return      fs2 value wrapping the stolen pointer.
  * @warning     `invraise` if pointers are NULL; `userraise` for unsupported flag.
  */
-fs2   fs2_movefromstr(const char **from, fs2_flags fl);
+fs2         fs2_movefromstr(const char **from, fs2_flags fl);
 
 /**
  * @brief Adopt a heap-allocated C string with a known length.
@@ -355,7 +355,7 @@ fs2   fs2_movefromstr(const char **from, fs2_flags fl);
  * @param saved_len Known logical length (avoids a strlen call).
  * @return          fs2 value (ALLOC) wrapping the adopted buffer.
  */
-fs2   fs2_adoptn(char **str, size_t saved_len);
+fs2         fs2_adoptn(char **str, size_t saved_len);
 
 /**
  * @brief Adopt a heap-allocated C string (length computed via strlen).
@@ -366,7 +366,7 @@ fs2   fs2_adoptn(char **str, size_t saved_len);
  * @param str  Pointer to the heap char* to adopt; set to NULL on success.
  * @return     fs2 value (ALLOC) wrapping the adopted buffer.
  */
-fs2   fs2_adopt(char **str);
+fs2         fs2_adopt(char **str);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — heap (BODYALLOC set)
@@ -383,7 +383,7 @@ fs2   fs2_adopt(char **str);
  *
  * @return  Heap-allocated fs2*, or raises on OOM.
  */
-fs2     *fs2_heap          (void);
+fs2        *fs2_heap          (void);
 
 /**
  * @brief Allocate a growable fs2 on the heap with given capacity.
@@ -393,7 +393,7 @@ fs2     *fs2_heap          (void);
  * @param sz  Initial buffer capacity (including NUL slot).
  * @return    Heap-allocated fs2* (BODYALLOC | ALLOC), or raises on OOM.
  */
-fs2     *fs2_heap_init     (size_t sz);
+fs2        *fs2_heap_init     (size_t sz);
 
 /**
  * @brief Heap-allocate an fs2 as a deep copy of a C string.
@@ -401,7 +401,7 @@ fs2     *fs2_heap_init     (size_t sz);
  * @param src  Non-NULL NUL-terminated source.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC) with a heap copy.
  */
-fs2     *fs2_heap_fromstr  (const char *src);
+fs2        *fs2_heap_fromstr  (const char *src);
 
 /**
  * @brief Heap-allocate an fs2 via printf-style formatting.
@@ -410,7 +410,7 @@ fs2     *fs2_heap_fromstr  (const char *src);
  * @param ...  Format arguments.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC).
  */
-fs2     *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+fs2        *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
  * @brief Heap-allocate an fs2 as a deep copy of another fs2.
@@ -420,7 +420,7 @@ fs2     *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 
  * @param src  Non-NULL source fs2.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC) with a heap copy.
  */
-fs2     *fs2_heap_clone    (const fs2 *src);
+fs2        *fs2_heap_clone    (const fs2 *src);
 
 /**
  * @brief Deprecated: heap-allocate an fs2 by stealing from @p src.
@@ -430,8 +430,8 @@ fs2     *fs2_heap_clone    (const fs2 *src);
  * @param src  Source fs2 (unused).
  * @deprecated Use fs2_stacktoheap.
  */
-[[deprecated]]
-fs2     *fs2_heap_movefrom (fs2 *src);
+// [[deprecated]]
+fs2        *fs2_heap_movefrom (fs2 *src);
 
 /**
  * @brief Heap-allocate an fs2 by stealing a C string pointer.
@@ -442,7 +442,7 @@ fs2     *fs2_heap_movefrom (fs2 *src);
  * @param fl    FS2_STATIC or FS2_ALLOC.
  * @return      Heap-allocated fs2* (BODYALLOC + given flag).
  */
-fs2     *fs2_heap_movefromstr(const char **from, fs2_flags fl);
+fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
@@ -471,7 +471,7 @@ fs2     *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  * @note        fs2_move(x, x) is a no-op that returns @p to.
  * @warning     `invraise` if either pointer is NULL or either side is FS2_LOCAL.
  */
-fs2     *fs2_move(fs2 *to, fs2 *from);
+fs2        *fs2_move(fs2 *to, fs2 *from);
 
 /**
  * @brief Exchange the string values of two fs2 objects.
@@ -589,7 +589,7 @@ static inline fs2 *fs2_clear(fs2 *s) {
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
  */
-long    fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+long        fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Validator
@@ -613,7 +613,7 @@ long    fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *res
  * @param s    fs2 to validate (may be NULL — reports and returns false).
  * @return     true if all invariants hold; false otherwise.
  */
-bool    fs2_validate(FILE *restrict out, const fs2 *restrict s);
+bool        fs2_validate(FILE *restrict out, const fs2 *restrict s);
 
 /**
  * @brief Compare two fs2 objects for technical equality.
@@ -626,7 +626,7 @@ bool    fs2_validate(FILE *restrict out, const fs2 *restrict s);
  * @return true if len, flags and content are identical; false otherwise.
  * @note invraise(SIGABRT) if either pointer is NULL.
  */
-bool    fs2_techcmp(const fs2 *s1, const fs2 *s2);
+bool        fs2_techcmp(const fs2 *s1, const fs2 *s2);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
@@ -648,7 +648,7 @@ bool    fs2_techcmp(const fs2 *s1, const fs2 *s2);
  * @param bodyfreed  Out: current struct free count (if mismatch).
  * @return           true if no leaks detected; false otherwise.
  */
-bool   fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
+bool        fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
 
 #ifdef FS2TEST
 /**
@@ -657,7 +657,7 @@ bool   fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bo
  * Test-only. Must be called between test cases to get clean leak
  * reporting from fs2_checkleak.
  */
-void   __fs2_checkreset(void);
+void        __fs2_checkreset(void);
 #endif /* FS2TEST */
 
 #endif /* !FS2_H */

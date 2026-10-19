@@ -23,12 +23,12 @@
  * @param n   Step number (1, 2, 3 …) inside the test.
  * @param s   fs2 value or pointer to validate.
  */
-#define CHECK_FS2VALID(n, s)                                               \
+#define CHECK_FS2VALID(n, s)                                              \
     do {                                                                  \
-        if (!fs2_validate(logfile, (s))) {                               \
-            logsimple("FAIL %s: fsvalid %d failed on %s",                \
+        if (!fs2_validate(logfile, (s))) {                                \
+            logsimple("FAIL %s: fsvalid %d failed on %s",                 \
                       __func__, (n), #s);                                 \
-            cr_assert_fail("fsvalid %d failed on %s", (n), #s);          \
+            cr_assert_fail("fsvalid %d failed on %s", (n), #s);           \
         }                                                                 \
     } while (0)
 
