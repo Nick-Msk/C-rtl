@@ -36,53 +36,47 @@ static atomic_int               g_free_body_cnt         = 0;
 static inline void fs2_freestr(fs2 *s);
 static inline void fs2_freebody(fs2 *s);
 
-// bodyalloc flag API
+/**
+ * @brief Extract the BODYALLOC bit from a flag set (internal).
+ *
+ * @param s  Non-NULL fs2.
+ * @return   FS2_BODYALLOC or 0.
+ */
 static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
     return s->flags & FS2_BODYALLOC;
 }
+
+/**
+ * @brief Set or clear the BODYALLOC bit, leaving other bits untouched (internal).
+ *
+ * @param s            Non-NULL fs2.
+ * @param bodyallocflag  Pass FS2_BODYALLOC to set, 0 to clear.
+ */
 static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
     bodyallocflag &= FS2_BODYALLOC;
     s->flags = ( (s->flags & ~FS2_BODYALLOC) | bodyallocflag);
 }
 
 /**
- * @brief Manages the capacity of an fs object.
+ * @brief Grow (or shrink) the heap buffer of an fs2 to a new capacity (internal).
  *
- * This function handles memory expansion for buffers allocated on the heap.
- * If the buffer is a fixed-size/static buffer (does not have @c FS_FLAG_ALLOC),
- * this function performs no resizing operations.
+ * Only operates on FS2_ALLOC buffers; STATIC/LOCAL are silently skipped.
  *
- * @param[in,out] s      Pointer to the fs structure.
- * @param[in]     newsz  The target capacity in bytes.
- * @param[in]     init   Growth strategy flag:
- *                      - If @c true: Uses exponential growth (via @ref calcnewsize)
- *                        to ensure amortized O(1) complexity for heap-allocated buffers.
- *                      - If @c false: Attempts to resize to the exact @p newsz.
+ * @param s      Non-NULL fs2.
+ * @param newsz  Target capacity in bytes (including NUL slot).
+ * @param init   Growth strategy:
+ *               - true:  exponential growth via calcnewsize (amortized O(1)).
+ *               - false: exact resize to @p newsz.
  *
- * @return Returns a log/status object containing information about the
- *         result (e.g., the final size @c s->sz).
+ * In both modes the result is clamped to at least FS_MIN_ALLOC (16) bytes.
+ * Realloc is called only if the target exceeds current capacity (init mode)
+ * or unconditionally (exact mode).
  *
- * @note **Conditional Behavior**: The resizing logic (reallocation) is only 
- *      executed if @ref fs_alloc(s) returns true (i.e., the buffer was 
- *      initialized with @c FS_FLAG_ALLOC).
- * 
- * @warning **Pointer Invalidation**: For heap-allocated buffers, a successful 
- *          reallocation invalidates all existing pointers previously obtained 
- *          from this buffer (e.g., via @ref elem0).
- * 
- * @warning **Exception Handling**: For heap-allocated buffers, this function 
- *          may raise a system exception via @ref userraiseint if memory 
- *          allocation fails.
- * 
- * @details 
- * The internal execution flow is as follows:
- * 1. Check if @ref fs_alloc(s) is true. If false, return immediately.
- * 2. Check if the current capacity `s->sz` is sufficient for `newsz`.
- * 3. If more space is needed:
- *    a. Calculate new target size (exponential if @p init is true).
- *    b. Attempt to allocate new memory using `realloc`.
- *    c. If successful, update `s->v` and `s->sz`.
- *    d. If allocation fails, raise exception via @ref userraiseint.
+ * @return @p s (for chaining). If FS2_TRACE is defined, returns a log object.
+ *
+ * @warning `sysraise` (OOM) if `realloc` fails.
+ * @note    After a successful realloc, any previously obtained pointer into
+ *          the buffer is invalidated.
  */
 
 static fs2                              *increasesize(fs2 *s, size_t newsz, bool init) {
@@ -113,7 +107,18 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
 #endif /* FS2_TRACE */
 }
 
-// internal constructor
+/**
+ * @brief Deep-copy @p len bytes from @p src into a new ALLOC fs2 (internal).
+ *
+ * Allocates len+1 via fs2_init, memcpys len+1 bytes (including NUL),
+ * and sets the logical length.
+ *
+ * @param src  Source buffer; must have at least @p len+1 bytes.
+ * @param len  Number of significant bytes (excluding NUL).
+ * @return     New ALLOC fs2 with a heap copy.
+ *
+ * @warning    `sysraise` on OOM.
+ */
 static inline fs2 
 copymem(const char *src, size_t len) {
     fs2         res = fs2_init(len + 1);
@@ -122,6 +127,20 @@ copymem(const char *src, size_t len) {
     return res;
 }
 
+/**
+ * @brief printf-format into a new ALLOC fs2 from a va_list (internal).
+ *
+ * Two-pass: first measures via `vsnprintf(NULL,0)`, then allocates and
+ * formats. Handles the case where the buffer is exactly the right size
+ * (vsnprintf returns the needed size even if truncated).
+ *
+ * @param fmt  Format string (must not be NULL).
+ * @param ap   Initialised argument list.
+ * @return     ALLOC fs2 containing the formatted string.
+ *
+ * @warning    `userraise` if vsnprintf returns negative (format error).
+ * @warning    `sysraise` on OOM.
+ */
 static inline fs2
 fs2_fromstrf_va(const char *fmt, va_list ap) {
     va_list ap2;
@@ -138,18 +157,22 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
     return res;
 }
 
-/* -------------------------------------------------------------------------
- * Low-level constructor — the ONLY place where fs2 is built by hand.
+/**
+ * @brief Low-level constructor: build an fs2 from a raw pointer (internal).
  *
- * All public constructors (fs2_init, fs2_fromstr, fs2_adopt, …) go
- * through here or through FS2()/FS2_LITERAL/FS2_LOCAL macros. Counter
- * bookkeeping happens here and nowhere else.
+ * The ONLY place where an fs2 is assembled by hand. All public
+ * constructors (fs2_init, fs2_fromstr, fs2_adopt, ...) go through here
+ * or through the FS2()/FS2_LITERAL/FS2_LOCAL macros.
  *
- * @param buf   Buffer. Must not be NULL.
- * @param len   Logical length (excluding NUL). buf[len] is assumed
- *              to be '\0'.
- * @param flag  Exactly one of FS2_STATIC / FS2_LOCAL / FS2_ALLOC.
- *              BODYALLOC.
+ * Counter bookkeeping (g_alloc_cnt) happens here and nowhere else.
+ *
+ * @param buf   Buffer. Must not be NULL. For non-STATIC flags, buf[len]
+ *              is explicitly set to NUL.
+ * @param len   Logical length (excluding NUL).
+ * @param flag  Exactly one of FS2_STATIC / FS2_LOCAL / FS2_ALLOC,
+ *              optionally OR'd with FS2_BODYALLOC.
+ * @return      Constructed fs2 value.
+ * @warning     invraise if buf is NULL.
  */
 static inline fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
@@ -339,11 +362,14 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
  * Move assignment (not a constructor)
  *
  *   dst ← src, then src → empty. Frees whatever `to` held before.
+ *
+ * Implementation: rejects LOCAL on either side. Frees dst's ALLOC buffer.
+ * Copies struct, restores each side's BODYALLOC. Resets src to FS2().
  * ───────────────────────────────────────────────────────────────────────── */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
     invraise(dst != NULL && src != NULL, 
-        "Null pointerы %p %p", dst, src);
+        "Null pointers %p %p", dst, src);
 
 
     if (dst == src)
@@ -416,7 +442,16 @@ fs2_stacktoheap(fs2 *src) {
  /* ─────────────────────────────────────────────────────────────────────────
  * Value destructor
  * ───────────────────────────────────────────────────────────────────────── */
-// NO check here - MUST be ALLOC
+/**
+ * @brief Free the heap buffer of an ALLOC fs2 (internal).
+ *
+ * Caller guarantees the flag is ALLOC. The null-guard on `s->v` is
+ * defensive: in canonical empty state (v=NULL) this is a no-op.
+ *
+ * After the call: v=NULL, len=0, sz=0. Flags are NOT modified.
+ *
+ * @param s  Non-NULL fs2 that is ALLOC.
+ */
 static inline void 
 fs2_freestr(fs2 *s) {
     if (s->v) { // s->v in heap!
@@ -431,7 +466,14 @@ fs2_freestr(fs2 *s) {
     } 
 }
 
-// NO check here - MUST be BODYALLOC
+/**
+ * @brief Free the heap-allocated fs2 struct itself (internal).
+ *
+ * Caller guarantees the flag is BODYALLOC. The pointer must be valid
+ * heap memory; stack-allocated fs2 never carries this flag.
+ *
+ * @param s  Non-NULL pointer to a heap-allocated fs2.
+ */
 static inline void 
 fs2_freebody(fs2 *s) {
     int cnt = atomic_fetch_add(&g_free_body_cnt, 1) + 1;
@@ -546,6 +588,14 @@ fs2_validate(FILE *restrict out, const fs2 *restrict s)
     return true;
 }
 
+/**
+ * @brief Technical equality: len + flags + content must all match.
+ *
+ * Fast path: same pointer or both empty → true.
+ * Slow path: compare len, flags, then memcmp up to len bytes.
+ *
+ * See fs2.h for the full contract.
+ */
 bool    
 fs2_techcmp(const fs2 *s1, const fs2 *s2) {
     if (s1 == s2)
