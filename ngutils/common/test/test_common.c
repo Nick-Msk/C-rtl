@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* -------------------------------------------------------------------------
  * Macros
@@ -333,4 +334,140 @@ Test(common, item_exch_same_pointer) {
 
     CHECK_EQ("v1[0]",   v1[0],   'A');
     CHECK_EQ("v1[299]", v1[299], 'A');
+}
+
+/* -------------------------------------------------------------------------
+ * Linear Comparators
+ * ------------------------------------------------------------------------- */
+
+Test(common, compare_int_works) {
+    CHECK_EQ("1 vs 2", compare_int(1, 2), -1);
+    CHECK_EQ("2 vs 1", compare_int(2, 1),  1);
+    CHECK_EQ("1 vs 1", compare_int(1, 1),  0);
+    CHECK_EQ("neg vs pos", compare_int(-5, 10), -1);
+}
+
+Test(common, compare_uint_works) {
+    CHECK_EQ("1 vs 2", compare_uint(1U, 2U), -1);
+    CHECK_EQ("2 vs 1", compare_uint(2U, 1U),  1);
+    CHECK_EQ("1 vs 1", compare_uint(1U, 1U),  0);
+}
+
+Test(common, compare_long_works) {
+    CHECK_EQ("1 vs 2", compare_long(100L, 200L), -1);
+    CHECK_EQ("2 vs 1", compare_long(200L, 100L),  1);
+    CHECK_EQ("1 vs 1", compare_long(100L, 100L),  0);
+}
+
+Test(common, compare_ulong_works) {
+    CHECK_EQ("1 vs 2", compare_ulong(100UL, 200UL), -1);
+    CHECK_EQ("2 vs 1", compare_ulong(200UL, 100UL),  1);
+    CHECK_EQ("1 vs 1", compare_ulong(100UL, 100UL),  0);
+}
+
+Test(common, compare_char_works) {
+    CHECK_EQ("'a' vs 'b'", compare_char('a', 'b'), -1);
+    CHECK_EQ("'b' vs 'a'", compare_char('b', 'a'),  1);
+    CHECK_EQ("'a' vs 'a'", compare_char('a', 'a'),  0);
+}
+
+Test(common, compare_bool_works) {
+    CHECK_EQ("false vs true", compare_bool(false, true), -1);
+    CHECK_EQ("true vs false", compare_bool(true, false),  1);
+    CHECK_EQ("true vs true",  compare_bool(true, true),   0);
+}
+
+Test(common, compare_dbl_works) {
+    CHECK_EQ("1.0 vs 2.0", compare_dbl(1.0, 2.0), -1);
+    CHECK_EQ("2.0 vs 1.0", compare_dbl(2.0, 1.0),  1);
+    CHECK_EQ("1.0 vs 1.0", compare_dbl(1.0, 1.0),  0);
+}
+
+Test(common, compare_dbl_handles_nan) {
+    /* В C: NAN больше любого числа, но NAN == NAN ложно.
+       Твой код: любая NAN считается "меньше" числа, и NAN == NAN. */
+    CHECK_EQ("NaN vs 1.0", compare_dbl(NAN, 1.0), -1);
+    CHECK_EQ("1.0 vs NaN", compare_dbl(1.0, NAN),  1);
+    CHECK_EQ("NaN vs NaN", compare_dbl(NAN, NAN),  0);
+    CHECK_EQ("-Inf vs +Inf", compare_dbl(-INFINITY, INFINITY), -1);
+}
+
+Test(common, compare_ptr_works) {
+    int arr[2] = {0, 1};
+    /* Убедимся, что &arr[0] < &arr[1] */
+    CHECK_EQ("lower vs higher", compare_ptr(&arr[0], &arr[1]), -1);
+    CHECK_EQ("higher vs lower", compare_ptr(&arr[1], &arr[0]),  1);
+    CHECK_EQ("same ptr",        compare_ptr(&arr[0], &arr[0]),  0);
+}
+
+/* -------------------------------------------------------------------------
+ * Pointer comparators (qsort style)
+ *
+ * These take pointers to the values, so we pass &val.
+ * ------------------------------------------------------------------------- */
+
+Test(common, pchar_cmp_works) {
+    char a = 'a', b = 'b';
+    CHECK_EQ("a vs b", pchar_cmp(&a, &b), -1);
+    CHECK_EQ("b vs a", pchar_revcmp(&a, &b),  1); /* reverse: a vs b => 1 */
+}
+
+Test(common, pint_cmp_works) {
+    int a = 10, b = 20;
+    CHECK_EQ("10 vs 20", pint_cmp(&a, &b), -1);
+    CHECK_EQ("10 vs 20 rev", pint_revcmp(&a, &b), 1);
+}
+
+Test(common, plong_cmp_works) {
+    long a = 10L, b = 20L;
+    CHECK_EQ("10 vs 20", plong_cmp(&a, &b), -1);
+    CHECK_EQ("10 vs 20 rev", plong_revcmp(&a, &b), 1);
+}
+
+Test(common, pptr_cmp_works) {
+    /* Используем массив, чтобы гарантировать, что &arr[0] < &arr[1] */
+    int arr[2] = {9, 8};
+    void *p1 = &arr[0];
+    void *p2 = &arr[1];
+    
+    /* pptr_cmp ожидает указатели на указатели */
+    CHECK_EQ("p1 vs p2", pptr_cmp(&p1, &p2), -1); 
+    CHECK_EQ("p1 vs p2 rev", pptr_revcmp(&p1, &p2), 1);
+}
+
+Test(common, pitem_cmp_works) {
+    int a = 0x01020304;
+    int b = 0x01020305;
+    CHECK_EQ("memcmp less", pitem_cmp(&a, &b, sizeof(int)), -1);
+    CHECK_EQ("memcmp equal", pitem_cmp(&a, &a, sizeof(int)), 0);
+}
+
+/* -------------------------------------------------------------------------
+ * qsort integration (proves the pointer comparators actually work)
+ * ------------------------------------------------------------------------- */
+
+Test(common, qsort_using_pint_cmp) {
+    int arr[] = { 5, 2, 8, 1, 9, 3 };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    qsort(arr, n, sizeof(int), pint_cmp);
+
+    for (size_t i = 1; i < n; i++) {
+        CHECK_TRUE("sorted ascending", arr[i - 1] <= arr[i]);
+    }
+    CHECK_EQ("first", arr[0], 1);
+    CHECK_EQ("last",  arr[n - 1], 9);
+}
+
+Test(common, qsort_using_pint_revcmp) {
+    int arr[] = { 5, 2, 8, 1, 9, 3 };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    qsort(arr, n, sizeof(int), pint_revcmp);
+
+    for (size_t i = 1; i < n; i++) {
+        CHECK_TRUE("sorted descending", arr[i - 1] >= arr[i]);
+    }
+    CHECK_EQ("first", arr[0], 9);
+    CHECK_EQ("last",  arr[n - 1], 1);
 }
