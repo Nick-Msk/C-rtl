@@ -2035,3 +2035,86 @@ Test(fs2, techcmp_null_aborts, .signal = SIGABRT) {
     fs2_techcmp(&a, NULL);   /* invraise → abort */
     fs2_free(&a);
 }
+
+/* -------------------------------------------------------------------------
+ * fs_shrink — reduce buffer size to len + 1
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, shrink_large_buffer_to_exact_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(100); /* sz >= 100 */
+    memcpy(s.v, "hello", 6);
+    s.len = 5;
+
+    CHECK_TRUE("sz > 16 before shrink", s.sz > 16);
+
+    fs2 *ret = fs_shrink(&s);
+    CHECK_PTR_EQ("returns same pointer", ret, &s);
+
+    /* init=false => no FS_MIN_ALLOC clamp => exact len + 1 */
+    CHECK_EQ("sz reduced to len+1", s.sz, 6);
+    CHECK_EQ("len unchanged", s.len, 5);
+    CHECK_STR_EQ("string intact", s.v, "hello");
+    CHECK_EQ("NUL at end", s.v[s.len], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, shrink_long_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(200);
+    /* Create a string longer than FS_MIN_ALLOC */
+    char buf[50];
+    memset(buf, 'A', 40);
+    buf[40] = '\0';
+    memcpy(s.v, buf, 41);
+    s.len = 40;
+
+    fs_shrink(&s);
+
+    /* len + 1 = 41, exact match */
+    CHECK_EQ("sz reduced to len+1", s.sz, 41);
+    CHECK_EQ("len unchanged", s.len, 40);
+    CHECK_STR_EQ("string intact", s.v, buf);
+    CHECK_EQ("NUL at end", s.v[s.len], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, shrink_static_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2_LITERAL("static");
+    
+    size_t sz_before = s.sz;
+    fs_shrink(&s);
+    
+    CHECK_EQ("sz unchanged", s.sz, sz_before);
+    CHECK_STR_EQ("string intact", s.v, "static");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, shrink_local_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 64);
+    memcpy(s.v, "local", 6);
+    s.len = 5;
+
+    size_t sz_before = s.sz;
+    fs_shrink(&s);
+    
+    CHECK_EQ("sz unchanged", s.sz, sz_before);
+    CHECK_STR_EQ("string intact", s.v, "local");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
+    fs_shrink(NULL);
+}

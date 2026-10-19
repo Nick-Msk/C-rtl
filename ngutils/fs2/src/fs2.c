@@ -79,7 +79,8 @@ static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
  *          the buffer is invalidated.
  */
 
-static fs2                              *increasesize(fs2 *s, size_t newsz, bool init) {
+static fs2 *
+increasesize(fs2 *s, size_t newsz, bool init) {
 #ifdef FS2_TRACE 
     logenter("oldsz %zu, newsz %zu, init %s v %p, is alloc? %s", 
             s->sz, newsz, bool_str(init), s->v, bool_str(fs2_is_alloc(s)) );
@@ -87,9 +88,9 @@ static fs2                              *increasesize(fs2 *s, size_t newsz, bool
     if (fs2_is_alloc(s) ) {
         if (init)
             newsz = calcnewsize(SIZE_POWER2, newsz);    // with increase type
-        if (newsz < FS_MIN_ALLOC)
+        if (init && newsz < FS_MIN_ALLOC)              // if !init -> mostly shrink
             newsz = FS_MIN_ALLOC;
-        if (newsz > s->sz || !init) {
+        if (!init || newsz > s->sz) {                   // !init -> realloc ANYWAY
                 char *v = realloc(s->v, newsz);
                 if (!v)
                     sysraise(ERR_UNABLE_ALLOCATE, "Unable to allocate %zu bytes", newsz);
@@ -365,6 +366,12 @@ fs2_reserve(fs2 *s, size_t need)
         increasesize(s, need, true);
 }
 
+fs2 *      
+fs_shrink(fs2 *s) {
+    invraise(s != NULL, "Null pointer");
+    s = increasesize(s, s->len + 1, false);
+    return s;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)

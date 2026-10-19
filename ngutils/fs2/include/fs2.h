@@ -258,7 +258,9 @@ static inline bool          fs2_is_null(const fs2 *s) {
  * @brief Ensure capacity for at least `need` bytes (including NUL).
  * No-op for STATIC/LOCAL (cannot grow external buffers).
  */
-void        fs2_reserve(fs2 *s, size_t need);
+extern void       fs2_reserve(fs2 *s, size_t need);
+
+extern fs2 *      fs_shrink(fs2 *s);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — value (stack body)
@@ -430,7 +432,6 @@ fs2        *fs2_heap_clone    (const fs2 *src);
  * @param src  Source fs2 (unused).
  * @deprecated Use fs2_stacktoheap.
  */
-// [[deprecated]]
 fs2        *fs2_heap_movefrom (fs2 *src);
 
 /**
