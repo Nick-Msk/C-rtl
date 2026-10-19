@@ -1,29 +1,13 @@
+# =============================================================================
 # Shared build rules for ngutils/* subprojects.
 #
-# Each project's Makefile sets PROJNAME and includes this file:
-#
-#     PROJNAME = bool
-#     include ../Makefile.common
-#
-# Optional, for projects that depend on siblings:
-#
-#     PROJNAME = error
-#     REQUIRES = log bool
-#     include ../Makefile.common
+# Each project's Makefile sets PROJNAME and includes this file.
+# To override file lists (for multi-file projects), set SRC_LIST,
+# TEST_SRC_LIST, or SRC_HDR *before* including this file.
+# =============================================================================
 
 # ── GNU Make version guard ──────────────────────────────────────────────────
-#
-# 4.0+ is required: earlier versions have unreliable $(eval) inside
-# $(foreach), different handling of multiline define/call, and no
-# $(file ...). Apple's shipped Make 3.81 fails on our REQ_RULE and
-# docker-test-recipe patterns.
-#
-# macOS users with Homebrew:
-#     brew install make
-#     export PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"
-
 MAKE_VERSION_MAJOR := $(firstword $(subst ., ,$(MAKE_VERSION)))
-
 MAKE_VERSION_MINOR := $(word 2,$(subst ., ,$(MAKE_VERSION)))
 
 ifeq ($(MAKE_VERSION_MAJOR),3)
@@ -38,26 +22,21 @@ ifeq ($(PROJNAME),)
 $(error PROJNAME is not set — define it before including Makefile.common)
 endif
 
-# --- toolchain & flags ---
-
+# ── Toolchain & Flags ───────────────────────────────────────────────────────
 CC          ?= cc
 CFLAGS      += -Wall -Wextra -std=gnu11 -Iinclude
+CFLAGS      += -DTEST_PROJNAME=\"$(PROJNAME)\"
 
-# Stringified project name for test_common.h (test_setup uses it to
-# build the log path). Quoting: the shell sees \" which it converts
-# to a literal " before passing to the compiler.
-CFLAGS += -DTEST_PROJNAME=\"$(PROJNAME)\"
+CRIT_CFLAGS ?= $(shell pkg-config --cflags criterion 2>/dev/null)
+CRIT_LIBS   ?= $(shell pkg-config --libs   criterion 2>/dev/null)
+HAVE_CRITERION := $(shell pkg-config --exists criterion 2>/dev/null && echo yes)
+REQUIRE_CRITERION ?= 0
+
+CLANG_TIDY  ?= clang-tidy
+SCAN_BUILD  ?= scan-build
+MAKEFLAGS   += --no-print-directory
 
 # ── Sanitizers ──────────────────────────────────────────────────────────────
-#
-#   SANITIZE=asan    ASan + UBSan.  macOS and Linux.
-#   SANITIZE=lsan    ASan + LSan.   Linux only (LeakSanitizer).
-#
-# SANITIZE and BUILD_DIR must reach sub-makes as make arguments
-# (VAR=value before the goal), not as environment assignments. A
-# parent make already has BUILD_DIR=build from ?=, and passing an env
-# var would be shadowed by the parse-time value.
-
 SANITIZE ?=
 
 ifeq ($(SANITIZE),asan)
@@ -70,78 +49,87 @@ else
   SAN_CC_FLAGS =
   SAN_RUN      =
 endif
-
 CFLAGS += $(SAN_CC_FLAGS)
 
-CRIT_CFLAGS ?= $(shell pkg-config --cflags criterion 2>/dev/null)
-CRIT_LIBS   ?= $(shell pkg-config --libs   criterion 2>/dev/null)
-
-HAVE_CRITERION := $(shell pkg-config --exists criterion 2>/dev/null && echo yes)
-REQUIRE_CRITERION ?= 0
-
-CLANG_TIDY  ?= clang-tidy
-SCAN_BUILD  ?= scan-build
-
-MAKEFLAGS   += --no-print-directory
-
-# --- cross-utility dependencies ---
-
+# ── Cross-utility dependencies ──────────────────────────────────────────────
 REQUIRES     ?=
 REQ_INCLUDES  = $(addprefix -I../,$(addsuffix /include,$(REQUIRES)))
-
 CFLAGS       += $(REQ_INCLUDES)
 
-# --- layout ---
-
+# ── Layout & Paths ──────────────────────────────────────────────────────────
 BUILD_DIR    ?= build
 DEBUG         = $(BUILD_DIR)/debug
 RELEASE       = $(BUILD_DIR)/release
 DBG_OBJ       = $(DEBUG)/obj
 REL_OBJ       = $(RELEASE)/obj
 
-REQ_ARCHIVES = $(foreach req,$(REQUIRES),../$(req)/$(BUILD_DIR)/debug/lib$(req).a)
-
 DBG_CFLAGS    = -g -O0
 REL_CFLAGS    = -O2 -DNDEBUG
 
-SRC           = $(wildcard src/*.c)
-TEST_SRC      = test/test_$(PROJNAME).c
-SRC_HDR       = include/$(PROJNAME).h
+REQ_ARCHIVES  = $(foreach req,$(REQUIRES),../$(req)/$(BUILD_DIR)/debug/lib$(req).a)
 
-SRC_OBJ       = $(patsubst src/%.c,$(DBG_OBJ)/%.o,$(SRC))
-TEST_OBJ      = $(DBG_OBJ)/test_$(PROJNAME).o
-TEST_BIN      = $(DEBUG)/test_$(PROJNAME)
+# ── File Lists (Explicit) ───────────────────────────────────────────────────
+# Defaults assume one source/header/test file matching PROJNAME.
+# Override these in the project Makefile if you have more.
+SRC_LIST      ?= src/$(PROJNAME).c
+TEST_SRC_LIST ?= test/test_$(PROJNAME).c
+SRC_HDR       ?= include/$(PROJNAME).h
+
+# Derived object lists
+OBJ_LIST      = $(patsubst src/%.c,$(DBG_OBJ)/%.o,$(SRC_LIST))
+TEST_OBJ_LIST = $(patsubst test/%.c,$(DBG_OBJ)/test_%.o,$(TEST_SRC_LIST))
+REL_OBJ_LIST  = $(patsubst src/%.c,$(REL_OBJ)/%.o,$(SRC_LIST))
+
 LIB           = $(DEBUG)/lib$(PROJNAME).a
-
-REL_SRC_OBJ   = $(patsubst src/%.c,$(REL_OBJ)/%.o,$(SRC))
 REL_LIB       = $(RELEASE)/lib$(PROJNAME).a
+TEST_BIN      = $(DEBUG)/test_$(PROJNAME)
 
-DEPFILES      = $(SRC_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(REL_SRC_OBJ:.o=.d)
+DEPFILES      = $(OBJ_LIST:.o=.d) $(TEST_OBJ_LIST:.o=.d) $(REL_OBJ_LIST:.o=.d)
 
-.PHONY: all lib librelease test check clean list \
-        analyze analyze-lib analyze-test \
-        asan_check asan_leak FORCE clean-logs-$(PROJNAME)
+.PHONY: all lib librelease test check analyze analyze-lib analyze-test \
+        asan_check asan_leak clean list arch-logs clean-log-archive \
+        clean-logs-$(PROJNAME) FORCE
 
-# --- default ---
-
+# ── Default Target ──────────────────────────────────────────────────────────
 all:
 	@$(MAKE) lib
 	@$(MAKE) test
 	@$(MAKE) librelease
 
-# --- debug lib ---
+# ── Build Rules ─────────────────────────────────────────────────────────────
 
+# Debug Library
 lib: $(LIB)
-
-$(LIB): $(SRC_OBJ) | $(DEBUG)
+$(LIB): $(OBJ_LIST) | $(DEBUG)
 	@ar rcs $@ $^
 	@echo "Built: $@"
 
-$(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
+# Release Library
+librelease: $(REL_LIB)
+$(REL_LIB): $(REL_OBJ_LIST) | $(RELEASE)
+	@ar rcs $@ $^
+	@echo "Built: $@"
+
+# Compilation rules (static pattern)
+$(OBJ_LIST): $(DBG_OBJ)/%.o: src/%.c $(SRC_HDR) | $(DBG_OBJ)
 	$(CC) $(CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
 
-# --- test ---
+$(TEST_OBJ_LIST): $(DBG_OBJ)/test_%.o: test/%.c $(SRC_HDR) | $(DBG_OBJ)
+	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
+
+$(REL_OBJ_LIST): $(REL_OBJ)/%.o: src/%.c $(SRC_HDR) | $(REL_OBJ)
+	$(CC) $(CFLAGS) $(REL_CFLAGS) -MMD -MP -c $< -o $@
+
+# Directory creation
+$(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
+	@mkdir -p $@
+
+# ── Testing & Logging ───────────────────────────────────────────────────────
 TEST_LOG ?= 1
+
+LOG_ARCHIVE_DIR   = logs/archive
+LOG_ARCHIVE_TS   := $(shell date +%Y%m%d_%H%M%S)
+LOG_ARCHIVE_FILE  = $(LOG_ARCHIVE_DIR)/$(PROJNAME)_$(LOG_ARCHIVE_TS).log.gz
 
 ifeq ($(HAVE_CRITERION),yes)
 
@@ -151,20 +139,16 @@ ifeq ($(TEST_LOG),1)
 endif
 	@$(SAN_RUN) $(TEST_BIN)
 ifeq ($(TEST_LOG),1)
-	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
+	@find logs -maxdepth 1 -name 'log_$(PROJNAME)_*.log' \
 		-exec cat {} + > logs/result/all.log
-	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' -delete
-	echo "Merged: logs/result/all.log"
+	@find logs -maxdepth 1 -name 'log_$(PROJNAME)_*.log' -delete
+	@echo "Merged: logs/result/all.log"
 endif
 
-$(TEST_BIN): $(SRC_OBJ) $(TEST_OBJ) $(REQ_ARCHIVES) | $(DEBUG)
+$(TEST_BIN): $(OBJ_LIST) $(TEST_OBJ_LIST) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
 
-$(TEST_OBJ): $(TEST_SRC) $(SRC_HDR) | $(DBG_OBJ)
-	$(CC) $(CFLAGS) $(CRIT_CFLAGS) $(DBG_CFLAGS) -MMD -MP -c $< -o $@
-
 else
-
 test:
 ifeq ($(REQUIRE_CRITERION),1)
 	@echo "ERROR: Criterion not found, REQUIRE_CRITERION=1" >&2
@@ -174,25 +158,9 @@ else
 	@echo "      Install with: brew install criterion  (macOS)"
 	@echo "                    apt install libcriterion-dev  (Debian/Ubuntu)"
 endif
-
 endif
 
-
-# Archive of merged logs from previous runs.
-# Format: logs/archive/<projname>_<YYYYMMDD_HHMMSS>.log.gz
-#
-# LOG_ARCHIVE_TS is := (immediate) so $(shell date) runs once per
-# make invocation. With a recursive = the timestamp would change on
-# every expansion and the gzip output would not match the echo.
-
-LOG_ARCHIVE_DIR   = logs/archive
-LOG_ARCHIVE_TS   := $(shell date +%Y%m%d_%H%M%S)
-LOG_ARCHIVE_FILE  = $(LOG_ARCHIVE_DIR)/$(PROJNAME)_$(LOG_ARCHIVE_TS).log.gz
-
-.PHONY: arch-logs clean-log-archive clean-logs-$(PROJNAME)
-
-# Archive the current logs/result/all.log before clean-logs wipes it.
-# No-op if the file is missing or empty (first run, or TEST_LOG=0).
+# Log Archiving & Cleaning
 arch-logs:
 	@if [ -s logs/result/all.log ]; then \
 	    mkdir -p $(LOG_ARCHIVE_DIR); \
@@ -205,32 +173,14 @@ clean-log-archive:
 	@echo "Removed: $(LOG_ARCHIVE_DIR)"
 
 clean-logs-$(PROJNAME): arch-logs
-	@rm -f logs/log_$(PROJNAME)*.log
+	@rm -f logs/log_$(PROJNAME)_*.log
 	@rm -rf logs/result
 
-# --- release lib ---
-
-librelease: $(REL_LIB)
-
-$(REL_LIB): $(REL_SRC_OBJ) | $(RELEASE)
-	@ar rcs $@ $^
-	@echo "Built: $@"
-
-$(REL_OBJ)/%.o: src/%.c $(SRC_HDR) | $(REL_OBJ)
-	$(CC) $(CFLAGS) $(REL_CFLAGS) -MMD -MP -c $< -o $@
-
-# --- dirs ---
-
-$(DBG_OBJ) $(REL_OBJ) $(DEBUG) $(RELEASE):
-	@mkdir -p $@
-
-# --- analysis ---
-
+# ── Analysis ────────────────────────────────────────────────────────────────
 check:
-	$(CLANG_TIDY) $(SRC) $(TEST_SRC) -- $(CFLAGS) $(CRIT_CFLAGS)
+	$(CLANG_TIDY) $(SRC_LIST) $(TEST_SRC_LIST) -- $(CFLAGS) $(CRIT_CFLAGS)
 
 analyze: analyze-lib
-
 analyze-lib:
 	@mkdir -p $(BUILD_DIR)/analyze
 	@rm -rf $(DEBUG)
@@ -243,12 +193,7 @@ analyze-test:
 	@$(SCAN_BUILD) --status-bugs -o $(BUILD_DIR)/analyze-test \
 	    $(MAKE) $(TEST_BIN)
 
-# --- sanitizers ---
-#
-# BUILD_DIR and SANITIZE are passed as make arguments, not env
-# assignments. This ensures $(TEST_BIN) etc. resolve against the
-# sanitizer build tree, and that the value survives $(MAKE) recursion.
-
+# ── Sanitizers ──────────────────────────────────────────────────────────────
 asan_check:
 	@echo "==> asan_check $(PROJNAME): ASan + UBSan"
 	@$(MAKE) clean test BUILD_DIR=build/asan-ubsan SANITIZE=asan
@@ -262,8 +207,7 @@ asan_leak:
 	    $(MAKE) clean test BUILD_DIR=build/asan-lsan SANITIZE=lsan; \
 	fi
 
-# --- misc ---
-
+# ── Misc / Cleanup ──────────────────────────────────────────────────────────
 clean:
 	@find $(BUILD_DIR) -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
 	@rmdir $(BUILD_DIR) 2>/dev/null || true
@@ -272,8 +216,7 @@ list:
 	@echo "Targets:"
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | sed 's/:.*//' | sort -u | sed 's/^/  /'
 
-# --- cross-project archives ---
-
+# ── Cross-project Dependencies ──────────────────────────────────────────────
 FORCE:
 
 define REQ_RULE
