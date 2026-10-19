@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <stddef.h>
 
+#include "log.h"
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Sanitizer detection
  *

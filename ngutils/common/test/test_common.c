@@ -1,6 +1,7 @@
 #include <criterion/criterion.h>
 
 #include "common.h"
+#include "test_common.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -232,4 +233,104 @@ Test(common, versions_terminated_by_null) {
     while (v[n]) ++n;
     cr_assert_geq(n, 1);
     cr_assert_null(v[n]);
+}
+
+/* -------------------------------------------------------------------------
+ * Exchangers
+ * ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Exchangers
+ * ------------------------------------------------------------------------- */
+
+Test(common, char_exch) {
+    char a = 'A';
+    char b = 'B';
+    char_exch(&a, &b);
+    CHECK_EQ("a", a, 'B');
+    CHECK_EQ("b", b, 'A');
+}
+
+Test(common, int_exch) {
+    int a = 10;
+    int b = 20;
+    int_exch(&a, &b);
+    CHECK_EQ("a", a, 20);
+    CHECK_EQ("b", b, 10);
+}
+
+Test(common, long_exch) {
+    long a = 100L;
+    long b = -200L;
+    long_exch(&a, &b);
+    CHECK_EQ("a", a, -200L);
+    CHECK_EQ("b", b, 100L);
+}
+
+Test(common, dbl_exch) {
+    double a = 1.5;
+    double b = -2.5;
+    dbl_exch(&a, &b);
+    CHECK_EQ("a", a, -2.5);
+    CHECK_EQ("b", b, 1.5);
+}
+
+Test(common, ptr_exch) {
+    int x = 1, y = 2;
+    void *p1 = &x;
+    void *p2 = &y;
+    
+    ptr_exch(&p1, &p2);
+    
+    CHECK_PTR_EQ("p1", p1, &y);
+    CHECK_PTR_EQ("p2", p2, &x);
+}
+
+Test(common, cstr_exch) {
+    const char *s1 = "hello";
+    const char *s2 = "world";
+    
+    cstr_exch(&s1, &s2);
+    
+    CHECK_STR_EQ("s1", s1, "world");
+    CHECK_STR_EQ("s2", s2, "hello");
+}
+
+/* -------------------------------------------------------------------------
+ * item_exch
+ * ------------------------------------------------------------------------- */
+
+Test(common, item_exch_small_stack_buffer) {
+    struct { int a; int b; } v1 = { 1, 2 };
+    struct { int a; int b; } v2 = { 3, 4 };
+
+    item_exch(&v1, &v2, sizeof(v1));
+
+    CHECK_EQ("v1.a", v1.a, 3);
+    CHECK_EQ("v1.b", v1.b, 4);
+    CHECK_EQ("v2.a", v2.a, 1);
+    CHECK_EQ("v2.b", v2.b, 2);
+}
+
+Test(common, item_exch_large_heap_buffer) {
+    char v1[300];
+    char v2[300];
+    memset(v1, 'A', sizeof(v1));
+    memset(v2, 'B', sizeof(v2));
+
+    item_exch(v1, v2, sizeof(v1));
+
+    CHECK_EQ("v1[0]",   v1[0],   'B');
+    CHECK_EQ("v1[299]", v1[299], 'B');
+    CHECK_EQ("v2[0]",   v2[0],   'A');
+    CHECK_EQ("v2[299]", v2[299], 'A');
+}
+
+Test(common, item_exch_same_pointer) {
+    char v1[300];
+    memset(v1, 'A', sizeof(v1));
+
+    item_exch(v1, v1, sizeof(v1));
+
+    CHECK_EQ("v1[0]",   v1[0],   'A');
+    CHECK_EQ("v1[299]", v1[299], 'A');
 }
