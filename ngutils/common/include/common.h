@@ -16,6 +16,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <stdint.h>
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -275,5 +277,104 @@ static inline void              item_exch(void *v1, void *v2, size_t sz) {
     if (allocflag)
         free(tmp);
 }
+
+/* -------------------------------------------------------------------------
+ * Comparators
+ * ------------------------------------------------------------------------- */
+
+// ----------------------------------- Comparators ----------------------------
+
+static inline int               compare_char(unsigned char v1, unsigned char v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_bool(bool v1, bool v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_int(int v1, int v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_uint(unsigned v1, unsigned v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_long(long v1, long v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_ulong(unsigned long v1, unsigned long v2){
+    if (v1 > v2)
+        return 1;
+    else if (v1 < v2)
+        return -1;
+    else
+        return 0;
+}
+static inline int               compare_dbl(double v1, double v2){
+    if (isnan(v1) && isnan(v2))
+        return 0;
+    if (isnan(v1))
+        return -1;
+    if (isnan(v2))
+        return 1;
+    if (v1 > v2)
+        return 1;
+    if (v1 < v2)
+        return -1;
+    return 0;
+}
+static inline int               compare_ptr(const void *restrict v1, const void *restrict v2){
+    uintptr_t ua = (uintptr_t) v1;
+    uintptr_t ub = (uintptr_t) v2;
+    return (ua > ub) - (ua < ub);
+}
+
+// ------------------- Pointer comparators -------------------
+
+typedef int                     (*pointer_comparator)(const void *restrict s1, const void *restrict s2);
+// simple char comparator
+extern int                      pchar_cmp(const void *restrict s1, const void *restrict s2);
+// simple char reverse comparator
+extern int                      pchar_revcmp(const void *restrict s1, const void *restrict s2);
+// simple comparator pointer int
+extern int                      pint_cmp(const void *restrict i1, const void *restrict i2);
+// simple reverse comparator pointer int
+extern int                      pint_revcmp(const void *restrict i1, const void *restrict i2);
+// simple comparator pointer long
+extern int                      plong_cmp(const void *restrict l1, const void *restrict l2);
+// simple reverse comparator pointer long
+extern int                      plong_revcmp(const void *restrict l1, const void *restrict l2);
+// simple comparator pointer to pointer
+extern int                      pptr_cmp(const void *restrict p1, const void *restrict p2);
+// simple reverse comparator pointer to pointer
+extern int                      pptr_revcmp(const void *restrict p1, const void *restrict p2);
+// simple comparator pointer double
+extern int                      pdbl_cmp(const void *restrict d1, const void *restrict d2);
+// simple reverse comparator pointer double
+extern int                      pdbl_revcmp(const void *restrict d1, const void *restrict d2);
+// sz sized item, note: it's not possible to compare c-string by that except they've exactly lenght sz or sz - 1
+extern int                      pitem_cmp(const void *restrict d1, const void *restrict d2, size_t sz);
 
 #endif /* !COMMON_H */
