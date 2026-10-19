@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -210,5 +211,69 @@ int pchar_cmp   (const void *restrict s1, const void *restrict s2);
 
 /** @brief Descending byte comparator. */
 int pchar_revcmp(const void *restrict s1, const void *restrict s2);
+
+/* -------------------------------------------------------------------------
+ * Exchangers
+ * ------------------------------------------------------------------------- */
+
+// simple char exhanger
+static inline void              char_exch(char *s1, char *s2){
+    char c = *s1;
+    *s1 = *s2;
+    *s2 = c;
+}
+// simple int exchanger
+static inline void              int_exch(int *i1, int *i2){
+    int tmp = *i1;
+    *i1 = *i2;
+    *i2 = tmp;
+}
+// simple long exchanger
+static inline void              long_exch(long *i1, long *i2){
+    long tmp = *i1;
+    *i1 = *i2;
+    *i2 = tmp;
+}
+// simple double exchanger  TODO: think about generic exchanger
+static inline void              dbl_exch(double *d1, double *d2) {
+    double tmp = *d1;
+    *d1 = *d2;
+    *d2 = tmp;
+}
+
+// simple pointer exchanger  TODO: think about generic exchanger
+static inline void              ptr_exch(void **v1, void **v2) {
+    void    *tmp = *v1;
+    *v1 = *v2;
+    *v2 = tmp;
+}
+// c-str exch
+static inline void              cstr_exch(const char **s1, const char **s2) {
+    const char *tmp = *s1;
+    *s1 = *s2;
+    *s2 = tmp;
+}
+
+static inline void              item_exch(void *v1, void *v2, size_t sz) {
+    char        buffer[256]; // Маленький буфер на стеке
+    bool        allocflag = false;
+    void       *tmp;
+
+    if (v1 == v2) 
+        return;
+    if (sz <= sizeof(buffer)) {
+        tmp = buffer;
+    } else {
+        tmp = malloc(sz);
+        if (!tmp) 
+            return;         // can't userraise there!!!
+        allocflag = true;
+    }
+    memcpy(tmp, v1, sz);
+    memcpy(v1, v2, sz);
+    memcpy(v2, tmp, sz);
+    if (allocflag)
+        free(tmp);
+}
 
 #endif /* !COMMON_H */
