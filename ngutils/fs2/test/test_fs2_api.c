@@ -1702,6 +1702,8 @@ Test(fs2_api, chrn_all_variants_banana_k2) {
     CHECK_EQ("nrchr_nth k=2", fs2_nrchr_nth (&s, 'a', 2, 10), 3);
     CHECK_EQ("irchr_nth k=2", fs2_irchr_nth (&s, 'a', 2),     3);
     CHECK_EQ("nirchr_nth k=2", fs2_nirchr_nth(&s, 'a', 2, 10), 3);
+    CHECK_EQ("irchr_nth k=0", fs2_irchr_nth(&s, 'a', 0), -1);
+    CHECK_EQ("nirchr_nth k=0", fs2_nirchr_nth(&s, 'a', 0, 10), -1);
 
     fs2_free(&s);
     assert_balanced();
