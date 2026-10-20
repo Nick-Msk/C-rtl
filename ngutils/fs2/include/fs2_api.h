@@ -45,44 +45,98 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
 
+// TODO:
+
 // ----------------------------- One Symbol Search ------------------------------------------
 // pointer, sensitive, unlim (library call)
-static inline long           fs2_chr(const fs2 *str, char c) {
+static inline ptrdiff_t           fs2_chr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
 
     const char *p = strchr(str->v, c);
-    return p ? p - str->v : -1;
+    return p ? (ptrdiff_t) (p - str->v) : -1;
 }
 // pointer, sensitive, lim
-static inline long           fs2_nchr(const fs2 *str, char c, size_t lim) {
+static inline ptrdiff_t           fs2_nchr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
 
-    const char *p = str->v;
+    const unsigned char *p = (const unsigned char *) str->v;
+    const unsigned char uc = (unsigned char) c;
     while (lim-- > 0 && *p != '\0') {
-        if (*p == c)
-            return p - str->v;
+        if (*p == uc)
+            return (ptrdiff_t) (p - (const unsigned char *) str->v);
         p++;
     }
     return -1;
 }
 // pointer, insensitive, lim
-static inline long           fs2_nichr(const fs2 *str, char c, size_t lim) {
+static inline ptrdiff_t           fs2_nichr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
 
-    const char *p = str->v;
-    c = tolower(c);
+    const unsigned char *p = (const unsigned char *) str->v;
+    const int lc = tolower((unsigned char) c);
     while (lim-- > 0 && *p != '\0') {
-        if (*p == c)
-            return p - str->v;
+        if (tolower(*p) == lc)
+            return (ptrdiff_t) (p - (const unsigned char *) str->v);
         p++;
     }
     return -1;
 }
 // pointer, insensitive, unlim
-static inline long           fs2_ichr(const fs2 *str, char c) {
+static inline ptrdiff_t           fs2_ichr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
 
     return fs2_nichr(str, c, str->len);
+}
+
+// ------------------------------------------ ONE SYMBOL REVERSE SEARCH  --------------------------------------------------------
+// pointer, sensitive, unlim
+static inline ptrdiff_t           fs2_rchr(const fs2 *str, int c) { 
+    invraise(str != NULL, "Null pointer");
+
+    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
+    while (pos >= 0 && str->v[pos] != c)
+        pos--;
+    return pos;
+}
+// pointer, insensitive, unlim
+static inline ptrdiff_t           fs2_irchr(const fs2 *str, int c) { 
+    invraise(str != NULL, "Null pointer");
+
+    c = tolower(c);
+    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
+    while (pos >= 0 && tolower( (unsigned char) str->v[pos] ) != c)
+        pos--;
+    return pos;
+}
+
+// pointer, sensitive, lim, reverse
+static inline ptrdiff_t             fs2_nrchr(const fs2 *str, int c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+    //if (str->len == 0 || lim == 0) return -1;
+
+    ptrdiff_t   lo  = (str->len > lim) ? (ptrdiff_t) (str->len - lim) : 0;
+    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
+    while (pos >= lo) {
+        if (str->v[pos] == c)
+            return pos;
+        pos--;
+    }
+    return -1;
+}
+
+// pointer, insensitive, lim, reverse
+static inline ptrdiff_t             fs2_nirchr(const fs2 *str, int c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+
+    c = tolower(c);
+    ptrdiff_t   lo  = (str->len > lim) ? (ptrdiff_t) (str->len - lim) : 0;
+    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
+    while (pos >= lo) {
+        if (tolower((unsigned char) str->v[pos]) == c) 
+            return pos;
+        pos--;
+    }
+    return -1;
 }
 
 // ------------------------------------------------------------------------------------------
