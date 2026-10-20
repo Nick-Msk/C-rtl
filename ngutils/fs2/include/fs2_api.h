@@ -61,6 +61,7 @@ static inline ptrdiff_t           fs2_nchr(const fs2 *str, int c, size_t lim) {
 
     const unsigned char *p = (const unsigned char *) str->v;
     const unsigned char uc = (unsigned char) c;
+    
     while (lim-- > 0 && *p != '\0') {
         if (*p == uc)
             return (ptrdiff_t) (p - (const unsigned char *) str->v);
@@ -74,6 +75,7 @@ static inline ptrdiff_t           fs2_nichr(const fs2 *str, int c, size_t lim) {
 
     const unsigned char *p = (const unsigned char *) str->v;
     const int lc = tolower((unsigned char) c);
+
     while (lim-- > 0 && *p != '\0') {
         if (tolower(*p) == lc)
             return (ptrdiff_t) (p - (const unsigned char *) str->v);
@@ -93,8 +95,11 @@ static inline ptrdiff_t           fs2_ichr(const fs2 *str, int c) {
 static inline ptrdiff_t           fs2_rchr(const fs2 *str, int c) { 
     invraise(str != NULL, "Null pointer");
 
-    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
-    while (pos >= 0 && str->v[pos] != c)
+    const unsigned char *p = (const unsigned char *) str->v;
+    const unsigned char  uc = (unsigned char) c;
+    ptrdiff_t            pos = (ptrdiff_t) str->len - 1;
+
+    while (pos >= 0 && p[pos] != uc)
         pos--;
     return pos;
 }
@@ -102,9 +107,11 @@ static inline ptrdiff_t           fs2_rchr(const fs2 *str, int c) {
 static inline ptrdiff_t           fs2_irchr(const fs2 *str, int c) { 
     invraise(str != NULL, "Null pointer");
 
-    c = tolower(c);
-    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
-    while (pos >= 0 && tolower( (unsigned char) str->v[pos] ) != c)
+    const unsigned char *p = (const unsigned char *) str->v;
+    const int            lc = tolower((unsigned char) c);
+    ptrdiff_t            pos = (ptrdiff_t) str->len - 1;
+
+    while (pos >= 0 && tolower( (unsigned char) p[pos] ) != lc)
         pos--;
     return pos;
 }
