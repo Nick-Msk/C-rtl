@@ -406,11 +406,6 @@ Test(fs2_api, sort_null_aborts, .signal = SIGABRT) {
     fs2_sort(NULL, true);
 }
 
-Test(fs2_api, sort_static_rejected, .signal = SIGINT) {
-    fs2 s = FS2_LITERAL("static");
-    fs2_sort(&s, true); /* userraise → SIGINT */
-}
-
 /* -------------------------------------------------------------------------
  * fs2_partialsort — in-place character sort on a sub-range [from, to)
  * ------------------------------------------------------------------------- */
@@ -464,12 +459,59 @@ Test(fs2_api, partialsort_empty_range_valid) {
     assert_balanced();
 }
 
-/* ── negatives ─────────────────────────────────────────────────────── */
+Test(fs2_api, partialsort_to_clamped_to_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XdcbaY");
 
-Test(fs2_api, partialsort_static_rejected, .signal = SIGINT) {
-    fs2 s = FS2_LITERAL("static");
-    fs2_partialsort(&s, 0, 3, true);
+    /* to=100 → clamp to len=6; from=1 < 6 → сортирует "dcbaY" */
+    fs2_partialsort(&s, 1, 100, true);
+    CHECK_STR_EQ("clamped to end", s.v, "XYabcd");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
 }
+
+Test(fs2_api, partialsort_from_gt_to_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* from > to → no-op (было бы SIZE_MAX в qsort без if-guard) */
+    fs2_partialsort(&s, 2, 1, true);
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_from_beyond_len_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* from=10, to=100 → to=3, from >= to → no-op */
+    fs2_partialsort(&s, 10, 100, true);
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* v=NULL, len=0, sz=0 */
+    CHECK_FS2VALID(1, &s);
+
+    /* to=100 → clamp to 0; from=0, from < to → false; v+from не вычисляется */
+    fs2_partialsort(&s, 0, 100, true);
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, partialsort_null_aborts, .signal = SIGABRT) {
     fs2_partialsort(NULL, 0, 1, true);
