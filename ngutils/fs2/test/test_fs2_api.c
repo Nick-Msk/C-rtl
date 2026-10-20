@@ -1325,3 +1325,271 @@ Test(fs2_api, nul_rejected_by_all_finders) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_chr N-th occurence series
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, chrn_return_type_is_ptrdiff_t) {
+    /* Compile-time: несоответствие типа возврата — constraint violation
+     * (warning/error) даже если sizeof совпадает. */
+    ptrdiff_t (*f_chr_nth )(const fs2 *, int, size_t)        = fs2_chr_nth;
+    ptrdiff_t (*f_nchr_nth)(const fs2 *, int, size_t, size_t) = fs2_nchr_nth;
+    (void)f_chr_nth;
+    (void)f_nchr_nth;
+
+    /* Runtime: -1 — знаковое, не SIZE_MAX */
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    ptrdiff_t r = fs2_chr_nth(&s, 'z', 1);
+    cr_assert(r < 0, "not-found must be negative, got %td", r);
+    cr_assert(r == -1, "not-found must be exactly -1, got %td", r);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+_Static_assert(
+        _Generic(&fs2_chr_nth,
+                 ptrdiff_t (*)(const fs2 *, int, size_t): 1,
+                 default: 0) == 1,
+        "fs2_chr_nth must return ptrdiff_t");
+
+Test(fs2_api, chrn_k1_equals_chr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* b0 a1 n2 a3 n4 a5 */
+    CHECK_FS2VALID(1, &s);
+
+    CHECK_EQ("chr_nth  k=1 == chr",
+             fs2_chr_nth (&s, 'a', 1),    fs2_chr (&s, 'a'));
+    CHECK_EQ("nchr_nth k=1 lim=6 == nchr",
+             fs2_nchr_nth(&s, 'a', 1, 6), fs2_nchr(&s, 'a', 6));
+    CHECK_EQ("nchr_nth k=1 lim=3 == nchr lim=3",
+             fs2_nchr_nth(&s, 'a', 1, 3), fs2_nchr(&s, 'a', 3));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_last_k_equals_rchr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* три 'a': 1, 3, 5 */
+
+    /* Последнее (3-е) вхождение при прямом поиске == первое при обратном */
+    CHECK_EQ("k=3 fwd == 1st rev",
+             fs2_chr_nth(&s, 'a', 3), fs2_rchr(&s, 'a'));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_forward_sequence) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* b0 a1 n2 a3 n4 a5 */
+    CHECK_FS2VALID(1, &s);
+
+    CHECK_EQ("k=1 → 1", fs2_chr_nth(&s, 'a', 1), 1);
+    CHECK_EQ("k=2 → 3", fs2_chr_nth(&s, 'a', 2), 3);
+    CHECK_EQ("k=3 → 5", fs2_chr_nth(&s, 'a', 3), 5);
+    CHECK_EQ("k=4 → -1", fs2_chr_nth(&s, 'a', 4), -1);
+
+    /* Одиночные вхождения: k=2 уже -1 */
+    CHECK_EQ("'n' k=1 → 2", fs2_chr_nth(&s, 'n', 1), 2);
+    CHECK_EQ("'n' k=2 → 4", fs2_chr_nth(&s, 'n', 2), 4);
+    CHECK_EQ("'n' k=3 → -1", fs2_chr_nth(&s, 'n', 3), -1);
+    CHECK_EQ("'b' k=1 → 0", fs2_chr_nth(&s, 'b', 1), 0);
+    CHECK_EQ("'b' k=2 → -1", fs2_chr_nth(&s, 'b', 2), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_k_zero_rejected) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* k 1-based: ноль невалиден, не "первое вхождение" */
+    CHECK_EQ("k=0 → -1", fs2_chr_nth(&s, 'l', 0), -1);
+    CHECK_EQ("nchr k=0 → -1", fs2_nchr_nth(&s, 'l', 0, 5), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_k_exceeds_matches) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");   /* один 'b' */
+
+    CHECK_EQ("k=2 → -1", fs2_chr_nth(&s, 'b', 2), -1);
+    CHECK_EQ("k=100 → -1", fs2_chr_nth(&s, 'b', 100), -1);
+
+    /* k = SIZE_MAX: завершается быстро, не зависает */
+    CHECK_EQ("k=SIZE_MAX → -1", fs2_chr_nth(&s, 'b', SIZE_MAX), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_empty_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+    CHECK_FS2VALID(1, &s);
+
+    CHECK_EQ("k=1 → -1", fs2_chr_nth(&s, 'a', 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchrn_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* пустое окно — ни одного вхождения */
+    CHECK_EQ("lim=0", fs2_nchr_nth(&s, 'h', 1, 0), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchrn_lim_lt_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* 'a' на 1, 3, 5 */
+
+    /* lim=4 → окно [0,4) = "bana"; третьего 'a' нет */
+    CHECK_EQ("k=1 lim=4", fs2_nchr_nth(&s, 'a', 1, 4), 1);
+    CHECK_EQ("k=2 lim=4", fs2_nchr_nth(&s, 'a', 2, 4), 3);
+    CHECK_EQ("k=3 lim=4", fs2_nchr_nth(&s, 'a', 3, 4), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchrn_lim_ge_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+
+    /* lim >= len → ведёт себя как chr_nth */
+    CHECK_EQ("lim=len",    fs2_nchr_nth(&s, 'a', 3, 6),
+                           fs2_chr_nth(&s, 'a', 3));
+    CHECK_EQ("lim>len",    fs2_nchr_nth(&s, 'a', 3, 100),
+                           fs2_chr_nth(&s, 'a', 3));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_match_at_last_position) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabc");   /* c на 2 и 5 */
+    CHECK_FS2VALID(1, &s);
+
+    CHECK_EQ("k=1 'c' → 2", fs2_chr_nth(&s, 'c', 1), 2);
+    CHECK_EQ("k=2 'c' → 5", fs2_chr_nth(&s, 'c', 2), 5);   /* последний байт */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchrn_match_at_window_end) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XabcX");   /* 'c' на 3 */
+
+    /* lim=4 → окно [0,3] = "Xabc"; 'c' — последний байт окна */
+    CHECK_EQ("k=1 lim=4", fs2_nchr_nth(&s, 'c', 1, 4), 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_k1_of_k_on_last) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaa");   /* три 'a': 0, 1, 2 */
+
+    CHECK_EQ("k=3 → 2 (last byte)", fs2_chr_nth(&s, 'a', 3), 2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_large_offsets) {
+    __fs2_checkreset();
+
+    const size_t n = 100 * 1024;          /* 100 KB */
+    fs2 s = fs2_init(n + 2);
+    memset(s.v, 'a', n);
+    s.v[n]     = 'b';                      /* последний значащий */
+    s.v[n + 1] = '\0';
+    s.len      = n + 1;
+    CHECK_FS2VALID(1, &s);
+
+    /* Позиция ~100000 — точно не влезет в int16/int8 */
+    CHECK_EQ("'b' at end", fs2_chr_nth(&s, 'b', 1), (ptrdiff_t)n);
+    CHECK_EQ("1st 'a'",    fs2_chr_nth(&s, 'a', 1), 0);
+    CHECK_EQ("n-th 'a'",   fs2_chr_nth(&s, 'a', (size_t)n), (ptrdiff_t)(n - 1));
+    CHECK_EQ("(n+1)-th 'a'", fs2_chr_nth(&s, 'a', (size_t)n + 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_nul_rejected) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FS2VALID(1, &s);
+
+    CHECK_EQ("chr_nth  k=1", fs2_chr_nth (&s, '\0', 1), -1);
+    CHECK_EQ("chr_nth  k=5", fs2_chr_nth (&s, '\0', 5), -1);
+    CHECK_EQ("nchr_nth lim=100", fs2_nchr_nth(&s, '\0', 1, 100), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchrn_k1_equals_rchr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+
+    CHECK_EQ("k=1 == rchr",
+             fs2_rchr_nth (&s, 'a', 1),    fs2_rchr (&s, 'a'));
+    CHECK_EQ("k=1 lim=4 == nrchr",
+             fs2_nrchr_nth(&s, 'a', 1, 4), fs2_nrchr(&s, 'a', 4));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchrn_reverse_sequence) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* 'a' на 1, 3, 5 */
+
+    CHECK_EQ("k=1 (last)  → 5", fs2_rchr_nth(&s, 'a', 1), 5);
+    CHECK_EQ("k=2          → 3", fs2_rchr_nth(&s, 'a', 2), 3);
+    CHECK_EQ("k=3 (first)  → 1", fs2_rchr_nth(&s, 'a', 3), 1);
+    CHECK_EQ("k=4          → -1", fs2_rchr_nth(&s, 'a', 4), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchrn_forward_reverse_symmetry) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* три 'a' */
+
+    /* i-е прямое + (count-i+1)-е обратное указывают на одну позицию */
+    for (size_t i = 1; i <= 3; i++) {
+        cr_assert_eq(fs2_chr_nth(&s, 'a', i),
+                     fs2_rchr_nth(&s, 'a', 4 - i),
+                     "fwd(%zu) != rev(%zu)", i, 4 - i);
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chrn_null_aborts, .signal = SIGABRT) {
+    fs2_chr_nth(NULL, 'a', 1);
+}
+
+Test(fs2_api, nchrn_null_aborts, .signal = SIGABRT) {
+    fs2_nchr_nth(NULL, 'a', 1, 5);
+}
