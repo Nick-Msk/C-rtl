@@ -61,7 +61,7 @@ static inline ptrdiff_t           fs2_nchr(const fs2 *str, int c, size_t lim) {
 
     const unsigned char *p = (const unsigned char *) str->v;
     const unsigned char uc = (unsigned char) c;
-    
+
     while (lim-- > 0 && *p != '\0') {
         if (*p == uc)
             return (ptrdiff_t) (p - (const unsigned char *) str->v);
@@ -145,6 +145,26 @@ static inline ptrdiff_t             fs2_nirchr(const fs2 *str, int c, size_t lim
     }
     return -1;
 }
+
+// ------------------------------------------ ONE SYMBOL, N occurence SEARCH  --------------------------------------------------------
+
+/* forward, sensitive */
+ptrdiff_t   fs2_chr_nth   (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim);
+
+/* forward, insensitive */
+ptrdiff_t   fs2_ichr_nth  (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim);
+
+// ------------------------------------------ ONE SYMBOL, N occurence REVERSE SEARCH  --------------------------------------------------------
+
+/* reverse, sensitive */
+ptrdiff_t   fs2_rchr_nth  (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim);
+
+/* reverse, insensitive */
+ptrdiff_t   fs2_irchr_nth (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim);
 
 // ------------------------------------------------------------------------------------------
 extern long           
