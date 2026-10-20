@@ -1,5 +1,21 @@
+/**
+ * @file fs2_api.c
+ * @brief Non-inline implementations for fs2_api.h:
+ *        reverse, partialsort, and N-occurrence search functions.
+ */
+
 #include "fs2_api.h"
 
+/**
+ * @brief Reverse the string in place.
+ *
+ * Swaps bytes from both ends toward the center.
+ *
+ * @pre    str is not FS2_STATIC; str->len <= str->sz.
+ *
+ * @param str  Non-NULL fs2 (ALLOC or LOCAL).
+ * @return     @p str (for chaining).
+ */
 fs2*             
 fs2_reverse(fs2 *str) {
     invraise(str != NULL, "Null pointer");
@@ -15,24 +31,61 @@ fs2_reverse(fs2 *str) {
     return str;
 }
 
+/**
+ * @brief Sort a sub-range [from, to) of the string in place.
+ *
+ * Uses qsort with byte-wise comparison (ascending or descending).
+ * Bound-clamps: if to > len, to is set to len; if from >= to, no-op.
+ *
+ * @pre    str is not FS2_STATIC.
+ *
+ * @param str   Non-NULL fs2 (ALLOC or LOCAL).
+ * @param from  Start offset (inclusive).
+ * @param to    End offset (exclusive); clamped to str->len.
+ * @param asc   true = ascending, false = descending.
+ */
 void             
 fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
     invraise(str != NULL, "Null pointer");
 
-    if (fs2_is_static(str))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot sort STATIC fs2 in-place");
-    qsort(str->v + from, to - from, 1, asc ? pchar_cmp: pchar_revcmp);
+    if (to > str->len)
+        to = str->len;
+    if (from < to)
+        qsort(str->v + from, to - from, 1, asc ? pchar_cmp: pchar_revcmp);
 }
 
 // ------------------------------------------ ONE SYMBOL, N occurence SEARCH  --------------------------------------------------------
 
 /* forward, sensitive */
+
+/**
+ * @brief Find the k-th (1-based) forward occurrence of byte @p c.
+ *
+ * Delegates to fs2_nchr_nth with lim = str->len.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find.
+ * @param k    1-based occurrence number (0 → -1).
+ * @return     0-based offset, or -1 if fewer than k occurrences.
+ */
 ptrdiff_t   
 fs2_chr_nth   (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
 
     return fs2_nchr_nth(str, c, k, str->len);
 } 
+/**
+ * @brief Find the k-th (1-based) forward occurrence of @p c within [0, lim).
+ *
+ * Iteratively skips past each found occurrence until the k-th is located.
+ * @p k is 1-based: k=1 finds the first occurrence.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find (case-sensitive).
+ * @param k    1-based occurrence number (0 → -1).
+ * @param lim  Maximum bytes to examine (clamped to str->len).
+ * @return     0-based offset from string start, or -1.
+ */
 ptrdiff_t
 fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
@@ -57,6 +110,17 @@ fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
 }
 
 /* forward, insensitive */
+
+/**
+ * @brief Find the k-th (1-based) forward case-insensitive occurrence of @p c.
+ *
+ * Delegates to fs2_nichr_nth with lim = str->len.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find (case-insensitive).
+ * @param k    1-based occurrence number (0 → -1).
+ * @return     0-based offset, or -1.
+ */
 ptrdiff_t
 fs2_ichr_nth  (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
@@ -64,6 +128,15 @@ fs2_ichr_nth  (const fs2 *str, int c, size_t k) {
     return fs2_nichr_nth(str, c, k, str->len);
 }
 
+/**
+ * @brief Find the k-th (1-based) forward case-insensitive occurrence within [0, lim).
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find (case-insensitive).
+ * @param k    1-based occurrence number (0 → -1).
+ * @param lim  Maximum bytes to examine (clamped to str->len).
+ * @return     0-based offset from string start, or -1.
+ */
 ptrdiff_t
 fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
@@ -90,6 +163,18 @@ fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim) {
 // ------------------------------------------ ONE SYMBOL, N occurence REVERSE SEARCH  --------------------------------------------------------
 
 /* reverse, sensitive */
+
+/**
+ * @brief Find the k-th (1-based) reverse case-sensitive occurrence of @p c.
+ *
+ * Scans from the end: k=1 is the last occurrence, k=2 the second-to-last, etc.
+ * Delegates to fs2_nrchr_nth with lim = str->len.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find.
+ * @param k    1-based reverse occurrence number (0 → -1).
+ * @return     0-based offset, or -1.
+ */
 ptrdiff_t
 fs2_rchr_nth  (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
@@ -97,6 +182,18 @@ fs2_rchr_nth  (const fs2 *str, int c, size_t k) {
     return fs2_nrchr_nth(str, c, k, str->len);
 }
 
+/**
+ * @brief Find the k-th (1-based) reverse case-sensitive occurrence within the last @p lim bytes.
+ *
+ * Scans from the end of the window [len-lim, len) toward the start.
+ * The returned offset is relative to the string start.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find.
+ * @param k    1-based reverse occurrence number (0 → -1).
+ * @param lim  Number of trailing bytes to examine (clamped to str->len).
+ * @return     0-based offset from string start, or -1.
+ */
 ptrdiff_t
 fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
@@ -121,6 +218,17 @@ fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
 }
 
 /* reverse, insensitive */
+
+/**
+ * @brief Find the k-th (1-based) reverse case-insensitive occurrence of @p c.
+ *
+ * Scans from the end. Delegates to fs2_nirchr_nth with lim = str->len.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find (case-insensitive).
+ * @param k    1-based reverse occurrence number (0 → -1).
+ * @return     0-based offset, or -1.
+ */
 ptrdiff_t
 fs2_irchr_nth (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
@@ -128,6 +236,15 @@ fs2_irchr_nth (const fs2 *str, int c, size_t k) {
     return fs2_nirchr_nth(str, c, k, str->len);
 }
 
+/**
+ * @brief Find the k-th (1-based) reverse case-insensitive occurrence within the last @p lim bytes.
+ *
+ * @param str  Non-NULL fs2.
+ * @param c    Byte to find (case-insensitive).
+ * @param k    1-based reverse occurrence number (0 → -1).
+ * @param lim  Number of trailing bytes to examine (clamped to str->len).
+ * @return     0-based offset from string start, or -1.
+ */
 ptrdiff_t
 fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
