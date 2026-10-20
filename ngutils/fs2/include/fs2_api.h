@@ -130,7 +130,8 @@ fs2_irchr(const fs2 *str, int c) {
 }
 
 // pointer, sensitive, lim, reverse
-static inline ptrdiff_t fs2_nrchr(const fs2 *str, int c, size_t lim) {
+static inline ptrdiff_t
+fs2_nrchr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
@@ -139,7 +140,8 @@ static inline ptrdiff_t fs2_nrchr(const fs2 *str, int c, size_t lim) {
 }
 
 // pointer, insensitive, lim, reverse
-static inline ptrdiff_t fs2_nirchr(const fs2 *str, int c, size_t lim) {
+static inline ptrdiff_t 
+fs2_nirchr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
