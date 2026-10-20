@@ -457,7 +457,7 @@ Test(fs2, localfill_empty_format) {
 }
 
 Test(fs2, localfill_plain_string) {
-    FS2LOCALFILL(t, "hello world");
+    FS2LOCALFILL(t, "%s", "hello world");
 
     CHECK_EQ("len", t.len, 11);
     CHECK_STR_EQ("v", t.v, "hello world");
@@ -506,7 +506,7 @@ Test(fs2, localfill_two_instances) {
 }
 
 Test(fs2, localfill_free_is_noop) {
-    FS2LOCALFILL(t, "keep me please");
+    FS2LOCALFILL(t, "%s", "keep me please");
 
     fs2_free(&t);
 
