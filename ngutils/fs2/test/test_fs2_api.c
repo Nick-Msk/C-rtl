@@ -582,7 +582,7 @@ Test(fs2_api, chr_byte_ge_128) {
 
 Test(fs2_api, chr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "world");
+    FS2LOCALFILL(s, "%s", "world");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("w at 0", fs2_chr(&s, 'w'), 0);
@@ -718,7 +718,7 @@ Test(fs2_api, nchr_byte_ge_128) {
 
 Test(fs2_api, nchr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "abcdef");
+    FS2LOCALFILL(s, "%s", "abcdef");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("c at 2",        fs2_nchr(&s, 'c', 6), 2);
@@ -822,7 +822,7 @@ Test(fs2_api, nichr_empty_string) {
 
 Test(fs2_api, nichr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "abcdef");
+    FS2LOCALFILL(s, "%s", "abcdef");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("C at 2", fs2_nichr(&s, 'C', 6), 2);
@@ -955,7 +955,7 @@ Test(fs2_api, ichr_empty_string) {
 
 Test(fs2_api, ichr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "hello");
+    FS2LOCALFILL(s, "%s", "hello");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("H at 0", fs2_ichr(&s, 'H'), 0);
@@ -1109,7 +1109,7 @@ Test(fs2_api, rchr_byte_ge_128) {
 
 Test(fs2_api, rchr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "hello");
+    FS2LOCALFILL(s, "%s", "hello");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("last l at 3", fs2_rchr(&s, 'l'), 3);
@@ -1244,7 +1244,7 @@ Test(fs2_api, irchr_negative_c) {
 
 Test(fs2_api, irchr_local) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "hello");
+    FS2LOCALFILL(s, "%s", "hello");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("L at 3", fs2_irchr(&s, 'L'), 3);
@@ -1255,7 +1255,7 @@ Test(fs2_api, irchr_local) {
 
 Test(fs2_api, irchr_local_uppercase) {
     __fs2_checkreset();
-    FS2LOCALFILL(s, "HELLO");
+    FS2LOCALFILL(s, "%s", "HELLO");
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("l at 3", fs2_irchr(&s, 'l'), 3);
