@@ -3,6 +3,42 @@
 
 #include "fs2.h"
 
+// -------------------------------- Internal helpers --------------------------------------
+
+static inline ptrdiff_t
+__fs2_chr_raw(const unsigned char *p, size_t avail, int c) {
+    const unsigned char *hit = memchr(p, (unsigned char)c, avail);
+    return hit ? (ptrdiff_t)(hit - p) : -1;
+}
+
+static inline ptrdiff_t
+__fs2_ichr_raw(const unsigned char *p, size_t avail, int c) {
+    const int lc = tolower((unsigned char)c);
+    for (size_t i = 0; i < avail; i++)
+        if (tolower(p[i]) == lc) 
+            return (ptrdiff_t)i;
+    return -1;
+}
+
+static inline ptrdiff_t
+__fs2_rchr_raw(const unsigned char *p, size_t avail, int c) {
+    const unsigned char uc = (unsigned char)c;
+    for (ptrdiff_t i = (ptrdiff_t) avail - 1; i >= 0; i--)
+        if (p[i] == uc)
+            return i;
+    return -1;
+}
+
+static inline ptrdiff_t
+__fs2_irchr_raw(const unsigned char *p, size_t avail, int c) {
+    const int lc = tolower((unsigned char)c);
+    for (ptrdiff_t i = (ptrdiff_t) avail - 1; i >= 0; i--)
+        if (tolower(p[i]) == lc)
+            return i;
+    return -1;
+}
+
+// --------------------------------------- API ---------------------------------------
 // direct access, NO change len or sz, position MUST be < sz
 static inline char *
 fs2_get(const fs2 *s, size_t pos){
@@ -49,101 +85,66 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 // ----------------------------- One Symbol Search ------------------------------------------
 // pointer, sensitive, unlim (library call)
-static inline ptrdiff_t           fs2_chr(const fs2 *str, int c) {
+static inline ptrdiff_t
+fs2_chr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
-
-    const char *p = strchr(str->v, c);
-    return p ? (ptrdiff_t) (p - str->v) : -1;
+    return __fs2_chr_raw((const unsigned char *) str->v, str->len, c);
 }
-// pointer, sensitive, lim
-static inline ptrdiff_t           fs2_nchr(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
 
-    const unsigned char *p = (const unsigned char *) str->v;
-    const unsigned char uc = (unsigned char) c;
-
-    while (lim-- > 0 && *p != '\0') {
-        if (*p == uc)
-            return (ptrdiff_t) (p - (const unsigned char *) str->v);
-        p++;
-    }
-    return -1;
-}
-// pointer, insensitive, lim
-static inline ptrdiff_t           fs2_nichr(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
-
-    const unsigned char *p = (const unsigned char *) str->v;
-    const int lc = tolower((unsigned char) c);
-
-    while (lim-- > 0 && *p != '\0') {
-        if (tolower(*p) == lc)
-            return (ptrdiff_t) (p - (const unsigned char *) str->v);
-        p++;
-    }
-    return -1;
-}
 // pointer, insensitive, unlim
-static inline ptrdiff_t           fs2_ichr(const fs2 *str, int c) {
+static inline ptrdiff_t
+fs2_ichr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
+    return __fs2_ichr_raw((const unsigned char *) str->v, str->len, c);
+}
 
-    return fs2_nichr(str, c, str->len);
+// pointer, sensitive, lim
+static inline ptrdiff_t
+fs2_nchr(const fs2 *str, int c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+    size_t avail = (lim < str->len) ? lim : str->len;
+    return __fs2_chr_raw((const unsigned char *) str->v, avail, c);
+}
+
+// pointer, insensitive, lim
+static inline ptrdiff_t
+fs2_nichr(const fs2 *str, int c, size_t lim) {
+    invraise(str != NULL, "Null pointer");
+    size_t avail = (lim < str->len) ? lim : str->len;
+    return __fs2_ichr_raw((const unsigned char *) str->v, avail, c);
 }
 
 // ------------------------------------------ ONE SYMBOL REVERSE SEARCH  --------------------------------------------------------
 // pointer, sensitive, unlim
-static inline ptrdiff_t           fs2_rchr(const fs2 *str, int c) { 
+static inline ptrdiff_t
+fs2_rchr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
-
-    const unsigned char *p = (const unsigned char *) str->v;
-    const unsigned char  uc = (unsigned char) c;
-    ptrdiff_t            pos = (ptrdiff_t) str->len - 1;
-
-    while (pos >= 0 && p[pos] != uc)
-        pos--;
-    return pos;
+    return __fs2_rchr_raw((const unsigned char *) str->v, str->len, c);
 }
+
 // pointer, insensitive, unlim
-static inline ptrdiff_t           fs2_irchr(const fs2 *str, int c) { 
+static inline ptrdiff_t
+fs2_irchr(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
-
-    const unsigned char *p = (const unsigned char *) str->v;
-    const int            lc = tolower((unsigned char) c);
-    ptrdiff_t            pos = (ptrdiff_t) str->len - 1;
-
-    while (pos >= 0 && tolower( (unsigned char) p[pos] ) != lc)
-        pos--;
-    return pos;
+    return __fs2_irchr_raw((const unsigned char *)str->v, str->len, c);
 }
 
 // pointer, sensitive, lim, reverse
-static inline ptrdiff_t             fs2_nrchr(const fs2 *str, int c, size_t lim) {
+static inline ptrdiff_t fs2_nrchr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
-    //if (str->len == 0 || lim == 0) return -1;
-
-    ptrdiff_t   lo  = (str->len > lim) ? (ptrdiff_t) (str->len - lim) : 0;
-    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
-    while (pos >= lo) {
-        if (str->v[pos] == c)
-            return pos;
-        pos--;
-    }
-    return -1;
+    size_t avail = (lim < str->len) ? lim : str->len;
+    size_t off   = str->len - avail;
+    ptrdiff_t hit = __fs2_rchr_raw((const unsigned char *)str->v + off, avail, c);
+    return hit < 0 ? -1 : hit + (ptrdiff_t)off;
 }
 
 // pointer, insensitive, lim, reverse
-static inline ptrdiff_t             fs2_nirchr(const fs2 *str, int c, size_t lim) {
+static inline ptrdiff_t fs2_nirchr(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
-
-    c = tolower(c);
-    ptrdiff_t   lo  = (str->len > lim) ? (ptrdiff_t) (str->len - lim) : 0;
-    ptrdiff_t   pos = (ptrdiff_t) str->len - 1;
-    while (pos >= lo) {
-        if (tolower((unsigned char) str->v[pos]) == c) 
-            return pos;
-        pos--;
-    }
-    return -1;
+    size_t avail = (lim < str->len) ? lim : str->len;
+    size_t off   = str->len - avail;
+    ptrdiff_t hit = __fs2_irchr_raw((const unsigned char *)str->v + off, avail, c);
+    return hit < 0 ? -1 : hit + (ptrdiff_t)off;
 }
 
 // ------------------------------------------ ONE SYMBOL, N occurence SEARCH  --------------------------------------------------------
