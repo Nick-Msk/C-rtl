@@ -804,7 +804,7 @@ Test(fs2, move_static_to_empty) {
     CHECK_STR_EQ("b.v", b.v, "literal");
     CHECK_TRUE ("b is_static", fs2_is_static(&b));
 
-    /* Источник теперь пуст */
+    /* Source is now empty */
     CHECK_NULL("a.v", a.v);
     CHECK_EQ  ("a.len", a.len, 0);
     CHECK_TRUE("a is_alloc", fs2_is_alloc(&a));
@@ -1204,7 +1204,7 @@ Test(fs2, validate_rejects_alloc_null_nonempty) {
 //     CHECK_FALSE("s not bodyalloc", fs2_is_bodyalloc(&s));
 
 //     fs2_free(&s);
-//     assert_balanced();   /* ловит: alloc_body vs free_body */
+//     assert_balanced();   /* catches: alloc_body vs free_body */
 // }
 
 Test(fs2, stacktoheap_value) {
@@ -1311,7 +1311,7 @@ Test(fs2, heap_clone_from_alloc) {
 
     CHECK_STR_EQ("h->v", h->v, "original");
     CHECK_PTR_NEQ("h->v vs a.v", h->v, a.v);
-    CHECK_FS2VALID(3, &a);   /* source не тронут */
+    CHECK_FS2VALID(3, &a);   /* source untouched */
 
     fs2_free(&a);
     fs2_free(h);
@@ -1547,9 +1547,8 @@ Test(fs2, transition_static_roundtrip) {
     CHECK_TRUE ("h is_bodyalloc", fs2_is_bodyalloc(h));
     CHECK_STR_EQ("h->v", h->v, "lit");
 
-    /* УДАЛИТЬ: CHECK_STR_EQ("a.v", a.v, "lit"); */
-    /* Заменить на: */
-    CHECK_NULL("a.v", a.v);
+    /* Removed: CHECK_STR_EQ("a.v", a.v, "lit"); */
+      CHECK_NULL("a.v", a.v);   /* source reset after stacktoheap */
 
     fs2 b = fs2_heaptostack(&h);
     CHECK_FS2VALID(3, &b);
@@ -1643,8 +1642,6 @@ Test(fs2, transition_swap_mixed_flags) {
     CHECK_FS2VALID(2, &a);
     CHECK_TRUE ("a is_static", fs2_is_static(&a));
     
-    /* УДАЛИТЬ: CHECK_TRUE("b is_static", fs2_is_static(&b)); */
-    /* Заменить на: */
     CHECK_TRUE ("b is_alloc", fs2_is_alloc(&b)); 
     CHECK_NULL ("b.v", b.v);
 

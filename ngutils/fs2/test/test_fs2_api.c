@@ -33,13 +33,13 @@ Test(fs2_api, elem_existing_pos) {
 
     size_t sz_before = s.sz;
     char *p = fs2_elem(&s, 1);
-    *p = 'X'; // Меняем существующий символ
+    *p = 'X'; // overwrite existing character
 
     CHECK_PTR_EQ("same pointer", p, s.v + 1);
     CHECK_EQ   ("sz unchanged", s.sz, sz_before);
     CHECK_EQ   ("len unchanged", s.len, 3);
     CHECK_STR_EQ("string mutated", s.v, "aXc");
-    CHECK_FS2VALID(2, &s); // Валидно, потому что len не менялся
+    CHECK_FS2VALID(2, &s); // Valid because len was not changed
 
     fs2_free(&s);
     assert_balanced();
@@ -50,14 +50,14 @@ Test(fs2_api, elem_expands_buffer_no_len_change) {
     fs2 s = fs2_fromstr("abc"); /* len=3, sz=16 */
     CHECK_FS2VALID(1, &s);
 
-    // Запрос на позицию за пределами текущего sz
+    // Request for position beyond current sz
     char *p = fs2_elem(&s, 20); 
 
     CHECK_PTR_EQ("pointer to pos 20", p, s.v + 20);
     CHECK_TRUE("sz grown", s.sz > 20);
-    CHECK_EQ  ("len NOT changed", s.len, 3); // fs2_elem не трогает len
+    CHECK_EQ  ("len NOT changed", s.len, 3); // fs2_elem does not touch len
     
-    // Сама по себе строка все еще валидна, потому что len=3, а NUL на pos 3 на месте
+    // The string is still valid: len=3 and NUL at pos 3 is intact
     CHECK_FS2VALID(2, &s); 
 
     fs2_free(&s);
@@ -73,7 +73,7 @@ Test(fs2_api, elem0_sequential_build) {
     fs2 s = FS2(); // empty
     CHECK_FS2VALID(1, &s);
 
-    // Строим строку "hello" посимвольно
+    // Build "hello" character by character
     const char *word = "hello";
     for (size_t i = 0; i < 5; i++) {
         char *p = fs2_elem0(&s, i); // pos == s->len
@@ -93,7 +93,7 @@ Test(fs2_api, elem0_overwrite_existing) {
     fs2 s = fs2_fromstr("abc");
     CHECK_FS2VALID(1, &s);
 
-    // Перезаписываем существующий символ (pos < len)
+    // Overwrite existing character (pos < len)
     char *p = fs2_elem0(&s, 1);
     *p = 'X';
 
@@ -114,14 +114,14 @@ Test(fs2_api, get_valid_indices) {
     fs2 s = fs2_fromstr("hello"); /* len=5, sz=16 */
     CHECK_FS2VALID(1, &s);
 
-    // Чтение всех символов
+    // Read all characters
     CHECK_EQ("char at 0", *fs2_get(&s, 0), 'h');
     CHECK_EQ("char at 4", *fs2_get(&s, 4), 'o');
     
-    // Чтение NUL-терминатора (pos == len)
+    // Read NUL terminator (pos == len)
     CHECK_EQ("char at len", *fs2_get(&s, 5), '\0');
 
-    // Проверка арифметики указателей
+    // Verify pointer arithmetic
     CHECK_PTR_EQ("pointer math", fs2_get(&s, 2), s.v + 2);
 
     fs2_free(&s);
@@ -137,8 +137,8 @@ Test(fs2_api, elem_streaming_write) {
     fs2 s = FS2(); /* empty ALLOC */
     CHECK_FS2VALID(1, &s);
 
-    /* Пишем строку "streaming" посимвольно.
-     * fs2_elem расширяет буфер, но не трогает len. */
+    /* Write "streaming" character by character.
+     * fs2_elem expands the buffer but does not touch len. */
     const char *data = "streaming";
     size_t len = strlen(data);
     
@@ -147,13 +147,13 @@ Test(fs2_api, elem_streaming_write) {
         *p = data[i];
     }
 
-    /* len все еще 0, строка формально пустая, хотя байты записаны */
+    /* len is still 0, string is formally empty even though bytes are written */
     CHECK_EQ("len unchanged during stream", s.len, 0);
     
-    /* Один раз обновляем len и ставим NUL */
+    /* Update len once and set NUL */
     fs2_setlen(&s, len);
 
-    /* Теперь всё валидно и читается */
+    /* Now it is valid and readable */
     CHECK_FS2VALID(2, &s);
     CHECK_EQ   ("len updated", s.len, 9);
     CHECK_STR_EQ("streamed string", s.v, "streaming");
@@ -254,33 +254,33 @@ Test(fs2_api, reverse_static_rejected, .signal = SIGINT) {
 
 Test(fs2_api, reverse_double_invariant) {
     __fs2_checkreset();
-    /* Берем строку с четной и нечетной длиной для полноты */
+    /* Take a string with odd length for completeness */
     fs2 s = fs2_fromstr("racecar");
     CHECK_FS2VALID(1, &s);
 
-    /* Сохраняем оригинал для сравнения */
+    /* Save original for comparison */
     fs2 original = fs2_clone(&s);
     CHECK_FS2VALID(2, &original);
 
-    /* Разворачиваем 1-й раз */
+    /* Reverse 1st time */
     fs2_reverse(&s);
-    CHECK_STR_EQ("first reverse", s.v, "racecar"); /* палиндром не меняется */
+    CHECK_STR_EQ("first reverse", s.v, "racecar"); /* palindrome unchanged */
     
-    /* Берем не-палиндром для честной проверки */
+    /* Take a non-palindrome for a real check */
     fs2_free(&s);
     s = fs2_fromstr("algorithms");
     fs2_free(&original);
     original = fs2_clone(&s);
 
-    /* Разворачиваем 1-й раз */
+    /* Reverse 1st time */
     fs2_reverse(&s);
     CHECK_STR_EQ("first reverse", s.v, "smhtirogla");
     CHECK_FS2VALID(3, &s);
 
-    /* Разворачиваем 2-й раз (должно вернуть к оригиналу) */
+    /* Reverse 2nd time (should return to original) */
     fs2_reverse(&s);
     
-    /* Проверяем, что строка стала байт-в-байт как оригинал */
+    /* Verify string is byte-for-byte identical to original */
     CHECK_STR_EQ("double reverse matches original", s.v, original.v);
     CHECK_EQ("len unchanged", s.len, original.len);
     CHECK_FS2VALID(4, &s);
@@ -293,14 +293,14 @@ Test(fs2_api, reverse_double_invariant) {
 Test(fs2_api, reverse_roundtrip_empty_and_single) {
     __fs2_checkreset();
     
-    /* Пустая строка */
+    /* Empty string */
     fs2 empty = fs2_fromstr("");
     fs2_reverse(&empty);
     fs2_reverse(&empty);
     CHECK_STR_EQ("empty stays empty", empty.v, "");
     CHECK_EQ("empty len", empty.len, 0);
 
-    /* Один символ */
+    /* Single character */
     fs2 single = fs2_fromstr("X");
     fs2_reverse(&single);
     fs2_reverse(&single);
@@ -369,7 +369,7 @@ Test(fs2_api, sort_empty) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    fs2_sort(&s, true); /* qsort с 0 элементов — безопасно */
+    fs2_sort(&s, true); /* qsort with 0 elements is safe */
 
     CHECK_STR_EQ("still empty", s.v, "");
     CHECK_FS2VALID(2, &s);
@@ -415,7 +415,7 @@ Test(fs2_api, partialsort_middle) {
     fs2 s = fs2_fromstr("XdcbaY");
     CHECK_FS2VALID(1, &s);
 
-    /* Сортируем только "dcba" (индексы 1,2,3,4), оставляя X и Y на местах */
+    /* Sort only "dcba" (indices 1,2,3,4), leaving X and Y in place */
     fs2_partialsort(&s, 1, 5, true);
     CHECK_STR_EQ("sorted middle", s.v, "XabcdY");
     CHECK_FS2VALID(2, &s);
@@ -451,7 +451,7 @@ Test(fs2_api, partialsort_empty_range_valid) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("cba");
     
-    /* from == to, qsort с 0 элементами. Это валидный вызов для qsort */
+    /* from == to, qsort with 0 elements. This is a valid call for qsort */
     fs2_partialsort(&s, 1, 1, true);
     CHECK_STR_EQ("unchanged", s.v, "cba");
     
@@ -463,7 +463,7 @@ Test(fs2_api, partialsort_to_clamped_to_len) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("XdcbaY");
 
-    /* to=100 → clamp to len=6; from=1 < 6 → сортирует "dcbaY" */
+    /* to=100 -> clamp to len=6; from=1 < 6 -> sorts "dcbaY" */
     fs2_partialsort(&s, 1, 100, true);
     CHECK_STR_EQ("clamped to end", s.v, "XYabcd");
     CHECK_FS2VALID(2, &s);
@@ -476,7 +476,7 @@ Test(fs2_api, partialsort_from_gt_to_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
-    /* from > to → no-op (было бы SIZE_MAX в qsort без if-guard) */
+    /* from > to -> no-op (would be SIZE_MAX in qsort without if-guard) */
     fs2_partialsort(&s, 2, 1, true);
     CHECK_STR_EQ("unchanged", s.v, "abc");
     CHECK_FS2VALID(2, &s);
@@ -502,7 +502,7 @@ Test(fs2_api, partialsort_canonical_empty) {
     fs2 s = FS2();   /* v=NULL, len=0, sz=0 */
     CHECK_FS2VALID(1, &s);
 
-    /* to=100 → clamp to 0; from=0, from < to → false; v+from не вычисляется */
+    /* to=100 -> clamp to 0; from=0, from < to -> false; v+from is not computed */
     fs2_partialsort(&s, 0, 100, true);
     CHECK_EQ("still empty", s.len, 0);
     CHECK_FS2VALID(2, &s);
@@ -538,8 +538,8 @@ Test(fs2_api, chr_first_occurrence_only) {
     fs2 s = fs2_fromstr("banana");
 
     CHECK_EQ("b at 0",  fs2_chr(&s, 'b'), 0);
-    CHECK_EQ("a at 1",  fs2_chr(&s, 'a'), 1);   /* не 3 и не 5 */
-    CHECK_EQ("n at 2",  fs2_chr(&s, 'n'), 2);   /* не 4 */
+    CHECK_EQ("a at 1",  fs2_chr(&s, 'a'), 1);   /* not 3 or 5 */
+    CHECK_EQ("n at 2",  fs2_chr(&s, 'n'), 2);   /* not 4 */
 
     fs2_free(&s);
     assert_balanced();
@@ -569,7 +569,7 @@ Test(fs2_api, chr_nul_never_matches) {
     fs2 s = fs2_fromstr("hello");
     CHECK_FS2VALID(1, &s);
 
-    /* memchr over [0, len): NUL на len — вне окна, не матчится */
+    /* memchr over [0, len): NUL at len is out of window, does not match */
     CHECK_EQ("NUL rejected", fs2_chr(&s, '\0'), -1);
 
     fs2_free(&s);
@@ -721,19 +721,19 @@ Test(fs2_api, nchr_empty_string) {
     assert_balanced();
 }
 
-/* ⚠ падает на текущем коде: *p == c без маскирования */
+/* ⚠ fails on current code: *p == c without masking */
 Test(fs2_api, nchr_c_masked_to_unsigned_char) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("A");   /* 0x41 */
 
-    /* (unsigned char)0x141 == 'A' — как strchr */
+    /* (unsigned char)0x141 == 'A' — like strchr */
     CHECK_EQ("0x141 → 'A'", fs2_nchr(&s, 0x141, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
 }
 
-/* ⚠ падает на текущем коде: *p == -1 никогда не true */
+/* ⚠ fails on current code: *p == -1 is never true */
 Test(fs2_api, nchr_negative_c) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("\xFF" "X");
@@ -746,7 +746,7 @@ Test(fs2_api, nchr_negative_c) {
     assert_balanced();
 }
 
-/* этот тест проходит и на текущем коде — оставь как защиту от регрессии */
+/* this test passes on current code — keep as regression guard */
 Test(fs2_api, nchr_byte_ge_128) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("\xE4" "X");
@@ -779,7 +779,7 @@ Test(fs2_api, nchr_null_aborts, .signal = SIGABRT) {
  * fs2_nichr — first occurrence within first `lim` bytes, case-insensitive
  * ------------------------------------------------------------------------- */
 
-/* ── lowercase haystack: работает и на текущем коде ──────────────── */
+/* ── lowercase haystack: works on current code ──────────────────── */
 
 Test(fs2_api, nichr_lowercase_haystack) {
     __fs2_checkreset();
@@ -873,14 +873,14 @@ Test(fs2_api, nichr_local) {
     fs2_free(&s);
 }
 
-/* ── uppercase haystack: ⚠ ПАДАЕТ на текущем коде ──────────────────── */
+/* ── uppercase haystack: ⚠ FAILS on current code ───────────────────── */
 
 Test(fs2_api, nichr_uppercase_haystack) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("HELLO");
     CHECK_FS2VALID(1, &s);
 
-    /* Симметрия: needle в нижнем регистре должен находить uppercase-байты */
+    /* Symmetry: lowercase needle must find uppercase bytes */
     CHECK_EQ("h at 0", fs2_nichr(&s, 'h', 5), 0);   /* FAIL: *p=='H' != lc=='h' */
     CHECK_EQ("e at 1", fs2_nichr(&s, 'e', 5), 1);   /* FAIL */
     CHECK_EQ("l at 2", fs2_nichr(&s, 'l', 5), 2);   /* FAIL */
@@ -895,9 +895,9 @@ Test(fs2_api, nichr_mixed_case) {
     fs2 s = fs2_fromstr("HeLLo");
     CHECK_FS2VALID(1, &s);
 
-    /* 'l' должен попадать и в 'L' на позиции 2 */
-    CHECK_EQ("l at 2", fs2_nichr(&s, 'l', 5), 2);   /* FAIL: возвращает -1 */
-    CHECK_EQ("L at 2", fs2_nichr(&s, 'L', 5), 2);   /* FAIL: возвращает -1 */
+    /* 'l' must match 'L' at position 2 */
+    CHECK_EQ("l at 2", fs2_nichr(&s, 'l', 5), 2);   /* FAIL: returns -1 */
+    CHECK_EQ("L at 2", fs2_nichr(&s, 'L', 5), 2);   /* FAIL: returns -1 */
 
     fs2_free(&s);
     assert_balanced();
@@ -907,7 +907,7 @@ Test(fs2_api, nichr_masked_c_uppercase) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("A");   /* 0x41 */
 
-    /* (unsigned char)0x141 == 'A' → tolower → 'a'; haystack 'A' должен совпасть */
+    /* (unsigned char)0x141 == 'A' -> tolower -> 'a'; haystack 'A' must match */
     CHECK_EQ("0x141 → 'A'", fs2_nichr(&s, 0x141, 1), 0);   /* FAIL */
 
     fs2_free(&s);
@@ -919,8 +919,8 @@ Test(fs2_api, nichr_byte_ge_128_masked) {
     fs2 s = fs2_fromstr("\xFF" "X");   /* 0xFF 'X' */
     CHECK_FS2VALID(1, &s);
 
-    /* (unsigned char)-1 == 0xFF; в C locale tolower(0xFF)==0xFF — без изменений,
-     * поэтому должно совпасть с 0xFF-байтом haystack */
+    /* (unsigned char)-1 == 0xFF; in C locale tolower(0xFF)==0xFF — unchanged,
+     * so it must match the 0xFF byte in haystack */
     CHECK_EQ("-1 → 0xFF", fs2_nichr(&s, -1, 2), 0);
 
     fs2_free(&s);
@@ -950,7 +950,7 @@ Test(fs2_api, ichr_lowercase_haystack) {
     assert_balanced();
 }
 
-/* ⚠ ПАДАЕТ на текущем коде — наследует баг nichr */
+/* ⚠ FAILS on current code — inherits nichr bug */
 Test(fs2_api, ichr_uppercase_haystack) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("HELLO");
@@ -1055,7 +1055,7 @@ Test(fs2_api, rchr_returns_last_not_first) {
     fs2 s = fs2_fromstr("banana");
     CHECK_FS2VALID(1, &s);
 
-    /* Контраст с fs2_chr: тот же needle, разные концы */
+    /* Contrast with fs2_chr: same needle, different ends */
     CHECK_EQ("chr  'a' first at 1", fs2_chr (&s, 'a'), 1);
     CHECK_EQ("rchr 'a' last  at 5", fs2_rchr(&s, 'a'), 5);
     CHECK_EQ("chr  'n' first at 2", fs2_chr (&s, 'n'), 2);
@@ -1082,7 +1082,7 @@ Test(fs2_api, rchr_nul_never_matches) {
     fs2 s = fs2_fromstr("hello");
     CHECK_FS2VALID(1, &s);
 
-    /* NUL — вне [0, len); ни прямой, ни обратный поиск его не видит */
+    /* NUL is outside [0, len); neither forward nor reverse search sees it */
     CHECK_EQ("chr  NUL missing", fs2_chr (&s, '\0'), -1);
     CHECK_EQ("rchr NUL missing", fs2_rchr(&s, '\0'), -1);
 
@@ -1113,7 +1113,7 @@ Test(fs2_api, rchr_empty_string) {
     assert_balanced();
 }
 
-/* ⚠ ПАДАЕТ на текущем коде: сравниваем с c, а не с uc */
+/* ⚠ FAILS on current code: comparing with c, not uc */
 Test(fs2_api, rchr_c_masked_to_unsigned_char) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("A");   /* 0x41 */
@@ -1125,7 +1125,7 @@ Test(fs2_api, rchr_c_masked_to_unsigned_char) {
     assert_balanced();
 }
 
-/* ⚠ ПАДАЕТ на текущем коде: p[pos] == 0xFF != -1 */
+/* ⚠ FAILS on current code: p[pos] == 0xFF != -1 */
 Test(fs2_api, rchr_negative_c) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("\xFF" "X");
@@ -1137,7 +1137,7 @@ Test(fs2_api, rchr_negative_c) {
     assert_balanced();
 }
 
-/* проходит и сейчас — оставь как защиту от регрессии */
+/* passes now — keep as regression guard */
 Test(fs2_api, rchr_byte_ge_128) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("\xE4" "X");
@@ -1170,9 +1170,9 @@ Test(fs2_api, rchr_null_aborts, .signal = SIGABRT) {
 /* -------------------------------------------------------------------------
  * fs2_irchr — last occurrence, unlimited, case-insensitive
  *
- * Логика уже корректна (tolower на обе стороны), красных тестов нет.
- * Ниже — регрессионный набор, чтобы фикс `p` → `p[pos]` не сломал
- * поведение и чтобы зафиксировать симметрию с irchr vs nichr.
+ * Logic is already correct (tolower on both sides), no failing tests.
+ * Below — regression suite to ensure the `p` -> `p[pos]` fix does not
+ * break behaviour and to pin down symmetry between irchr vs nichr.
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, irchr_lowercase_haystack) {
@@ -1195,7 +1195,7 @@ Test(fs2_api, irchr_uppercase_haystack) {
     fs2 s = fs2_fromstr("HELLO");
     CHECK_FS2VALID(1, &s);
 
-    /* Симметрия — в отличие от nichr/ichr (до фикса) работает */
+    /* Symmetry — unlike nichr/ichr (pre-fix) this works */
     CHECK_EQ("h at 0", fs2_irchr(&s, 'h'), 0);
     CHECK_EQ("e at 1", fs2_irchr(&s, 'e'), 1);
     CHECK_EQ("l at 3", fs2_irchr(&s, 'l'), 3);
@@ -1260,7 +1260,7 @@ Test(fs2_api, irchr_empty_string) {
     assert_balanced();
 }
 
-/* проходит и сейчас: lc уже маскирован, tolower на haystack — тоже */
+/* passes now: lc is already masked, tolower on haystack — same */
 Test(fs2_api, irchr_c_masked_to_unsigned_char) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("A");   /* 0x41 */
@@ -1277,7 +1277,7 @@ Test(fs2_api, irchr_negative_c) {
     fs2 s = fs2_fromstr("\xFF" "X");
     CHECK_FS2VALID(1, &s);
 
-    /* (unsigned char)-1 == 0xFF; в C locale tolower(0xFF)==0xFF */
+    /* (unsigned char)-1 == 0xFF; in C locale tolower(0xFF)==0xFF */
     CHECK_EQ("-1 → 0xFF", fs2_irchr(&s, -1), 0);
 
     fs2_free(&s);
@@ -1317,13 +1317,13 @@ Test(fs2_api, chr_vs_rchr_hello_l) {
     fs2 s = fs2_fromstr("hello");   /* idx: h0 e1 l2 l3 o4 */
     CHECK_FS2VALID(1, &s);
 
-    /* 'l' встречается дважды: на 2 и 3.
-     * Прямой поиск — первое вхождение, обратный — последнее. */
+    /* 'l' occurs twice: at 2 and 3.
+     * Forward search — first occurrence, reverse — last. */
     CHECK_EQ("chr  'l' → 2", fs2_chr (&s, 'l'), 2);
     CHECK_EQ("rchr 'l' → 3", fs2_rchr(&s, 'l'), 3);
 
-    /* Это и есть разница между прямым и обратным поиском —
-     * на одном и том же haystack, одном needle. */
+    /* This is the difference between forward and reverse search —
+     * on the same haystack, same needle. */
     CHECK_TRUE("positions differ",
                fs2_chr(&s, 'l') != fs2_rchr(&s, 'l'));
 
@@ -1335,7 +1335,7 @@ Test(fs2_api, chr_eq_rchr_single_occurrence) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* 'h', 'e', 'o' — уникальны. chr и rchr должны совпадать. */
+    /* 'h', 'e', 'o' — unique. chr and rchr must agree. */
     CHECK_EQ("h  chr",  fs2_chr (&s, 'h'), 0);
     CHECK_EQ("h rchr",  fs2_rchr(&s, 'h'), 0);
 
@@ -1373,14 +1373,14 @@ Test(fs2_api, nul_rejected_by_all_finders) {
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, chrn_return_type_is_ptrdiff_t) {
-    /* Compile-time: несоответствие типа возврата — constraint violation
-     * (warning/error) даже если sizeof совпадает. */
+    /* Compile-time: return type mismatch — constraint violation
+     * (warning/error) even if sizeof matches. */
     ptrdiff_t (*f_chr_nth )(const fs2 *, int, size_t)        = fs2_chr_nth;
     ptrdiff_t (*f_nchr_nth)(const fs2 *, int, size_t, size_t) = fs2_nchr_nth;
     (void)f_chr_nth;
     (void)f_nchr_nth;
 
-    /* Runtime: -1 — знаковое, не SIZE_MAX */
+    /* Runtime: -1 is signed, not SIZE_MAX */
     __fs2_checkreset();
     fs2 s = fs2_fromstr("x");
     ptrdiff_t r = fs2_chr_nth(&s, 'z', 1);
@@ -1414,9 +1414,9 @@ Test(fs2_api, chrn_k1_equals_chr) {
 
 Test(fs2_api, chrn_last_k_equals_rchr) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* три 'a': 1, 3, 5 */
+    fs2 s = fs2_fromstr("banana");   /* three 'a's: 1, 3, 5 */
 
-    /* Последнее (3-е) вхождение при прямом поиске == первое при обратном */
+    /* Last (3rd) occurrence in forward == first in reverse */
     CHECK_EQ("k=3 fwd == 1st rev",
              fs2_chr_nth(&s, 'a', 3), fs2_rchr(&s, 'a'));
 
@@ -1434,7 +1434,7 @@ Test(fs2_api, chrn_forward_sequence) {
     CHECK_EQ("k=3 → 5", fs2_chr_nth(&s, 'a', 3), 5);
     CHECK_EQ("k=4 → -1", fs2_chr_nth(&s, 'a', 4), -1);
 
-    /* Одиночные вхождения: k=2 уже -1 */
+    /* Single occurrences: k=2 is already -1 */
     CHECK_EQ("'n' k=1 → 2", fs2_chr_nth(&s, 'n', 1), 2);
     CHECK_EQ("'n' k=2 → 4", fs2_chr_nth(&s, 'n', 2), 4);
     CHECK_EQ("'n' k=3 → -1", fs2_chr_nth(&s, 'n', 3), -1);
@@ -1449,7 +1449,7 @@ Test(fs2_api, chrn_k_zero_rejected) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* k 1-based: ноль невалиден, не "первое вхождение" */
+    /* k is 1-based: zero is invalid, not "first occurrence" */
     CHECK_EQ("k=0 → -1", fs2_chr_nth(&s, 'l', 0), -1);
     CHECK_EQ("nchr k=0 → -1", fs2_nchr_nth(&s, 'l', 0, 5), -1);
 
@@ -1459,12 +1459,12 @@ Test(fs2_api, chrn_k_zero_rejected) {
 
 Test(fs2_api, chrn_k_exceeds_matches) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("abc");   /* один 'b' */
+    fs2 s = fs2_fromstr("abc");   /* one 'b' */
 
     CHECK_EQ("k=2 → -1", fs2_chr_nth(&s, 'b', 2), -1);
     CHECK_EQ("k=100 → -1", fs2_chr_nth(&s, 'b', 100), -1);
 
-    /* k = SIZE_MAX: завершается быстро, не зависает */
+    /* k = SIZE_MAX: finishes quickly, does not hang */
     CHECK_EQ("k=SIZE_MAX → -1", fs2_chr_nth(&s, 'b', SIZE_MAX), -1);
 
     fs2_free(&s);
@@ -1486,7 +1486,7 @@ Test(fs2_api, nchrn_lim_zero) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* пустое окно — ни одного вхождения */
+    /* empty window — no occurrence */
     CHECK_EQ("lim=0", fs2_nchr_nth(&s, 'h', 1, 0), -1);
 
     fs2_free(&s);
@@ -1495,9 +1495,9 @@ Test(fs2_api, nchrn_lim_zero) {
 
 Test(fs2_api, nchrn_lim_lt_len) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* 'a' на 1, 3, 5 */
+    fs2 s = fs2_fromstr("banana");   /* 'a' at 1, 3, 5 */
 
-    /* lim=4 → окно [0,4) = "bana"; третьего 'a' нет */
+    /* lim=4 -> window [0,4) = "bana"; third 'a' is absent */
     CHECK_EQ("k=1 lim=4", fs2_nchr_nth(&s, 'a', 1, 4), 1);
     CHECK_EQ("k=2 lim=4", fs2_nchr_nth(&s, 'a', 2, 4), 3);
     CHECK_EQ("k=3 lim=4", fs2_nchr_nth(&s, 'a', 3, 4), -1);
@@ -1510,7 +1510,7 @@ Test(fs2_api, nchrn_lim_ge_len) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("banana");
 
-    /* lim >= len → ведёт себя как chr_nth */
+    /* lim >= len -> behaves like chr_nth */
     CHECK_EQ("lim=len",    fs2_nchr_nth(&s, 'a', 3, 6),
                            fs2_chr_nth(&s, 'a', 3));
     CHECK_EQ("lim>len",    fs2_nchr_nth(&s, 'a', 3, 100),
@@ -1522,11 +1522,11 @@ Test(fs2_api, nchrn_lim_ge_len) {
 
 Test(fs2_api, chrn_match_at_last_position) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("abcabc");   /* c на 2 и 5 */
+    fs2 s = fs2_fromstr("abcabc");   /* c at 2 and 5 */
     CHECK_FS2VALID(1, &s);
 
     CHECK_EQ("k=1 'c' → 2", fs2_chr_nth(&s, 'c', 1), 2);
-    CHECK_EQ("k=2 'c' → 5", fs2_chr_nth(&s, 'c', 2), 5);   /* последний байт */
+    CHECK_EQ("k=2 'c' → 5", fs2_chr_nth(&s, 'c', 2), 5);   /* last byte */
 
     fs2_free(&s);
     assert_balanced();
@@ -1534,9 +1534,9 @@ Test(fs2_api, chrn_match_at_last_position) {
 
 Test(fs2_api, nchrn_match_at_window_end) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("XabcX");   /* 'c' на 3 */
+    fs2 s = fs2_fromstr("XabcX");   /* 'c' at 3 */
 
-    /* lim=4 → окно [0,3] = "Xabc"; 'c' — последний байт окна */
+    /* lim=4 -> window [0,3] = "Xabc"; 'c' is the last byte of window */
     CHECK_EQ("k=1 lim=4", fs2_nchr_nth(&s, 'c', 1, 4), 3);
 
     fs2_free(&s);
@@ -1545,7 +1545,7 @@ Test(fs2_api, nchrn_match_at_window_end) {
 
 Test(fs2_api, chrn_k1_of_k_on_last) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("aaa");   /* три 'a': 0, 1, 2 */
+    fs2 s = fs2_fromstr("aaa");   /* three 'a's: 0, 1, 2 */
 
     CHECK_EQ("k=3 → 2 (last byte)", fs2_chr_nth(&s, 'a', 3), 2);
 
@@ -1559,12 +1559,12 @@ Test(fs2_api, chrn_large_offsets) {
     const size_t n = 100 * 1024;          /* 100 KB */
     fs2 s = fs2_init(n + 2);
     memset(s.v, 'a', n);
-    s.v[n]     = 'b';                      /* последний значащий */
+    s.v[n]     = 'b';                      /* last significant byte */
     s.v[n + 1] = '\0';
     s.len      = n + 1;
     CHECK_FS2VALID(1, &s);
 
-    /* Позиция ~100000 — точно не влезет в int16/int8 */
+    /* Position ~100000 — definitely does not fit in int16/int8 */
     CHECK_EQ("'b' at end", fs2_chr_nth(&s, 'b', 1), (ptrdiff_t)n);
     CHECK_EQ("1st 'a'",    fs2_chr_nth(&s, 'a', 1), 0);
     CHECK_EQ("n-th 'a'",   fs2_chr_nth(&s, 'a', (size_t)n), (ptrdiff_t)(n - 1));
@@ -1602,7 +1602,7 @@ Test(fs2_api, nrchrn_k1_equals_rchr) {
 
 Test(fs2_api, nrchrn_reverse_sequence) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* 'a' на 1, 3, 5 */
+    fs2 s = fs2_fromstr("banana");   /* 'a' at 1, 3, 5 */
 
     CHECK_EQ("k=1 (last)  → 5", fs2_rchr_nth(&s, 'a', 1), 5);
     CHECK_EQ("k=2          → 3", fs2_rchr_nth(&s, 'a', 2), 3);
@@ -1615,9 +1615,9 @@ Test(fs2_api, nrchrn_reverse_sequence) {
 
 Test(fs2_api, nrchrn_forward_reverse_symmetry) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* три 'a' */
+    fs2 s = fs2_fromstr("banana");   /* three 'a's */
 
-    /* i-е прямое + (count-i+1)-е обратное указывают на одну позицию */
+    /* i-th forward + (count-i+1)-th reverse point to the same position */
     for (size_t i = 1; i <= 3; i++) {
         cr_assert_eq(fs2_chr_nth(&s, 'a', i),
                      fs2_rchr_nth(&s, 'a', 4 - i),
@@ -1654,7 +1654,7 @@ Test(fs2_api, chrn_symmetry_sensitive) {
     assert_balanced();
 }
 // --------------------- invariants checkings ------------------
-// forward ↔ reverse симметрия
+// forward <-> reverse symmetry
 Test(fs2_api, chrn_symmetry_insensitive) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("BaNaNa");   /* mixed case, same positions */
@@ -1672,13 +1672,13 @@ Test(fs2_api, chrn_symmetry_insensitive) {
     fs2_free(&s);
     assert_balanced();
 }
-// upper  чувствительность на апперкейсе
+// upper  case-sensitivity on uppercase
 Test(fs2_api, chrn_insensitive_uppercase_haystack) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("BANANA");
     CHECK_FS2VALID(1, &s);
 
-    /* Forward + insensitive: находит lowercase needle в uppercase haystack */
+    /* Forward + insensitive: finds lowercase needle in uppercase haystack */
     CHECK_EQ("ichr_nth   k=1 → 1", fs2_ichr_nth  (&s, 'a', 1), 1);
     CHECK_EQ("ichr_nth   k=2 → 3", fs2_ichr_nth  (&s, 'a', 2), 3);
     CHECK_EQ("ichr_nth   k=3 → 5", fs2_ichr_nth  (&s, 'a', 3), 5);
@@ -1692,14 +1692,14 @@ Test(fs2_api, chrn_insensitive_uppercase_haystack) {
     fs2_free(&s);
     assert_balanced();
 }
-// consecutive matches — специфичный для reverse
+// consecutive matches — specific to reverse
 Test(fs2_api, rchr_nth_consecutive) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("aa");   /* 'a' на 0 и 1 — соседние */
+    fs2 s = fs2_fromstr("aa");   /* 'a' at 0 and 1 — adjacent */
     CHECK_FS2VALID(1, &s);
 
-    /* Если кто-то написал `end = hit - 1` вместо `end = hit`,
-     * k=2 вернёт -1 вместо 0 — второй 'a' потеряется. */
+    /* If someone wrote `end = hit - 1` instead of `end = hit`,
+     * k=2 would return -1 instead of 0 — the second 'a' is lost. */
     CHECK_EQ("k=1 → 1", fs2_rchr_nth (&s, 'a', 1), 1);
     CHECK_EQ("k=2 → 0", fs2_rchr_nth (&s, 'a', 2), 0);
     CHECK_EQ("k=3 → -1", fs2_rchr_nth(&s, 'a', 3), -1);
@@ -1710,19 +1710,19 @@ Test(fs2_api, rchr_nth_consecutive) {
     fs2_free(&s);
     assert_balanced();
 }
-// lim + reverse — арифметика off + hit
+// lim + reverse — off + hit arithmetic
 Test(fs2_api, nrchr_nth_lim_offset) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* len=6, 'a' на 1, 3, 5 */
+    fs2 s = fs2_fromstr("banana");   /* len=6, 'a' at 1, 3, 5 */
     CHECK_FS2VALID(1, &s);
 
-    /* lim=4 → окно [2, 6) = "nana"; 'a' на 3 и 5 (в orig coords) */
-    /* Если кто-то забыл `+ off`, получим 1 и 3 вместо 5 и 3. */
+    /* lim=4 -> window [2, 6) = "nana"; 'a' at 3 and 5 (in orig coords) */
+    /* If someone forgot `+ off`, we would get 1 and 3 instead of 5 and 3. */
     CHECK_EQ("k=1 lim=4 → 5", fs2_nrchr_nth(&s, 'a', 1, 4), 5);
     CHECK_EQ("k=2 lim=4 → 3", fs2_nrchr_nth(&s, 'a', 2, 4), 3);
     CHECK_EQ("k=3 lim=4 → -1", fs2_nrchr_nth(&s, 'a', 3, 4), -1);
 
-    /* lim=1 → окно [5, 6) = "a"; только позиция 5 */
+    /* lim=1 -> window [5, 6) = "a"; only position 5 */
     CHECK_EQ("k=1 lim=1 → 5", fs2_nirchr_nth(&s, 'A', 1, 1), 5);
     CHECK_EQ("k=2 lim=1 → -1", fs2_nirchr_nth(&s, 'A', 2, 1), -1);
 
@@ -1732,10 +1732,10 @@ Test(fs2_api, nrchr_nth_lim_offset) {
 // all 8
 Test(fs2_api, chrn_all_variants_banana_k2) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("banana");   /* 'a' на 1, 3, 5 — k=2 → средний на 3 */
+    fs2 s = fs2_fromstr("banana");   /* 'a' at 1, 3, 5 — k=2 -> middle at 3 */
     CHECK_FS2VALID(1, &s);
 
-    /* k=2 — единственное вхождение, где forward и reverse совпадают */
+    /* k=2 — the only occurrence where forward and reverse agree */
     CHECK_EQ("chr_nth   k=2", fs2_chr_nth   (&s, 'a', 2),     3);
     CHECK_EQ("nchr_nth  k=2", fs2_nchr_nth  (&s, 'a', 2, 10), 3);
     CHECK_EQ("ichr_nth  k=2", fs2_ichr_nth  (&s, 'a', 2),     3);
