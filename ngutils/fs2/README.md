@@ -19,12 +19,12 @@ Every `fs2` value is described by **two independent flags**:
 | Axis | Values | Meaning |
 |---|---|---|
 | Where does the string live? | `FS2_STATIC` | read-only, external (literal) |
-| | `FS2_LOCAL` | writable, caller-owned buffer |
+| | `FS2LOCAL` | writable, caller-owned buffer |
 | | `FS2_ALLOC` | heap-owned, growable |
 | Where does the struct live? | `FS2_BODYALLOC` | the `fs2` struct itself is `malloc`-ed |
 | | *(unset)* | the struct is on the stack (or wherever the caller put it) |
 
-`FS2_STATIC` / `FS2_LOCAL` / `FS2_ALLOC` are **mutually exclusive** —
+`FS2_STATIC` / `FS2LOCAL` / `FS2_ALLOC` are **mutually exclusive** —
 exactly one is set. `FS2_BODYALLOC` is **independent** — it can combine
 with any of the three.
 
@@ -56,9 +56,9 @@ matching heap-body variant (`fs2_heap_fromstr`, `fs2_heap_clone`,
 | Macro | Result |
 |---|---|
 | `FS2()` | empty growable (`ALLOC`, no capacity yet) |
-| `FS2_EMPTY` | empty read-only (`STATIC`, `""`) |
-| `FS2_LITERAL(s)` | wrap a compile-time string; `strlen` for free via `sizeof` |
-| `FS2_LOCAL(buf)` | wrap a caller-owned `char[]` (fixed capacity) |
+| `FS2EMPTY` | empty read-only (`STATIC`, `""`) |
+| `FS2LITERAL(s)` | wrap a compile-time string; `strlen` for free via `sizeof` |
+| `FS2LOCAL(buf)` | wrap a caller-owned `char[]` (fixed capacity) |
 | `FS2_DEFUNCT_VAL` | moved-out marker; only free / assignment valid |
 
 ## API
@@ -150,7 +150,7 @@ void fs2_free(fs2 *s);
 
 int main(void) {
     /* A literal — zero allocation, safe to pass around. */
-    fs2 greeting = FS2_LITERAL("hello");
+    fs2 greeting = FS2LITERAL("hello");
 
     /* A growable empty string. */
     fs2 buffer = FS2();

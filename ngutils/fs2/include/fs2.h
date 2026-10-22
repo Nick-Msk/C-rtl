@@ -114,20 +114,23 @@ typedef struct fs2 {
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** Empty growable value (stack body, ALLOC, no capacity yet). */
-#define FS2()         (fs2){ .len = 0, .sz = 0, \
+#define FS2()          (fs2){ .len = 0, .sz = 0, \
                                 .flags = FS2_ALLOC,  .v = NULL }
 
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
-#define FS2_EMPTY        (fs2){ .len = 0, .sz = 1, \
+#define FS2EMPTY        (fs2){ .len = 0, .sz = 1, \
                                 .flags = FS2_STATIC, .v = (char *)"" }
 
 /** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
-#define FS2_LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
+#define FS2LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
                                 .flags = FS2_STATIC, .v = (char *)(s) }
-
-/** Local: wraps a caller-owned writable buffer (fixed capacity). */
-#define FS2_LOCAL(buf)   (fs2){ .len = 0, .sz = sizeof(buf), \
-                                .flags = FS2_LOCAL,  .v = (buf) }
+/** wrapper for lvalue over c-string */
+#define FS2WRAP(str) ({ \
+    size_t  len = 0, sz = 0; \
+    if (str) len = strlen(str), sz = len + 1; \
+    fs2     res = (fs2) {.flags = FS2_STATIC, .len = len, .sz = sz, .v = str}; \
+    res; \
+})                                
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Getters (all const-safe, no allocation)
@@ -153,7 +156,7 @@ static inline size_t      fs2_sz  (const fs2 *s) { return s->sz;  }
  * @brief Mutable pointer to the underlying NUL-terminated buffer.
  *
  * Use for in-place mutation. Only valid when the buffer is writable
- * (FS2_ALLOC or FS2_LOCAL). UB to write to a FS2_STATIC buffer.
+ * (FS2_ALLOC or FS2LOCAL). UB to write to a FS2_STATIC buffer.
  *
  * @param s  Non-NULL pointer to an fs2.
  * @return   `char*` to the buffer; `NULL` if the buffer has been released.
@@ -177,7 +180,7 @@ static inline const char *fs2_cstr(const fs2 *s) { return s->v;   }
 /** @brief Check if the buffer is an external read-only literal (FS2_STATIC). */
 static inline bool          fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
 
-/** @brief Check if the buffer is a caller-owned fixed-size buffer (FS2_LOCAL). */
+/** @brief Check if the buffer is a caller-owned fixed-size buffer (FS2LOCAL). */
 static inline bool          fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
 
 /** @brief Check if the buffer is heap-allocated and growable (FS2_ALLOC). */
@@ -201,7 +204,7 @@ static inline bool          fs2_is_null(const fs2 *s) {
 }
 
 /**
- * @brief Declare a stack-allocated fixed-capacity fs2 (FS2_LOCAL).
+ * @brief Declare a stack-allocated fixed-capacity fs2 (FS2LOCAL).
  *
  * Declares a `char` buffer of @p n bytes alongside a named `fs2` that
  * wraps it. The buffer is zero-initialised. The caller owns the memory;
@@ -326,7 +329,7 @@ fs2         fs2_clone   (const fs2 *src);
  *
  * @param src  Non-NULL source fs2 (ALLOC or STATIC).
  * @return     fs2 value that now owns the former src buffer.
- * @warning    `invraise` if @p src is NULL or FS2_LOCAL.
+ * @warning    `invraise` if @p src is NULL or FS2LOCAL.
  */
 fs2         fs2_movefrom(fs2 *src);
 
@@ -470,7 +473,7 @@ fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  * @return      @p to (for chaining).
  *
  * @note        fs2_move(x, x) is a no-op that returns @p to.
- * @warning     `invraise` if either pointer is NULL or either side is FS2_LOCAL.
+ * @warning     `invraise` if either pointer is NULL or either side is FS2LOCAL.
  */
 fs2        *fs2_move(fs2 *to, fs2 *from);
 
@@ -502,7 +505,7 @@ void        fs2_exch(fs2 *a, fs2 *b);
  * @return      Stack fs2 value with the former heap value's content.
  *
  * @warning     `invraise` if pointers are NULL; `userraise` if not BODYALLOC
- *              or if the source is FS2_LOCAL.
+ *              or if the source is FS2LOCAL.
  */
 fs2         fs2_heaptostack(fs2 **psrc);
 
@@ -620,7 +623,7 @@ bool        fs2_validate(FILE *restrict out, const fs2 *restrict s);
  * @brief Compare two fs2 objects for technical equality.
  *
  * Unlike logical comparison (strcmp-style), this also checks flags:
- * FS2_ALLOC vs FS2_STATIC vs FS2_LOCAL, and BODYALLOC. Two fs2 that
+ * FS2_ALLOC vs FS2_STATIC vs FS2LOCAL, and BODYALLOC. Two fs2 that
  * print the same content but have different ownership are considered
  * different.
  *

@@ -26,13 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Struct and flags.** Two orthogonal axes encoded in `fs2_flags`:
-  - string location: `FS2_STATIC`, `FS2_LOCAL`, `FS2_ALLOC`
+  - string location: `FS2_STATIC`, `FS2LOCAL`, `FS2_ALLOC`
     (exactly one is set),
   - body location: `FS2_BODYALLOC` (independent).
   
   Plus state flags `FS2_CONST` (reserved) and `FS2_DEFUNCT` (moved out).
-- **Value macros:** `FS2()`, `FS2_EMPTY`, `FS2_LITERAL(s)`,
-  `FS2_LOCAL(buf)`, `FS2_DEFUNCT_VAL`.
+- **Value macros:** `FS2()`, `FS2EMPTY`, `FS2LITERAL(s)`,
+  `FS2LOCAL(buf)`, `FS2_DEFUNCT_VAL`.
 - **Getters:** `fs2_len`, `fs2_sz`, `fs2_str`, `fs2_cstr`.
 - **Predicates:** `fs2_is_static`, `fs2_is_local`, `fs2_is_alloc`,
   `fs2_is_bodyalloc`, `fs2_is_defunct`, `fs2_is_empty`, `fs2_is_null`.

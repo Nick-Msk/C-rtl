@@ -55,7 +55,7 @@ Test(fs2, macro_fs2_default) {
 }
 
 Test(fs2, macro_empty_static) {
-    fs2 s = FS2_EMPTY;
+    fs2 s = FS2EMPTY;
 
     CHECK_TRUE("is_static", fs2_is_static(&s));
     CHECK_FALSE("is_alloc", fs2_is_alloc(&s));
@@ -64,7 +64,7 @@ Test(fs2, macro_empty_static) {
 }
 
 Test(fs2, macro_literal) {
-    fs2 s = FS2_LITERAL("hello");
+    fs2 s = FS2LITERAL("hello");
 
     CHECK_TRUE("is_static", fs2_is_static(&s));
     CHECK_EQ("len", s.len, 5);
@@ -72,24 +72,12 @@ Test(fs2, macro_literal) {
     CHECK_STR_EQ("v", s.v, "hello");
 }
 
-Test(fs2, macro_local) {
-    char buf[32];
-    fs2 s = FS2_LOCAL(buf);
-
-    CHECK_TRUE ("is_local",     fs2_is_local(&s));
-    CHECK_FALSE("is_static",    fs2_is_static(&s));
-    CHECK_FALSE("is_alloc",     fs2_is_alloc(&s));
-    CHECK_EQ("sz",  s.sz,  32);
-    CHECK_EQ("len", s.len, 0);
-    CHECK_PTR_EQ("v points into buf", s.v, buf);
-}
-
 /* -------------------------------------------------------------------------
  * Getters
  * ------------------------------------------------------------------------- */
 
 Test(fs2, getters_literal) {
-    fs2 s = FS2_LITERAL("abc");
+    fs2 s = FS2LITERAL("abc");
 
     CHECK_EQ("fs2_len", s.len, 3);
     CHECK_EQ("fs2_sz",  s.sz,  4);
@@ -98,7 +86,7 @@ Test(fs2, getters_literal) {
 }
 
 Test(fs2, getters_empty) {
-    fs2 s = FS2_EMPTY;
+    fs2 s = FS2EMPTY;
 
     CHECK_EQ("fs2_len", s.len, 0);
     CHECK_STR_EQ("fs2_cstr", fs2_cstr(&s), "");
@@ -175,7 +163,7 @@ Test(fs2, free_null_noop) {
 }
 
 Test(fs2, free_static_noop) {
-    fs2 s = FS2_LITERAL("hello");
+    fs2 s = FS2LITERAL("hello");
     fs2_free(&s);
 
     CHECK_STR_EQ("v untouched", s.v, "hello");
@@ -184,7 +172,7 @@ Test(fs2, free_static_noop) {
 }
 
 Test(fs2, free_empty_static_noop) {
-    fs2 s = FS2_EMPTY;
+    fs2 s = FS2EMPTY;
     fs2_free(&s);
 
     CHECK_TRUE("is_static", fs2_is_static(&s));
@@ -193,12 +181,10 @@ Test(fs2, free_empty_static_noop) {
 
 Test(fs2, free_local_noop) {
     char buf[16] = "abc";
-    fs2 s = FS2_LOCAL(buf);
-    s.len = 3;
+    FS2LOCALFILL(s, "%s", buf);
     fs2_free(&s);
 
     CHECK_STR_EQ("v untouched", s.v, "abc");
-    CHECK_PTR_EQ("v still points into buf", s.v, buf);
 }
 
 Test(fs2, free_alloc_releases_buffer) {
@@ -253,12 +239,12 @@ Test(fs2, setlen_to_zero) {
  * ------------------------------------------------------------------------- */
 
 Test(fs2, is_empty_true_on_zero_len) {
-    fs2 s = FS2_LITERAL("");
+    fs2 s = FS2LITERAL("");
     CHECK_TRUE("is_empty", fs2_is_empty(&s));
 }
 
 Test(fs2, is_empty_false_on_nonempty) {
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     CHECK_FALSE("is_empty", fs2_is_empty(&s));
 }
 
@@ -272,7 +258,7 @@ Test(fs2, is_null_on_empty_alloc) {
 }
 
 Test(fs2, is_null_false_on_literal) {
-    fs2 s = FS2_LITERAL("ok");
+    fs2 s = FS2LITERAL("ok");
     CHECK_FALSE("is_null", fs2_is_null(&s));
 }
 
@@ -281,7 +267,7 @@ Test(fs2, is_null_false_on_literal) {
  * ------------------------------------------------------------------------- */
 
 Test(fs2, validate_ok_literal) {
-    fs2 s = FS2_LITERAL("hello");
+    fs2 s = FS2LITERAL("hello");
     CHECK_TRUE("validate", fs2_validate(NULL, &s));
 }
 
@@ -297,19 +283,19 @@ Test(fs2, validate_null_pointer) {
 
 Test(fs2, validate_null_buffer) {
     /* STATIC with v == NULL — invalid (STATIC must have a buffer). */
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     s.v = NULL;
     CHECK_FALSE("validate on STATIC with NULL v", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_ge_sz) {
-    fs2 s = FS2_LITERAL("abc");
+    fs2 s = FS2LITERAL("abc");
     s.len = s.sz;   /* len >= sz — forged invariant violation */
     CHECK_FALSE("validate with len >= sz", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_gt_strlen) {
-    fs2 s = FS2_LITERAL("abc");
+    fs2 s = FS2LITERAL("abc");
     s.len = 100;
     CHECK_FALSE("validate with len=100", fs2_validate(NULL, &s));
 }
@@ -321,7 +307,7 @@ Test(fs2, validate_writes_to_stream) {
     FILE *f = fopen(path, "w");
     CHECK_NOT_NULL("fopen write", f);
 
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     s.v = NULL;                    /* STATIC with NULL buffer — invalid */
 
     CHECK_FALSE("validate(f, STATIC|NULL)", fs2_validate(f, &s));
@@ -346,7 +332,7 @@ Test(fs2, techfprint_literal) {
     FILE *f = fopen(path, "w");
     CHECK_NOT_NULL("fopen write", f);
 
-    fs2  s = FS2_LITERAL("payload");
+    fs2  s = FS2LITERAL("payload");
     long n = fs_techfprint(f, &s, "s");
     fclose(f);
 
@@ -382,7 +368,7 @@ Test(fs2, techfprint_null_s) {
 }
 
 Test(fs2, techfprint_null_out_returns_zero) {
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     CHECK_EQ("fs_techfprint(NULL, ...)", fs_techfprint(NULL, &s, "s"), 0);
 }
 
@@ -593,7 +579,7 @@ Test(fs2, fromstr_source_is_independent) {
 
 Test(fs2, clone_from_literal) {
     __fs2_checkreset();
-    fs2 a = FS2_LITERAL("literal");
+    fs2 a = FS2LITERAL("literal");
     fs2 b = fs2_clone(&a);
 
     CHECK_STR_EQ("b.v", b.v, "literal");
@@ -623,7 +609,7 @@ Test(fs2, clone_from_alloc) {
 
 Test(fs2, clone_empty_static) {
     __fs2_checkreset();
-    fs2 a = FS2_EMPTY;
+    fs2 a = FS2EMPTY;
     fs2 b = fs2_clone(&a);
 
     CHECK_EQ("len", b.len, (size_t) 0);
@@ -779,7 +765,7 @@ Test(fs2, move_alloc_to_alloc) {
 Test(fs2, move_alloc_to_static_dst) {
     __fs2_checkreset();
     fs2 a = fs2_fromstr("payload");
-    fs2 b = FS2_LITERAL("old");
+    fs2 b = FS2LITERAL("old");
 
     fs2_move(&b, &a);
 
@@ -795,7 +781,7 @@ Test(fs2, move_alloc_to_static_dst) {
 
 Test(fs2, move_static_to_empty) {
     __fs2_checkreset();
-    fs2 a = FS2_LITERAL("literal");
+    fs2 a = FS2LITERAL("literal");
     fs2 b = FS2();
 
     fs2_move(&b, &a);
@@ -872,7 +858,7 @@ Test(fs2, movefrom_alloc) {
 
 Test(fs2, movefrom_static) {
     __fs2_checkreset();
-    fs2 a = FS2_LITERAL("static payload");
+    fs2 a = FS2LITERAL("static payload");
 
     fs2 b = fs2_movefrom(&a);
     CHECK_FS2VALID(1, &b);
@@ -1168,19 +1154,19 @@ Test(fs2, validate_accepts_empty_alloc) {
 }
 
 Test(fs2, validate_rejects_unknown_flag) {
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     s.flags = (fs2_flags)(s.flags | 0x8000);
     CHECK_FALSE("unknown bit", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_rejects_no_kind_flag) {
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     s.flags = (fs2_flags)(s.flags & ~(FS2_STATIC | FS2_LOCAL | FS2_ALLOC));
     CHECK_FALSE("no kind flag", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_rejects_two_kind_flags) {
-    fs2 s = FS2_LITERAL("x");
+    fs2 s = FS2LITERAL("x");
     s.flags = (fs2_flags)(s.flags | FS2_ALLOC);   /* STATIC | ALLOC */
     CHECK_FALSE("two kind flags", fs2_validate(NULL, &s));
 }
@@ -1228,7 +1214,7 @@ Test(fs2, stacktoheap_value) {
 
 Test(fs2, stacktoheap_static) {
     __fs2_checkreset();
-    fs2 s = FS2_LITERAL("literal");
+    fs2 s = FS2LITERAL("literal");
     CHECK_TRUE ("validate 1", fs2_validate(logfile, &s) );
 
     fs2 *h = fs2_stacktoheap(&s);
@@ -1279,7 +1265,7 @@ Test(fs2, heap_init_zero) {
 Test(fs2, heap_clone_from_literal) {
     __fs2_checkreset();
 
-    fs2 a = FS2_LITERAL("hello");
+    fs2 a = FS2LITERAL("hello");
     CHECK_FS2VALID(1, &a);
 
     fs2 *h = fs2_heap_clone(&a);
@@ -1321,7 +1307,7 @@ Test(fs2, heap_clone_from_alloc) {
 Test(fs2, heap_clone_empty) {
     __fs2_checkreset();
 
-    fs2 a = FS2_EMPTY;
+    fs2 a = FS2EMPTY;
     CHECK_FS2VALID(1, &a);
 
     fs2 *h = fs2_heap_clone(&a);
@@ -1464,7 +1450,7 @@ Test(fs2, heap_movefromstr_null_value_aborts, .signal = SIGABRT) {
 
 Test(fs2, heap_movefromstr_rejects_local, .signal = SIGINT) {
     const char *p = "x";
-    /* fs2_movefromstr: userraise for FS2_LOCAL → SIGINT */
+    /* fs2_movefromstr: userraise for FS2LOCAL → SIGINT */
     fs2_heap_movefromstr(&p, FS2_LOCAL);
 }
 
@@ -1538,7 +1524,7 @@ Test(fs2, transition_alloc_roundtrip) {
 
 Test(fs2, transition_static_roundtrip) {
     __fs2_checkreset();
-    fs2 a = FS2_LITERAL("lit");
+    fs2 a = FS2LITERAL("lit");
     CHECK_FS2VALID(1, &a);
 
     fs2 *h = fs2_stacktoheap(&a);
@@ -1633,7 +1619,7 @@ Test(fs2, transition_swap_two_alloc) {
 Test(fs2, transition_swap_mixed_flags) {
     __fs2_checkreset();
     fs2 a = fs2_fromstr("heap");     /* ALLOC */
-    fs2 b = FS2_LITERAL("lit");      /* STATIC */
+    fs2 b = FS2LITERAL("lit");      /* STATIC */
 
     fs2 t = fs2_movefrom(&a);        /* t=heap ALLOC, a=empty ALLOC */
     CHECK_FS2VALID(1, &t);
@@ -1854,7 +1840,7 @@ Test(fs2, exch_null_aborts, .signal = SIGABRT) {
 Test(fs2, exch_local_rejected, .signal = SIGINT) {
     fs2 a = fs2_fromstr("alloc");
     char buf[16];
-    fs2 b = FS2_LOCAL(buf);
+    FS2LOCALFILL(b, "%s", buf);
     fs2_exch(&a, &b);
     fs2_free(&a);
 }
@@ -1945,11 +1931,11 @@ Test(fs2, exch_roundtrip_matrix) {
 
     fs2 *a1     = fs2_heap_fromstr("A1");      /* ALLOC,  heap  */
 
-    fs2  a2_val = FS2_LITERAL("A2");           /* STATIC, stack */
+    fs2  a2_val = FS2LITERAL("A2");           /* STATIC, stack */
     fs2 *a2     = &a2_val;
 
     fs2 *a3     = fs2_heap();                  /* STATIC, heap  */
-    fs2  a3_tmp = FS2_LITERAL("A3");
+    fs2  a3_tmp = FS2LITERAL("A3");
     fs2_move(a3, &a3_tmp);
 
     /* ── B variants ─────────────────────────────────────────────── */
@@ -1959,11 +1945,11 @@ Test(fs2, exch_roundtrip_matrix) {
 
     fs2 *b1     = fs2_heap_fromstr("B1");      /* ALLOC,  heap  */
 
-    fs2  b2_val = FS2_LITERAL("B2");           /* STATIC, stack */
+    fs2  b2_val = FS2LITERAL("B2");           /* STATIC, stack */
     fs2 *b2     = &b2_val;
 
     fs2 *b3     = fs2_heap();                  /* STATIC, heap  */
-    fs2  b3_tmp = FS2_LITERAL("B3");
+    fs2  b3_tmp = FS2LITERAL("B3");
     fs2_move(b3, &b3_tmp);
 
     /* ── all 16 combinations ────────────────────────────────────── */
@@ -2015,7 +2001,7 @@ Test(fs2, techcmp_different_len) {
 
 Test(fs2, techcmp_different_flags) {
     fs2 a = fs2_fromstr("hello");   /* ALLOC */
-    fs2 b = FS2_LITERAL("hello");   /* STATIC */
+    fs2 b = FS2LITERAL("hello");   /* STATIC */
     CHECK_FALSE("techcmp", fs2_techcmp(&a, &b));
     fs2_free(&a);
     fs2_free(&b);
@@ -2084,7 +2070,7 @@ Test(fs2_api, shrink_long_string) {
 
 Test(fs2_api, shrink_static_noop) {
     __fs2_checkreset();
-    fs2 s = FS2_LITERAL("static");
+    fs2 s = FS2LITERAL("static");
     
     size_t sz_before = s.sz;
     fs_shrink(&s);

@@ -177,14 +177,14 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
  *
  * The ONLY place where an fs2 is assembled by hand. All public
  * constructors (fs2_init, fs2_fromstr, fs2_adopt, ...) go through here
- * or through the FS2()/FS2_LITERAL/FS2_LOCAL macros.
+ * or through the FS2()/FS2LITERAL/FS2LOCAL macros.
  *
  * Counter bookkeeping (g_alloc_cnt) happens here and nowhere else.
  *
  * @param buf   Buffer. Must not be NULL. For non-STATIC flags, buf[len]
  *              is explicitly set to NUL.
  * @param len   Logical length (excluding NUL).
- * @param flag  Exactly one of FS2_STATIC / FS2_LOCAL / FS2_ALLOC,
+ * @param flag  Exactly one of FS2_STATIC / FS2LOCAL / FS2_ALLOC,
  *              optionally OR'd with FS2_BODYALLOC.
  * @return      Constructed fs2 value.
  * @warning     invraise if buf is NULL.
@@ -302,7 +302,7 @@ fs2_fromstrf(const char *fmt, ...) {
  * @param src  Non-NULL source fs2 (ALLOC or STATIC).
  * @return     fs2 value that now owns the former src buffer.
  *
- * @warning    `invraise` if @p src is NULL or FS2_LOCAL.
+ * @warning    `invraise` if @p src is NULL or FS2LOCAL.
  */
 fs2
 fs2_movefrom(fs2 *src) {
@@ -573,7 +573,7 @@ fs_shrink(fs2 *s) {
  * @return      @p dst (for chaining).
  *
  * @note        fs2_move(x, x) is a no-op that returns @p dst.
- * @warning     `invraise` if either pointer is NULL or either side is FS2_LOCAL.
+ * @warning     `invraise` if either pointer is NULL or either side is FS2LOCAL.
  */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
@@ -646,7 +646,7 @@ fs2_exch(fs2 *a, fs2 *b)
  * @return      Stack fs2 value with the former heap value's content.
  *
  * @warning     `invraise` if pointers are NULL; `userraise` if not BODYALLOC
- *              or if the source is FS2_LOCAL.
+ *              or if the source is FS2LOCAL.
  */
 fs2   
 fs2_heaptostack(fs2 **psrc) {
@@ -765,6 +765,18 @@ fs2_free(fs2 *s) {
     if (body) 
         fs2_freebody(s);
 }   
+
+// ------------------------------------ CAT/CPY/ETC -----------------------------------------
+fs2 *
+fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
+    invraise(dst != NULL && src != NULL, "Null pointers %p %p", dst, src);
+
+    size_t  len = dst-> len + src-> len + 1;
+    fs2_reserve(dst, len);
+    memcpy(dst->v + dst->len, src->v, len);
+    fs2_setlen(dst, len);
+    return dst;
+}
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer
