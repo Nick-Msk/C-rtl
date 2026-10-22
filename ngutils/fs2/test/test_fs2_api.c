@@ -247,7 +247,7 @@ Test(fs2_api, reverse_null_aborts, .signal = SIGABRT) {
 }
 
 Test(fs2_api, reverse_static_rejected, .signal = SIGINT) {
-    fs2 s = FS2_LITERAL("static");
+    fs2 s = FS2LITERAL("static");
     fs2_reverse(&s); /* userraise → SIGINT */
 }
 
