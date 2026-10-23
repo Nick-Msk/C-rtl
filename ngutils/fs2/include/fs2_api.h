@@ -161,7 +161,8 @@ fs2_elem0(fs2 *s, size_t pos){
  * @param str  Non-NULL fs2 (ALLOC or LOCAL).
  * @return     @p str (for chaining).
  */
-extern fs2*             fs2_reverse(fs2 *str);
+extern fs2* 
+fs2_reverse(fs2 *str);
 
 /**
  * @brief Sort a sub-range [from, to) of the string in place.
@@ -173,7 +174,8 @@ extern fs2*             fs2_reverse(fs2 *str);
  * @param to    End offset (exclusive).
  * @param asc   true for ascending, false for descending.
  */
-extern void             fs2_partialsort(fs2 *s, size_t from, size_t to, bool asc);
+extern void  
+fs2_partialsort(fs2 *s, size_t from, size_t to, bool asc);
 
 /**
  * @brief Sort the entire string in place.
@@ -183,7 +185,8 @@ extern void             fs2_partialsort(fs2 *s, size_t from, size_t to, bool asc
  * @param str  Non-NULL fs2 (ALLOC or LOCAL).
  * @param asc  true for ascending, false for descending.
  */
-static inline void      fs2_sort(fs2 *str, bool asc) {
+static inline void 
+fs2_sort(fs2 *str, bool asc) {
     invraise(str != NULL, "Null pointer");
     
     fs2_partialsort(str, 0, str->len, asc);
@@ -191,14 +194,30 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
 
-extern fs2             *fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
+extern fs2 *
+fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
 
-static inline fs2      *fs2_catstr(fs2 *restrict dst, const char *restrict src) {
+static inline fs2 *
+fs2_catstr(fs2 *restrict dst, const char *restrict src) {
     fs2 s = fs2_wrap(src);
     return fs2_cat(dst, &s);
 }
 
-extern fs2             *fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
+extern fs2 *
+fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
+
+static inline fs2 *
+fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
+    dst->len = 0;
+    return fs2_cat(dst, src);
+}
+
+static inline fs2* 
+fs2_cpystr(fs2 *restrict dst, const char *restrict src){
+    fs2 l = fs2_wrap(src);
+    return fs2_cpy(dst, &l); 
+}
+
 
 // ----------------------------- One Symbol Search ------------------------------------------
 
