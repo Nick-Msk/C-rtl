@@ -131,33 +131,55 @@ LOG_ARCHIVE_DIR   = logs/archive
 LOG_ARCHIVE_TS   := $(shell date +%Y%m%d_%H%M%S)
 LOG_ARCHIVE_FILE  = $(LOG_ARCHIVE_DIR)/$(PROJNAME)_$(LOG_ARCHIVE_TS).log.gz
 
+# ── Log targets — unconditional, safe to call any time ────────────────────
+#
+#   make merge-logs-fs2    — fold raw logs into logs/result/all.log
+#                            (idempotent; usable after a failed test run)
+#   make clean-logs-fs2    — archive previous all.log, wipe raw logs
+#
+# Both defined OUTSIDE the HAVE_CRITERION branch: diagnostics should work
+# even on a machine without Criterion (last logs still worth merging).
+
+.PHONY: merge-logs-$(PROJNAME)
+
+merge-logs-$(PROJNAME):
+	@mkdir -p logs/result
+	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
+	    -exec cat {} + > logs/result/all.log 2>/dev/null || true
+	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
+	    -delete 2>/dev/null || true
+	@echo "Merged: logs/result/all.log"
+
+clean-logs-$(PROJNAME): arch-logs
+	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
+	    -delete 2>/dev/null || true
+	@rm -rf logs/result
+
+# ── Test target — structural ifeq, shell for the rest ─────────────────────
+
 ifeq ($(HAVE_CRITERION),yes)
 
 test: clean-logs-$(PROJNAME) $(TEST_BIN)
-ifeq ($(TEST_LOG),1)
-	@mkdir -p logs/result
-endif
-	@$(SAN_RUN) $(TEST_BIN)
-ifeq ($(TEST_LOG),1)
-	@find logs -maxdepth 1 -name 'log_$(PROJNAME)_*.log' \
-		-exec cat {} + > logs/result/all.log
-	@find logs -maxdepth 1 -name 'log_$(PROJNAME)_*.log' -delete
-	@echo "Merged: logs/result/all.log"
-endif
+	@$(SAN_RUN) $(TEST_BIN); status=$$?; \
+	 if [ "$(TEST_LOG)" = "1" ]; then \
+	    $(MAKE) --no-print-directory merge-logs-$(PROJNAME); \
+	 fi; \
+	 exit $$status
 
 $(TEST_BIN): $(OBJ_LIST) $(TEST_OBJ_LIST) $(REQ_ARCHIVES) | $(DEBUG)
 	$(CC) $(SAN_CC_FLAGS) -o $@ $^ $(CRIT_LIBS)
 
 else
+
 test:
-ifeq ($(REQUIRE_CRITERION),1)
-	@echo "ERROR: Criterion not found, REQUIRE_CRITERION=1" >&2
-	@exit 1
-else
-	@echo "SKIP: Criterion not installed (pkg-config --exists criterion failed)"
-	@echo "      Install with: brew install criterion  (macOS)"
-	@echo "                    apt install libcriterion-dev  (Debian/Ubuntu)"
-endif
+	@if [ "$(REQUIRE_CRITERION)" = "1" ]; then \
+	    echo "ERROR: Criterion not found, REQUIRE_CRITERION=1" >&2; \
+	    exit 1; \
+	 fi; \
+	 echo "SKIP: Criterion not installed (pkg-config --exists criterion failed)"; \
+	 echo "      Install with: brew install criterion   (macOS)"; \
+	 echo "                    apt install libcriterion-dev  (Debian/Ubuntu)"
+
 endif
 
 # Log Archiving & Cleaning
@@ -171,10 +193,6 @@ arch-logs:
 clean-log-archive:
 	@rm -rf $(LOG_ARCHIVE_DIR)
 	@echo "Removed: $(LOG_ARCHIVE_DIR)"
-
-clean-logs-$(PROJNAME): arch-logs
-	@rm -f logs/log_$(PROJNAME)_*.log
-	@rm -rf logs/result
 
 # ── Analysis ────────────────────────────────────────────────────────────────
 check:
