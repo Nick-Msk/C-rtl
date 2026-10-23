@@ -193,10 +193,12 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 extern fs2             *fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
 
-static inline fs2       *fs2_catstr(fs2 *restrict dst, const char *restrict src) {
+static inline fs2      *fs2_catstr(fs2 *restrict dst, const char *restrict src) {
     fs2 s = fs2_wrap(src);
     return fs2_cat(dst, &s);
 }
+
+extern fs2             *fs_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
 
 // ----------------------------- One Symbol Search ------------------------------------------
 

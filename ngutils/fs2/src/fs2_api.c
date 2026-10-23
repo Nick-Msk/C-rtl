@@ -280,3 +280,20 @@ fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
     fs2_setlen(dst, len);
     return dst;
 }
+
+// beginner-null safe version
+fs2 *
+fs_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
+    invraise(dst != NULL, "Null pointer %p", dst);
+
+    if (!beginner)
+        return dst;
+    size_t  len = strlen(beginner);
+    if (len == 0)       // no any allocations if null or empty 
+        return dst;
+    fs2_reserve(dst, dst->len + len + 1);
+    memmove(dst->v + len, dst, dst->len);
+    memcpy(dst->v, beginner, len);
+    return fs2_setlen(dst, dst->len + len);
+}
+
