@@ -766,18 +766,6 @@ fs2_free(fs2 *s) {
         fs2_freebody(s);
 }   
 
-// ------------------------------------ CAT/CPY/ETC -----------------------------------------
-fs2 *
-fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
-    invraise(dst != NULL && src != NULL, "Null pointers %p %p", dst, src);
-
-    size_t  len = dst-> len + src-> len + 1;
-    fs2_reserve(dst, len);
-    memcpy(dst->v + dst->len, src->v, len);
-    fs2_setlen(dst, len);
-    return dst;
-}
-
  /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer
  * ───────────────────────────────────────────────────────────────────────── */

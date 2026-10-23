@@ -191,11 +191,11 @@ static inline void      fs2_sort(fs2 *str, bool asc) {
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
 
-// TODO:
- extern fs2             *fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
+extern fs2             *fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
 
 static inline fs2       *fs2_catstr(fs2 *restrict dst, const char *restrict src) {
-    return fs2_cat(dst, &FS2WRAP(src));
+    fs2 s = fs2_wrap(src);
+    return fs2_cat(dst, &s);
 }
 
 // ----------------------------- One Symbol Search ------------------------------------------

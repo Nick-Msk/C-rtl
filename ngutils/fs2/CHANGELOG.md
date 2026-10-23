@@ -71,4 +71,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behaviour for an OOM in the core layer.
 - The `LOGNPRINTF` helper in `src/fs2.c` is a temporary macro; it will
   move to `common.h` once a second consumer needs it.
-

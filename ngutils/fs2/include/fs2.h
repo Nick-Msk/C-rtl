@@ -74,7 +74,7 @@ extern const char    *const *fs2_versions(void);
 
 typedef enum {
     FS2_CONST     = 0x01,   /**< Reserved.                              */
-    FS2_STATIC    = 0x02,   /**< v is external, read-only (literal).    */
+    FS2_STATIC    = 0x02,   /**< v is external, read-only; not owned, not freed, not growable. */
     FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.     */
     FS2_ALLOC     = 0x08,   /**< v is heap-owned; growable via realloc. */
     FS2_BODYALLOC = 0x10,   /**< the struct itself is heap-allocated.   */
@@ -123,14 +123,7 @@ typedef struct fs2 {
 
 /** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
 #define FS2LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
-                                .flags = FS2_STATIC, .v = (char *)(s) }
-/** wrapper for lvalue over c-string */
-#define FS2WRAP(str) ({ \
-    size_t  len = 0, sz = 0; \
-    if (str) len = strlen(str), sz = len + 1; \
-    fs2     res = (fs2) {.flags = FS2_STATIC, .len = len, .sz = sz, .v = str}; \
-    res; \
-})                                
+                                .flags = FS2_STATIC, .v = (char *)(s) }                      
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Getters (all const-safe, no allocation)
@@ -276,6 +269,26 @@ extern fs2 *      fs_shrink(fs2 *s);
  *   fs2_movefromstr(p)   steal a heap C-string (p becomes NULL)
  * ───────────────────────────────────────────────────────────────────────── */
  
+/**
+ * @brief Wrap a C-string as an fs2 view (STATIC, zero-copy).
+ *
+ * @param str  NUL-terminated string, or NULL.
+ *             NULL is treated as the empty string.
+ * @return     fs2 view aliasing @p str (or the empty view if NULL).
+ *             @p str must outlive every use of the result.
+ * @note       No allocation. `fs2_free` on the result is a no-op.
+ *             Do not pass the result as both `dst` and `src` to fs2_cat
+ *             (restrict violation).
+ */
+static inline fs2 
+fs2_wrap(const char *str) {
+    if (!str)
+        return FS2EMPTY;
+    size_t  len = strlen(str), sz = len + 1;
+    fs2 res = (fs2) {.len = len, .sz = sz, .v = (char *) str, .flags = FS2_STATIC};
+    return res;
+}
+
 /**
  * @brief Create a growable fs2 with the given initial capacity.
  *
