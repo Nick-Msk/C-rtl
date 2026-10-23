@@ -1757,3 +1757,227 @@ Test(fs2_api, rchr_nth_null,   .signal = SIGABRT) { fs2_rchr_nth  (NULL, 'a', 1)
 Test(fs2_api, nrchr_nth_null,  .signal = SIGABRT) { fs2_nrchr_nth (NULL, 'a', 1, 10);}
 Test(fs2_api, irchr_nth_null,  .signal = SIGABRT) { fs2_irchr_nth (NULL, 'a', 1);    }
 Test(fs2_api, nirchr_nth_null, .signal = SIGABRT) { fs2_nirchr_nth(NULL, 'a', 1, 10);}
+
+/* ─── fs2_wrap ────────────────────────────────────────────────────── */
+
+Test(fs2_api, wrap_normal) {
+    fs2 w = fs2_wrap("hello");
+    CHECK_EQ("len", w.len, 5);
+    CHECK_EQ("sz",  w.sz, 6);
+    CHECK_TRUE("STATIC", fs2_is_static(&w));
+    CHECK_STR_EQ("v", w.v, "hello");
+    CHECK_FS2VALID(1, &w);
+}
+
+Test(fs2_api, wrap_empty_string) {
+    fs2 w = fs2_wrap("");
+    CHECK_EQ("len", w.len, 0);
+    CHECK_EQ("sz",  w.sz, 1);
+    CHECK_TRUE("STATIC", fs2_is_static(&w));
+    CHECK_NOT_NULL("v", w.v);
+    CHECK_FS2VALID(1, &w);
+}
+
+Test(fs2_api, wrap_null_returns_empty_view) {
+    fs2 w = fs2_wrap(NULL);
+    CHECK_EQ("len", w.len, 0);
+    CHECK_EQ("sz",  w.sz, 1);          /* FS2_EMPTY, не {0,0} */
+    CHECK_TRUE("STATIC", fs2_is_static(&w));
+    CHECK_NOT_NULL("v non-NULL", w.v);
+    CHECK_STR_EQ("v empty", w.v, "");
+    CHECK_FS2VALID(1, &w);             /* ← проходит */
+}
+
+/* ─── fs2_cat ──────────────────────────────────────────────────── */
+
+Test(fs2_api, cat_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr(" world");
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2 *ret = fs2_cat(&dst, &src);
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "hello world");
+    CHECK_EQ("len", dst.len, 11);
+    CHECK_FS2VALID(3, &dst);
+    CHECK_FS2VALID(4, &src);   /* src не тронут */
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cat_static_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = FS2LITERAL(" world");
+
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("appended", dst.v, "hello world");
+    CHECK_FS2VALID(2, &dst);
+    CHECK_FS2VALID(3, &src);   /* STATIC не меняется */
+
+    fs2_free(&dst);            /* src — STATIC, free no-op */
+    assert_balanced();
+}
+
+Test(fs2_api, cat_empty_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr("");
+
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("unchanged", dst.v, "hello");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cat_empty_dst) {
+    __fs2_checkreset();
+    fs2 dst = FS2();                    /* canonical empty ALLOC */
+    CHECK_FS2VALID(1, &dst);
+
+    fs2 src = fs2_fromstr("hello");
+    fs2_cat(&dst, &src);
+
+    CHECK_STR_EQ("appended to empty", dst.v, "hello");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+
+/* ─── fs2_catstr ──────────────────────────────────────────────────── */
+
+Test(fs2_api, catstr_null_src_is_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_catstr(&s, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_via_wrap_no_copy) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_catstr(&s, "hello");
+    /* Проверим, что промежуточный fs2 не аллоцировал:
+     * один alloc/free — на dst, zero — на wrap. */
+    CHECK_STR_EQ("appended", s.v, "hello");
+    CHECK_FS2VALID(2, &s);
+    fs2_free(&s);
+    assert_balanced();   /* ← поймал бы утечку от fs2_fromstr-варианта */
+}
+
+Test(fs2_api, catstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2 *ret = fs2_catstr(&s, " world");
+
+    CHECK_PTR_EQ("returns dst", ret, &s);
+    CHECK_STR_EQ("content", s.v, "hello world");
+    CHECK_EQ("len", s.len, 11);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_empty_src) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* FS2WRAP("") даёт валидный {len=0, sz=1, STATIC, v=""} */
+    fs2_catstr(&s, "");
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_empty_dst) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_FS2VALID(1, &s);
+
+    fs2_catstr(&s, "hello");
+    CHECK_STR_EQ("appended", s.v, "hello");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_chained) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a");
+
+    fs2_catstr(fs2_catstr(fs2_catstr(&s, "b"), "c"), "d");
+
+    CHECK_STR_EQ("chained", s.v, "abcd");
+    CHECK_EQ("len", s.len, 4);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_triggers_growth) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    size_t orig_sz = s.sz;
+
+    char big[1024];
+    memset(big, 'A', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+
+    fs2_catstr(&s, big);
+
+    CHECK_TRUE("buffer grew", s.sz > orig_sz);
+    CHECK_EQ("len", s.len, 1 + (sizeof(big) - 1));
+    CHECK_EQ("first char", s.v[0], 'x');
+    for (size_t i = 1; i < s.len; i++)
+        CHECK_EQ("expected 'A'", s.v[i], 'A');
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, catstr_multiple_append) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_catstr(&s, "one");
+    fs2_catstr(&s, " ");
+    fs2_catstr(&s, "two");
+    fs2_catstr(&s, " ");
+    fs2_catstr(&s, "three");
+
+    CHECK_STR_EQ("all appended", s.v, "one two three");
+    CHECK_EQ("len", s.len, 13);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
