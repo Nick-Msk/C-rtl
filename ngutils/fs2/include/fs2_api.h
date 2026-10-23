@@ -208,6 +208,10 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
 
 static inline fs2 *
 fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
+    invraise(dst != NULL, "Null pointer");
+
+    if (dst == src)
+        return dst; // self-copy is a no-op
     dst->len = 0;
     return fs2_cat(dst, src);
 }
