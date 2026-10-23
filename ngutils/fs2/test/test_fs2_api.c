@@ -2229,3 +2229,189 @@ Test(fs2_api, composite_clone_independence) {
     fs2_free(&b);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_cpy — overwrite dst with src
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, cpy_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr("world");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2 *ret = fs2_cpy(&dst, &src);
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("copied", dst.v, "world");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+    CHECK_FS2VALID(3, &src); // src не тронут
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cpy_shrink) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("longer string");
+    fs2 src = fs2_fromstr("short");
+    
+    /* dst был 13, стал 5. Буфер не должен уменьшаться (sz остается прежним) */
+    size_t orig_sz = dst.sz;
+    
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("copied shorter", dst.v, "short");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_EQ("sz unchanged", dst.sz, orig_sz); // reserve не сжимает
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cpy_grow) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("short");
+    fs2 src = fs2_fromstr("much much longer string");
+    size_t orig_sz = dst.sz;
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("copied longer", dst.v, "much much longer string");
+    CHECK_EQ("len", dst.len, 23);
+    CHECK_TRUE("sz grew", dst.sz > orig_sz);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cpy_empty_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr("");
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, cpy_local_to_alloc) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 16);
+    memcpy(dst.v, "local", 6);
+    dst.len = 5;
+    
+    fs2 src = fs2_fromstr("allocated");
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("copied", dst.v, "allocated");
+    CHECK_EQ("len", dst.len, 9);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst); // no-op
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* -------------------------------------------------------------------------
+ * fs2_cpystr — overwrite dst with C-string
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, cpystr_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2 *ret = fs2_cpystr(&dst, "world");
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("copied", dst.v, "world");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, cpystr_null_clears) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) -> FS2EMPTY -> fs2_cpy -> очищает dst */
+    fs2_cpystr(&dst, NULL);
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, cpystr_empty_string_clears) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2_cpystr(&dst, "");
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_cpy_chain) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("initial");
+    
+    fs2_cpystr(&s, "one");        // "one"
+    fs2_catstr(&s, " two");       // "one two"
+    fs2_rev_catstr(&s, "zero ");  // "zero one two"
+    fs2_cpy(&s, &FS2LITERAL("reset")); // "reset"
+    fs2_catstr(&s, "!");          // "reset!"
+    
+    CHECK_STR_EQ("final", s.v, "reset!");
+    CHECK_EQ("len", s.len, 6);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, cpystr_null_no_alloc) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    /* Проверяем, что счетчики аллокаций не изменятся */
+    int alloc_before, freed_before, ba_before, bf_before;
+    fs2_checkleak(&alloc_before, &freed_before, &ba_before, &bf_before);
+
+    fs2_cpystr(&dst, NULL);
+
+    int alloc_after, freed_after, ba_after, bf_after;
+    fs2_checkleak(&alloc_after, &freed_after, &ba_after, &bf_after);
+
+    CHECK_EQ("no new allocations", alloc_after, alloc_before);
+    CHECK_EQ("no new frees",       freed_after, freed_before);
+    
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
