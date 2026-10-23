@@ -198,7 +198,7 @@ static inline fs2      *fs2_catstr(fs2 *restrict dst, const char *restrict src) 
     return fs2_cat(dst, &s);
 }
 
-extern fs2             *fs_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
+extern fs2             *fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
 
 // ----------------------------- One Symbol Search ------------------------------------------
 

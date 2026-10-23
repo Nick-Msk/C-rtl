@@ -2108,3 +2108,124 @@ Test(fs2_api, rev_catstr_null_dst_aborts, .signal = SIGABRT) {
     fs2_rev_catstr(NULL, "abc");
 }
 
+Test(fs2_api, composite_pipeline_basic) {
+    __fs2_checkreset();
+
+    /* 1. Создаём "base" */
+    fs2 s = fs2_fromstr("base");
+    CHECK_FS2VALID(1, &s);
+
+    /* 2. Клонируем: deep copy, но независимые буферы */
+    fs2 c = fs2_clone(&s);
+    CHECK_FS2VALID(2, &c);
+
+    /* 3. cat: "base" + "_tail" = "base_tail" */
+    fs2 tail = FS2LITERAL("_tail");
+    fs2_cat(&c, &tail);
+    CHECK_STR_EQ("after cat", c.v, "base_tail");
+    CHECK_FS2VALID(3, &c);
+
+    /* 4. rev_catstr: "head_" + "base_tail" = "head_base_tail" */
+    fs2_rev_catstr(&c, "head_");
+    CHECK_STR_EQ("after rev_catstr", c.v, "head_base_tail");
+    CHECK_FS2VALID(4, &c);
+
+    /* 5. catstr: "head_base_tail" + "!" = "head_base_tail!" */
+    fs2_catstr(&c, "!");
+    CHECK_STR_EQ("after catstr", c.v, "head_base_tail!");
+    CHECK_EQ("final len", c.len, 15);
+    CHECK_FS2VALID(5, &c);
+
+    /* Оригинал не тронут */
+    CHECK_STR_EQ("orig intact", s.v, "base");
+    CHECK_FS2VALID(6, &s);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_order_matters) {
+    __fs2_checkreset();
+    
+    fs2 s = fs2_fromstr("X");
+    
+    fs2_catstr(&s, "Y");        // "XY"
+    fs2_rev_catstr(&s, "Z");    // "ZXY"
+    fs2_catstr(&s, "W");        // "ZXYW"
+    fs2_rev_catstr(&s, "A");    // "AZXYW"
+    
+    CHECK_STR_EQ("pipeline result", s.v, "AZXYW");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(2, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_stress_reallocs) {
+    __fs2_checkreset();
+    fs2 s = FS2();  /* начинаем с нуля */
+    
+    /* 100 раз добавляем спереди и сзади, чтобы вызвать много realloc'ов */
+    for (int i = 0; i < 100; i++) {
+        fs2_catstr(&s, "R");
+        fs2_rev_catstr(&s, "L");
+        CHECK_FS2VALID(i, &s);
+    }
+    
+    CHECK_EQ("len", s.len, 200);
+    
+    /* Проверяем, что "L" и "R" чередуются как надо:
+     * "LLL...RRR..." — все L в начале, все R в конце */
+    for (size_t i = 0; i < 100; i++) {
+        CHECK_EQ("front is L", s.v[i], 'L');
+        CHECK_EQ("back is R",  s.v[100 + i], 'R');
+    }
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_local_buffer) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 64);
+    s.len = 0;
+    s.v[0] = '\0';
+
+    fs2_catstr(&s, "middle");
+    fs2_rev_catstr(&s, "start_");
+    fs2_catstr(&s, "_end");
+
+    CHECK_STR_EQ("local pipeline", s.v, "start_middle_end");
+    CHECK_EQ("len", s.len, 16);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+}
+
+Test(fs2_api, composite_clone_independence) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("shared");
+    
+    fs2 b = fs2_clone(&a);
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    /* Мутируем b разными способами */
+    fs2_catstr(&b, "_b");
+    fs2_rev_catstr(&b, "b_");
+    CHECK_STR_EQ("b modified", b.v, "b_shared_b");
+    CHECK_FS2VALID(3, &b);
+
+    /* a не должен измениться */
+    CHECK_STR_EQ("a intact", a.v, "shared");
+    CHECK_EQ("a len intact", a.len, 6);
+    CHECK_FS2VALID(4, &a);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
