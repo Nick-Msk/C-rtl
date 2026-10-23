@@ -608,6 +608,15 @@ static inline fs2 *fs2_clear(fs2 *s) {
  */
 long        fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
+#define  FSTECHFPRINT(out, s) \
+        fs_techfprint( (out), (s), #s)
+
+#define  FSTECHPRINT(s) \
+        fs_techfprint(stdout, (s), #s)        
+
+#define  FSTECHLOG(s) \
+        fs_techfprint(logfile, (s), #s)        
+
  /* ─────────────────────────────────────────────────────────────────────────
  * Validator
  * ───────────────────────────────────────────────────────────────────────── */
