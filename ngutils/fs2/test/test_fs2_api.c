@@ -1981,3 +1981,130 @@ Test(fs2_api, catstr_multiple_append) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_rev_catstr — prepend string (reverse concatenation)
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, rev_catstr_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2 *ret = fs2_rev_catstr(&dst, "hello ");
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "hello world");
+    CHECK_EQ("len", dst.len, 11);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, rev_catstr_empty_dst) {
+    __fs2_checkreset();
+    fs2 dst = FS2();   /* canonical empty */
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_rev_catstr(&dst, "hello");
+
+    CHECK_STR_EQ("prepended to empty", dst.v, "hello");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, rev_catstr_empty_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+    size_t orig_sz = dst.sz;
+
+    fs2_rev_catstr(&dst, "");
+
+    CHECK_STR_EQ("unchanged", dst.v, "world");
+    CHECK_EQ("len unchanged", dst.len, 5);
+    CHECK_EQ("sz unchanged (early return)", dst.sz, orig_sz);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, rev_catstr_null_src_is_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+
+    fs2_rev_catstr(&dst, NULL);
+
+    CHECK_STR_EQ("unchanged", dst.v, "world");
+    CHECK_EQ("len unchanged", dst.len, 5);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* Регрессия на баг memcpy vs memmove:
+ * если используется memcpy вместо memmove, старая строка затирается. */
+Test(fs2_api, rev_catstr_shifts_correctly) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+
+    fs2_rev_catstr(&dst, "hello ");
+
+    /* Если был memcpy(dst->v, "hello ", 6), то "world" затрётся,
+     * и dst.v[6] будет 'd', но остальное — мусор, strlen < len. */
+    CHECK_STR_EQ("suffix intact", dst.v + 6, "world");
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, rev_catstr_triggers_growth) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+    size_t orig_sz = dst.sz;
+    
+    // 100 символов 'A'
+    char big[128];
+    memset(big, 'A', 100);
+    big[100] = '\0';
+
+    fs2_rev_catstr(&dst, big);
+
+    CHECK_TRUE("buffer grew", dst.sz > orig_sz);
+    CHECK_EQ("len", dst.len, 105);
+    for (size_t i = 0; i < 100; i++)
+        CHECK_EQ("prefix 'A'", dst.v[i], 'A');
+    CHECK_STR_EQ("suffix intact", dst.v + 100, "world");
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, rev_catstr_local) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 32);
+    memcpy(dst.v, "world", 6);
+    dst.len = 5;
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_rev_catstr(&dst, "hello ");
+
+    CHECK_STR_EQ("prepended", dst.v, "hello world");
+    CHECK_EQ("len", dst.len, 11);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+}
+
+Test(fs2_api, rev_catstr_null_dst_aborts, .signal = SIGABRT) {
+    fs2_rev_catstr(NULL, "abc");
+}
+
