@@ -298,3 +298,26 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
     return fs2_setlen(dst, dst->len + len);
 }
 
+long                  
+fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap) {
+    invraise(s != NULL && fmt != NULL, "Null pointers %p %p", s, fmt);
+    
+    va_list ap2; 
+    va_copy(ap2, ap); 
+    int     needed = vsnprintf(NULL, 0, fmt, ap2);
+    va_end(ap2);
+
+    if (needed < 0) 
+        return logsimpleerr(-1L, "vsnprintf length failed");
+    
+    size_t  lastpos = pos + 1 + needed;
+    if (lastpos >= s->sz) // not sure, probaly > sz
+        fs2_reserve(s, lastpos);
+
+    long     cnt = vsnprintf(s->v + pos, needed, fmt, ap);
+    if (s->len < lastpos - 1)
+        fs2_setlen(s, lastpos - 1);
+
+    return cnt;    
+}
+
