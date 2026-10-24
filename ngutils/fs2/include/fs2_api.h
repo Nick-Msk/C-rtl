@@ -249,7 +249,7 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     va_start(ap, fmt);
     long res = fs2_vsprintf_position(s, 0, fmt, ap);
     va_end(ap);
-    if (res < 0)
+    if (res >= 0)
         fs2_setlen(s, res); // fix the length!!!
 
     return res;

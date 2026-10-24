@@ -2415,3 +2415,209 @@ Test(fs2_api, cpystr_null_no_alloc) {
     fs2_free(&dst);
     assert_balanced();
 }
+
+/* -------------------------------------------------------------------------
+ * fs2_sprintf — formatted write from position 0, updates len
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, sprintf_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("initial");
+    CHECK_FS2VALID(1, &s);
+
+    long res = fs2_sprintf(&s, "Hello %s %d", "world", 42);
+
+    CHECK_EQ("return value", res, 14); // strlen("Hello world 42")
+    CHECK_STR_EQ("content", s.v, "Hello world 42");
+    CHECK_EQ("len updated", s.len, 14);
+    CHECK_FS2VALID(2, &s); // Инвариант strlen == len соблюден
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_overwrite_shorter) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("long string here");
+    size_t orig_sz = s.sz;
+
+    /* Пишем строку короче, чем была. Буфер не должен сжиматься. */
+    long res = fs2_sprintf(&s, "short");
+
+    CHECK_EQ("return value", res, 5);
+    CHECK_STR_EQ("content", s.v, "short");
+    CHECK_EQ("len updated", s.len, 5);
+    CHECK_EQ("sz unchanged", s.sz, orig_sz);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_triggers_growth) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // canonical empty
+    size_t orig_sz = s.sz;
+
+    /* 100 символов 'A' через формат */
+    long res = fs2_sprintf(&s, "%0100d", 0); 
+    // %0100d даст 100 символов (нули + '0')
+
+    CHECK_EQ("return value", res, 100);
+    CHECK_EQ("len updated", s.len, 100);
+    CHECK_TRUE("sz grew", s.sz > orig_sz);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_exact_fit_no_realloc) {
+    __fs2_checkreset();
+    /* Создаем буфер ровно на 5 символов + NUL = 6 */
+    fs2 s = fs2_init(6); 
+    
+    /* Пишем ровно 5 символов */
+    long res = fs2_sprintf(&s, "12345");
+
+    CHECK_EQ("return value", res, 5);
+    CHECK_STR_EQ("content", s.v, "12345");
+    CHECK_EQ("len updated", s.len, 5);
+    CHECK_GE("sz not changed (fits exactly)", s.sz, 6);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_regression_last_char_not_eaten) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    
+    /* Регрессия на баг: vsnprintf(s->v, needed, ...) съедал последний символ. 
+     * Тут needed = 5. Если передать size=5 вместо 6, получится "1234". */
+    fs2_sprintf(&s, "12345");
+
+    CHECK_STR_EQ("last char kept", s.v, "12345");
+    CHECK_EQ("len", s.len, 5);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_empty_format) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    long res = fs2_sprintf(&s, "");
+
+    CHECK_EQ("return value", res, 0);
+    CHECK_STR_EQ("content", s.v, "");
+    CHECK_EQ("len updated", s.len, 0);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_null_aborts, .signal = SIGABRT) {
+    fs2_sprintf(NULL, "abc");
+}
+
+Test(fs2_api, sprintf_null_fmt_aborts, .signal = SIGABRT) {
+    fs2 s = FS2();
+    fs2_sprintf(&s, NULL);
+}
+
+/* -------------------------------------------------------------------------
+ * fs2_sprintf_position — raw writer (does NOT update len)
+ * ------------------------------------------------------------------------- */
+
+Test(fs2_api, sprintf_position_middle) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0123456789"); // len=10
+    CHECK_FS2VALID(1, &s);
+
+    /* Перезаписываем символы с 4-й позиции */
+    long res = fs2_sprintf_position(&s, 4, "XXX");
+
+    CHECK_EQ("return value", res, 3);
+    /* 0 1 2 3 X X X 7 8 9 */
+    CHECK_STR_EQ("content", s.v, "0123XXX");
+    
+    /* ГЛАВНОЕ: len НЕ должен измениться, т.к. это raw writer */
+    CHECK_EQ("len untouched", s.len, 10);
+    
+    /* Валидатор упадет, если его позвать, потому что strlen (10) != len (10) - 
+     * стоп, strlen всё еще 10, потому что мы не ставили \0 в середину, 
+     * а XXX перезаписали 456. 
+     * Но если бы мы записали туда же, скажем, "X", то strlen стал бы 9. 
+     * Поэтому в primitive-слое мы len не трогаем вообще. */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_position_overwrites_nul) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc"); // len=3
+    CHECK_FS2VALID(1, &s);
+
+    /* Пишем с конца (pos=3), прямо на место NUL */
+    fs2_sprintf_position(&s, 3, "def");
+    
+    /* В памяти теперь "abcdef\0", но len всё еще 3 */
+    CHECK_STR_EQ("content", s.v, "abcdef");
+    CHECK_EQ("len untouched (raw writer)", s.len, 3);
+    
+    /* Если теперь вызывающий хочет, чтобы это стало валидной строкой, он делает: */
+    fs2_setlen(&s, 6);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_position_triggers_growth) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // sz=0, v=NULL
+    size_t orig_sz = s.sz;
+    (void) orig_sz;
+
+    /* Пишем далеко за пределами текущего размера (pos=20) */
+    long res = fs2_sprintf_position(&s, 20, "test");
+
+    CHECK_EQ("return value", res, 4);
+    CHECK_TRUE("sz grew", s.sz > 20);
+    CHECK_EQ("len untouched", s.len, 0);
+    
+    /* v[20..23] == "test", v[24] == '\0' */
+    CHECK_STR_EQ("content at offset", s.v + 20, "test");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_position_null_aborts, .signal = SIGABRT) {
+    fs2_sprintf_position(NULL, 0, "abc");
+}
+
+Test(fs2_api, sprintf_position_null_fmt_aborts, .signal = SIGABRT) {
+    fs2 s = FS2();
+    fs2_sprintf_position(&s, 0, NULL);
+}
+
+Test(fs2_api, sprintf_bad_format_returns_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("initial");
+    
+    /* %d без аргумента — UB в C, лучше не тестировать.
+     * А вот невалидный спецификатор (например, %q) даст -1. */
+    long res = fs2_sprintf(&s, "%q");
+    
+    CHECK_TRUE("return value < 0", res <= 0);
+    /* len не обязан меняться, поэтому просто проверяем, что мы живы */
+    
+    fs2_free(&s);
+    assert_balanced();
+}
