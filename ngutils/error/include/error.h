@@ -230,7 +230,9 @@ typedef struct {
  *       after raising SIGINT.
  */
 extern void
-err_raise(ErrorType tp, int errcode, const char *msg, ...)  __attribute__ ((format (printf, 3, 4)));
+err_raise(ErrorType tp, int errcode, const char *msg, ...)  
+    __attribute__ ((format (printf, 3, 4)))
+    __attribute__((noreturn));
 
 /**
  * @brief Reset the per-thread error stack to its initial (empty) state.
