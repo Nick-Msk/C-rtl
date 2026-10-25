@@ -249,7 +249,13 @@ Test(error_try, nested_three_levels) {
  * ------------------------------------------------------------------------- */
 
 static volatile sig_atomic_t g_sigint_seen = 0;
-static void sigint_flag(int sig) { (void)sig; g_sigint_seen = 1; }
+static sigjmp_buf jump_env;
+
+static void sigint_flag_jmp(int sig) {
+    (void)sig;
+    g_sigint_seen = 1;
+    siglongjmp(jump_env, 1); // <--- Прыгаем обратно в тест
+}
 
 Test(error_try, raise_outside_try_signals_sigint) {
     err_resetenv();
@@ -257,11 +263,15 @@ Test(error_try, raise_outside_try_signals_sigint) {
 
     struct sigaction sa, old;
     memset(&sa, 0, sizeof sa);
-    sa.sa_handler = sigint_flag;
+    sa.sa_handler = sigint_flag_jmp;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, &old);
 
-    err_raise(ERR_USER, ERR_NULLABLE_PTR, "no try here");
+    /* Если sigsetjmp возвращает 0 — это первый проход.
+     * Если 1 — значит, мы вернулись сюда из обработчика сигнала. */
+    if (sigsetjmp(jump_env, 1) == 0) {
+        err_raise(ERR_USER, ERR_NULLABLE_PTR, "no try here");
+    }
 
     sigaction(SIGINT, &old, NULL);
     cr_assert_eq(g_sigint_seen, 1,
@@ -699,6 +709,9 @@ Test(error_threads, per_thread_stack) {
     cr_assert_eq(err_count(), 0);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winfinite-recursion"
+
 static void
 deep_worker(int depth)
 {
@@ -710,6 +723,8 @@ deep_worker(int depth)
     }
     deep_worker(depth - 1);
 }
+
+#pragma GCC diagnostic pop
 
 static int
 cross_function_try(int depth)
