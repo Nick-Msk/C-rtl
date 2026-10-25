@@ -355,12 +355,7 @@ fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
     invraise(s != NULL, "Null pointer");
 
     fs2 *res = fs2_heap();
-    fs2_substr_bounds(s, &from, &len);        
-    
-    if (len == 0)
-        return res;
-
-    fs2_memcpy(res, 0, s, from, len);
-    fs2_setlen(res, len);
+    *res = fs2_substr_new(s, from, len);
+    res->flags |= FS2_BODYALLOC;
     return res;
 }
