@@ -364,11 +364,41 @@ fs2_rpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
     fs2_rpad(&res, len, pad);
     return res;
 }
+// heap-constructor
 static inline fs2
 fs2_rpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr) {
     
     fs2 tmp = fs2_wrap(padstr);
     return fs2_rpad_new(str, len, &tmp);
+}
+// left
+extern fs2 *                    
+fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
+
+static inline fs2 *
+fs2_lpadstr(fs2 *restrict str, size_t len, const char *restrict padstr) {
+
+    fs2 tmp = fs2_wrap(padstr);
+    return fs2_lpad(str, len, &tmp);
+}
+// stack-constructor
+static inline fs2
+fs2_lpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
+    invraise(str != NULL, "Null pointer");
+
+    fs2 res = fs2_clone(str);  
+    if (!pad)
+        return res;
+     
+    fs2_lpad(&res, len, pad);
+    return res;
+}
+// heap-constructor
+static inline fs2
+fs2_lpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr) {
+    
+    fs2 tmp = fs2_wrap(padstr);
+    return fs2_lpad_new(str, len, &tmp);
 }
 
 // ----------------------------- One Symbol Search ------------------------------------------

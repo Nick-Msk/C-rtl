@@ -404,4 +404,28 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 
     return fs2_setlen(str, len);
 }
+// left
+fs2 *                    
+fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
+    invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
+
+    if (len < str->len)
+        return fs2_left(str, len);
+
+    if (pad->len == 0 || len == str->len)  // empty - nothing to PAD
+        return str;
+
+    size_t pad_len = len - str->len;
+    fs2_selfmove(str, pad_len, 0, str->len);
+
+    size_t  i = 0, j = 0;
+    // a stupid iteration over pad (non-opt)
+    while (i < pad_len) {
+        str->v[i++] = pad->v[j++];
+        if (j == pad->len)
+            j = 0;
+    }
+
+    return fs2_setlen(str, len);
+}
 
