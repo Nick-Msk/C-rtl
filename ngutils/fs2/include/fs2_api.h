@@ -255,6 +255,16 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     return res;
 }
 
+extern fs2 *
+fs2_substr(fs2 *s, size_t from, size_t len);
+
+// note - stacked-constructor
+extern fs2 
+fs2_substr_new(const fs2 *s, size_t from, size_t len);
+
+// note - heap-constructor
+extern fs2 *
+fs2_heap_substr(const fs2 *s, size_t from, size_t len);
 
 // ----------------------------- One Symbol Search ------------------------------------------
 

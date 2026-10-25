@@ -319,3 +319,48 @@ fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_
     return cnt;    
 }
 
+fs2 *
+fs2_substr(fs2 *s, size_t from, size_t len) {
+    invraise(s != NULL, "Null pointer");
+
+    if (!s->v)     // not allocated
+        return s;
+
+    // normalization
+    fs2_substr_bounds(s, &from, &len);
+
+    fs2_selfmove(s, 0, from, len);
+    fs2_setlen(s, len);
+    return s;
+}
+
+fs2 
+fs2_substr_new(const fs2 *s, size_t from, size_t len) {
+    invraise(s != NULL, "Null pointer");
+
+    // s CAN be even STATIC
+    fs2  res = FS2();
+    fs2_substr_bounds(s, &from, &len);        
+    
+    if (len == 0)
+        return res;
+
+    fs2_memcpy(&res, 0, s, from, len);
+    fs2_setlen(&res, len);
+    return res;
+}
+
+fs2 *
+fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
+    invraise(s != NULL, "Null pointer");
+
+    fs2 *res = fs2_heap();
+    fs2_substr_bounds(s, &from, &len);        
+    
+    if (len == 0)
+        return res;
+
+    fs2_memcpy(res, 0, s, from, len);
+    fs2_setlen(res, len);
+    return res;
+}
