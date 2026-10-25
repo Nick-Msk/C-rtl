@@ -3056,3 +3056,217 @@ Test(fs2_api, heap_right_len_ge_slen) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_toupper — in-place uppercase
+ * ========================================================================= */
+
+Test(fs2_api, toupper_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World 123!");
+    
+    fs2 *ret = fs2_toupper(&s);
+    
+    CHECK_PTR_EQ("returns str", ret, &s);
+    CHECK_STR_EQ("uppercased", s.v, "HELLO WORLD 123!");
+    CHECK_EQ("len unchanged", s.len, 16);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, toupper_local) {
+    __fs2_checkreset();
+    FS2LOCALFILL(s, "abc");
+    
+    fs2_toupper(&s);
+    CHECK_STR_EQ("local uppercased", s.v, "ABC");
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s); // no-op
+}
+
+Test(fs2_api, toupper_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // v=NULL
+    
+    fs2_toupper(&s); // Не должно упасть
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_toupper_new — value constructor
+ * ========================================================================= */
+
+Test(fs2_api, toupper_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello");
+    
+    fs2 res = fs2_toupper_new(&s);
+    
+    CHECK_STR_EQ("new uppercased", res.v, "HELLO");
+    CHECK_FS2VALID(1, &res);
+    
+    CHECK_STR_EQ("original intact", s.v, "Hello");
+    CHECK_FS2VALID(2, &s);
+    
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, toupper_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+    
+    /* Клонирует STATIC в ALLOC, затем делает upper. Оригинал не трогается. */
+    fs2 res = fs2_toupper_new(&src);
+    
+    CHECK_STR_EQ("new uppercased from static", res.v, "HELLO");
+    CHECK_FS2VALID(1, &res);
+    CHECK_FS2VALID(2, &src);
+    CHECK_STR_EQ("static intact", src.v, "hello");
+    
+    fs2_free(&res); // src - STATIC, free no-op
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_toupper — heap constructor
+ * ========================================================================= */
+
+Test(fs2_api, heap_toupper_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello");
+    
+    fs2 *res = fs2_heap_toupper(&s);
+    
+    CHECK_STR_EQ("heap uppercased", res->v, "HELLO");
+    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(res));
+    CHECK_FS2VALID(1, res);
+    
+    CHECK_STR_EQ("original intact", s.v, "Hello");
+    CHECK_FS2VALID(2, &s);
+    
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — in-place lowercase
+ * ========================================================================= */
+
+Test(fs2_api, tolower_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World 123!");
+    
+    fs2 *ret = fs2_tolower(&s);
+    
+    CHECK_PTR_EQ("returns str", ret, &s);
+    CHECK_STR_EQ("lowercased", s.v, "hello world 123!");
+    CHECK_EQ("len unchanged", s.len, 16);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello");
+    
+    fs2 res = fs2_tolower_new(&s);
+    
+    CHECK_STR_EQ("new lowercased", res.v, "hello");
+    CHECK_FS2VALID(1, &res);
+    
+    CHECK_STR_EQ("original intact", s.v, "Hello");
+    
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_tolower_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello");
+    
+    fs2 *res = fs2_heap_tolower(&s);
+    
+    CHECK_STR_EQ("heap lowercased", res->v, "hello");
+    CHECK_FS2VALID(1, res);
+    
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_toupper / fs2_tolower (regression for UB)
+ * ========================================================================= */
+
+Test(fs2_api, toupper_non_ascii_no_crash) {
+    __fs2_checkreset();
+    
+    /* Строка из байтов >= 128 (например, UTF-8 кириллица) */
+    fs2 s = fs2_fromstr("\xD0\xB4" "\xD0\xB0"); // "да"
+    size_t orig_len = s.len;
+
+    /* Раньше это могло упасть с Segfault из-за signed char.
+     * Теперь должно просто вернуть строку (в C locale они не меняются). */
+    fs2_toupper(&s);
+    
+    CHECK_EQ("len unchanged", s.len, orig_len);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_non_ascii_no_crash) {
+    __fs2_checkreset();
+    
+    fs2 s = fs2_fromstr("\xC4\xE4"); // 'Ä' 'ä' в Latin-1
+    size_t orig_len = s.len;
+
+    fs2_tolower(&s);
+    
+    CHECK_EQ("len unchanged", s.len, orig_len);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Проверка на смешанных символах
+ * ========================================================================= */
+
+Test(fs2_api, toupper_mixed) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aBcD 123_!");
+    
+    fs2_toupper(&s);
+    CHECK_STR_EQ("uppercased", s.v, "ABCD 123_!");
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_mixed) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("AbCd 123_!");
+    
+    fs2_tolower(&s);
+    CHECK_STR_EQ("lowercased", s.v, "abcd 123_!");
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
