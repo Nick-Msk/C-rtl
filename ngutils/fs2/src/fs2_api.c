@@ -273,11 +273,11 @@ fs2 *
 fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
     invraise(dst != NULL && src != NULL, "Null pointers %p %p", dst, src);
 
-    size_t  len = dst->len + src->len;
-    fs2_reserve(dst, len + 1);
-    if (src->len > 0)
-        memcpy(dst->v + dst->len, src->v, src->len + 1);
-    fs2_setlen(dst, len);
+    if (src->len == 0) return dst;
+
+    fs2_memcpy(dst, dst->len, src, 0, src->len);
+    
+    fs2_setlen(dst, dst->len + src->len);
     return dst;
 }
 
