@@ -2920,3 +2920,139 @@ Test(fs2_api, composite_substr_clamping_pipeline) {
 
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_left (in-place, value, heap)
+ * ========================================================================= */
+
+Test(fs2_api, left_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2_left(&s, 3);
+    CHECK_STR_EQ("left", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, left_clamp) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    
+    /* Просим больше, чем есть — должны получить всю строку */
+    fs2_left(&s, 100);
+    CHECK_STR_EQ("whole string", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, left_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2 res = fs2_left_new(&s, 3);
+    CHECK_STR_EQ("left", res.v, "abc");
+    CHECK_FS2VALID(1, &res);
+    
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_left_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2 *res = fs2_heap_left(&s, 3);
+    CHECK_STR_EQ("left", res->v, "abc");
+    CHECK_FS2VALID(1, res);
+    
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_right (in-place, value, heap) — регрессия на underflow!
+ * ========================================================================= */
+
+Test(fs2_api, right_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2_right(&s, 3);
+    CHECK_STR_EQ("right", s.v, "def");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ РЕГРЕССИЯ: этот тест падал бы на старом коде из-за underflow! */
+Test(fs2_api, right_len_ge_slen) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    
+    fs2_right(&s, 100);
+    CHECK_STR_EQ("whole string", s.v, "abc");
+    CHECK_EQ("len unchanged", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, right_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2 res = fs2_right_new(&s, 3);
+    CHECK_STR_EQ("right", res.v, "def");
+    CHECK_FS2VALID(1, &res);
+    
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, right_new_len_ge_slen) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    
+    fs2 res = fs2_right_new(&s, 100);
+    CHECK_STR_EQ("whole string", res.v, "abc");
+    CHECK_FS2VALID(1, &res);
+    
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    
+    fs2 *res = fs2_heap_right(&s, 3);
+    CHECK_STR_EQ("right", res->v, "def");
+    CHECK_FS2VALID(1, res);
+    
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_len_ge_slen) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    
+    fs2 *res = fs2_heap_right(&s, 100);
+    CHECK_STR_EQ("whole string", res->v, "abc");
+    CHECK_FS2VALID(1, res);
+    
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
