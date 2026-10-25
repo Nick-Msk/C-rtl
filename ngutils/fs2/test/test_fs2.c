@@ -2101,3 +2101,295 @@ Test(fs2_api, shrink_local_noop) {
 Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
     fs_shrink(NULL);
 }
+/* =========================================================================
+ * fs2_memcpy — internal wrapper (non-overlapping fs2 to fs2)
+ * ========================================================================= */
+
+Test(fs2_api, memcpy_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("0123456789");
+    fs2 src = fs2_fromstr("XXX");
+    
+    /* Копируем "XXX" из src (0) в dst (4) */
+    fs2 *ret = fs2_memcpy(&dst, 4, &src, 0, 3);
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("mutated", dst.v, "0123XXX789");
+    CHECK_STR_EQ("src intact", src.v, "XXX");
+    CHECK_EQ("dst len untouched", dst.len, 10);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, memcpy_growth_realloc) {
+    __fs2_checkreset();
+    fs2 dst = FS2(); // canonical empty
+    fs2 src = fs2_fromstr("hello");
+    size_t orig_sz = dst.sz;
+    (void) orig_sz;
+    /* Пишем далеко за пределы (pos=20) */
+    fs2_memcpy(&dst, 20, &src, 0, 5);
+
+    CHECK_TRUE("sz grew", dst.sz > 20);
+    CHECK_STR_EQ("at offset 20", dst.v + 20, "hello");
+    
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, memcpy_zero_length) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr("world");
+
+    /* len=0 должен быть no-op без выделения памяти */
+    fs2_memcpy(&dst, 2, &src, 0, 0);
+
+    CHECK_STR_EQ("unchanged", dst.v, "hello");
+    
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, memcpy_null_dst_aborts, .signal = SIGABRT) {
+    fs2 src = FS2();
+    fs2_memcpy(NULL, 0, &src, 0, 3);
+}
+
+Test(fs2_api, memcpy_null_src_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2();
+    fs2_memcpy(&dst, 0, NULL, 0, 3);
+}
+
+/* =========================================================================
+ * fs2_memcpy_str — internal wrapper (c-string to fs2)
+ * ========================================================================= */
+
+Test(fs2_api, memcpy_str_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2 *ret = fs2_memcpy_str(&dst, 0, "hello", 5);
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "hello");
+    CHECK_EQ("len untouched (raw)", dst.len, 0);
+    
+    fs2_setlen(&dst, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, memcpy_str_growth_offset) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("A"); // len=1
+
+    fs2_memcpy_str(&dst, 10, "hello", 5);
+
+    CHECK_TRUE("sz grew", dst.sz > 10);
+    CHECK_STR_EQ("at offset 10", dst.v + 10, "hello");
+    CHECK_EQ("first char intact", dst.v[0], 'A');
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, memcpy_str_null_src_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2();
+    fs2_memcpy_str(&dst, 0, NULL, 3);
+}
+
+/* =========================================================================
+ * fs2_memmove — internal wrapper (overlapping memory)
+ * ========================================================================= */
+
+Test(fs2_api, memmove_shift_right_overlap) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc"); // len=3, v="abc\0"
+    
+    /* Сдвигаем вправо: из 0 в 2, размер 4 (включая NUL) */
+    fs2_memmove(&s, 2, &s, 0, 4);
+
+    /* В памяти: 'a', 'b', 'a', 'b', 'c', '\0' */
+    CHECK_EQ("v[0] intact", s.v[0], 'a');
+    CHECK_EQ("v[1] intact", s.v[1], 'b');
+    CHECK_STR_EQ("suffix shifted", s.v + 2, "abc");
+    
+    fs2_setlen(&s, 5);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_shift_left_overlap) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef"); // len=6
+    
+    /* Сдвигаем влево: из 2 в 0, размер 4 ("cdef") */
+    fs2_memmove(&s, 0, &s, 2, 4);
+    s.v[4] = '\0'; // NUL руками, т.к. memmove его не ставит
+
+    CHECK_STR_EQ("shifted left", s.v, "cdef");
+    fs2_setlen(&s, 4);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_realloc_and_shift) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello"); // sz=16
+    size_t orig_sz = s.sz;
+    (void) orig_sz;
+
+    /* Сдвигаем "hello\0" (6 байт) из 0 в 50. 
+     * Это вызовет realloc, и старый указатель s.v станет невалидным.
+     * Но так как мы передаем &s и работаем с индексами, всё должно быть ок. */
+    fs2_memmove(&s, 50, &s, 0, 6);
+
+    CHECK_TRUE("sz grew", s.sz > 50);
+    CHECK_STR_EQ("shifted far right", s.v + 50, "hello");
+    
+    /* Проверяем, что невалидных обращений не было (ASan бы ругнулся) */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_null_src_sugar) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("world"); // len=5
+    
+    /* Используем сахар: src = NULL означает "сдвигаем s внутри самого себя" */
+    fs2_memmove(&s, 2, NULL, 0, 6); // "world\0" -> сдвиг вправо на 2
+
+    CHECK_STR_EQ("shifted right via NULL sugar", s.v + 2, "world");
+    
+    fs2_setlen(&s, 7);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_between_different_fs2) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("abc");
+    fs2 src = fs2_fromstr("XYZ");
+    
+    /* Копируем "XYZ" из src в dst с позиции 1. 
+     * (Это не пересечение, но memmove справится и с этим). */
+    fs2_memmove(&dst, 1, &src, 0, 3);
+
+    CHECK_STR_EQ("mutated dst", dst.v, "aXYZ");
+    CHECK_STR_EQ("src intact", src.v, "XYZ");
+    
+    fs2_setlen(&dst, 4);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_zero_length) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* Должен быть no-op, даже если dstpos за пределами (не будет reserve) */
+    fs2_memmove(&s, 100, NULL, 0, 0);
+
+    CHECK_EQ("sz unchanged", s.sz, 16);
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, memmove_null_dst_aborts, .signal = SIGABRT) {
+    fs2_memmove(NULL, 0, NULL, 0, 3);
+}
+
+/* =========================================================================
+ * fs2_selfmove — sugar for in-place moves (src == dst)
+ * ========================================================================= */
+
+Test(fs2_api, selfmove_shift_right_overlap) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc"); // len=3, v="abc\0"
+    
+    /* Сдвигаем "abc\0" (4 байта) из позиции 0 в позицию 2 */
+    fs2 *ret = fs2_selfmove(&s, 2, 0, 4);
+
+    CHECK_PTR_EQ("returns dst", ret, &s);
+    /* В памяти: 'a', 'b', 'a', 'b', 'c', '\0' */
+    CHECK_STR_EQ("shifted right", s.v + 2, "abc");
+    CHECK_EQ("v[0] intact", s.v[0], 'a');
+    CHECK_EQ("v[1] intact", s.v[1], 'b');
+    
+    fs2_setlen(&s, 5);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, selfmove_shift_left_overlap) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef"); // len=6
+    
+    /* Сдвигаем "cdef" (4 байта) из позиции 2 в позицию 0 */
+    fs2_selfmove(&s, 0, 2, 4);
+    s.v[4] = '\0'; // ставим NUL руками
+
+    CHECK_STR_EQ("shifted left", s.v, "cdef");
+    fs2_setlen(&s, 4);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, selfmove_triggers_realloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello"); // sz=16
+    size_t orig_sz = s.sz;
+    (void) orig_sz;
+    
+    /* Сдвигаем "hello\0" (6 байт) на позицию 50. 
+     * Внутри fs2_memmove сработает fs2_reserve, который сделает realloc. 
+     * Так как мы передаем индексы, realloc не сломает указатели. */
+    fs2_selfmove(&s, 50, 0, 6);
+
+    CHECK_TRUE("sz grew", s.sz > 50);
+    CHECK_STR_EQ("shifted far right", s.v + 50, "hello");
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, selfmove_zero_length) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* len=0 должен быть no-op, reserve не вызовется */
+    fs2_selfmove(&s, 100, 0, 0);
+
+    CHECK_EQ("sz unchanged", s.sz, 16);
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, selfmove_null_dst_aborts, .signal = SIGABRT) {
+    fs2_selfmove(NULL, 0, 0, 3);
+}
