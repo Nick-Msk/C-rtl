@@ -255,6 +255,7 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     return res;
 }
 
+// substring
 extern fs2 *
 fs2_substr(fs2 *s, size_t from, size_t len);
 
@@ -265,6 +266,47 @@ fs2_substr_new(const fs2 *s, size_t from, size_t len);
 // note - heap-constructor
 extern fs2 *
 fs2_heap_substr(const fs2 *s, size_t from, size_t len);
+
+// left/right (postgres func)
+// left
+static inline fs2 *
+fs2_left(fs2 *s, size_t len) {
+    return fs2_substr(s, 0, len);
+}
+static inline fs2
+fs2_left_new(const fs2 *s, size_t len) {
+    return fs2_substr_new(s, 0, len);
+}
+static inline fs2 *
+fs2_heap_left(fs2 *s, size_t len) {
+    return fs2_heap_substr(s, 0, len);
+}
+// right
+static inline fs2 *
+fs2_right(fs2 *s, size_t len) {
+    if (!s || len >= s->len)
+        return s;
+
+    return fs2_substr(s, s->len - len, len);
+}
+static inline fs2
+fs2_right_new(const fs2 *s, size_t len) {
+    if (!s)
+        return FS2();
+    if (len >= s->len)
+        return fs2_clone(s);
+
+    return fs2_substr_new(s, s->len - len, len);
+}
+static inline fs2 *
+fs2_heap_right(const fs2 *s, size_t len) {
+    if (!s)
+        return fs2_heap();
+    if (len >= s->len)
+        return fs2_heap_clone(s);
+
+    return fs2_heap_substr(s, s->len - len, len);
+}
 
 // ----------------------------- One Symbol Search ------------------------------------------
 
