@@ -2134,7 +2134,7 @@ Test(fs2_api, memcpy_growth_realloc) {
     fs2_memcpy(&dst, 20, &src, 0, 5);
 
     CHECK_TRUE("sz grew", dst.sz > 20);
-    CHECK_STR_EQ("at offset 20", dst.v + 20, "hello");
+    CHECK_EQ("raw bytes at offset 20", memcmp(dst.v + 20, "hello", 5), 0);
     
     fs2_free(&dst);
     fs2_free(&src);
@@ -2177,7 +2177,7 @@ Test(fs2_api, memcpy_str_basic) {
     fs2 *ret = fs2_memcpy_str(&dst, 0, "hello", 5);
 
     CHECK_PTR_EQ("returns dst", ret, &dst);
-    CHECK_STR_EQ("content", dst.v, "hello");
+    CHECK_EQ("raw bytes", memcmp(dst.v, "hello", 5), 0);
     CHECK_EQ("len untouched (raw)", dst.len, 0);
     
     fs2_setlen(&dst, 5);
@@ -2194,7 +2194,7 @@ Test(fs2_api, memcpy_str_growth_offset) {
     fs2_memcpy_str(&dst, 10, "hello", 5);
 
     CHECK_TRUE("sz grew", dst.sz > 10);
-    CHECK_STR_EQ("at offset 10", dst.v + 10, "hello");
+    CHECK_EQ("raw bytes at offset 10", memcmp(dst.v + 10, "hello", 5), 0);
     CHECK_EQ("first char intact", dst.v[0], 'A');
 
     fs2_free(&dst);
@@ -2289,7 +2289,7 @@ Test(fs2_api, memmove_between_different_fs2) {
      * (Это не пересечение, но memmove справится и с этим). */
     fs2_memmove(&dst, 1, &src, 0, 3);
 
-    CHECK_STR_EQ("mutated dst", dst.v, "aXYZ");
+    CHECK_EQ("raw bytes", memcmp(dst.v, "aXYZ", 4), 0);
     CHECK_STR_EQ("src intact", src.v, "XYZ");
     
     fs2_setlen(&dst, 4);
@@ -2363,7 +2363,7 @@ Test(fs2_api, selfmove_triggers_realloc) {
     fs2 s = fs2_fromstr("hello"); // sz=16
     size_t orig_sz = s.sz;
     (void) orig_sz;
-    
+
     /* Сдвигаем "hello\0" (6 байт) на позицию 50. 
      * Внутри fs2_memmove сработает fs2_reserve, который сделает realloc. 
      * Так как мы передаем индексы, realloc не сломает указатели. */
