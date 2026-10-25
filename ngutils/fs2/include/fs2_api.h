@@ -212,7 +212,7 @@ fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
 
     if (dst == src)
         return dst; // self-copy is a no-op
-    dst->len = 0;
+    fs2_clear(dst);
     return fs2_cat(dst, src);
 }
 
