@@ -3715,3 +3715,172 @@ Test(fs2_api, lpadstr_new_basic) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_genrnd — random string generator
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_lowercase) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 50, 'a');
+
+    CHECK_EQ("len", s.len, 50);
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("is lowercase", s.v[i] >= 'a' && s.v[i] <= 'z');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_uppercase) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 50, 'A');
+
+    CHECK_EQ("len", s.len, 50);
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("is uppercase", s.v[i] >= 'A' && s.v[i] <= 'Z');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_digits) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 50, '0');
+
+    CHECK_EQ("len", s.len, 50);
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("is digit", s.v[i] >= '0' && s.v[i] <= '9');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_unknown_type_fallback) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* Передаем неизвестный тип, ожидаем fallback '?' */
+    fs2_genrnd(&s, 10, 'X');
+
+    CHECK_EQ("len", s.len, 10);
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_EQ("fallback char", s.v[i], '?');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_zero_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("initial");
+
+    fs2_genrnd(&s, 0, 'a');
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_overwrite_existing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("old_string");
+
+    /* Генерируем 5 символов поверх старой строки */
+    fs2_genrnd(&s, 5, 'a');
+
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("is lowercase", s.v[i] >= 'a' && s.v[i] <= 'z');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_genrnd_new — value constructor
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_new_basic) {
+    __fs2_checkreset();
+
+    fs2 res = fs2_genrnd_new(100, 'a');
+
+    CHECK_EQ("len", res.len, 100);
+    CHECK_FS2VALID(1, &res);
+
+    for (size_t i = 0; i < res.len; i++) {
+        CHECK_TRUE("is lowercase", res.v[i] >= 'a' && res.v[i] <= 'z');
+    }
+
+    fs2_free(&res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_genrnd — heap constructor
+ * ========================================================================= */
+
+Test(fs2_api, heap_genrnd_basic) {
+    __fs2_checkreset();
+
+    fs2 *res = fs2_heap_genrnd(100, '0');
+
+    CHECK_EQ("len", res->len, 100);
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(res));
+    CHECK_FS2VALID(1, res);
+
+    for (size_t i = 0; i < res->len; i++) {
+        CHECK_TRUE("is digit", res->v[i] >= '0' && res->v[i] <= '9');
+    }
+
+    fs2_free(res);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_bounds_regression) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* 
+     * Генерируем много символов. Если rndint(26) выдает 26,
+     * то мы получим '{', и тест упадет.
+     */
+    fs2_genrnd(&s, 1000, 'a');
+
+    CHECK_EQ("len", s.len, 1000);
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("lowercase strictly a-z", s.v[i] >= 'a' && s.v[i] <= 'z');
+    }
+
+    fs2_genrnd(&s, 1000, '0');
+    for (size_t i = 0; i < s.len; i++) {
+        CHECK_TRUE("digits strictly 0-9", s.v[i] >= '0' && s.v[i] <= '9');
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
