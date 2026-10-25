@@ -401,6 +401,24 @@ fs2_lpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr
     return fs2_lpad_new(str, len, &tmp);
 }
 
+// --------------------------------- Random string generators ------------------------------
+extern fs2 *           
+fs2_genrnd(fs2 *s, size_t len, char type);
+
+static inline fs2
+fs2_genrnd_new(size_t len, char type) {
+    fs2     res = fs2_init(len + 1);
+    fs2_genrnd(&res, len, type);
+    return res;
+}
+
+static inline fs2 *
+fs2_heap_genrnd(size_t len, char type) {
+    fs2     *res = fs2_heap_init(len + 1);
+    fs2_genrnd(res, len, type);
+    return res;
+}
+
 // ----------------------------- One Symbol Search ------------------------------------------
 
 /**

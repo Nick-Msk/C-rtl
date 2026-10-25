@@ -428,4 +428,28 @@ fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 
     return fs2_setlen(str, len);
 }
+// generators
+fs2 *           
+fs2_genrnd(fs2 *s, size_t len, char type) {
+    invraise(s != NULL, "Null pointer");
+
+    fs2_reserve(s, len + 1);
+
+    for (size_t i = 0; i < len; i++) {
+        int     c;
+        switch(type) {
+            case 'a':   c = 'a' + rndint(26 - 1);
+                break;
+            case 'A':   c = 'A' + rndint(26 - 1);
+                break;
+            case '0':   c = '0' + rndint(10 - 1);
+                break;
+            // THINK: next? alnum...
+            default:    c = '?';
+                break;
+        }
+        s->v[i] = c;
+    }
+    return fs2_setlen(s, len);
+}
 
