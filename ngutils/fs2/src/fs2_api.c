@@ -359,3 +359,24 @@ fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
     res->flags |= FS2_BODYALLOC;
     return res;
 }
+
+// ------------------------------- Upper / Lower case ---------------------------------------
+// upper
+fs2 *
+fs2_toupper(fs2 *str) {
+    if (!str)
+        return str;
+    for (size_t i = 0; i < str->len; i++)
+        str->v[i] = toupper( (unsigned char) str->v[i]);
+    return str;
+}
+
+//lower
+fs2 *
+fs2_tolower(fs2 *str) {
+    if (!str)
+        return str;
+    for (size_t i = 0; i < str->len; i++)
+        str->v[i] = tolower( (unsigned char) str->v[i]);
+    return str;
+}

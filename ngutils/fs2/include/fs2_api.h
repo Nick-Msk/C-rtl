@@ -308,6 +308,39 @@ fs2_heap_right(const fs2 *s, size_t len) {
     return fs2_heap_substr(s, s->len - len, len);
 }
 
+// ------------------------------- Upper / Lower case ---------------------------------------
+// upper
+extern fs2 *
+fs2_toupper(fs2 *str);
+
+static inline fs2
+fs2_toupper_new(const fs2 *str) {
+    fs2 res = fs2_clone(str);
+    fs2_toupper(&res);
+    return res;
+}
+
+static inline fs2 *
+fs2_heap_toupper(const fs2 *str) {
+    return fs2_toupper(fs2_heap_clone(str));
+}
+
+//lower
+extern fs2 *
+fs2_tolower(fs2 *str);
+
+static inline fs2
+fs2_tolower_new(const fs2 *str) {
+    fs2 res = fs2_clone(str);
+    fs2_tolower(&res);
+    return res;
+}
+
+static inline  fs2 *
+fs2_heap_tolower(const fs2 *str) {
+    return fs2_tolower(fs2_heap_clone(str));
+}
+
 // ----------------------------- One Symbol Search ------------------------------------------
 
 /**
