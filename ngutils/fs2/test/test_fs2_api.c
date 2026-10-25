@@ -2621,3 +2621,196 @@ Test(fs2_api, sprintf_bad_format_returns_negative) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_substr (in-place)
+ * ========================================================================= */
+
+Test(fs2_api, substr_middle) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    CHECK_FS2VALID(1, &s);
+
+    fs2 *ret = fs2_substr(&s, 2, 3); // "cde"
+
+    CHECK_PTR_EQ("returns s", ret, &s);
+    CHECK_STR_EQ("content", s.v, "cde");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_clamp_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 1, 100); // "bc", len clamp to 2
+
+    CHECK_STR_EQ("clamped len", s.v, "bc");
+    CHECK_EQ("len", s.len, 2);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_clamp_from) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 100, 2); // from > len, becomes empty
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_substr(&s, 0, 5);
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_substr_new (value constructor)
+ * ========================================================================= */
+
+Test(fs2_api, substr_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    fs2 res = fs2_substr_new(&s, 2, 3); // "cde"
+
+    CHECK_STR_EQ("content", res.v, "cde");
+    CHECK_EQ("len", res.len, 3);
+    CHECK_TRUE("is alloc", fs2_is_alloc(&res));
+    CHECK_FS2VALID(1, &res);
+    CHECK_FS2VALID(2, &s); // оригинал не тронут
+    CHECK_STR_EQ("original intact", s.v, "abcdef");
+
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 res = fs2_substr_new(&src, 1, 3); // "ell"
+
+    CHECK_STR_EQ("content", res.v, "ell");
+    CHECK_FS2VALID(1, &res);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&res); // src - STATIC, free no-op
+    assert_balanced();
+}
+
+Test(fs2_api, substr_new_clamp) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 res = fs2_substr_new(&s, 1, 100); // "bc"
+
+    CHECK_STR_EQ("clamped", res.v, "bc");
+    CHECK_EQ("len", res.len, 2);
+    CHECK_FS2VALID(1, &res);
+
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_new_oob) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* from > len, должен вернуть пустой fs2 */
+    fs2 res = fs2_substr_new(&s, 10, 5); 
+
+    CHECK_EQ("len", res.len, 0);
+    CHECK_TRUE("is empty", fs2_is_empty(&res));
+    CHECK_FS2VALID(1, &res);
+
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, substr_new_empty_src) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2 res = fs2_substr_new(&s, 0, 5);
+
+    CHECK_EQ("len", res.len, 0);
+    CHECK_TRUE("is empty", fs2_is_empty(&res));
+    CHECK_FS2VALID(1, &res);
+
+    fs2_free(&s);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_substr (heap constructor)
+ * ========================================================================= */
+
+Test(fs2_api, heap_substr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    fs2 *res = fs2_heap_substr(&s, 2, 3); // "cde"
+
+    CHECK_STR_EQ("content", res->v, "cde");
+    CHECK_EQ("len", res->len, 3);
+    CHECK_TRUE("BODYALLOC set", fs2_is_bodyalloc(res));
+    CHECK_FS2VALID(1, res);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    fs2_free(res); // освобождает и структуру, и буфер
+    assert_balanced();
+}
+
+Test(fs2_api, heap_substr_clamp) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 *res = fs2_heap_substr(&s, 1, 100); // "bc"
+
+    CHECK_STR_EQ("clamped", res->v, "bc");
+    CHECK_EQ("len", res->len, 2);
+    CHECK_FS2VALID(1, res);
+
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_substr_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2 *res = fs2_heap_substr(&s, 10, 5);
+
+    CHECK_EQ("len", res->len, 0);
+    CHECK_TRUE("is empty", fs2_is_empty(res));
+    CHECK_FS2VALID(1, res);
+
+    fs2_free(&s);
+    fs2_free(res);
+    assert_balanced();
+}
