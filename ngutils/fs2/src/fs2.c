@@ -161,17 +161,12 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
     va_list ap2;
     va_copy(ap2, ap);
 
-    char dummy[1];      // to avoid warning
-    int         sz = vsnprintf(dummy, 0, fmt, ap2);
+    int         sz = vsnprintf(NULL, 0, fmt, ap2);
     if (sz < 0)
         userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
     va_end(ap2);
 
     fs2         res = fs2_init( (size_t) sz + 1);
-    if (!res.v) {
-        userraise(0, ERR_UNABLE_ALLOCATE, "OOM in fromstrf");
-        return FS2(); 
-    }
     vsnprintf(res.v, res.sz, fmt, ap);
     fs2_setlen(&res, sz);
     return res;
