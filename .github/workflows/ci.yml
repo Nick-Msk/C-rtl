@@ -49,7 +49,7 @@ jobs:
 
       - name: Build release libraries
         working-directory: ngutils
-        run: make librelease
+        run: make librelease WERROR="-Werror -Wno-error=format-truncation"
 
       - name: Upload merged logs (success)
         if: always()

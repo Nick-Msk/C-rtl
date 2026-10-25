@@ -24,7 +24,8 @@ endif
 
 # ── Toolchain & Flags ───────────────────────────────────────────────────────
 CC          ?= cc
-CFLAGS      += -Wall -Wextra -Werror -std=gnu11 -Iinclude
+WERROR      ?= -Werror
+CFLAGS      += -Wall -Wextra $(WERROR) -std=gnu11 -Iinclude
 CFLAGS      += -DTEST_PROJNAME=\"$(PROJNAME)\"
 
 CRIT_CFLAGS ?= $(shell pkg-config --cflags criterion 2>/dev/null)
