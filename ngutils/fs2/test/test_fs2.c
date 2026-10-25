@@ -2393,3 +2393,105 @@ Test(fs2_api, selfmove_zero_length) {
 Test(fs2_api, selfmove_null_dst_aborts, .signal = SIGABRT) {
     fs2_selfmove(NULL, 0, 0, 3);
 }
+
+/* =========================================================================
+ * fs2_substr_bounds — internal normalization helper
+ * ========================================================================= */
+
+Test(fs2_api, substr_bounds_valid_range) {
+    fs2 s = fs2_fromstr("abcdef"); // len=6
+    size_t from = 2, len = 3;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    CHECK_EQ("from unchanged", from, 2);
+    CHECK_EQ("len unchanged", len, 3);
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_clamp_len) {
+    fs2 s = fs2_fromstr("abcdef"); // len=6
+    size_t from = 2, len = 100;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    CHECK_EQ("from unchanged", from, 2);
+    CHECK_EQ("len clamped to remaining", len, 4); // 6 - 2
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_from_equals_len) {
+    fs2 s = fs2_fromstr("abc"); // len=3
+    size_t from = 3, len = 5;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    CHECK_EQ("from clamped to len", from, 3);
+    CHECK_EQ("len zeroed", len, 0);
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_from_beyond_len) {
+    fs2 s = fs2_fromstr("abc"); // len=3
+    size_t from = 100, len = 5;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    CHECK_EQ("from clamped to len", from, 3);
+    CHECK_EQ("len zeroed", len, 0);
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_canonical_empty) {
+    fs2 s = FS2(); // v=NULL, len=0
+    size_t from = 0, len = 5;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    CHECK_EQ("from clamped to 0", from, 0);
+    CHECK_EQ("len zeroed", len, 0);
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_overflow_protection) {
+    fs2 s = fs2_fromstr("abc"); // len=3
+    size_t from = 1, len = SIZE_MAX;
+
+    fs2_substr_bounds(&s, &from, &len);
+
+    /* Защита от underflow: len должно стать 3 - 1 = 2, а не SIZE_MAX */
+    CHECK_EQ("from unchanged", from, 1);
+    CHECK_EQ("len clamped safely", len, 2);
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_len_null) {
+    fs2 s = fs2_fromstr("abcdef"); // len=6
+    size_t from = 2;
+    
+    /* len = NULL должен быть безопасен, функция нормализует только from */
+    fs2_substr_bounds(&s, &from, NULL);
+
+    CHECK_EQ("from unchanged", from, 2);
+    /* Проверяем, что мы не упали и не изменили ничего лишнего */
+    
+    fs2_free(&s);
+}
+
+Test(fs2_api, substr_bounds_len_null_oob) {
+    fs2 s = fs2_fromstr("abc"); // len=3
+    size_t from = 100;
+    
+    /* from за пределами, len = NULL. from должен обнулиться */
+    fs2_substr_bounds(&s, &from, NULL);
+
+    CHECK_EQ("from clamped to len", from, 3);
+    
+    fs2_free(&s);
+}
