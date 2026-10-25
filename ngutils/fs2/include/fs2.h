@@ -258,6 +258,21 @@ extern void       fs2_reserve(fs2 *s, size_t need);
 
 extern fs2 *      fs_shrink(fs2 *s);
 
+// internal, clamps from/len to valid range
+static inline void 
+fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len) {
+    // Если буфер не выделен или начало за пределами строки — возвращаем пустоту
+    if (!s->v || *from >= s->len) {
+        *from = s->len;
+        if (len)
+            *len  = 0;
+        return;
+    }
+    // Защита от underflow: *len не может быть больше, чем осталось до конца
+    if (len && *len > s->len - *from)
+        *len = s->len - *from;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — value (stack body)
  *
