@@ -488,7 +488,57 @@ fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  * @note        fs2_move(x, x) is a no-op that returns @p to.
  * @warning     `invraise` if either pointer is NULL or either side is FS2LOCAL.
  */
-fs2        *fs2_move(fs2 *to, fs2 *from);
+fs2         *fs2_move(fs2 *to, fs2 *from);
+
+// internal, memcpy wrapper
+// TODO: generally all API have to use that instead of memcpy call
+static inline fs2 *
+fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t srcpos, size_t len) {
+    invraise(dst != 0 && src != 0, "Null pointers %p - %p", dst, src);
+
+    if (len == 0)
+        return dst;
+
+    fs2_reserve(dst, dstpos + len + 1);
+
+    memcpy(dst->v + dstpos, src->v + srcpos, len);
+    return dst;
+}
+
+// internal, memcpy wrapper
+// TODO: generally all API have to use that instead of memcpy call
+static inline fs2 *
+fs2_memcpy_str(fs2 *restrict dst, size_t dstpos, const char *restrict src, size_t len) {
+    invraise(dst != 0 && src != 0, "Null pointers %p - %p", dst, src);
+
+    // NOTE: that can be fs2_wrap, but it launch strlen, we don't need that
+    fs2 tmp = (fs2) { .v = (char *) src, .flags = FS2_STATIC, .len = len, .sz = len + 1 };
+
+    return fs2_memcpy(dst, dstpos, &tmp, 0, len);
+}
+
+
+// internal, memmove wrapper
+// TODO: generally all API have to use that instead of memmove call
+static inline fs2 *
+fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) {
+    invraise(dst != 0, "Null pointer %p", dst);
+
+    if (len == 0)
+        return dst;
+    if (src == NULL)
+        src = dst;
+    
+    fs2_reserve(dst, dstpos + len + 1);
+
+    memmove(dst->v + dstpos, src->v + srcpos, len);
+    return dst;
+}
+
+static inline fs2 *
+fs2_selfmove(fs2 *dst, size_t to, size_t from, size_t len) {
+    return fs2_memmove(dst, to, NULL, from, len);
+}
 
 /**
  * @brief Exchange the string values of two fs2 objects.
