@@ -307,7 +307,7 @@ err_raise(ErrorType tp, int errcode, const char *msg, ...)
          * debugger or core dump can show what happened. */
         logsimple("no active TRY block, SIGINT will be raised!");
         raise(SIGINT);
-        return;
+        abort();
     }
 
 	err_prevcnt();
