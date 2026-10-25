@@ -2814,3 +2814,109 @@ Test(fs2_api, heap_substr_empty) {
     fs2_free(res);
     assert_balanced();
 }
+// Cumulative
+Test(fs2_api, composite_substr_pipeline) {
+    __fs2_checkreset();
+
+    /* 1. Исходная строка */
+    fs2 src = fs2_fromstr("Hello, World! This is fs2.");
+    CHECK_FS2VALID(1, &src);
+
+    /* 2. Извлекаем "Hello" на кучу (heap) */
+    fs2 *hello = fs2_heap_substr(&src, 0, 5); // "Hello"
+    CHECK_STR_EQ("extracted hello", hello->v, "Hello");
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(hello));
+    CHECK_FS2VALID(2, hello);
+
+    /* 3. Извлекаем "World!" на стек */
+    fs2 world = fs2_substr_new(&src, 7, 6); // "World!"
+    CHECK_STR_EQ("extracted world", world.v, "World!");
+    CHECK_FS2VALID(3, &world);
+
+    /* 4. Склеиваем: "Hello" + "World!" = "HelloWorld!" */
+    fs2_cat(hello, &world);
+    CHECK_STR_EQ("concatenated", hello->v, "HelloWorld!");
+    CHECK_EQ("len", hello->len, 11);
+    CHECK_FS2VALID(4, hello);
+
+    /* 5. Добавляем строку через catstr */
+    fs2_catstr(hello, " And fs2");
+    CHECK_STR_EQ("appended", hello->v, "HelloWorld! And fs2");
+    CHECK_EQ("len", hello->len, 19);
+    CHECK_FS2VALID(5, hello);
+
+    /* 6. Обрезаем на месте (in-place) до "HelloWorld" */
+    fs2_substr(hello, 0, 10);
+    CHECK_STR_EQ("truncated in-place", hello->v, "HelloWorld");
+    CHECK_EQ("len", hello->len, 10);
+    CHECK_FS2VALID(6, hello);
+
+    /* 7. Создаем пустую строку и копируем в неё результат (cpy) */
+    fs2 final_copy = FS2();
+    fs2_cpy(&final_copy, hello);
+    CHECK_STR_EQ("copied", final_copy.v, "HelloWorld");
+    CHECK_FS2VALID(7, &final_copy);
+
+    /* 8. Проверяем, что оригинал не тронут всеми этими манипуляциями */
+    CHECK_STR_EQ("src intact", src.v, "Hello, World! This is fs2.");
+    CHECK_FS2VALID(8, &src);
+
+    /* 9. Убираем мусор */
+    fs2_free(hello);     // освобождает и структуру, и буфер
+    fs2_free(&world);
+    fs2_free(&final_copy);
+    fs2_free(&src);
+
+    assert_balanced();
+}
+
+Test(fs2_api, composite_substr_clamping_pipeline) {
+    __fs2_checkreset();
+
+    fs2 s = fs2_fromstr("abcdef");
+    
+    /* 
+     * 1. Берем len=100 (должно обрезаться до 3). 
+     * Получаем "def".
+     */
+    fs2 *part1 = fs2_heap_substr(&s, 3, 100);
+    CHECK_STR_EQ("part1 clamped", part1->v, "def");
+    CHECK_EQ("part1 len", part1->len, 3);
+    CHECK_FS2VALID(1, part1);
+
+    /* 
+     * 2. Берем from=10 (за пределами). Должна быть пустая строка.
+     */
+    fs2 part2 = fs2_substr_new(&s, 10, 5);
+    CHECK_EQ("part2 is empty", part2.len, 0);
+    CHECK_TRUE("part2 is empty", fs2_is_empty(&part2));
+    CHECK_FS2VALID(2, &part2);
+
+    /* 
+     * 3. Приклеиваем пустоту к part1. part1 не должен измениться.
+     */
+    fs2_cat(part1, &part2);
+    CHECK_STR_EQ("cat empty", part1->v, "def");
+    CHECK_EQ("len unchanged", part1->len, 3);
+    CHECK_FS2VALID(3, part1);
+
+    /* 
+     * 4. Делаем in-place substr с from = 1 и len = 100. 
+     * Осталось 2 символа ("ef").
+     */
+    fs2_substr(part1, 1, 100);
+    CHECK_STR_EQ("in-place clamped", part1->v, "ef");
+    CHECK_EQ("len clamped", part1->len, 2);
+    CHECK_FS2VALID(4, part1);
+
+    /* 5. Пробуем сдвинуть за пределы (from=10). Должна остаться пустой. */
+    fs2_substr(part1, 10, 10);
+    CHECK_EQ("in-place empty", part1->len, 0);
+    CHECK_FS2VALID(5, part1);
+
+    fs2_free(part1);
+    fs2_free(&part2);
+    fs2_free(&s);
+
+    assert_balanced();
+}
