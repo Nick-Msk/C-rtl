@@ -291,9 +291,9 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
     size_t  len = strlen(beginner);
     if (len == 0)       // no any allocations if null or empty 
         return dst;
-    fs2_reserve(dst, dst->len + len + 1);
-    memmove(dst->v + len, dst->v, dst->len + 1);
-    memcpy(dst->v, beginner, len);
+    fs2_selfmove(dst, len, 0, dst->len);
+
+    fs2_memcpy_str(dst, 0, beginner, len);
 
     return fs2_setlen(dst, dst->len + len);
 }
