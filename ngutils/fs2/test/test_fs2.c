@@ -234,6 +234,21 @@ Test(fs2, setlen_to_zero) {
     fs2_free(&s);
 }
 
+Test(fs2_api, setlen_nonzero_on_empty_aborts, .signal = SIGINT) {
+    fs2 s = FS2();
+    fs2_setlen(&s, 5); // должно упасть
+}
+
+Test(fs2_api, setlen_zero_on_empty_ok) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_setlen(&s, 0);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
 /* -------------------------------------------------------------------------
  * fs2_is_empty / fs2_is_null
  * ------------------------------------------------------------------------- */
