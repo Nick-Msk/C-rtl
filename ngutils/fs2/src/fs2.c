@@ -226,7 +226,7 @@ fs2
 fs2_init(size_t sz) {
     fs2         res = FS2();     // fsalloc flag
     increasesize(&res, sz, true);   // init mode
-    fs2_setlen(&res, 0);    // THINK:
+    fs2_clear(&res);    // THINK:
     return res;
 }
 
