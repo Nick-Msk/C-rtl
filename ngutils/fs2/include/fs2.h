@@ -630,16 +630,24 @@ void        fs2_free(fs2 *s);
  * @brief Set the logical length and NUL-terminate at @p pos.
  *
  * Writes `s->v[pos] = '\0'` and sets `s->len = pos`.
- * The caller must guarantee `pos < s->sz`.
+ * If @p s has no buffer (`s->v == NULL`, canonical empty), @p pos must be 0.
  *
- * @param s    Non-NULL fs2 with a non-NULL buffer.
+ * @param s    Non-NULL fs2.
  * @param pos  New logical length.
  * @return     @p s for chaining.
- *
- * @note       No bounds check is performed.
  */
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
-    s->v[s->len = pos] = '\0';
+    invraise(s != NULL, "Null pointer");
+
+    if (s->v)
+        s->v[s->len = pos] = '\0';
+    else {
+        if (pos > 0)
+            userraise(NULL, ERR_ACTION_NOT_APPLICABLE, 
+                "Trying to set %zu on non-initialized fs2", pos);
+        else
+            s->len = 0; // v == NULL, только pos == 0 допустим
+    }
     return s;
 }
 
