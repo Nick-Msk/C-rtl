@@ -3270,3 +3270,251 @@ Test(fs2_api, tolower_mixed) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_rpad — right padding (in-place)
+ * ========================================================================= */
+
+Test(fs2_api, rpad_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 pad = fs2_fromstr("12");
+
+    fs2 *ret = fs2_rpad(&s, 7, &pad);
+
+    CHECK_PTR_EQ("returns str", ret, &s);
+    CHECK_STR_EQ("padded", s.v, "abc1212");
+    CHECK_EQ("len", s.len, 7);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_pad_longer_than_needed) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    fs2 pad = fs2_fromstr("abcdef");
+
+    /* Pad длиннее, чем нужно дополнить. Должен взяться префикс pad'а. */
+    fs2_rpad(&s, 4, &pad);
+
+    CHECK_STR_EQ("padded", s.v, "xabc");
+    CHECK_EQ("len", s.len, 4);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* ⚠ РЕГРЕССИЯ: если использовать fs2_right вместо fs2_left, тест упадет */
+Test(fs2_api, rpad_truncation) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    fs2 pad = fs2_fromstr(".");
+
+    /* Если len < str->len, rpad должен обрезать до левых len символов */
+    fs2_rpad(&s, 3, &pad);
+
+    CHECK_STR_EQ("truncated", s.v, "abc"); // а не "def"!
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_empty_pad) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 pad = fs2_fromstr("");
+
+    /* Пустой pad — строка не меняется (если не нужно обрезать) */
+    fs2_rpad(&s, 10, &pad);
+
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_same_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 pad = fs2_fromstr(".");
+
+    fs2_rpad(&s, 3, &pad);
+
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpadstr — sugar for C-strings
+ * ========================================================================= */
+
+Test(fs2_api, rpadstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1");
+
+    fs2_rpadstr(&s, 5, "0");
+
+    CHECK_STR_EQ("padded", s.v, "10000");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_null_pad) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* fs2_wrap(NULL) -> FS2EMPTY (len=0), поэтому padding не произойдет */
+    fs2_rpadstr(&s, 10, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpad_new — stack constructor
+ * ========================================================================= */
+
+Test(fs2_api, rpad_new_basic) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("a");
+    fs2 pad = fs2_fromstr("bc");
+
+    fs2 res = fs2_rpad_new(&str, 5, &pad);
+
+    CHECK_STR_EQ("new padded", res.v, "abcbc");
+    CHECK_EQ("len", res.len, 5);
+    CHECK_FS2VALID(1, &res);
+    
+    CHECK_STR_EQ("original intact", str.v, "a");
+    CHECK_FS2VALID(2, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_new_null_pad) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+
+    /* В fs2_rpad_new стоит if (!pad) return res; */
+    fs2 res = fs2_rpad_new(&str, 10, NULL);
+
+    CHECK_STR_EQ("cloned but not padded", res.v, "abc");
+    CHECK_EQ("len", res.len, 3);
+    CHECK_FS2VALID(1, &res);
+
+    fs2_free(&str);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpadstr_new — stack constructor from C-string
+ * ========================================================================= */
+
+Test(fs2_api, rpadstr_new_basic) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("1");
+
+    fs2 res = fs2_rpadstr_new(&str, 4, "0");
+
+    CHECK_STR_EQ("new padded", res.v, "1000");
+    CHECK_EQ("len", res.len, 4);
+    CHECK_FS2VALID(1, &res);
+
+    fs2_free(&str);
+    fs2_free(&res);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_postgres_example) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    fs2 pad = fs2_fromstr("xy");
+
+    /* Пример из документации Postgres: rpad('hi', 5, 'xy') → hixyx */
+    fs2_rpad(&s, 5, &pad);
+
+    CHECK_STR_EQ("postgres example", s.v, "hixyx");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_truncates_from_right) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("x");
+
+    /* Пример: rpad('hello', 2) → 'he' (обрезает хвост, оставляет левую часть) */
+    fs2_rpad(&s, 2, &pad);
+
+    CHECK_STR_EQ("truncated left part", s.v, "he");
+    CHECK_EQ("len", s.len, 2);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_empty_pad_does_not_extend) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 pad = fs2_fromstr("");
+
+    /* Если pad пустой, а len больше, строка не меняется (нельзя дополнить пустотой) */
+    fs2_rpad(&s, 10, &pad);
+
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_len_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("x");
+
+    /* Если len = 0, от строки ничего не остается */
+    fs2_rpad(&s, 0, &pad);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
