@@ -161,7 +161,8 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
     va_list ap2;
     va_copy(ap2, ap);
 
-    int         sz = vsnprintf(NULL, 0, fmt, ap2);
+    char dummy[1];      // to avoid warning
+    int         sz = vsnprintf(dummy, 0, fmt, ap2);
     if (sz < 0)
         userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
     va_end(ap2);
