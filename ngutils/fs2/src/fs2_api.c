@@ -380,3 +380,28 @@ fs2_tolower(fs2 *str) {
         str->v[i] = tolower( (unsigned char) str->v[i]);
     return str;
 }
+
+// ------------------------------------- Padding -------------------------------------------
+fs2 *                    
+fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
+    invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
+
+    if (len < str->len)
+        return fs2_left(str, len);
+
+    if (pad->len == 0 || len == str->len)  // empty - nothing to PAD
+        return str;
+
+    fs2_reserve(str, len + 1);  // make sure mem is allocated
+
+    size_t i = str->len, j = 0;
+    // a stupid iteration over pad (non-opt)
+    while (i < len) {
+        str->v[i++] = pad->v[j++];
+        if (j == pad->len)
+            j = 0;
+    }
+
+    return fs2_setlen(str, len);
+}
+
