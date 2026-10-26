@@ -668,6 +668,77 @@ static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
 static inline fs2 *fs2_clear(fs2 *s) {
     return fs2_setlen(s, 0);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Comparators
+ * ───────────────────────────────────────────────────────────────────────── */
+
+// unlim, bare level
+static inline int            fs2_cmp(const fs2 *restrict str1, const fs2 *restrict str2) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strcmp(str1->v, str2->v);
+}
+// limited
+static inline int            fs2_ncmp(const fs2 *restrict str1, const fs2 *restrict str2, size_t len) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strncmp(str1->v, str2->v, len);
+}
+// unlim, insensitive
+static inline int            fs2_icmp(const fs2* restrict str1, const fs2* restrict str2) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strcasecmp(str1->v, str2->v);
+}
+// limited, insensitive, limited
+static inline int            fs2_nicmp(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strncasecmp(str1->v, str2->v, len);
+}
+// c-str wrappers
+// unlim, c-str wrap
+static inline int            fs2_cmpstr(const fs2 *restrict str1, const char *restrict str2) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strcmp(str1->v, str2);
+}
+// limited, c-str wrap
+static inline int            fs2_ncmpstr(const fs2 *restrict str1, const char *restrict str2, size_t len) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strncmp(str1->v, str2, len);
+}
+// unlim, insensitive, c-str wrap
+static inline int            fs2_icmpstr(const fs2* restrict str1, const char *restrict str2) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strcasecmp(str1->v, str2);
+}
+// limited, insensitive, c-str wrap
+static inline int            fs2_nicmpstr(const fs2* restrict str1, const char *restrict str2, size_t len) {
+    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
+        "Null pointers %p %p", str1, str2);
+
+    return strncasecmp(str1->v, str2, len);
+}
+// ------------------ const void *, const void * wrappers -------------------
+extern int                  fs2_cmp_wrap(const void *str1, const void *str2);
+
+extern int                  fs2_icmp_wrap(const void *str1, const void *str2);
+
+extern int                  fs2_cmpstr_wrap(const void *str1, const void *str2);
+
+extern int                  fs2_icmpstr_wrap(const void *str1, const void *str2);
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer
  * ───────────────────────────────────────────────────────────────────────── */
@@ -684,7 +755,7 @@ static inline fs2 *fs2_clear(fs2 *s) {
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
  */
-long        fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+long                fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
 #define  FSTECHFPRINT(out, s) \
         fs_techfprint( (out), (s), #s)
@@ -717,7 +788,7 @@ long        fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char 
  * @param s    fs2 to validate (may be NULL — reports and returns false).
  * @return     true if all invariants hold; false otherwise.
  */
-bool        fs2_validate(FILE *restrict out, const fs2 *restrict s);
+bool                fs2_validate(FILE *restrict out, const fs2 *restrict s);
 
 /**
  * @brief Compare two fs2 objects for technical equality.
@@ -730,7 +801,7 @@ bool        fs2_validate(FILE *restrict out, const fs2 *restrict s);
  * @return true if len, flags and content are identical; false otherwise.
  * @note invraise(SIGABRT) if either pointer is NULL.
  */
-bool        fs2_techcmp(const fs2 *s1, const fs2 *s2);
+bool                fs2_techcmp(const fs2 *s1, const fs2 *s2);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
@@ -752,7 +823,7 @@ bool        fs2_techcmp(const fs2 *s1, const fs2 *s2);
  * @param bodyfreed  Out: current struct free count (if mismatch).
  * @return           true if no leaks detected; false otherwise.
  */
-bool        fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
+bool                fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
 
 #ifdef FS2TEST
 /**
