@@ -3997,3 +3997,102 @@ Test(fs2_api, in_canonical_empty_matches_empty_string) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * Binary Search Finders (index-returning)
+ * ========================================================================= */
+
+Test(fs2_api, in_bsearch_fs2_array) {
+    __fs2_checkreset();
+    
+    fs2 arr[4] = {
+        fs2_fromstr("apple"),
+        fs2_fromstr("banana"),
+        fs2_fromstr("cherry"),
+        fs2_fromstr("date")
+    };
+
+    fs2 k1 = fs2_fromstr("banana");
+    fs2 k2 = fs2_fromstr("cherry");
+    fs2 k3 = fs2_fromstr("zucchini"); // Больше всех
+    fs2 k4 = fs2_fromstr("a");        // Меньше всех
+
+    CHECK_EQ("banana index", fs2_in_bsearch(&k1, arr, 4), 1);
+    CHECK_EQ("cherry index", fs2_in_bsearch(&k2, arr, 4), 2);
+    CHECK_EQ("missing large", fs2_in_bsearch(&k3, arr, 4), -1);
+    CHECK_EQ("missing small", fs2_in_bsearch(&k4, arr, 4), -1);
+
+    for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
+    fs2_free(&k1); fs2_free(&k2); fs2_free(&k3); fs2_free(&k4);
+    assert_balanced();
+}
+
+Test(fs2_api, in_bsearch_str_array) {
+    __fs2_checkreset();
+    
+    const char *arr[] = { "apple", "banana", "cherry", "date", "elderberry" };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    fs2 k1 = fs2_fromstr("apple");      // Левый край (индекс 0)
+    fs2 k2 = fs2_fromstr("elderberry"); // Правый край (индекс 4)
+    fs2 k3 = fs2_fromstr("avocado");    // Промах
+
+    CHECK_EQ("left boundary", fs2_in_bsearch_str(&k1, arr, n), 0);
+    CHECK_EQ("right boundary", fs2_in_bsearch_str(&k2, arr, n), 4);
+    CHECK_EQ("in-between miss", fs2_in_bsearch_str(&k3, arr, n), -1);
+
+    fs2_free(&k1); fs2_free(&k2); fs2_free(&k3);
+    assert_balanced();
+}
+
+Test(fs2_api, in_bsearch_canonical_empty) {
+    __fs2_checkreset();
+    
+    /* Массив содержит пустую строку (FS2EMPTY) на позиции 0 */
+    fs2 arr[3] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
+    fs2 key_empty = FS2EMPTY;
+    fs2 key_a = fs2_fromstr("a");
+
+    CHECK_EQ("empty matches empty at 0", fs2_in_bsearch(&key_empty, arr, 3), 0);
+    CHECK_EQ("a at 1", fs2_in_bsearch(&key_a, arr, 3), 1);
+
+    fs2_free(&arr[1]);
+    fs2_free(&arr[2]);
+    fs2_free(&key_empty);
+    fs2_free(&key_a);
+    assert_balanced();
+}
+
+Test(fs2_api, iin_bsearch_case_insensitive) {
+    __fs2_checkreset();
+    
+    /* Отсортировано без учета регистра для iin_bsearch */
+    fs2 arr[3] = {
+        fs2_fromstr("Apple"),
+        fs2_fromstr("banana"),
+        fs2_fromstr("Cherry")
+    };
+
+    fs2 k1 = fs2_fromstr("cherry"); // Lowercase
+    fs2 k2 = fs2_fromstr("BANANA"); // Uppercase
+
+    CHECK_EQ("miss case-sensitive", fs2_in_bsearch(&k1, arr, 3), -1);
+    CHECK_EQ("hit case-insens cherry", fs2_iin_bsearch(&k1, arr, 3), 2);
+    CHECK_EQ("hit case-insens banana", fs2_iin_bsearch(&k2, arr, 3), 1);
+
+    for (int i = 0; i < 3; i++) fs2_free(&arr[i]);
+    fs2_free(&k1); fs2_free(&k2);
+    assert_balanced();
+}
+
+Test(fs2_api, in_bsearch_empty_array) {
+    __fs2_checkreset();
+    fs2 key = fs2_fromstr("anything");
+    
+    CHECK_EQ("n=0", fs2_in_bsearch(&key, NULL, 0), -1);
+    CHECK_EQ("n=0 str", fs2_in_bsearch_str(&key, NULL, 0), -1);
+
+    fs2_free(&key);
+    assert_balanced();
+}
+
