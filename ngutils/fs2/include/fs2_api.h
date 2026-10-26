@@ -679,6 +679,74 @@ extern long
 fs_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
     __attribute__ (( format (printf, 2, 3) ) );
 
+// ----------------------------------- Finders -----------------------------------
+// full scan version
+static inline bool           
+fs2_not_in(const fs2 *restrict s, const char *restrict strs[]) {
+    invraise(s != NULL && s->v != NULL && strs != NULL, 
+        "Null pointers %p %p", s, strs);
 
+    while (*strs){
+        if (strcmp(s->v, *strs) == 0)
+            return false;
+        else
+            strs++;
+    }   
+    return true;
+}
+
+// full scan version, insensitive
+static inline bool           
+fs2_not_iin(const fs2 *restrict s, const char *restrict strs[]) {
+    invraise(s != NULL && s->v != NULL && strs != NULL, 
+        "Null pointers %p %p", s, strs);
+
+    while (*strs){
+        if (strcasecmp(s->v, *strs) == 0)
+            return false;
+        else
+            strs++;
+    }   
+    return true;
+}
+
+// full scan version
+static inline bool           
+fs2_in(const fs2 *restrict s, const char *restrict strs[]){
+    invraise(s != NULL && s->v != NULL && strs != NULL, 
+        "Null pointers %p %p", s, strs);
+
+    while (*strs){
+        if (strcmp(s->v, *strs) == 0)
+            return true;
+        else
+            strs++;
+    }   
+    return false;
+}
+
+// full scan version, insensitive
+static inline bool           
+fs2_iin(const fs2 *restrict s, const char *restrict strs[]){
+    invraise(s != NULL && s->v != NULL && strs != NULL, 
+        "Null pointers %p %p", s, strs);
+
+    while (*strs){
+        if (strcasecmp(s->v, *strs) == 0)
+            return true;
+        else
+            strs++;
+    }   
+    return false;
+}
+
+#define                      FS2_NOT_IN(s, ...) \
+    fs2_not_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
+#define                      FS2_NOT_IIN(s, ...) \
+    fs2_not_iin( (s), (const char *[]) { __VA_ARGS__, NULL } )
+#define                      FS2_IN(s, ...) \
+    fs2_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
+#define                      FS2_IIN(s, ...) \
+    fs2_iin( (s), (const char *[]) { __VA_ARGS__, NULL } )
 
 #endif /* !FS2_API_H */
