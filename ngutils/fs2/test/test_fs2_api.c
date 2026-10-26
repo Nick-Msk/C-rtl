@@ -3884,3 +3884,116 @@ Test(fs2_api, genrnd_bounds_regression) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_in / fs2_iin (case-sensitive / insensitive match)
+ * ========================================================================= */
+
+Test(fs2_api, in_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("apple");
+    const char *list[] = { "banana", "apple", "cherry", NULL };
+
+    CHECK_TRUE("found in list", fs2_in(&s, list));
+    CHECK_FALSE("not found", fs2_not_in(&s, list));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, in_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("grape");
+    const char *list[] = { "banana", "apple", "cherry", NULL };
+
+    CHECK_FALSE("not in list", fs2_in(&s, list));
+    CHECK_TRUE("notin true", fs2_not_in(&s, list));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, iin_case_insensitive) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("APPLE");
+    const char *list[] = { "banana", "apple", "cherry", NULL };
+
+    /* Обычный in не найдет (APPLE != apple) */
+    CHECK_FALSE("case-sensitive miss", fs2_in(&s, list));
+    /* iin должен найти */
+    CHECK_TRUE("case-insensitive hit", fs2_iin(&s, list));
+    CHECK_FALSE("case-insensitive notin", fs2_not_iin(&s, list));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, in_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // v = NULL
+    const char *list[] = { "", "a", NULL };
+
+    /* Не должно упасть с Segfault! */
+    CHECK_TRUE("empty matches empty", fs2_in(&s, list));
+    CHECK_FALSE("empty notin", fs2_not_in(&s, list));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Macros (variadic arguments)
+ * ========================================================================= */
+
+Test(fs2_api, in_macro_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+
+    CHECK_TRUE("FS2_IN", FS2_IN(&s, "apple", "banana", "cherry"));
+    CHECK_FALSE("FS2_IN miss", FS2_IN(&s, "apple", "grape"));
+    
+    CHECK_TRUE("FS2_NOT_IN", FS2_NOT_IN(&s, "apple", "grape"));
+    CHECK_FALSE("FS2_NOT_IN miss", FS2_NOT_IN(&s, "apple", "banana"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, iin_macro_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Banana");
+
+    CHECK_TRUE("FS2_IIN", FS2_IIN(&s, "apple", "banana", "cherry"));
+    CHECK_TRUE("FS2_NOT_IIN", FS2_NOT_IIN(&s, "apple", "grape"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, in_macro_empty_list) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("anything");
+
+    /* Передаем только NULL (пустой список) */
+    CHECK_FALSE("empty list -> false", FS2_IN(&s, NULL));
+    CHECK_TRUE("empty list -> notin true", FS2_NOT_IN(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, in_canonical_empty_matches_empty_string) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // v = NULL, len = 0
+
+    /* Если в списке нет "", то FS2() там нет */
+    CHECK_FALSE("empty not in [a, b]", FS2_IN(&s, "a", "b"));
+    CHECK_TRUE ("empty notin [a, b]", FS2_NOT_IN(&s, "a", "b"));
+
+    /* Если в списке есть "", то FS2() там есть */
+    CHECK_TRUE ("empty in [a, \"\"]", FS2_IN(&s, "a", ""));
+    CHECK_FALSE("empty notin [a, \"\"]", FS2_NOT_IN(&s, "a", ""));
+
+    fs2_free(&s);
+    assert_balanced();
+}
