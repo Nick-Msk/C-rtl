@@ -376,5 +376,11 @@ extern int                      pdbl_cmp(const void *restrict d1, const void *re
 extern int                      pdbl_revcmp(const void *restrict d1, const void *restrict d2);
 // sz sized item, note: it's not possible to compare c-string by that except they've exactly lenght sz or sz - 1
 extern int                      pitem_cmp(const void *restrict d1, const void *restrict d2, size_t sz);
+// c-str wrappers
+// normal
+extern int                      pcstr_cmp(const void *restrict s1, const void *restrict s2);
+// insensitive
+extern int                      pcstr_icmp(const void *restrict s1, const void *restrict s2);
+
 
 #endif /* !COMMON_H */

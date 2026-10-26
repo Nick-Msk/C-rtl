@@ -209,3 +209,16 @@ int                             pptr_revcmp(const void *p1, const void *p2){
 int                             pitem_cmp(const void *restrict p1, const void *restrict p2, size_t sz) {
     return memcmp(p1, p2, sz);
 }
+// c-str wrappers
+// normal
+int                             pcstr_cmp(const void *restrict s1, const void *restrict s2) {
+    const char *const *str1 = (const char *const *)s1;
+    const char *const *str2 = (const char *const *)s2;
+    return strcmp(*str1, *str2);
+}
+// insensitive
+int                             pcstr_icmp(const void *restrict s1, const void *restrict s2) {
+    const char *const *str1 = (const char *const *)s1;
+    const char *const *str2 = (const char *const *)s2;
+    return strcasecmp(*str1, *str2);
+}
