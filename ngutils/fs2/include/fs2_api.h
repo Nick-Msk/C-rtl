@@ -690,7 +690,7 @@ fs2_anyof(const fs2 *restrict s, const char *restrict strs[], fs2_cmp_t cmp) {
     
     while (*strs) {
         if (cmp(sv, *strs) == 0)
-            return true; // Ранний выход
+            return true; // Early exit
         strs++;
     }
     return false;
@@ -725,6 +725,55 @@ fs2_not_iin(const fs2 *restrict s, const char *restrict strs[]) {
 #define                      FS2_IIN(s, ...) \
     fs2_iin( (s), (const char *[]) { __VA_ARGS__, NULL } )
 
-// binary search version
+// =========================================================================
+// Binary Search (index-returning)
+// =========================================================================
+
+// Array of fs2, case-sensitive
+static inline ptrdiff_t
+fs2_in_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
+    logauto(n);
+    logauto((void *) key);
+    logauto((void *) arr );
+    
+    invraise(key != NULL, "Null pointers %p %p", key, arr);
+
+    if (n == 0) return -1;
+    
+    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_cmp_wrap);
+    return res ? (ptrdiff_t)(res - arr) : -1;
+}
+
+// Array of fs2, case-insensitive
+static inline ptrdiff_t
+fs2_iin_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
+    invraise(key != NULL, "Null pointers %p %p", key, arr);
+    if (n == 0) return -1;
+
+    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_icmp_wrap);
+    return res ? (ptrdiff_t)(res - arr) : -1;
+}
+
+// Array of C-strings, case-sensitive
+static inline ptrdiff_t
+fs2_in_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
+    invraise(key != NULL, "Null pointers %p %p", key, arr);
+    if (n == 0) return -1;
+    
+    const char *k = key->v ? key->v : "";
+    const char *const *res = bsearch(&k, arr, n, sizeof(const char *), pcstr_cmp);
+    return res ? (ptrdiff_t)(res - arr) : -1;
+}
+
+// Array of C-strings, case-insensitive
+static inline ptrdiff_t
+fs2_iin_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
+    invraise(key != NULL, "Null pointers %p %p", key, arr);
+    if (n == 0) return -1;
+
+    const char *k = key->v ? key->v : "";
+    const char *const *res = bsearch(&k, arr, n, sizeof(const char *), pcstr_icmp);
+    return res ? (ptrdiff_t)(res - arr) : -1;
+}
 
 #endif /* !FS2_API_H */
