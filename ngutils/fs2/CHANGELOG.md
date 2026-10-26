@@ -9,65 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- `fs2_api.h` — high-level operations: `append`, `appendstr`,
-  `appendmem`, `printf`, `vprintf`, `substr`, `reserve`, `shrink`,
-  `clear`, comparison helpers.
-- `cfs2.h` — header-only checked wrappers around `fs2_*` using
-  `invraisecode` from `checker`; compiles out with `-DNOINVARIANT`.
-- Remaining core constructors: `fs2_fromstr`, `fs2_fromstrf`,
-  `fs2_clone`, `fs2_movefrom`, `fs2_movefromstr`, `fs2_move`, and all
-  `fs2_heap_*` variants.
-- Public accessors for the allocation counters (`fs2_alloc_check`,
-  `fs2_fprint_checker_cnt`) — mirroring the `fs_*` API from the
-  legacy `fs` utility.
+- **Comparators** (`fs2_cmp`, `fs2_icmp`, `fs2_ncmp`) — needed before `bsearch` and sorting.
+- **Binary search finders** (`fs2_in_bsearch`, etc.) — depends on comparators.
+- **Substring search** (`fs2_strstr`, `fs2_istrstr`).
+- **Sorting** (`fs2_sort` with custom comparator).
+- **Protected layer** (`pfs2.h`, `pfs2.c`) — wraps every primitive with `userraise`/`sysraise` checks.
+- **Checked header** (`cfs2.h`) — header-only guards that compile out under `-DNOINVARIANT`.
 
-## [0.1.0] - 2026-10-13
+## [0.2.0] - 2026-10-26
+
+This release introduces the entire `fs2_api.h` layer, transforming the library from a core struct wrapper into a fully-fledged string manipulation utility.
 
 ### Added
 
-- **Struct and flags.** Two orthogonal axes encoded in `fs2_flags`:
-  - string location: `FS2_STATIC`, `FS2LOCAL`, `FS2_ALLOC`
-    (exactly one is set),
-  - body location: `FS2_BODYALLOC` (independent).
-  
-  Plus state flags `FS2_CONST` (reserved) and `FS2_DEFUNCT` (moved out).
-- **Value macros:** `FS2()`, `FS2EMPTY`, `FS2LITERAL(s)`,
-  `FS2LOCAL(buf)`, `FS2_DEFUNCT_VAL`.
-- **Getters:** `fs2_len`, `fs2_sz`, `fs2_str`, `fs2_cstr`.
-- **Predicates:** `fs2_is_static`, `fs2_is_local`, `fs2_is_alloc`,
-  `fs2_is_bodyalloc`, `fs2_is_defunct`, `fs2_is_empty`, `fs2_is_null`.
-- **Value constructors / destructor:**
-  - `fs2_init(size_t sz)` — growable, capacity rounded up to the next
-    power of two, floored at `FS2_MIN_ALLOC` (16 bytes).
-  - `fs2_free(fs2 *)` — releases the buffer if `ALLOC`, the struct if
-    `BODYALLOC`, nothing for `STATIC` / `LOCAL` / `DEFUNCT`. Idempotent
-    for value cases.
-- **Utilities:** `fs2_setlen`, `fs2_validate`, `fs_techfprint`.
-- **Atomic allocation counters** (allocation, free, both for string and
-  body): `g_alloc_cnt`, `g_free_cnt`, `g_alloc_body_cnt`,
-  `g_free_body_cnt`.
-- **Version API:** `fs2_version()`, `fs2_versions()`,
-  `FS2_VERSION` macro.
-- **30 unit tests** covering macros, getters, predicates, `fs2_init`
-  (zero / small / power-of-two / huge-OOM), `fs2_free` for every flag
-  combination, `fs2_setlen`, `fs2_is_empty` / `fs2_is_null`,
-  `fs2_validate` (OK / NULL / forged invariants / stream output),
-  `fs_techfprint` (data / NULL / NULL out).
+- **Internal memory wrappers:** `fs2_memcpy`, `fs2_memcpy_str`, `fs2_memmove`, `fs2_selfmove`. These provide safe copying/moving, handling `realloc` and overlapping regions without dangling pointers.
+- **Constructors (Value + Heap):** `fs2_fromstr`, `fs2_fromstrf`, `fs2_clone`, `fs2_movefrom`, `fs2_movefromstr`, `fs2_move`, `fs2_wrap` (zero-copy view). Full `fs2_heap_*` twins for all of them.
+- **Mutation (Append/Overwrite):** `fs2_cat`, `fs2_catstr`, `fs2_rev_catstr` (prepend), `fs2_cpy`, `fs2_cpystr`.
+- **Substrings:** `fs2_substr`, `fs2_substr_new`, `fs2_heap_substr`. Helper `fs2_substr_bounds` for clamping `from`/`len`.
+- **Left/Right (PostgreSQL style):** `fs2_left`, `fs2_right` (+ `_new`, `_heap`).
+- **Padding (PostgreSQL style):** `fs2_lpad`, `fs2_rpad` (+ `_new`, `_str`).
+- **Case Conversion:** `fs2_toupper`, `fs2_tolower` (+ `_new`, `_heap`). Safe for UTF-8 bytes (uses `unsigned char` casts).
+- **Random Generators:** `fs2_genrnd` (+ `_new`, `_heap`) with modes `'a'`, `'A'`, `'0'`.
+- **Character Finders:** `fs2_chr`, `fs2_nchr`, `fs2_rchr`, `fs2_ichr`, `fs2_nichr`, `fs2_irchr`, `fs2_nirchr`. All return `ptrdiff_t` and never match `'\0'`.
+- **Nth-Occurrence Finders:** `fs2_chr_nth`, `fs2_nchr_nth`, etc. `k` is 1-based.
+- **Array Finders:** `fs2_in`, `fs2_notin`, `fs2_iin`, `fs2_not_iin` for NULL-terminated arrays. Variadic macros `FS2_IN`, `FS2_IIN`, `FS2_NOT_IN`, `FS2_NOT_IIN`.
+- **Formatting:** `fs2_sprintf`, `fs2_sprintf_position`, `fs2_vsprintf_position`.
+- **Makefile improvements:** Added `merge-logs` target to always collect raw logs into `all.log`, even when tests fail.
+- **CI Matrix:** Separated jobs for `test (clang)`, `test (gcc)`, `sanitize (lsan)`, `sanitize (ubsan)`.
+
+### Changed
+
+- **`fs2_setlen`** now safely handles canonical empty strings (`FS2()` with `v == NULL`). If `pos > 0` on a NULL buffer, it raises a user error (prevents silent memory corruption).
+- **`FS2WRAP` macro** replaced with the `fs2_wrap(const char *str)` inline function, fixing multi-evaluation issues and `NULL` pointer crashes.
+- **Primitive / Protected split**: Zero-checks in primitive (`fs2_*`), all validation moved to the planned `pfs2_*` layer. `invraise` removed from `fs2_elem`, `fs2_get`, `fs2_partialsort`.
 
 ### Fixed
 
-- `fs2_init(0)` no longer dereferences a NULL buffer.
-  `FS2_MIN_ALLOC` (16) floors every allocation, so even a zero-size
-  request yields a valid `v == "\0"`.
+- **`fs2_cat` overflow**: Fixed a critical bug where `memcpy(dst, src, len + 1)` wrote 1 byte beyond the `src` buffer, corrupting adjacent heap memory.
+- **`fs2_rev_catstr` overlap**: Replaced `memcpy` with `memmove` to correctly handle overlapping regions when shifting the string right.
+- **`fs2_rpad` truncation**: Fixed logic to keep the *left* part of the string when `len < str->len` (was incorrectly using `fs2_right`).
+- **`fs2_lpad` infinite loop**: Fixed an endless `while` loop in the padding logic (was conditioned on `j < pad->len` instead of `i < pad_len`).
+- **`fs2_cpy` on empty string**: Fixed a SIGSEGV when calling `fs2_cpy` on a canonical empty `FS2()` due to calling `fs2_setlen` on a NULL buffer.
+- **`fs2_partialsort` underflow**: Fixed a `size_t` underflow crash if `from > to`.
+- **`tolower`/`toupper` UB**: Added `(unsigned char)` casts to prevent Undefined Behavior on non-ASCII bytes (e.g., UTF-8).
+- **`rndint` off-by-one**: Fixed generator to use inclusive bounds correctly (e.g., `rndint(25)` for `a-z`).
 
 ### Design notes
 
-- This release is the **core** layer: struct, flags, constructors,
-  move/copy, adopt, free. Higher-level string operations live in
-  `fs2_api.h` (planned).
-- Allocation failures route through `sysraise(...)` from `error.h` —
-  not `abort()`. An enclosing `TRY()` can catch them; otherwise the
-  process raises `SIGINT` and dumps core, which is the intended
-  behaviour for an OOM in the core layer.
-- The `LOGNPRINTF` helper in `src/fs2.c` is a temporary macro; it will
-  move to `common.h` once a second consumer needs it.
+- **Finders semantics**: NUL is treated as a terminator, not content. `fs2_chr(&s, '\0')` returns `-1`, consistent with `memchr`.
+- **OOM handling**: Allocation failures route through `sysraise(...)` from `error.h`. An enclosing `TRY()` can catch them.
+- **CI workaround**: Added `-Wno-error=format-truncation` for GCC 13+ in `REL_CFLAGS` to bypass a known false positive in `_FORTIFY_SOURCE=3` (GCC Bugzilla #102218).
+- **Tests**: Added over 300 unit and composite tests, including ASan/LSan/UBSan coverage in Docker.
+
