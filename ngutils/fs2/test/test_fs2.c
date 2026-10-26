@@ -2510,3 +2510,193 @@ Test(fs2_api, substr_bounds_len_null_oob) {
     
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * Comparators
+ * ========================================================================= */
+
+Test(fs2_api, cmp_basic) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("apple");
+    fs2 s2 = fs2_fromstr("banana");
+
+    CHECK_TRUE("apple < banana", fs2_cmp(&s1, &s2) < 0);
+    CHECK_TRUE("banana > apple", fs2_cmp(&s2, &s1) > 0);
+    CHECK_EQ("apple == apple", fs2_cmp(&s1, &s1), 0);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, cmp_empty) {
+    __fs2_checkreset();
+    fs2 empty = fs2_fromstr("");
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("empty < abc", fs2_cmp(&empty, &s) < 0);
+    CHECK_TRUE("abc > empty", fs2_cmp(&s, &empty) > 0);
+    CHECK_EQ("empty == empty", fs2_cmp(&empty, &empty), 0);
+
+    fs2_free(&empty);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, icmp_case_insensitive) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("Apple");
+    fs2 s2 = fs2_fromstr("apple");
+
+    CHECK_TRUE("cs distinct", fs2_cmp(&s1, &s2) != 0);
+    CHECK_EQ("ci equal", fs2_icmp(&s1, &s2), 0);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, ncmp_limited) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("prefix_abc");
+    fs2 s2 = fs2_fromstr("prefix_xyz");
+
+    CHECK_EQ("first 6 match", fs2_ncmp(&s1, &s2, 6), 0);
+    CHECK_TRUE("first 8 differ", fs2_ncmp(&s1, &s2, 8) != 0);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, cmpstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("hello == hello", fs2_cmpstr(&s, "hello"), 0);
+    CHECK_TRUE("hello < world", fs2_cmpstr(&s, "world") < 0);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Композитный тест: сортировка массива fs2 через qsort */
+Test(fs2_api, cmp_qsort_array) {
+    __fs2_checkreset();
+    
+    fs2 arr[4] = {
+        fs2_fromstr("cherry"),
+        fs2_fromstr("apple"),
+        fs2_fromstr("date"),
+        fs2_fromstr("banana")
+    };
+
+    qsort(arr, 4, sizeof(fs2), fs2_cmp_wrap);
+
+    CHECK_STR_EQ("0", arr[0].v, "apple");
+    CHECK_STR_EQ("1", arr[1].v, "banana");
+    CHECK_STR_EQ("2", arr[2].v, "cherry");
+    CHECK_STR_EQ("3", arr[3].v, "date");
+
+    for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Comparators (extern wrappers via qsort/bsearch)
+ * ========================================================================= */
+
+Test(fs2_api, cmp_wrap_qsort) {
+    __fs2_checkreset();
+    
+    fs2 arr[4] = {
+        fs2_fromstr("cherry"),
+        fs2_fromstr("apple"),
+        fs2_fromstr("date"),
+        fs2_fromstr("banana")
+    };
+
+    qsort(arr, 4, sizeof(fs2), fs2_cmp_wrap);
+
+    CHECK_STR_EQ("0", arr[0].v, "apple");
+    CHECK_STR_EQ("1", arr[1].v, "banana");
+    CHECK_STR_EQ("2", arr[2].v, "cherry");
+    CHECK_STR_EQ("3", arr[3].v, "date");
+
+    for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
+    assert_balanced();
+}
+
+Test(fs2_api, cmp_wrap_bsearch) {
+    __fs2_checkreset();
+    
+    fs2 arr[4] = {
+        fs2_fromstr("apple"),
+        fs2_fromstr("banana"),
+        fs2_fromstr("cherry"),
+        fs2_fromstr("date")
+    };
+    /* Массив уже отсортирован для bsearch */
+
+    fs2 key = fs2_fromstr("cherry");
+    fs2 *found = bsearch(&key, arr, 4, sizeof(fs2), fs2_cmp_wrap);
+
+    CHECK_NOT_NULL("found", found);
+    CHECK_STR_EQ("found content", found->v, "cherry");
+
+    fs2 missing = fs2_fromstr("zucchini");
+    fs2 *not_found = bsearch(&missing, arr, 4, sizeof(fs2), fs2_cmp_wrap);
+    CHECK_PTR_EQ("not found", not_found, NULL);
+
+    for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
+    fs2_free(&key);
+    fs2_free(&missing);
+    assert_balanced();
+}
+
+Test(fs2_api, bsearch_with_cstr_key_via_wrap) {
+    __fs2_checkreset();
+    
+    fs2 arr[3] = {
+        fs2_fromstr("apple"),
+        fs2_fromstr("banana"),
+        fs2_fromstr("cherry")
+    };
+
+    /* 
+     * Безопасный путь: оборачиваем C-строку в fs2 (zero-copy, STATIC).
+     * Никаких кастов void* и скрытых контрактов.
+     */
+    const char *key_str = "banana";
+    fs2 key = fs2_wrap(key_str); 
+
+    fs2 *found = bsearch(&key, arr, 3, sizeof(fs2), fs2_cmp_wrap);
+
+    CHECK_NOT_NULL("found with C key", found);
+    CHECK_STR_EQ("found content", found->v, "banana");
+
+    for (int i = 0; i < 3; i++) fs2_free(&arr[i]);
+    assert_balanced();
+}
+
+Test(fs2_api, icmp_wrap_qsort_case_insensitive) {
+    __fs2_checkreset();
+    
+    fs2 arr[4] = {
+        fs2_fromstr("Cherry"),
+        fs2_fromstr("apple"),
+        fs2_fromstr("Date"),
+        fs2_fromstr("banana")
+    };
+
+    qsort(arr, 4, sizeof(fs2), fs2_icmp_wrap);
+
+    /* Регистронезависимая сортировка */
+    CHECK_STR_EQ("0", arr[0].v, "apple");
+    CHECK_STR_EQ("1", arr[1].v, "banana");
+    CHECK_STR_EQ("2", arr[2].v, "Cherry");
+    CHECK_STR_EQ("3", arr[3].v, "Date");
+
+    for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
+    assert_balanced();
+}
