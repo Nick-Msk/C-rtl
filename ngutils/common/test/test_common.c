@@ -471,3 +471,99 @@ Test(common, qsort_using_pint_revcmp) {
     CHECK_EQ("first", arr[0], 9);
     CHECK_EQ("last",  arr[n - 1], 1);
 }
+
+/* =========================================================================
+ * Direct comparison tests
+ * ========================================================================= */
+
+Test(common, pcsrr_cmp_basic) {
+    const char *a = "apple";
+    const char *b = "banana";
+    const char *c = "apple";
+
+    /* Передаем адреса указателей, как это делает qsort */
+    CHECK_TRUE("apple < banana", pcstr_cmp(&a, &b) < 0);
+    CHECK_TRUE("banana > apple", pcstr_cmp(&b, &a) > 0);
+    CHECK_EQ("apple == apple", pcstr_cmp(&a, &c), 0);
+}
+
+Test(common, pcsrr_icmp_basic) {
+    const char *a = "Apple";
+    const char *b = "apple";
+    const char *c = "BANANA";
+
+    CHECK_EQ("Apple == apple (ci)", pcstr_icmp(&a, &b), 0);
+    CHECK_TRUE("apple < BANANA (ci)", pcstr_icmp(&b, &c) < 0);
+    CHECK_TRUE("BANANA > Apple (ci)", pcstr_icmp(&c, &a) > 0);
+}
+
+Test(common, pcsrr_cmp_empty_strings) {
+    const char *a = "";
+    const char *b = "a";
+    const char *c = "";
+
+    CHECK_EQ("empty == empty", pcstr_cmp(&a, &c), 0);
+    CHECK_TRUE("empty < a", pcstr_cmp(&a, &b) < 0);
+    CHECK_TRUE("a > empty", pcstr_cmp(&b, &a) > 0);
+}
+
+/* =========================================================================
+ * qsort integration
+ * ========================================================================= */
+
+Test(common, pcsrr_cmp_qsort) {
+    const char *arr[] = { "cherry", "apple", "date", "banana" };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    qsort(arr, n, sizeof(const char *), pcstr_cmp);
+
+    CHECK_STR_EQ("0", arr[0], "apple");
+    CHECK_STR_EQ("1", arr[1], "banana");
+    CHECK_STR_EQ("2", arr[2], "cherry");
+    CHECK_STR_EQ("3", arr[3], "date");
+}
+
+Test(common, pcsrr_icmp_qsort) {
+    const char *arr[] = { "Cherry", "apple", "Date", "banana" };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    qsort(arr, n, sizeof(const char *), pcstr_icmp);
+
+    CHECK_STR_EQ("0", arr[0], "apple");
+    CHECK_STR_EQ("1", arr[1], "banana");
+    CHECK_STR_EQ("2", arr[2], "Cherry");
+    CHECK_STR_EQ("3", arr[3], "Date");
+}
+
+/* =========================================================================
+ * bsearch integration
+ * ========================================================================= */
+
+Test(common, pcsrr_cmp_bsearch) {
+    /* Отсортированный массив для bsearch */
+    const char *arr[] = { "apple", "banana", "cherry", "date" };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    const char *key = "cherry";
+    const char **found = bsearch(&key, arr, n, sizeof(const char *), pcstr_cmp);
+
+    CHECK_NOT_NULL("found cherry", found);
+    CHECK_STR_EQ("found content", *found, "cherry");
+
+    const char *missing = "zucchini";
+    const char **not_found = bsearch(&missing, arr, n, sizeof(const char *), pcstr_cmp);
+
+    CHECK_NULL("not found", not_found);
+}
+
+Test(common, pcsrr_icmp_bsearch) {
+    /* Отсортированный без учета регистра */
+    const char *arr[] = { "Apple", "banana", "Cherry", "date" };
+    size_t n = sizeof(arr) / sizeof(arr[0]);
+
+    const char *key = "cherry"; // lower case
+    const char **found = bsearch(&key, arr, n, sizeof(const char *), pcstr_icmp);
+
+    CHECK_NOT_NULL("found cherry (ci)", found);
+    CHECK_STR_EQ("found content", *found, "Cherry");
+}
