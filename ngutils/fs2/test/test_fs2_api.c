@@ -3942,6 +3942,77 @@ Test(fs2_api, in_canonical_empty) {
 }
 
 /* =========================================================================
+ * fs2_anyof — index-returning base
+ * ========================================================================= */
+
+Test(fs2_api, anyof_returns_index) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    const char *list[] = { "apple", "banana", "cherry", NULL };
+
+    CHECK_EQ("found at index 1", fs2_anyof(&s, list, strcmp), 1);
+    CHECK_EQ("case-insensitive at index 1", fs2_anyof(&s, list, strcasecmp), 1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, anyof_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("grape");
+    const char *list[] = { "apple", "banana", "cherry", NULL };
+
+    CHECK_EQ("missing returns -1", fs2_anyof(&s, list, strcmp), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, anyof_empty_list) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("anything");
+    const char *list[] = { NULL };
+
+    CHECK_EQ("empty list returns -1", fs2_anyof(&s, list, strcmp), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, anyof_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2(); // v = NULL
+    const char *list[] = { "a", "", "b", NULL };
+
+    /* Пустая строка находится на индексе 1 */
+    CHECK_EQ("empty matches at index 1", fs2_anyof(&s, list, strcmp), 1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Boolean wrappers (regression check)
+ * ========================================================================= */
+
+Test(fs2_api, in_wrappers) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("APPLE");
+    const char *list[] = { "apple", "banana", NULL };
+
+    /* case-sensitive: не находит APPLE */
+    CHECK_FALSE("in miss", fs2_in(&s, list));
+    CHECK_TRUE("notin hit", fs2_not_in(&s, list));
+
+    /* case-insensitive: находит */
+    CHECK_TRUE ("iin hit", fs2_iin(&s, list));
+    CHECK_FALSE("not_iin miss", fs2_not_iin(&s, list));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
  * Macros (variadic arguments)
  * ========================================================================= */
 

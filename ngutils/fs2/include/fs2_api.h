@@ -682,38 +682,38 @@ fs_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
 // ----------------------------------- Finders -----------------------------------
 
 // full scan version
-static inline bool
+static inline ptrdiff_t
 fs2_anyof(const fs2 *restrict s, const char *restrict strs[], fs2_cmp_t cmp) {
     invraise(s != NULL && strs != NULL, "Null pointers %p %p", s, strs);
     
-    const char *sv = s->v ? s->v : "";  // normalization FS2() -> ""
-    
+    const char   *sv = s->v ? s->v : "";  // normalization FS2() -> ""
+    ptrdiff_t     ind = 0;
     while (*strs) {
         if (cmp(sv, *strs) == 0)
-            return true; // Early exit
-        strs++;
+            return ind; // Early exit
+        strs++, ind++;
     }
-    return false;
+    return -1;
 }
 
 static inline bool           
 fs2_in(const fs2 *restrict s, const char *restrict strs[]) {
-    return fs2_anyof(s, strs, strcmp);
+    return fs2_anyof(s, strs, strcmp) >= 0;
 }
 
 static inline bool           
 fs2_iin(const fs2 *restrict s, const char *restrict strs[]) {
-    return fs2_anyof(s, strs, strcasecmp);
+    return fs2_anyof(s, strs, strcasecmp) >= 0;
 }
 
 static inline bool           
 fs2_not_in(const fs2 *restrict s, const char *restrict strs[]) {
-    return !fs2_anyof(s, strs, strcmp);
+    return fs2_anyof(s, strs, strcmp) < 0;
 }
 
 static inline bool           
 fs2_not_iin(const fs2 *restrict s, const char *restrict strs[]) {
-    return !fs2_anyof(s, strs, strcasecmp);
+    return fs2_anyof(s, strs, strcasecmp) < 0;
 }
 
 #define                      FS2_NOT_IN(s, ...) \
