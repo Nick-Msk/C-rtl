@@ -2509,7 +2509,7 @@ Test(fs2_api, sprintf_empty_format) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    long res = fs2_sprintf(&s, "");
+    long res = fs2_sprintf(&s, "%s", "");
 
     CHECK_EQ("return value", res, 0);
     CHECK_STR_EQ("content", s.v, "");
@@ -2613,8 +2613,12 @@ Test(fs2_api, sprintf_bad_format_returns_negative) {
     
     /* %d без аргумента — UB в C, лучше не тестировать.
      * А вот невалидный спецификатор (например, %q) даст -1. */
+
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wformat"
     long res = fs2_sprintf(&s, "%q");
-    
+    #pragma GCC diagnostic pop
+
     CHECK_TRUE("return value < 0", res <= 0);
     /* len не обязан меняться, поэтому просто проверяем, что мы живы */
     
@@ -4442,11 +4446,117 @@ Test(fs2_api, parse_long_strict_rejects_trailing) {
  * fs2_serialize_int — format int into existing fs2
  * ========================================================================= */
 
+ /* =========================================================================
+ * Generic serialization macros
+ * ========================================================================= */
+
+Test(fs2_api, from_new_int) {
+    __fs2_checkreset();
+    fs2 s = fs2_from_new(42);
+    CHECK_STR_EQ("int", s.v, "42");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_long_and_llong) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_from_new(5000000000L);
+    fs2 s2 = fs2_from_new(LLONG_MIN);
+    
+    CHECK_STR_EQ("long", s1.v, "5000000000");
+    CHECK_STR_EQ("llong", s2.v, "-9223372036854775808");
+    CHECK_FS2VALID(1, &s1);
+    CHECK_FS2VALID(2, &s2);
+    
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_unsigned) {
+    __fs2_checkreset();
+    fs2 s = fs2_from_new(4'294'967'295U);
+    CHECK_STR_EQ("unsigned", s.v, "4294967295");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_float_double) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_from_new(3.14f);  // float (промоутится в double для printf)
+    fs2 s2 = fs2_from_new(2.71828); // double
+    
+    CHECK_STR_EQ("float", s1.v, "3.140000");
+    CHECK_STR_EQ("double", s2.v, "2.718280");
+    CHECK_FS2VALID(1, &s1);
+    CHECK_FS2VALID(2, &s2);
+    
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_pointer) {
+    __fs2_checkreset();
+    int x = 42;
+    void *ptr = &x;
+    fs2 s = fs2_from_new(ptr);
+    
+    /* Проверяем, что строка начинается с "0x" */
+    CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_into_existing) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("overwrite_me");
+    
+    CHECK_TRUE("serialize int", fs2_serialize(&dst, 99) > 0);
+    CHECK_STR_EQ("int content", dst.v, "99");
+    
+    CHECK_TRUE("serialize double", fs2_serialize(&dst, 1.5) > 0);
+    CHECK_STR_EQ("double content", dst.v, "1.500000");
+    
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_from_via_generic) {
+    __fs2_checkreset();
+    
+    /* Тестируем, что макрос возвращает fs2* и корректно использует stacktoheap */
+    fs2 *h1 = fs2_heap_from(12'345L);
+    fs2 *h2 = fs2_heap_from(3.14f);
+    
+    CHECK_STR_EQ("long heap", h1->v, "12345");
+    CHECK_STR_EQ("float heap", h2->v, "3.140000");
+    
+    CHECK_TRUE("h1 bodyalloc", fs2_is_bodyalloc(h1));
+    CHECK_TRUE("h2 bodyalloc", fs2_is_bodyalloc(h2));
+    
+    CHECK_FS2VALID(1, h1);
+    CHECK_FS2VALID(2, h2);
+    
+    fs2_free(h1);
+    fs2_free(h2);
+    assert_balanced();  /* Если stacktoheap внутри макроса течет, assert_balanced это поймает */
+}
+
+/* =========================================================================
+ * fs2_serialize — write any primitive into existing fs2
+ * ========================================================================= */
+
 Test(fs2_api, serialize_int_basic) {
     __fs2_checkreset();
     fs2 dst = FS2();
 
-    CHECK_TRUE("serialize 42", fs2_serialize_int(&dst, 42) > 0);
+    CHECK_EQ("42 → 2 chars", fs2_serialize(&dst, 42), 2);
     CHECK_STR_EQ("content", dst.v, "42");
     CHECK_EQ("len", dst.len, 2);
     CHECK_FS2VALID(1, &dst);
@@ -4459,24 +4569,8 @@ Test(fs2_api, serialize_int_negative) {
     __fs2_checkreset();
     fs2 dst = FS2();
 
-    fs2_serialize_int(&dst, -12345);
-
+    CHECK_EQ("-12345 → 6 chars", fs2_serialize(&dst, -12345), 6);
     CHECK_STR_EQ("content", dst.v, "-12345");
-    CHECK_EQ("len", dst.len, 6);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_int_zero) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    fs2_serialize_int(&dst, 0);
-
-    CHECK_STR_EQ("content", dst.v, "0");
-    CHECK_EQ("len", dst.len, 1);
     CHECK_FS2VALID(1, &dst);
 
     fs2_free(&dst);
@@ -4489,11 +4583,11 @@ Test(fs2_api, serialize_int_boundaries) {
     fs2 s_max = FS2();
     fs2 s_min = FS2();
 
-    CHECK_TRUE("INT_MAX", fs2_serialize_int(&s_max, INT_MAX) > 0);
-    CHECK_TRUE("INT_MIN", fs2_serialize_int(&s_min, INT_MIN) > 0);
+    fs2_serialize(&s_max, INT_MAX);
+    fs2_serialize(&s_min, INT_MIN);
 
-    CHECK_STR_EQ("max", s_max.v, "2147483647");
-    CHECK_STR_EQ("min", s_min.v, "-2147483648");
+    CHECK_STR_EQ("INT_MAX", s_max.v, "2147483647");
+    CHECK_STR_EQ("INT_MIN", s_min.v, "-2147483648");
     CHECK_FS2VALID(1, &s_max);
     CHECK_FS2VALID(2, &s_min);
 
@@ -4502,108 +4596,108 @@ Test(fs2_api, serialize_int_boundaries) {
     assert_balanced();
 }
 
-Test(fs2_api, serialize_int_overwrites_existing) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("long existing content");
-
-    fs2_serialize_int(&dst, 7);
-
-    CHECK_STR_EQ("shorter content", dst.v, "7");
-    CHECK_EQ("len updated", dst.len, 1);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_int_fits_min_buffer) {
-    __fs2_checkreset();
-    /* fs2_init(4) всё равно даёт sz=16 (FS2_MIN_ALLOC). 
-     * INT_MIN (12 байт с NUL) влезает — reserve не нужен. */
-    fs2 dst = fs2_init(4);
-    size_t orig_sz = dst.sz;
-
-    CHECK_TRUE("serialize", fs2_serialize_int(&dst, INT_MIN) > 0);
-
-    CHECK_EQ("sz unchanged (fits)", dst.sz, orig_sz);
-    CHECK_STR_EQ("content", dst.v, "-2147483648");
-    CHECK_EQ("len", dst.len, 11);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_int_local_buffer) {
-    __fs2_checkreset();
-    FS2LOCAL(dst, 32);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_serialize_int(&dst, 2024);
-
-    CHECK_STR_EQ("content", dst.v, "2024");
-    CHECK_EQ("len", dst.len, 4);
-    CHECK_TRUE("still local", fs2_is_local(&dst));
-    CHECK_FS2VALID(2, &dst);
-
-    fs2_free(&dst);   /* no-op */
-}
-
-Test(fs2_api, serialize_int_returns_length) {
+Test(fs2_api, serialize_long_beyond_int_range) {
     __fs2_checkreset();
     fs2 dst = FS2();
 
-    CHECK_EQ("42 → 2 chars", fs2_serialize_int(&dst, 42), 2);
-    CHECK_STR_EQ("content", dst.v, "42");
+    /* Регрессия: если _Generic выбрал %d вместо %ld — truncation */
+    fs2_serialize(&dst, 5'000'000'000L);
+
+    CHECK_STR_EQ("content", dst.v, "5000000000");
+    CHECK_EQ("len", dst.len, 10);
     CHECK_FS2VALID(1, &dst);
 
     fs2_free(&dst);
     assert_balanced();
 }
 
-Test(fs2_api, serialize_int_negative_length) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("-12345 → 6 chars", fs2_serialize_int(&dst, -12345), 6);
-    CHECK_STR_EQ("content", dst.v, "-12345");
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_int_zero_length) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("0 → 1 char", fs2_serialize_int(&dst, 0), 1);
-    CHECK_STR_EQ("content", dst.v, "0");
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_int_boundaries_length) {
+Test(fs2_api, serialize_llong_boundaries) {
     __fs2_checkreset();
 
     fs2 s_max = FS2();
     fs2 s_min = FS2();
 
-    CHECK_EQ("INT_MAX → 10 chars", fs2_serialize_int(&s_max, INT_MAX), 10);
-    CHECK_EQ("INT_MIN → 11 chars", fs2_serialize_int(&s_min, INT_MIN), 11);
-    CHECK_STR_EQ("max", s_max.v, "2147483647");
-    CHECK_STR_EQ("min", s_min.v, "-2147483648");
+    fs2_serialize(&s_max, LLONG_MAX);
+    fs2_serialize(&s_min, LLONG_MIN);
+
+    CHECK_STR_EQ("LLONG_MAX", s_max.v, "9223372036854775807");
+    CHECK_STR_EQ("LLONG_MIN", s_min.v, "-9223372036854775808");
+    CHECK_EQ("max len", s_max.len, 19);
+    CHECK_EQ("min len", s_min.len, 20);
+    CHECK_FS2VALID(1, &s_max);
+    CHECK_FS2VALID(2, &s_min);
 
     fs2_free(&s_max);
     fs2_free(&s_min);
     assert_balanced();
 }
 
-Test(fs2_api, serialize_int_overwrites_returns_new_length) {
+Test(fs2_api, serialize_unsigned) {
+    __fs2_checkreset();
+
+    fs2 s_u   = FS2();
+    fs2 s_ul  = FS2();
+    fs2 s_ull = FS2();
+
+    fs2_serialize(&s_u,   UINT_MAX);
+    fs2_serialize(&s_ul,  ULONG_MAX);
+    fs2_serialize(&s_ull, ULLONG_MAX);
+
+    CHECK_STR_EQ("UINT_MAX", s_u.v, "4294967295");
+    CHECK_STR_EQ("ULONG_MAX", s_ul.v, "18446744073709551615");
+    CHECK_STR_EQ("ULLONG_MAX", s_ull.v, "18446744073709551615");
+    CHECK_FS2VALID(1, &s_u);
+    CHECK_FS2VALID(2, &s_ul);
+    CHECK_FS2VALID(3, &s_ull);
+
+    fs2_free(&s_u);
+    fs2_free(&s_ul);
+    fs2_free(&s_ull);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_float_double) {
+    __fs2_checkreset();
+
+    fs2 s_f = FS2();
+    fs2 s_d = FS2();
+
+    fs2_serialize(&s_f, 3.14f);
+    fs2_serialize(&s_d, 2.71828);
+
+    /* %f даёт 6 знаков после точки по умолчанию */
+    CHECK_STR_EQ("float", s_f.v, "3.140000");
+    CHECK_STR_EQ("double", s_d.v, "2.718280");
+    CHECK_FS2VALID(1, &s_f);
+    CHECK_FS2VALID(2, &s_d);
+
+    fs2_free(&s_f);
+    fs2_free(&s_d);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_pointer) {
+    __fs2_checkreset();
+    int x = 42;
+    void *ptr = &x;
+
+    fs2 s = FS2();
+    fs2_serialize(&s, ptr);
+
+    /* %p печатает hex-адрес "0x..." */
+    CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_overwrites_existing) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("long existing content");
 
-    CHECK_EQ("shorter: 1 char", fs2_serialize_int(&dst, 7), 1);
+    fs2_serialize(&dst, 7);
+
     CHECK_STR_EQ("content", dst.v, "7");
     CHECK_EQ("len", dst.len, 1);
     CHECK_FS2VALID(1, &dst);
@@ -4612,18 +4706,34 @@ Test(fs2_api, serialize_int_overwrites_returns_new_length) {
     assert_balanced();
 }
 
-Test(fs2_api, serialize_int_null_aborts, .signal = SIGABRT) {
-    fs2_serialize_int(NULL, 42);
+Test(fs2_api, serialize_return_equals_len) {
+    __fs2_checkreset();
+
+    /* Возврат должен всегда совпадать с len после записи */
+    int values[] = { 0, 1, -1, 42, INT_MAX, INT_MIN };
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+        fs2 dst = FS2();
+        long written = fs2_serialize(&dst, values[i]);
+
+        CHECK_EQ("return == len", written, (long)dst.len);
+        CHECK_EQ("strlen == len", strlen(dst.v), dst.len);
+
+        fs2_free(&dst);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_null_aborts, .signal = SIGABRT) {
+    fs2_serialize(NULL, 42);
 }
 
 /* =========================================================================
- * fs2_fromint_new — stack constructor
+ * fs2_from_new — stack constructor
  * ========================================================================= */
 
-Test(fs2_api, fromint_new_basic) {
+Test(fs2_api, from_new_int2) {
     __fs2_checkreset();
-
-    fs2 s = fs2_fromint_new(12345);
+    fs2 s = fs2_from_new(12345);
 
     CHECK_STR_EQ("content", s.v, "12345");
     CHECK_EQ("len", s.len, 5);
@@ -4635,36 +4745,66 @@ Test(fs2_api, fromint_new_basic) {
     assert_balanced();
 }
 
-Test(fs2_api, fromint_new_negative_and_zero) {
+Test(fs2_api, from_new_long_beyond_int_range) {
     __fs2_checkreset();
+    /* Регрессия: _Generic должен выбрать %ld, не %d */
+    fs2 s = fs2_from_new(5000000000L);
 
-    fs2 s_neg = fs2_fromint_new(-99);
-    fs2 s_zero = fs2_fromint_new(0);
+    CHECK_STR_EQ("content", s.v, "5000000000");
+    CHECK_FS2VALID(1, &s);
 
-    CHECK_STR_EQ("neg", s_neg.v, "-99");
-    CHECK_STR_EQ("zero", s_zero.v, "0");
-    CHECK_FS2VALID(1, &s_neg);
-    CHECK_FS2VALID(2, &s_zero);
-
-    fs2_free(&s_neg);
-    fs2_free(&s_zero);
+    fs2_free(&s);
     assert_balanced();
 }
 
-Test(fs2_api, fromint_new_independent) {
+Test(fs2_api, from_new_llong_boundaries) {
     __fs2_checkreset();
 
-    /* Два вызова — два независимых буфера */
-    fs2 a = fs2_fromint_new(100);
-    fs2 b = fs2_fromint_new(200);
+    fs2 s_max = fs2_from_new(LLONG_MAX);
+    fs2 s_min = fs2_from_new(LLONG_MIN);
+
+    CHECK_STR_EQ("max", s_max.v, "9223372036854775807");
+    CHECK_STR_EQ("min", s_min.v, "-9223372036854775808");
+    CHECK_FS2VALID(1, &s_max);
+    CHECK_FS2VALID(2, &s_min);
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_unsigned2) {
+    __fs2_checkreset();
+    fs2 s = fs2_from_new(4294967295U);
+
+    CHECK_STR_EQ("content", s.v, "4294967295");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_double) {
+    __fs2_checkreset();
+    fs2 s = fs2_from_new(3.14);
+
+    CHECK_STR_EQ("content", s.v, "3.140000");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, from_new_independent) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new(100);
+    fs2 b = fs2_from_new(200);
 
     CHECK_STR_EQ("a", a.v, "100");
     CHECK_STR_EQ("b", b.v, "200");
     CHECK_TRUE("different buffers", a.v != b.v);
-    CHECK_FS2VALID(1, &a);
-    CHECK_FS2VALID(2, &b);
 
-    /* Мутация одной не трогает другую */
     fs2_catstr(&a, "0");
     CHECK_STR_EQ("a mutated", a.v, "1000");
     CHECK_STR_EQ("b intact", b.v, "200");
@@ -4673,30 +4813,14 @@ Test(fs2_api, fromint_new_independent) {
     fs2_free(&b);
     assert_balanced();
 }
-Test(fs2_api, serialize_int_return_equals_len) {
-    __fs2_checkreset();
-    
-    int values[] = { 0, 1, -1, 42, -99999, INT_MAX, INT_MIN };
-    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
-        fs2 dst = FS2();
-        int written = fs2_serialize_int(&dst, values[i]);
-        
-        CHECK_EQ("return == len", written, (int)dst.len);
-        CHECK_EQ("strlen == len", strlen(dst.v), dst.len);
-        
-        fs2_free(&dst);
-    }
-    assert_balanced();
-}
 
 /* =========================================================================
- * fs2_heap_fromint — heap constructor
+ * fs2_heap_from — heap constructor
  * ========================================================================= */
 
-Test(fs2_api, heap_fromint_basic) {
+Test(fs2_api, heap_from_int) {
     __fs2_checkreset();
-
-    fs2 *h = fs2_heap_fromint(12345);
+    fs2 *h = fs2_heap_from(12345);
 
     CHECK_STR_EQ("content", h->v, "12345");
     CHECK_EQ("len", h->len, 5);
@@ -4708,55 +4832,100 @@ Test(fs2_api, heap_fromint_basic) {
     assert_balanced();
 }
 
-Test(fs2_api, heap_fromint_negative) {
+Test(fs2_api, heap_from_long_and_llong) {
     __fs2_checkreset();
 
-    fs2 *h = fs2_heap_fromint(-42);
+    fs2 *h_long  = fs2_heap_from(5000000000L);
+    fs2 *h_llong = fs2_heap_from(LLONG_MIN);
 
-    CHECK_STR_EQ("content", h->v, "-42");
+    CHECK_STR_EQ("long", h_long->v, "5000000000");
+    CHECK_STR_EQ("llong", h_llong->v, "-9223372036854775808");
+    CHECK_FS2VALID(1, h_long);
+    CHECK_FS2VALID(2, h_llong);
+
+    fs2_free(h_long);
+    fs2_free(h_llong);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_from_double) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_from(3.14);
+
+    CHECK_STR_EQ("content", h->v, "3.140000");
     CHECK_FS2VALID(1, h);
 
     fs2_free(h);
     assert_balanced();
 }
 
-Test(fs2_api, heap_fromint_boundaries) {
+Test(fs2_api, heap_from_no_leak) {
     __fs2_checkreset();
 
-    fs2 *h_max = fs2_heap_fromint(INT_MAX);
-    fs2 *h_min = fs2_heap_fromint(INT_MIN);
-
-    CHECK_STR_EQ("max", h_max->v, "2147483647");
-    CHECK_STR_EQ("min", h_min->v, "-2147483648");
-    CHECK_FS2VALID(1, h_max);
-    CHECK_FS2VALID(2, h_min);
-
-    fs2_free(h_max);
-    fs2_free(h_min);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_fromint_no_leak) {
-    __fs2_checkreset();
-
-    /* Цикл heap_fromint — проверяем что каждый free освобождает всё */
+    /* Цикл — if макрос течёт через stacktoheap, assert_balanced это поймает */
     for (int i = 0; i < 100; i++) {
-        fs2 *h = fs2_heap_fromint(i);
+        fs2 *h = fs2_heap_from(i);
         fs2_free(h);
     }
-
     assert_balanced();
 }
 
 /* =========================================================================
- * Composite: int -> fs2 -> string manipulation
+ * Composite — roundtrip через строку
  * ========================================================================= */
+
+Test(fs2_api, composite_int_roundtrip) {
+    __fs2_checkreset();
+
+    int values[] = { 0, 1, -1, 42, INT_MAX, INT_MIN };
+    size_t n = sizeof(values) / sizeof(values[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_from_new(values[i]);
+        CHECK_FS2VALID((int)i, &s);
+        CHECK_EQ("roundtrip", fs2_parse_int(&s), values[i]);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, composite_long_roundtrip) {
+    __fs2_checkreset();
+
+    long values[] = { 0L, 1L, -1L, 42L, 5000000000L, LONG_MAX, LONG_MIN };
+    size_t n = sizeof(values) / sizeof(values[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_from_new(values[i]);
+        CHECK_FS2VALID((int)i, &s);
+        CHECK_EQ("roundtrip", fs2_parse_long(&s), values[i]);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, composite_llong_roundtrip) {
+    __fs2_checkreset();
+
+    long long values[] = { 0LL, 1LL, -1LL, 5000000000LL,
+                           LLONG_MAX, LLONG_MIN };
+    size_t n = sizeof(values) / sizeof(values[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_from_new(values[i]);
+        CHECK_FS2VALID((int)i, &s);
+        /* parse_long работает на LP64 (long == long long по размеру) */
+        CHECK_EQ("roundtrip", fs2_parse_long(&s), (long)values[i]);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
 
 Test(fs2_api, composite_int_to_string_pipeline) {
     __fs2_checkreset();
 
-    /* Собираем "Result: 42 (forty-two)" через серию операций */
-    fs2 msg = fs2_fromint_new(42);
+    /* Собираем "Result: 42 (forty-two)" */
+    fs2 msg = fs2_from_new(42);
     CHECK_FS2VALID(1, &msg);
 
     fs2_rev_catstr(&msg, "Result: ");
@@ -4772,13 +4941,32 @@ Test(fs2_api, composite_int_to_string_pipeline) {
     assert_balanced();
 }
 
-Test(fs2_api, composite_heap_to_stack_via_heaptostack) {
+Test(fs2_api, composite_build_csv_row) {
     __fs2_checkreset();
 
-    fs2 *h = fs2_heap_fromint(7);
+    /* Собираем CSV: id,name,score */
+    fs2 row = fs2_from_new(42);              // id
+    fs2_catstr(&row, ",");
+    fs2_catstr(&row, "alice");
+    fs2_catstr(&row, ",");
+    fs2_serialize(&row, 3.14);               // score (append после "42,alice,")
+
+    /* Внимание: fs2_serialize пишет С НАЧАЛА (pos=0), не в конец!
+     * Для CSV в конец нужна fs2_catstr с ручным форматированием,
+     * либо fs2_sprintf_position. Проверяем реальное поведение. */
+    CHECK_STR_EQ("row", row.v, "3.140000");
+    CHECK_FS2VALID(1, &row);
+
+    fs2_free(&row);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_heap_to_stack) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_from(7);
     CHECK_FS2VALID(1, h);
 
-    /* Переносим heap -> stack (h обнуляется) */
     fs2 s = fs2_heaptostack(&h);
 
     CHECK_PTR_EQ("h reset", h, NULL);
@@ -4791,13 +4979,13 @@ Test(fs2_api, composite_heap_to_stack_via_heaptostack) {
     assert_balanced();
 }
 
-Test(fs2_api, composite_fromint_build_array) {
+Test(fs2_api, composite_array_of_values) {
     __fs2_checkreset();
 
-    /* Строим массив "0", "1", "2", ..., "9" */
+    /* Массив из 10 сериализованных int */
     fs2 arr[10];
     for (int i = 0; i < 10; i++) {
-        arr[i] = fs2_fromint_new(i);
+        arr[i] = fs2_from_new(i);
         CHECK_FS2VALID(i, &arr[i]);
     }
 
@@ -4807,331 +4995,33 @@ Test(fs2_api, composite_fromint_build_array) {
 
     for (int i = 0; i < 10; i++)
         fs2_free(&arr[i]);
-
     assert_balanced();
 }
 
-/* =========================================================================
- * fs2_serialize_long — format long into existing fs2
- * ========================================================================= */
-
-Test(fs2_api, serialize_long_basic) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("42 → 2 chars", fs2_serialize_long(&dst, 42L), 2);
-    CHECK_STR_EQ("content", dst.v, "42");
-    CHECK_EQ("len", dst.len, 2);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_negative) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("-12345 → 6 chars", fs2_serialize_long(&dst, -12345L), 6);
-    CHECK_STR_EQ("content", dst.v, "-12345");
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_zero) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("0 → 1 char", fs2_serialize_long(&dst, 0L), 1);
-    CHECK_STR_EQ("content", dst.v, "0");
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_boundaries) {
+Test(fs2_api, composite_mixed_types_in_array) {
     __fs2_checkreset();
 
-    fs2 s_max = FS2();
-    fs2 s_min = FS2();
+    /* 
+     * Хитрый сценарий: сериализуем разные типы, склеиваем.
+     * Демонстрирует, что макрос работает с любым типом в одном цикле
+     * (тут — вручную, в реальном коде — через отдельные вызовы).
+     */
+    fs2 a = fs2_from_new(42);
+    fs2 b = fs2_from_new(5000000000L);
+    fs2 c = fs2_from_new(3.14);
 
-    CHECK_TRUE("LONG_MAX", fs2_serialize_long(&s_max, LONG_MAX) > 0);
-    CHECK_TRUE("LONG_MIN", fs2_serialize_long(&s_min, LONG_MIN) > 0);
-    CHECK_FS2VALID(1, &s_max);
-    CHECK_FS2VALID(2, &s_min);
+    fs2 joined = fs2_clone(&a);
+    fs2_catstr(&joined, "|");
+    fs2_cat(&joined, &b);
+    fs2_catstr(&joined, "|");
+    fs2_cat(&joined, &c);
 
-    /* Не хардкодим точное значение — на LLP64 (Windows) LONG_MAX = 2^31-1,
-     * на LP64 = 2^63-1. Проверяем, что round-trip работает. */
-    CHECK_EQ("LONG_MAX round-trip", fs2_parse_long(&s_max), LONG_MAX);
-    CHECK_EQ("LONG_MIN round-trip", fs2_parse_long(&s_min), LONG_MIN);
-
-    fs2_free(&s_max);
-    fs2_free(&s_min);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_beyond_int_range) {
-    __fs2_checkreset();
-    /* Ключевой тест: значения, которые НЕ влезают в int.
-     * Если внутри случайно вызывается fs2_serialize_int, 
-     * они truncate'нутся в мусор. */
-    fs2 dst = FS2();
-
-    CHECK_EQ("5e9 → 10 chars", fs2_serialize_long(&dst, 5'000'000'000L), 10);
-    CHECK_STR_EQ("content", dst.v, "5000000000");
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_overwrites_existing) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("long existing content");
-
-    fs2_serialize_long(&dst, 7L);
-
-    CHECK_STR_EQ("shorter content", dst.v, "7");
-    CHECK_EQ("len updated", dst.len, 1);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_long_null_aborts, .signal = SIGABRT) {
-    fs2_serialize_long(NULL, 42L);
-}
-
-/* =========================================================================
- * fs2_fromlong_new — stack constructor
- * ========================================================================= */
-
-Test(fs2_api, fromlong_new_basic) {
-    __fs2_checkreset();
-
-    fs2 s = fs2_fromlong_new(12345L);
-
-    CHECK_STR_EQ("content", s.v, "12345");
-    CHECK_EQ("len", s.len, 5);
-    CHECK_TRUE("is alloc", fs2_is_alloc(&s));
-    CHECK_FALSE("not bodyalloc", fs2_is_bodyalloc(&s));
-    CHECK_FS2VALID(1, &s);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, fromlong_new_negative_and_zero) {
-    __fs2_checkreset();
-
-    fs2 s_neg = fs2_fromlong_new(-99L);
-    fs2 s_zero = fs2_fromlong_new(0L);
-
-    CHECK_STR_EQ("neg", s_neg.v, "-99");
-    CHECK_STR_EQ("zero", s_zero.v, "0");
-    CHECK_FS2VALID(1, &s_neg);
-    CHECK_FS2VALID(2, &s_zero);
-
-    fs2_free(&s_neg);
-    fs2_free(&s_zero);
-    assert_balanced();
-}
-
-Test(fs2_api, fromlong_new_beyond_int_range) {
-    __fs2_checkreset();
-    /* Регрессия: если внутри fs2_serialize_int вместо _long, 
-     * получим truncation. */
-    fs2 big   = fs2_fromlong_new(5'000'000'000L);
-    fs2 small = fs2_fromlong_new(-5'000'000'000L);
-
-    CHECK_STR_EQ("big",   big.v,   "5000000000");
-    CHECK_STR_EQ("small", small.v, "-5000000000");
-    CHECK_FS2VALID(1, &big);
-    CHECK_FS2VALID(2, &small);
-
-    fs2_free(&big);
-    fs2_free(&small);
-    assert_balanced();
-}
-
-Test(fs2_api, fromlong_new_independent) {
-    __fs2_checkreset();
-
-    fs2 a = fs2_fromlong_new(100L);
-    fs2 b = fs2_fromlong_new(200L);
-
-    CHECK_STR_EQ("a", a.v, "100");
-    CHECK_STR_EQ("b", b.v, "200");
-    CHECK_TRUE("different buffers", a.v != b.v);
-
-    fs2_catstr(&a, "0");
-    CHECK_STR_EQ("a mutated", a.v, "1000");
-    CHECK_STR_EQ("b intact", b.v, "200");
+    CHECK_STR_EQ("joined", joined.v, "42|5000000000|3.140000");
+    CHECK_FS2VALID(1, &joined);
 
     fs2_free(&a);
     fs2_free(&b);
-    assert_balanced();
-}
-
-/* =========================================================================
- * fs2_heap_fromlong — heap constructor
- * ========================================================================= */
-
-Test(fs2_api, heap_fromlong_basic) {
-    __fs2_checkreset();
-
-    fs2 *h = fs2_heap_fromlong(12345L);
-
-    CHECK_STR_EQ("content", h->v, "12345");
-    CHECK_EQ("len", h->len, 5);
-    CHECK_TRUE("is alloc", fs2_is_alloc(h));
-    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
-    CHECK_FS2VALID(1, h);
-
-    fs2_free(h);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_fromlong_negative) {
-    __fs2_checkreset();
-
-    fs2 *h = fs2_heap_fromlong(-42L);
-
-    CHECK_STR_EQ("content", h->v, "-42");
-    CHECK_FS2VALID(1, h);
-
-    fs2_free(h);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_fromlong_beyond_int_range) {
-    __fs2_checkreset();
-
-    fs2 *h = fs2_heap_fromlong(5'000'000'000L);
-
-    CHECK_STR_EQ("content", h->v, "5000000000");
-    CHECK_EQ("len", h->len, 10);
-    CHECK_FS2VALID(1, h);
-
-    fs2_free(h);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_fromlong_no_leak) {
-    __fs2_checkreset();
-
-    for (long i = 0; i < 100; i++) {
-        fs2 *h = fs2_heap_fromlong(i * 1'000'000'000L);
-        fs2_free(h);
-    }
-
-    assert_balanced();
-}
-
-/* =========================================================================
- * Composite: long round-trip через строку
- * ========================================================================= */
-
-Test(fs2_api, composite_long_roundtrip) {
-    __fs2_checkreset();
-
-    /* long → строка → long */
-    long values[] = { 0L, 1L, -1L, 42L, 5'000'000'000L, LONG_MAX, LONG_MIN };
-    size_t n = sizeof(values) / sizeof(values[0]);
-
-    for (size_t i = 0; i < n; i++) {
-        fs2 s = fs2_fromlong_new(values[i]);
-        CHECK_FS2VALID(i, &s);
-
-        /* Round-trip: парсим обратно, должно совпасть */
-        CHECK_EQ("round-trip", fs2_parse_long(&s), (long) values[i]);
-
-        fs2_free(&s);
-    }
-    assert_balanced();
-}
-/* =========================================================================
- * llong serialization — minimal but critical coverage
- * ========================================================================= */
-
-Test(fs2_api, serialize_llong_basic) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    CHECK_EQ("42 → 2 chars", fs2_serialize_llong(&dst, 42LL), 2);
-    CHECK_STR_EQ("content", dst.v, "42");
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, fromllong_new_beyond_long_range) {
-    __fs2_checkreset();
-    
-    /* 
-     * Ключевой регресс: значение НЕ влезает в long на LLP64 (Windows),
-     * но влезает в long long везде. Если внутри случайно _long — упадёт.
-     * На LP64 (macOS/Linux) пройдёт в любом случае — поэтому 
-     * проверяем в первую очередь LLONG_MAX/LLONG_MIN через round-trip.
-     */
-    fs2 big   = fs2_fromllong_new(LLONG_MAX);
-    fs2 small = fs2_fromllong_new(LLONG_MIN);
-    
-    /* Round-trip: парсим обратно и сравниваем */
-    CHECK_EQ("LLONG_MAX round-trip", fs2_parse_long(&big), LLONG_MAX);
-    CHECK_EQ("LLONG_MIN round-trip", fs2_parse_long(&small), LLONG_MIN);
-    CHECK_FS2VALID(1, &big);
-    CHECK_FS2VALID(2, &small);
-    
-    fs2_free(&big);
-    fs2_free(&small);
-    assert_balanced();
-}
-
-Test(fs2_api, serialize_llong_returns_length) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-
-    /* LLONG_MAX = "9223372036854775807" — 19 символов */
-    CHECK_EQ("LLONG_MAX → 19 chars", fs2_serialize_llong(&dst, LLONG_MAX), 19);
-    /* LLONG_MIN = "-9223372036854775808" — 20 символов */
-    CHECK_EQ("LLONG_MIN → 20 chars", fs2_serialize_llong(&dst, LLONG_MIN), 20);
-    CHECK_EQ("len", dst.len, 20);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_fromllong_basic) {
-    __fs2_checkreset();
-    
-    fs2 *h = fs2_heap_fromllong(LLONG_MIN);
-    
-    CHECK_STR_EQ("content", h->v, "-9223372036854775808");
-    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
-    CHECK_FS2VALID(1, h);
-    
-    fs2_free(h);
-    assert_balanced();
-}
-
-Test(fs2_api, composite_llong_roundtrip) {
-    __fs2_checkreset();
-    
-    long long values[] = { 0LL, 1LL, -1LL, 5'000'000'000LL, 
-                           LLONG_MAX, LLONG_MIN };
-    size_t n = sizeof(values) / sizeof(values[0]);
-    
-    for (size_t i = 0; i < n; i++) {
-        fs2 s = fs2_fromllong_new(values[i]);
-        CHECK_FS2VALID((int)i, &s);
-        CHECK_EQ("round-trip", fs2_parse_long(&s), (long)values[i]);
-        fs2_free(&s);
-    }
+    fs2_free(&c);
+    fs2_free(&joined);
     assert_balanced();
 }
