@@ -4275,7 +4275,9 @@ Test(fs2_api, parse_long_basic) {
 }
 
 Test(fs2_api, parse_int_fails_userraise, .signal = SIGINT) {
-    fs2 s = fs2_fromstr("42   "); // strict fail (trailing spaces)
+    /* "abc42" — цифры начинаются только с 4-го символа.
+     * Мягкий режим тоже не найдёт число в начале, будет userraise -> SIGINT. */
+    fs2 s = fs2_fromstr("abc42");
     fs2_parse_int(&s);
     fs2_free(&s);
 }
@@ -4351,5 +4353,69 @@ Test(fs2_api, pos_parse_long_skips_only_spaces_and_tabs) {
 
     fs2_free(&s1);
     fs2_free(&s2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_parse_int / fs2_parse_long (lenient mode)
+ * ========================================================================= */
+
+Test(fs2_api, parse_int_lenient_success) {
+    __fs2_checkreset();
+    
+    fs2 s1 = fs2_fromstr("42");
+    fs2 s2 = fs2_fromstr("  \t 42");
+    fs2 s3 = fs2_fromstr("200 OK");      // HTTP-style
+    fs2 s4 = fs2_fromstr("42abc");
+    
+    CHECK_EQ("clean", fs2_parse_int(&s1), 42);
+    CHECK_EQ("leading spaces", fs2_parse_int(&s2), 42);
+    CHECK_EQ("HTTP status", fs2_parse_int(&s3), 200);
+    CHECK_EQ("trailing garbage", fs2_parse_int(&s4), 42);
+
+    fs2_free(&s1); fs2_free(&s2); fs2_free(&s3); fs2_free(&s4);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_int_lenient_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(" -42 items");
+    
+    CHECK_EQ("negative with suffix", fs2_parse_int(&s), -42);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_int_lenient_overflow_still_fails, .signal = SIGINT) {
+    /* 
+     * В мягком режиме мы все равно проверяем, влезает ли число в int.
+     * "999999999999" не влезет, поэтому должен быть userraise.
+     */
+    fs2 s = fs2_fromstr("999999999999");
+    fs2_parse_int(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_int_lenient_no_digits_fails, .signal = SIGINT) {
+    /* Буквы в начале — парсить нечего */
+    fs2 s = fs2_fromstr("abc42");
+    fs2_parse_int(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_int_lenient_empty_fails, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("   ");
+    fs2_parse_int(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_long_lenient_success) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1234567890123 bytes");
+    
+    CHECK_EQ("long prefix", fs2_parse_long(&s), 1234567890123L);
+
+    fs2_free(&s);
     assert_balanced();
 }
