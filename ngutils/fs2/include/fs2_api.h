@@ -234,6 +234,10 @@ fs2_cpystr(fs2 *restrict dst, const char *restrict src){
  * @param fmt  Format string.
  * @param ...  Format arguments.
  * @return     Number of characters written (excluding NUL), or -1 on error.
+ *
+ * @warning Do NOT pass pointers into s->v as %s / %.*s arguments:
+ *          internal realloc may invalidate them before vsnprintf reads them.
+ *          Clone the source first: fs2 tmp = fs2_clone(&s);
  */
 static inline long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
@@ -249,6 +253,10 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...)
  * @param fmt  Format string.
  * @param ...  Format arguments.
  * @return     Number of characters appended (excluding NUL), or -1 on error.
+ * 
+ * @warning Do NOT pass pointers into s->v as %s / %.*s arguments:
+ *          internal realloc may invalidate them before vsnprintf reads them.
+ *          Clone the source first: fs2 tmp = fs2_clone(&s);
  */
 static inline long           
 fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)

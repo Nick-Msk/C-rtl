@@ -2529,6 +2529,217 @@ Test(fs2_api, sprintf_null_fmt_aborts, .signal = SIGABRT) {
     fs2_sprintf(&s, NULL);
 }
 
+/* =========================================================================
+ * fs2_sprintf_concat — append formatted text
+ * ========================================================================= */
+
+Test(fs2_api, sprintf_concat_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello");
+    CHECK_FS2VALID(1, &s);
+
+    long res = fs2_sprintf_concat(&s, ", %s!", "world");
+
+    CHECK_EQ("return", res, 8);            /* ", world!" = 8 chars */
+    CHECK_STR_EQ("content", s.v, "Hello, world!");
+    CHECK_EQ("len", s.len, 13);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_empty_dst) {
+    __fs2_checkreset();
+    fs2 s = FS2();                          /* canonical empty, v == NULL */
+    CHECK_FS2VALID(1, &s);
+
+    long res = fs2_sprintf_concat(&s, "%d", 42);
+
+    CHECK_EQ("return", res, 2);
+    CHECK_STR_EQ("content", s.v, "42");
+    CHECK_EQ("len", s.len, 2);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_empty_fmt) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("data");
+
+    long res = fs2_sprintf_concat(&s,  "%.0s", "x");
+
+    CHECK_EQ("return", res, 0);
+    CHECK_STR_EQ("content unchanged", s.v, "data");
+    CHECK_EQ("len unchanged", s.len, 4);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_chain) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_sprintf_concat(&s, "%d", 1);
+    fs2_sprintf_concat(&s, ",%d", 2);
+    fs2_sprintf_concat(&s, ",%d", 3);
+
+    CHECK_STR_EQ("content", s.v, "1,2,3");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_triggers_growth) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    size_t orig_sz = s.sz;
+
+    char big[128];
+    memset(big, 'A', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+
+    fs2_sprintf_concat(&s, "%s", big);
+
+    CHECK_TRUE("buffer grew", s.sz > orig_sz);
+    CHECK_EQ("len", s.len, 1 + 127);
+    CHECK_EQ("first char", s.v[0], 'x');
+    for (size_t i = 1; i < 128; i++)
+        CHECK_EQ("expected 'A'", s.v[i], 'A');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_return_equals_len_delta) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("prefix:");
+
+    size_t before = s.len;
+    long res = fs2_sprintf_concat(&s, "%s", "abc");
+    CHECK_EQ("return == delta", res, (long)(s.len - before));
+
+    before = s.len;
+    res = fs2_sprintf_concat(&s, "%d", 12345);
+    CHECK_EQ("return == delta int", res, (long)(s.len - before));
+
+    before = s.len;
+    res = fs2_sprintf_concat(&s, "%c%c", 'X', 'Y');
+    CHECK_EQ("return == delta chars", res, (long)(s.len - before));
+
+    CHECK_STR_EQ("final", s.v, "prefix:abc12345XY");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, sprintf_concat_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 64);
+    memcpy(s.v, "start:", 6);
+    s.len = 6;
+    CHECK_FS2VALID(1, &s);
+
+    fs2_sprintf_concat(&s, "%s=%d", "key", 42);
+
+    CHECK_STR_EQ("content", s.v, "start:key=42");
+    CHECK_EQ("len", s.len, 12);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);   /* no-op */
+}
+
+Test(fs2_api, sprintf_concat_null_aborts, .signal = SIGABRT) {
+    fs2_sprintf_concat(NULL, "x");
+}
+
+Test(fs2_api, sprintf_concat_null_fmt_aborts, .signal = SIGABRT) {
+    fs2 s = FS2();
+    fs2_sprintf_concat(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Composite
+ * ========================================================================= */
+
+Test(fs2_api, composite_sprintf_concat_build_csv) {
+    __fs2_checkreset();
+    fs2 row = FS2();
+
+    fs2_sprintf_concat(&row, "%d",       42);
+    fs2_sprintf_concat(&row, ",%s",      "alice");
+    fs2_sprintf_concat(&row, ",%.2f",    3.14);
+
+    CHECK_STR_EQ("row", row.v, "42,alice,3.14");
+    CHECK_EQ("len", row.len, 13);
+    CHECK_FS2VALID(1, &row);
+
+    fs2_free(&row);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_sprintf_concat_build_message) {
+    __fs2_checkreset();
+    fs2 msg = FS2();
+
+    int id = 7;
+    const char *name = "widget";
+    double price = 19.99;
+
+    fs2_sprintf_concat(&msg, "item[%d] %s = $%.2f", id, name, price);
+
+    CHECK_STR_EQ("msg", msg.v, "item[7] widget = $19.99");
+    CHECK_FS2VALID(1, &msg);
+
+    fs2_free(&msg);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_sprintf_concat_with_generic_serialize) {
+    __fs2_checkreset();
+    fs2 s = fs2_from_new(42);           /* "42" */
+
+    fs2_sprintf_concat(&s, "|%s|", "name");
+    fs2_sprintf_concat(&s, "%.2f", 3.14);
+
+    CHECK_STR_EQ("content", s.v, "42|name|3.14");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_sprintf_concat_100_appends) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* 100 small appends — гарантированно 3-4 realloc'а */
+    for (int i = 0; i < 100; i++) {
+        fs2_sprintf_concat(&s, "%d", i);
+        if (i < 99) fs2_sprintf_concat(&s, ",");
+    }
+
+    /* "0,1,2,...,9,10,11,...,99" — 289 chars */
+    CHECK_EQ("len", s.len, 289);
+    CHECK_EQ("first chars", strncmp(s.v, "0,1,2,", 6), 0);
+    CHECK_EQ("last chars",  strcmp(s.v + s.len - 2, "99"), 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+
 /* -------------------------------------------------------------------------
  * fs2_sprintf_position — raw writer (does NOT update len)
  * ------------------------------------------------------------------------- */
