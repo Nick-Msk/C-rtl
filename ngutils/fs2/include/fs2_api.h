@@ -876,7 +876,7 @@ fs2_heap_fromint(int value) {
 }
 
 // long
-static inline int
+static inline long
 fs2_serialize_long(fs2 *dst, long value) {
     return fs2_sprintf(dst, "%ld", value);
 }
@@ -884,9 +884,9 @@ fs2_serialize_long(fs2 *dst, long value) {
 static inline fs2 
 fs2_fromlong_new(long value) {
     fs2     res = FS2();
-    if (fs2_serialize_int(&res, value) <= 0)
+    if (fs2_serialize_long(&res, value) <= 0)
         userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize int %ld", value);
+            "Failed to serialize long %ld", value);
     return res;
 }
 
@@ -894,10 +894,10 @@ fs2_fromlong_new(long value) {
 static inline fs2 *
 fs2_heap_fromlong(long value) {
     fs2 *h = fs2_heap();
-    if (fs2_serialize_int(h, value) <= 0) {
+    if (fs2_serialize_long(h, value) <= 0) {
         fs2_free(h);
         userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize int %ld", value);
+            "Failed to serialize long %ld", value);
     }
     return h;
 }
