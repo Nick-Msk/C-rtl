@@ -4304,6 +4304,69 @@ Test(fs2_api, in_bsearch_empty_array) {
 }
 
 /* =========================================================================
+ * fs2_pos_parse_llong (base)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_llong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    long long out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_llong(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 42LL);
+    CHECK_EQ("newpos", newpos, 2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_llong_boundaries) {
+    __fs2_checkreset();
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lld", LLONG_MAX);
+    fs2 s_max = fs2_fromstr(buf);
+
+    snprintf(buf, sizeof(buf), "%lld", LLONG_MIN);
+    fs2 s_min = fs2_fromstr(buf);
+
+    long long out = 0;
+
+    CHECK_TRUE("LLONG_MAX", fs2_pos_parse_llong(&s_max, 0, NULL, &out));
+    CHECK_EQ("max val", out, LLONG_MAX);
+
+    CHECK_TRUE("LLONG_MIN", fs2_pos_parse_llong(&s_min, 0, NULL, &out));
+    CHECK_EQ("min val", out, LLONG_MIN);
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_llong_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("99999999999999999999999");   /* >> LLONG_MAX */
+    long long out = 0;
+
+    CHECK_FALSE("overflow", fs2_pos_parse_llong(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_llong_rejects_newline) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\n42");
+    long long out = 0;
+
+    CHECK_FALSE("newline rejected", fs2_pos_parse_llong(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
  * fs2_pos_parse_long / fs2_pos_parse_int
  * ========================================================================= */
 
@@ -4348,6 +4411,50 @@ Test(fs2_api, pos_parse_int_overflow) {
     CHECK_FALSE("int overflow -", fs2_pos_parse_int(&s2, 0, NULL, &out));
 
     fs2_free(&s1); fs2_free(&s2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Regression: each level's error propagates
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_chain_range_check) {
+    __fs2_checkreset();
+    
+    /* Одно и то же значение — разные результаты на разных уровнях.
+     * 3000000000 влезает в long (LP64), но не в int. */
+    fs2 s = fs2_fromstr("3000000000");
+
+    int  i_val = 0;
+    long l_val = 0;
+    long long ll_val = 0;
+
+    CHECK_FALSE("int rejects",   fs2_pos_parse_int  (&s, 0, NULL, &i_val));
+    CHECK_TRUE ("long accepts",  fs2_pos_parse_long (&s, 0, NULL, &l_val));
+    CHECK_EQ   ("long val",      l_val, 3000000000L);
+    CHECK_TRUE ("llong accepts", fs2_pos_parse_llong(&s, 0, NULL, &ll_val));
+    CHECK_EQ   ("llong val",     ll_val, 3000000000LL);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_llong_rejects_beyond_llong) {
+    __fs2_checkreset();
+    
+    /* "99999999999999999999" — 20 девяток, > LLONG_MAX (~9.2e18) */
+    fs2 s = fs2_fromstr("99999999999999999999");
+
+    int       i_val  = 0;
+    long      l_val  = 0;
+    long long ll_val = 0;
+
+    /* Все три должны отвергнуть — ошибка на самом нижнем уровне */
+    CHECK_FALSE("int rejects",   fs2_pos_parse_int  (&s, 0, NULL, &i_val));
+    CHECK_FALSE("long rejects",  fs2_pos_parse_long (&s, 0, NULL, &l_val));
+    CHECK_FALSE("llong rejects", fs2_pos_parse_llong(&s, 0, NULL, &ll_val));
+
+    fs2_free(&s);
     assert_balanced();
 }
 
