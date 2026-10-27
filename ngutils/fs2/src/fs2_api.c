@@ -458,34 +458,31 @@ fs2_genrnd(fs2 *s, size_t len, char type) {
  * ───────────────────────────────────────────────────────────────── */
 
 bool 
-fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, long *restrict out) {
+fs2_pos_parse_llong(const fs2 *restrict s, size_t pos, 
+                    size_t *restrict newpos, long long *restrict out) {
     if (!s || !s->v || pos >= s->len) 
         return logsimpleerr(false, "Null input or pos %zu out of length", pos);
 
-    const char *base = s->v + pos;
-    
-    // Пропускаем ведущие пробелы и табуляции
+    const char *base  = s->v + pos;
     const char *start = skip_spaces(base);
     
-    // Если строка состояла только из пробелов до конца
     if (*start == '\0') 
         return logsimpleerr(false, "Only spaces detected");
     
     if (!isdigit((unsigned char)*start) && *start != '+' && *start != '-')
-        return logsimpleerr(false, "incorrent sym detected [%c]", *start);
+        return logsimpleerr(false, "Incorrect sym detected [%c]", *start);
 
     char *endptr = NULL;
     errno = 0;
-    long val = strtol(start, &endptr, 10);
+    long long val = strtoll(start, &endptr, 10);
 
-    // Overflow/Underflow или нет цифр
     if (errno == ERANGE || endptr == start)
-        return logsimpleerr(false, "Overflow or no digits %d, %zu", errno, endptr - start);
+        return logsimpleerr(false, 
+            "Overflow or no digits (errno=%d, consumed=%td)", 
+            errno, endptr - start);   /* ← %td вместо %zu */
 
     if (out)
         *out = val;
-        
-    // Вычисляем newpos через разницу указателей
     if (newpos)
         *newpos = pos + (size_t)(endptr - base);
 
@@ -493,21 +490,44 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, l
 }
 
 bool 
-fs2_pos_parse_int(const fs2 *restrict s, size_t pos, size_t *restrict newpos, int *restrict out) {
-    long lval = 0;
-    size_t npos = 0;
+fs2_pos_parse_long(const fs2 *restrict s, size_t pos, 
+                   size_t *restrict newpos, long *restrict out) {
+    long long ll_val = 0;
+    size_t    npos   = 0;
 
-    // Сначала парсим как long
-    if (!fs2_pos_parse_long(s, pos, &npos, &lval))
+    if (!fs2_pos_parse_llong(s, pos, &npos, &ll_val))
+        return false;   /* лог уже был в базовой */
+
+    if (ll_val < LONG_MIN || ll_val > LONG_MAX)
+        return logsimpleerr(false, 
+            "Value %lld out of long range [%ld, %ld]", 
+            ll_val, LONG_MIN, LONG_MAX);
+
+    if (out)    
+        *out    = (long)ll_val;
+    if (newpos) 
+        *newpos = npos;
+
+    return true;
+}
+
+bool 
+fs2_pos_parse_int(const fs2 *restrict s, size_t pos, 
+                  size_t *restrict newpos, int *restrict out) {
+    long   l_val = 0;
+    size_t npos  = 0;
+
+    if (!fs2_pos_parse_long(s, pos, &npos, &l_val))
         return false;
 
-    // Проверяем, влезает ли в int
-    if (lval < INT_MIN || lval > INT_MAX)
-        return logsimpleerr(false, "Parsed int is out of bound %d <= %ld <= %d", INT_MIN, lval, INT_MAX);
+    if (l_val < INT_MIN || l_val > INT_MAX)
+        return logsimpleerr(false, 
+            "Value %ld out of int range [%d, %d]", 
+            l_val, INT_MIN, INT_MAX);
 
-    if (out)
-        *out = (int)lval;
-    if (newpos)
+    if (out)    
+        *out    = (int)l_val;
+    if (newpos) 
         *newpos = npos;
 
     return true;
