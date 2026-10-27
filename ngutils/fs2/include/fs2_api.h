@@ -222,6 +222,38 @@ fs2_cpystr(fs2 *restrict dst, const char *restrict src){
     return fs2_cpy(dst, &l); 
 }
 
+// ------------------------------------------------------------------------------------------
+
+/**
+ * @brief Format into an fs2, replacing its current content.
+ *
+ * The buffer is grown as needed. The logical length is set to the
+ * number of characters formatted.
+ *
+ * @param s    Non-NULL fs2 (ALLOC). Content is overwritten.
+ * @param fmt  Format string.
+ * @param ...  Format arguments.
+ * @return     Number of characters written (excluding NUL), or -1 on error.
+ */
+static inline long           
+fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
+    __attribute__ (( format (printf, 2, 3) ) );
+
+/**
+ * @brief Append formatted text to the current content of an fs2.
+ *
+ * Unlike fs2_sprintf, this concatenates: the existing content is kept
+ * and the formatted result is appended at the end.
+ *
+ * @param s    Non-NULL fs2 (ALLOC). Content is preserved, new text appended.
+ * @param fmt  Format string.
+ * @param ...  Format arguments.
+ * @return     Number of characters appended (excluding NUL), or -1 on error.
+ */
+static inline long           
+fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
+    __attribute__ (( format (printf, 2, 3) ) );
+
 // internal
 extern long                  
 fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap);
@@ -249,8 +281,27 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     va_start(ap, fmt);
     long res = fs2_vsprintf_position(s, 0, fmt, ap);
     va_end(ap);
-    if (res >= 0)
-        fs2_setlen(s, res); // fix the length!!!
+
+    if (res < 0)
+        return logsimpleerr(res, "fs2_vsprintf_position failed");
+    
+    fs2_setlen(s, res); // fix the length!!!
+    return res;
+}
+
+static inline long           
+fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
+    invraise(s != 0 && fmt != 0, "Null pointers %p - %p", s, fmt);
+
+    va_list ap; 
+    va_start(ap, fmt);
+    long res = fs2_vsprintf_position(s, s->len, fmt, ap);
+    va_end(ap);
+
+    if (res < 0)
+        return logsimpleerr(res, "fs2_vsprintf_position failed");
+
+    fs2_setlen(s, s->len + res); // fix the length!!!
 
     return res;
 }
@@ -647,38 +698,6 @@ ptrdiff_t   fs2_irchr_nth (const fs2 *str, int c, size_t k);
  */
 ptrdiff_t   fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim);
 
-// ------------------------------------------------------------------------------------------
-
-/**
- * @brief Format into an fs2, replacing its current content.
- *
- * The buffer is grown as needed. The logical length is set to the
- * number of characters formatted.
- *
- * @param s    Non-NULL fs2 (ALLOC). Content is overwritten.
- * @param fmt  Format string.
- * @param ...  Format arguments.
- * @return     Number of characters written (excluding NUL), or -1 on error.
- */
-extern long           
-fs_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
-    __attribute__ (( format (printf, 2, 3) ) );
-
-/**
- * @brief Append formatted text to the current content of an fs2.
- *
- * Unlike fs_sprintf, this concatenates: the existing content is kept
- * and the formatted result is appended at the end.
- *
- * @param s    Non-NULL fs2 (ALLOC). Content is preserved, new text appended.
- * @param fmt  Format string.
- * @param ...  Format arguments.
- * @return     Number of characters appended (excluding NUL), or -1 on error.
- */
-extern long           
-fs_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
-    __attribute__ (( format (printf, 2, 3) ) );
-
 // ----------------------------------- Finders -----------------------------------
 
 // full scan version
@@ -848,83 +867,54 @@ fs2_parse_int(const fs2 *restrict s) {
 }
 
 // Format (primitive → string)
-// int 
-static inline long
-fs2_serialize_int(fs2 *dst, int value) {
-    return fs2_sprintf(dst, "%d", value);
-}
 
-static inline fs2 
-fs2_fromint_new(int value) {
-    fs2     res = FS2();
-    if (fs2_serialize_int(&res, value) <= 0)
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize int %d", value);
-    return res;
-}
+// Выбор строки формата по типу
+#define FS2_FMT(v) _Generic((v),\
+    int:                "%d",   \
+    long:               "%ld",  \
+    long long:          "%lld", \
+    unsigned:           "%u",   \
+    unsigned long:      "%lu",  \
+    unsigned long long: "%llu", \
+    float:              "%f",   \
+    double:             "%lf",  \
+    void *:             "%p",   \
+    const void *:       "%p"    \
+)
 
-// heap constructor
-static inline fs2 *
-fs2_heap_fromint(int value) {
-    fs2 *h = fs2_heap();
-    if (fs2_serialize_int(h, value) <= 0) {
-        fs2_free(h);
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize int %d", value);
-    }
-    return h;
-}
-// long
-static inline long
-fs2_serialize_long(fs2 *dst, long value) {
-    return fs2_sprintf(dst, "%ld", value);
-}
+#define FS2_SER_ERRMSG(v) _Generic((v),                                     \
+    int:                "Failed to serialize int %d",                       \
+    long:               "Failed to serialize long %ld",                     \
+    long long:          "Failed to serialize long long %lld",               \
+    unsigned:           "Failed to serialize unsigned %u",                  \
+    unsigned long:      "Failed to serialize unsigned long %lu",            \
+    unsigned long long: "Failed to serialize unsigned long long %llu",      \
+    float:              "Failed to serialize float %f",                     \
+    double:             "Failed to serialize double %lf",                   \
+    void *:             "Failed to serialize pointer %p",                   \
+    const void *:       "Failed to serialize pointer %p"                    \
+)
 
-static inline fs2 
-fs2_fromlong_new(long value) {
-    fs2     res = FS2();
-    if (fs2_serialize_long(&res, value) <= 0)
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize long %ld", value);
-    return res;
-}
+// Запись в существующий fs2
+#define fs2_serialize(dst, val) \
+    fs2_sprintf((dst), FS2_FMT(val), (val))
 
-// heap constructor
-static inline fs2 *
-fs2_heap_fromlong(long value) {
-    fs2 *h = fs2_heap();
-    if (fs2_serialize_long(h, value) <= 0) {
-        fs2_free(h);
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize long %ld", value);
-    }
-    return h;
-}
-// long long
-static inline long
-fs2_serialize_llong(fs2 *dst, long long value) {
-    return fs2_sprintf(dst, "%lld", value);
-}
-// constructor
-static inline fs2 
-fs2_fromllong_new(long long value) {
-    fs2     res = FS2();
-    if (fs2_serialize_llong(&res, value) <= 0)
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize long long %lld", value);
-    return res;
-}
-// heap constructor
-static inline fs2 *
-fs2_heap_fromllong(long long value) {
-    fs2 *h = fs2_heap();
-    if (fs2_serialize_llong(h, value) <= 0) {
-        fs2_free(h);
-        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
-            "Failed to serialize long long %lld", value);
-    }
-    return h;
-}
+// 3. Сериализация в стек
+#define fs2_from_new(val) \
+    ({ \
+        fs2 _fs2_res = FS2(); \
+        if (fs2_sprintf(&_fs2_res, FS2_FMT(val), (val)) <= 0) \
+            userraise(-1, ERR_UNABLE_SERIALIZE_DATA, \
+                FS2_SER_ERRMSG(val), (val)); \
+        _fs2_res; \
+    })
+
+// 4. Сериализация в кучу
+#define fs2_heap_from(val) \
+    ({ \
+        fs2 tmp = fs2_from_new(val); \
+        fs2_stacktoheap(&tmp); \
+    })
 
 //
 //fs2_verirystr(pattern )
