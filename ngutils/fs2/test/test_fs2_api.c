@@ -5047,7 +5047,7 @@ Test(fs2_api, composite_long_roundtrip) {
         CHECK_FS2VALID(i, &s);
 
         /* Round-trip: парсим обратно, должно совпасть */
-        CHECK_EQ("round-trip", fs2_parse_long(&s), values[i]);
+        CHECK_EQ("round-trip", fs2_parse_long(&s), (long) values[i]);
 
         fs2_free(&s);
     }
