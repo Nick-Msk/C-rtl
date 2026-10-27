@@ -924,6 +924,9 @@ fs2_parse_int(const fs2 *restrict s) {
         fs2_stacktoheap(&tmp); \
     })
 
+#define fs2_serialize_concat(dst, val) \
+    fs2_sprintf_concat((dst), FS2_FMT(val), (val))
+
 //
 //fs2_verirystr(pattern )
 
