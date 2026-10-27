@@ -4673,6 +4673,21 @@ Test(fs2_api, fromint_new_independent) {
     fs2_free(&b);
     assert_balanced();
 }
+Test(fs2_api, serialize_int_return_equals_len) {
+    __fs2_checkreset();
+    
+    int values[] = { 0, 1, -1, 42, -99999, INT_MAX, INT_MIN };
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+        fs2 dst = FS2();
+        int written = fs2_serialize_int(&dst, values[i]);
+        
+        CHECK_EQ("return == len", written, (int)dst.len);
+        CHECK_EQ("strlen == len", strlen(dst.v), dst.len);
+        
+        fs2_free(&dst);
+    }
+    assert_balanced();
+}
 
 /* =========================================================================
  * fs2_heap_fromint — heap constructor
