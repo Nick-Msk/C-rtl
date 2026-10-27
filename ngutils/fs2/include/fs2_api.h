@@ -792,6 +792,9 @@ fs2_iin_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, si
  * Conversion (parse / format primitives)
  * ───────────────────────────────────────────────────────────────── */
 
+extern bool 
+fs2_pos_parse_llong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, long long *restrict out);
+
 /**
  * @brief Parse a long integer starting at @p pos.
  * @param newpos  Optional. Set to the position AFTER the parsed number.
