@@ -874,7 +874,6 @@ fs2_heap_fromint(int value) {
     }
     return h;
 }
-
 // long
 static inline long
 fs2_serialize_long(fs2 *dst, long value) {
@@ -898,6 +897,31 @@ fs2_heap_fromlong(long value) {
         fs2_free(h);
         userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
             "Failed to serialize long %ld", value);
+    }
+    return h;
+}
+// long long
+static inline long
+fs2_serialize_llong(fs2 *dst, long long value) {
+    return fs2_sprintf(dst, "%lld", value);
+}
+// constructor
+static inline fs2 
+fs2_fromllong_new(long long value) {
+    fs2     res = FS2();
+    if (fs2_serialize_llong(&res, value) <= 0)
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize long long %lld", value);
+    return res;
+}
+// heap constructor
+static inline fs2 *
+fs2_heap_fromllong(long long value) {
+    fs2 *h = fs2_heap();
+    if (fs2_serialize_llong(h, value) <= 0) {
+        fs2_free(h);
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize long long %lld", value);
     }
     return h;
 }
