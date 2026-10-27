@@ -266,21 +266,6 @@ fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
 extern long                  
 fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap);
 
-static inline long                  
-fs2_sprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, ...)
-    __attribute__ (( format (printf, 3, 4) ) );
-
-// internal
-static inline long                  
-fs2_sprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, ...) {
-    va_list ap;
-    long    res = 0L;
-    va_start(ap, fmt);
-    res = fs2_vsprintf_position(s, pos, fmt, ap);
-    va_end(ap);
-    return res;
-}
-
 static inline long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     invraise(s != 0 && fmt != 0, "Null pointers %p - %p", s, fmt);
