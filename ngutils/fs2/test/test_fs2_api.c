@@ -4303,6 +4303,299 @@ Test(fs2_api, in_bsearch_empty_array) {
     assert_balanced();
 }
 
+
+/* =========================================================================
+ * fs2_pos_parse_uint / ulong / ullong
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_uint_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    unsigned out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_uint(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 42u);
+    CHECK_EQ("newpos", newpos, 2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_uint_max) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4294967295");   /* UINT_MAX */
+    unsigned out = 0;
+
+    CHECK_TRUE("UINT_MAX ok", fs2_pos_parse_uint(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, UINT_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_uint_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4294967296");   /* UINT_MAX + 1 */
+    unsigned out = 0;
+
+    CHECK_FALSE("overflow", fs2_pos_parse_uint(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_uint_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    unsigned out = 0;
+
+    /* Ключевая проверка: strtoull("-1") вернул бы ULLONG_MAX,
+     * но мы отвергаем минус явно */
+    CHECK_FALSE("negative rejected", fs2_pos_parse_uint(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_uint_accepts_plus) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+42");
+    unsigned out = 0;
+
+    CHECK_TRUE("plus ok", fs2_pos_parse_uint(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, 42u);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345678");
+    unsigned long out = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_ulong(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, 12345678ul);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_max) {
+    __fs2_checkreset();
+    
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lu", ULONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+    unsigned long out = 0;
+
+    CHECK_TRUE("ULONG_MAX ok", fs2_pos_parse_ulong(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, ULONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_rejects_beyond_uint) {
+    __fs2_checkreset();
+    /* На LP64: значение, которое влезает в ulong, но не в uint */
+    fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX */
+    unsigned out = 0;
+    unsigned long ul_out = 0;
+
+    CHECK_FALSE("doesn't fit uint",  fs2_pos_parse_uint (&s, 0, NULL, &out));
+    CHECK_TRUE ("fits ulong on LP64", fs2_pos_parse_ulong(&s, 0, NULL, &ul_out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ullong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551615");   /* ULLONG_MAX */
+    unsigned long long out = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_ullong(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, ULLONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ullong_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551616");   /* ULLONG_MAX + 1 */
+    unsigned long long out = 0;
+
+    CHECK_FALSE("overflow", fs2_pos_parse_ullong(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ullong_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("999abc");
+    size_t newpos = 0;
+
+    /* out == NULL — только валидация, значение не нужно */
+    CHECK_TRUE("valid prefix", fs2_pos_parse_ullong(&s, 0, &newpos, NULL));
+    CHECK_EQ("newpos", newpos, 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ullong_skips_spaces_and_tabs) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  \t42");
+    unsigned long long out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_ullong(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 42ull);
+    CHECK_EQ("newpos", newpos, 5);   /* 2 sp + 1 tab + 2 digits */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ullong_rejects_newline) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\n42");
+    unsigned long long out = 0;
+
+    /* strtoull пропустил бы \n сам — мы отвергаем до вызова */
+    CHECK_FALSE("newline rejected", fs2_pos_parse_ullong(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_uint_chain_range) {
+    __fs2_checkreset();
+    /* Каждая функция отвергает значения за своим диапазоном */
+    fs2 s_u  = fs2_fromstr("4294967296");          /* UINT_MAX + 1 */
+    fs2 s_ul = fs2_fromstr("18446744073709551615"); /* ULONG_MAX на LP64 */
+    fs2 s_ull = fs2_fromstr("18446744073709551615"); /* ULLONG_MAX */
+
+    unsigned           u  = 0;
+    unsigned long      ul = 0;
+    unsigned long long ull = 0;
+
+    CHECK_FALSE("uint rejects",  fs2_pos_parse_uint  (&s_u,  0, NULL, &u));
+    CHECK_TRUE ("ulong fits on LP64", fs2_pos_parse_ulong (&s_ul, 0, NULL, &ul));
+    CHECK_TRUE ("ullong fits",   fs2_pos_parse_ullong(&s_ull, 0, NULL, &ull));
+
+    fs2_free(&s_u);
+    fs2_free(&s_ul);
+    fs2_free(&s_ull);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    unsigned long long out = 0;
+
+    CHECK_TRUE("parse", fs2_tryparse_ullong(&s, &out, true));
+    CHECK_EQ("val", out, 12345ULL);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong_max) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551615");   /* ULLONG_MAX */
+    unsigned long long out = 0;
+
+    CHECK_TRUE("ULLONG_MAX", fs2_tryparse_ullong(&s, &out, true));
+    CHECK_EQ("val", out, ULLONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    unsigned long long out = 0;
+
+    /* Ключевой: strtoull("-1") = ULLONG_MAX, но мы отвергаем минус 
+     * на уровне pos_parse_ullong */
+    CHECK_FALSE("negative rejected", fs2_tryparse_ullong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42xyz");
+    unsigned long long out = 0;
+
+    CHECK_TRUE ("lenient allows garbage", fs2_tryparse_ullong(&s, &out, false));
+    CHECK_EQ   ("val", out, 42ULL);
+    CHECK_FALSE("strict rejects",         fs2_tryparse_ullong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551616");   /* ULLONG_MAX + 1 */
+    unsigned long long out = 0;
+
+    CHECK_FALSE("overflow", fs2_tryparse_ullong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ullong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551615");
+
+    CHECK_EQ("parsed", fs2_parse_ullong(&s), ULLONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ullong_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_ullong(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Symmetry: signed vs unsigned на одном входе
+ * ========================================================================= */
+
+Test(fs2_api, parse_signed_vs_unsigned) {
+    __fs2_checkreset();
+    
+    fs2 s_pos = fs2_fromstr("100");
+    fs2 s_neg = fs2_fromstr("-100");
+
+    /* Положительное — оба справляются */
+    CHECK_EQ("signed 100",   fs2_parse_llong (&s_pos), 100LL);
+    CHECK_EQ("unsigned 100", fs2_parse_ullong(&s_pos), 100ULL);
+
+    /* Отрицательное — signed ok, unsigned падает */
+    CHECK_EQ("signed -100", fs2_parse_llong(&s_neg), -100LL);
+    /* fs2_parse_ullong(&s_neg) → SIGINT; проверяем через tryparse */
+    unsigned long long u_out = 0;
+    CHECK_FALSE("unsigned rejects -100", fs2_tryparse_ullong(&s_neg, &u_out, true));
+
+    fs2_free(&s_pos);
+    fs2_free(&s_neg);
+    assert_balanced();
+}
+
 /* =========================================================================
  * fs2_pos_parse_llong (base)
  * ========================================================================= */
@@ -5587,195 +5880,5 @@ Test(fs2_api, composite_serialize_concat_with_from_new) {
     CHECK_FS2VALID(1, &s);
 
     fs2_free(&s);
-    assert_balanced();
-}
-
-/* =========================================================================
- * fs2_pos_parse_uint / ulong / ullong
- * ========================================================================= */
-
-Test(fs2_api, pos_parse_uint_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("42abc");
-    unsigned out = 0;
-    size_t newpos = 0;
-
-    CHECK_TRUE("parse", fs2_pos_parse_uint(&s, 0, &newpos, &out));
-    CHECK_EQ("val", out, 42u);
-    CHECK_EQ("newpos", newpos, 2);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_uint_max) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("4294967295");   /* UINT_MAX */
-    unsigned out = 0;
-
-    CHECK_TRUE("UINT_MAX ok", fs2_pos_parse_uint(&s, 0, NULL, &out));
-    CHECK_EQ("val", out, UINT_MAX);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_uint_overflow) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("4294967296");   /* UINT_MAX + 1 */
-    unsigned out = 0;
-
-    CHECK_FALSE("overflow", fs2_pos_parse_uint(&s, 0, NULL, &out));
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_uint_rejects_negative) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("-1");
-    unsigned out = 0;
-
-    /* Ключевая проверка: strtoull("-1") вернул бы ULLONG_MAX,
-     * но мы отвергаем минус явно */
-    CHECK_FALSE("negative rejected", fs2_pos_parse_uint(&s, 0, NULL, &out));
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_uint_accepts_plus) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("+42");
-    unsigned out = 0;
-
-    CHECK_TRUE("plus ok", fs2_pos_parse_uint(&s, 0, NULL, &out));
-    CHECK_EQ("val", out, 42u);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ulong_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("12345678");
-    unsigned long out = 0;
-
-    CHECK_TRUE("parse", fs2_pos_parse_ulong(&s, 0, NULL, &out));
-    CHECK_EQ("val", out, 12345678ul);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ulong_max) {
-    __fs2_checkreset();
-    
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%lu", ULONG_MAX);
-    fs2 s = fs2_fromstr(buf);
-    unsigned long out = 0;
-
-    CHECK_TRUE("ULONG_MAX ok", fs2_pos_parse_ulong(&s, 0, NULL, &out));
-    CHECK_EQ("val", out, ULONG_MAX);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ulong_rejects_beyond_uint) {
-    __fs2_checkreset();
-    /* На LP64: значение, которое влезает в ulong, но не в uint */
-    fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX */
-    unsigned out = 0;
-    unsigned long ul_out = 0;
-
-    CHECK_FALSE("doesn't fit uint",  fs2_pos_parse_uint (&s, 0, NULL, &out));
-    CHECK_TRUE ("fits ulong on LP64", fs2_pos_parse_ulong(&s, 0, NULL, &ul_out));
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ullong_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("18446744073709551615");   /* ULLONG_MAX */
-    unsigned long long out = 0;
-
-    CHECK_TRUE("parse", fs2_pos_parse_ullong(&s, 0, NULL, &out));
-    CHECK_EQ("val", out, ULLONG_MAX);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ullong_overflow) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("18446744073709551616");   /* ULLONG_MAX + 1 */
-    unsigned long long out = 0;
-
-    CHECK_FALSE("overflow", fs2_pos_parse_ullong(&s, 0, NULL, &out));
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ullong_out_null) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("999abc");
-    size_t newpos = 0;
-
-    /* out == NULL — только валидация, значение не нужно */
-    CHECK_TRUE("valid prefix", fs2_pos_parse_ullong(&s, 0, &newpos, NULL));
-    CHECK_EQ("newpos", newpos, 3);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ullong_skips_spaces_and_tabs) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("  \t42");
-    unsigned long long out = 0;
-    size_t newpos = 0;
-
-    CHECK_TRUE("parse", fs2_pos_parse_ullong(&s, 0, &newpos, &out));
-    CHECK_EQ("val", out, 42ull);
-    CHECK_EQ("newpos", newpos, 5);   /* 2 sp + 1 tab + 2 digits */
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_ullong_rejects_newline) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("\n42");
-    unsigned long long out = 0;
-
-    /* strtoull пропустил бы \n сам — мы отвергаем до вызова */
-    CHECK_FALSE("newline rejected", fs2_pos_parse_ullong(&s, 0, NULL, &out));
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, pos_parse_uint_chain_range) {
-    __fs2_checkreset();
-    /* Каждая функция отвергает значения за своим диапазоном */
-    fs2 s_u  = fs2_fromstr("4294967296");          /* UINT_MAX + 1 */
-    fs2 s_ul = fs2_fromstr("18446744073709551615"); /* ULONG_MAX на LP64 */
-    fs2 s_ull = fs2_fromstr("18446744073709551615"); /* ULLONG_MAX */
-
-    unsigned           u  = 0;
-    unsigned long      ul = 0;
-    unsigned long long ull = 0;
-
-    CHECK_FALSE("uint rejects",  fs2_pos_parse_uint  (&s_u,  0, NULL, &u));
-    CHECK_TRUE ("ulong fits on LP64", fs2_pos_parse_ulong (&s_ul, 0, NULL, &ul));
-    CHECK_TRUE ("ullong fits",   fs2_pos_parse_ullong(&s_ull, 0, NULL, &ull));
-
-    fs2_free(&s_u);
-    fs2_free(&s_ul);
-    fs2_free(&s_ull);
     assert_balanced();
 }
