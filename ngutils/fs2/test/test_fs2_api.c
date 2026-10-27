@@ -5236,3 +5236,275 @@ Test(fs2_api, composite_mixed_types_in_array) {
     fs2_free(&joined);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_serialize_concat — append serialized primitive
+ * ========================================================================= */
+
+Test(fs2_api, serialize_concat_int_appends) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("id: ");
+
+    long res = fs2_serialize_concat(&s, 42);
+
+    CHECK_EQ("return", res, 2);
+    CHECK_STR_EQ("appended", s.v, "id: 42");
+    CHECK_EQ("len", s.len, strlen("id: 42"));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_empty_dst) {
+    __fs2_checkreset();
+    fs2 s = FS2();                          /* canonical empty */
+
+    fs2_serialize_concat(&s, 42);
+
+    CHECK_STR_EQ("content", s.v, "42");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_all_types) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_serialize_concat(&s, 1);                    /* int */
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 2L);                   /* long */
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 3LL);                  /* long long */
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 4U);                   /* unsigned */
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 5UL);                  /* unsigned long */
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 6ULL);                 /* unsigned long long */
+
+    CHECK_STR_EQ("content", s.v, "1|2|3|4|5|6");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_long_no_truncation) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* Регрессия: если _Generic случайно выбрал %d, получим мусор */
+    fs2_serialize_concat(&s, 5000000000L);
+
+    CHECK_STR_EQ("content", s.v, "5000000000");
+    CHECK_EQ("len", s.len, 10);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_llong_boundaries) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_serialize_concat(&s, LLONG_MAX);
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, LLONG_MIN);
+
+    CHECK_STR_EQ("content", s.v,
+                 "9223372036854775807|-9223372036854775808");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_float_double) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_serialize_concat(&s, 3.14f);
+    fs2_catstr(&s, "|");
+    fs2_serialize_concat(&s, 2.71828);
+
+    CHECK_STR_EQ("content", s.v, "3.140000|2.718280");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_pointer) {
+    __fs2_checkreset();
+    int x = 42;
+    void *ptr = &x;
+    fs2 s = FS2();
+
+    fs2_serialize_concat(&s, ptr);
+
+    /* %p печатает "0x..." */
+    CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_return_equals_delta) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("p:");
+
+    size_t before = s.len;
+    long res = fs2_serialize_concat(&s, 12345);
+    CHECK_EQ("int delta", res, (long)(s.len - before));
+
+    before = s.len;
+    res = fs2_serialize_concat(&s, 5000000000L);
+    CHECK_EQ("long delta", res, (long)(s.len - before));
+
+    before = s.len;
+    res = fs2_serialize_concat(&s, -1);
+    CHECK_EQ("negative delta", res, (long)(s.len - before));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_chain_ints) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* Собираем "0,1,2,...,99" через 100 int-append'ов */
+    for (int i = 0; i < 100; i++) {
+        fs2_serialize_concat(&s, i);
+        if (i < 99) fs2_catstr(&s, ",");
+    }
+
+    CHECK_EQ("len", s.len, 289);            /* известно из предыдущего теста */
+    CHECK_EQ("starts", strncmp(s.v, "0,1,2,", 6), 0);
+    CHECK_EQ("ends", strcmp(s.v + s.len - 2, "99"), 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_many_reallocs) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    size_t initial_sz = s.sz;               /* 0 */
+
+    /* Огромное число append'ов — гарантирует 4-5 realloc'ов */
+    for (int i = 0; i < 500; i++) {
+        fs2_serialize_concat(&s, i);
+    }
+
+    CHECK_TRUE("buffer grew massively", s.sz > initial_sz);
+    CHECK_TRUE("sz >= len+1", s.sz >= s.len + 1);
+    CHECK_FS2VALID(1, &s);
+
+    /* Проверяем, что контент не потерялся на границах realloc'ов */
+    CHECK_EQ("starts with 012", strncmp(s.v, "012", 3), 0);
+    CHECK_EQ("ends with 499", strcmp(s.v + s.len - 3, "499"), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 64);
+    memcpy(s.v, "id=", 4);
+    s.len = 3;
+
+    fs2_serialize_concat(&s, 42);
+    fs2_catstr(&s, ",ok");
+
+    CHECK_STR_EQ("content", s.v, "id=42,ok");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);   /* no-op */
+}
+
+/* =========================================================================
+ * Composite — real-world scenarios
+ * ========================================================================= */
+
+Test(fs2_api, composite_serialize_concat_csv) {
+    __fs2_checkreset();
+    fs2 row = FS2();
+
+    fs2_serialize_concat(&row, 42);
+    fs2_catstr(&row, ",");
+    fs2_catstr(&row, "alice");
+    fs2_catstr(&row, ",");
+    fs2_serialize_concat(&row, 3.14);
+
+    CHECK_STR_EQ("csv row", row.v, "42,alice,3.140000");
+    CHECK_FS2VALID(1, &row);
+
+    fs2_free(&row);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_serialize_concat_json_ish) {
+    __fs2_checkreset();
+    fs2 j = FS2();
+
+    fs2_catstr(&j, "{\"id\":");
+    fs2_serialize_concat(&j, 7);
+    fs2_catstr(&j, ",\"score\":");
+    fs2_serialize_concat(&j, 9.5);
+    fs2_catstr(&j, "}");
+
+    CHECK_STR_EQ("json", j.v, "{\"id\":7,\"score\":9.500000}");
+    CHECK_FS2VALID(1, &j);
+
+    fs2_free(&j);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_serialize_concat_mixed_widths) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* Смешиваем все целочисленные ширины — если _Generic перепутает,
+     * одно из значений truncate'нется в мусор */
+    fs2_serialize_concat(&s, (int)INT_MIN);
+    fs2_catstr(&s, ",");
+    fs2_serialize_concat(&s, (long)LONG_MIN);
+    fs2_catstr(&s, ",");
+    fs2_serialize_concat(&s, (long long)LLONG_MIN);
+
+    /* Проверяем, что каждое значение влезло без искажений */
+    CHECK_EQ("starts with INT_MIN",
+             strncmp(s.v, "-2147483648,", 12), 0);
+    CHECK_TRUE("contains LONG_MIN",
+               strstr(s.v, "-9223372036854775808") != NULL);
+    CHECK_TRUE("ends with LLONG_MIN",
+               strcmp(s.v + s.len - 20, "-9223372036854775808") == 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_serialize_concat_with_from_new) {
+    __fs2_checkreset();
+
+    /* Комбинируем: from_new создаёт, потом дописываем через concat */
+    fs2 s = fs2_from_new(100);
+    fs2_serialize_concat(&s, 200);
+    fs2_serialize_concat(&s, 300);
+
+    CHECK_STR_EQ("content", s.v, "100200300");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
