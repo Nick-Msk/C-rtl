@@ -26,9 +26,9 @@
 #define CHECK_FS2VALID(n, s)                                              \
     do {                                                                  \
         if (!fs2_validate(logfile, (s))) {                                \
-            logsimple("FAIL %s: fsvalid %d failed on %s",                 \
-                      __func__, (n), #s);                                 \
-            cr_assert_fail("fsvalid %d failed on %s", (n), #s);           \
+            logsimple("FAIL %s: fsvalid %zu failed on %s",                \
+                      __func__, (size_t)(n), #s);                         \
+            cr_assert_fail("fsvalid %zu failed on %s", (size_t)(n), #s);  \
         }                                                                 \
     } while (0)
 
