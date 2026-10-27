@@ -825,12 +825,12 @@ fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
 }
 
 /**
- * @brief Parse int/long, raising a user error (SIGINT) on failure.
+ * @brief Parse int/long, raising a user error (SIGINT) on failure. Non-strict.
  */
 static inline long 
 fs2_parse_long(const fs2 *restrict s) {
     long out = 0;
-    if (!fs2_tryparse_long(s, &out, true))
+    if (!fs2_tryparse_long(s, &out, false))
         userraise(-1, ERR_UNABLE_PARSE_DATA, 
               "Failed to parse long from string: '%.15s'", 
               (s && s->v) ? s->v : "(null)");
@@ -840,7 +840,7 @@ fs2_parse_long(const fs2 *restrict s) {
 static inline int 
 fs2_parse_int(const fs2 *restrict s) {
     int out = 0;
-    if (!fs2_tryparse_int(s, &out, true))
+    if (!fs2_tryparse_int(s, &out, false))
         userraise(-1, ERR_UNABLE_PARSE_DATA, 
               "Failed to parse int from string: '%.15s'", 
               (s && s->v) ? s->v : "(null)");
