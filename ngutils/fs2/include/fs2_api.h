@@ -822,12 +822,25 @@ fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, size_t *restrict newpos, u
  * @param strict  If true, `newpos` MUST exactly equal `s->len` (no trailing spaces/garbage).
  */
 static inline bool 
+fs2_tryparse_llong(const fs2 *restrict s, long long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_llong(s, 0, &newpos, out))
+        return false;
+    
+    // Строгий режим: после числа не должно быть НИЧЕГО
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);
+        
+    return true;
+}
+
+static inline bool 
 fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
     size_t newpos = 0;
     if (!fs2_pos_parse_long(s, 0, &newpos, out))
         return false;
     
-    // Строгий режим: после числа не должно быть НИЧЕГО
     if (strict && newpos != s->len)
         return logsimpleerr(false, 
             "String mode failed to parse %zu but len %zu", newpos, s->len);
@@ -851,6 +864,16 @@ fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
 /**
  * @brief Parse int/long, raising a user error (SIGINT) on failure. Non-strict.
  */
+static inline long long
+fs2_parse_llong(const fs2 *restrict s) {
+    long long out = 0;
+    if (!fs2_tryparse_llong(s, &out, false))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+              "Failed to parse long long from string: '%.15s'", 
+              (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
 static inline long 
 fs2_parse_long(const fs2 *restrict s) {
     long out = 0;
