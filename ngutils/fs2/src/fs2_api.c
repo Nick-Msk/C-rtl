@@ -469,7 +469,10 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, l
     
     // Если строка состояла только из пробелов до конца
     if (*start == '\0') 
-        return logsimpleerr(false, "Only spaces detected");;
+        return logsimpleerr(false, "Only spaces detected");
+    
+    if (!isdigit((unsigned char)*start) && *start != '+' && *start != '-')
+        return logsimpleerr(false, "incorrent sym detected [%c]", *start);
 
     char *endptr = NULL;
     errno = 0;
