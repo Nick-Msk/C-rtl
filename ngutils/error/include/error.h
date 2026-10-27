@@ -129,6 +129,7 @@ typedef enum {
     ERR_VALIDATION_FAILED       = 10235,    ///< Data failed validation checks.
     ERR_UNSUPPORTED_GENERATOR   = 10236,    ///< Requested generator type is not supported.
     ERR_UNSUPPORTED_INTERFACE   = 10237,    ///< Requested interface is not supported.
+    ERR_UNABLE_SERIALIZE_DATA   = 10238,    ///< Not possible to serialize
 
     ERR_UNABLE_TO_EXEC_FILE     = 10300,    ///< Could not execute the specified file.
     ERR_UNABLE_TO_RUN_MAKE      = 10301,    ///< Could not invoke the build system (make).

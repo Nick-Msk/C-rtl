@@ -847,6 +847,37 @@ fs2_parse_int(const fs2 *restrict s) {
     return out;
 }
 
+// Format (primitive → string)
+// int 
+static inline bool
+fs2_serialize_int(fs2 *dst, int value) {
+    return fs2_sprintf(dst, "%d", value) > 0;
+}
+
+static inline fs2 
+fs2_fromint_new(int value) {
+    fs2     res = FS2();
+    if (!fs2_serialize_int(&res, value))
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize int %d", value);
+    return res;
+}
+
+// heap constructor (3 строки дублирования)
+static inline fs2 *
+fs2_heap_fromint(int value) {
+    fs2 *h = fs2_heap();
+    if (!fs2_serialize_int(h, value)) {
+        fs2_free(h);
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize int %d", value);
+    }
+    return h;
+}
+
+// heap - no need, just use  
+
+
 //
 //fs2_verirystr(pattern )
 
