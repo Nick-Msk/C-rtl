@@ -567,3 +567,87 @@ Test(common, pcsrr_icmp_bsearch) {
     CHECK_NOT_NULL("found cherry (ci)", found);
     CHECK_STR_EQ("found content", *found, "Cherry");
 }
+
+/* =========================================================================
+ * skip_spaces — pointer-based space/tab skipper
+ * ========================================================================= */
+
+Test(common, skip_spaces_basic) {
+    const char *s = "  \t  hello";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 5, "Should skip 2 spaces, 1 tab, 2 spaces");
+    cr_assert_str_eq(res, "hello");
+}
+
+Test(common, skip_spaces_no_spaces) {
+    const char *s = "hello";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s, "Should return the original pointer");
+    cr_assert_str_eq(res, "hello");
+}
+
+Test(common, skip_spaces_only_spaces) {
+    const char *s = "    ";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 4, "Should point to the NUL terminator");
+    cr_assert_eq(*res, '\0');
+}
+
+Test(common, skip_spaces_empty_string) {
+    const char *s = "";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s, "Should return the original pointer");
+    cr_assert_eq(*res, '\0');
+}
+
+Test(common, skip_spaces_null) {
+    const char *res = skip_spaces(NULL);
+    
+    cr_assert_null(res, "Should handle NULL safely");
+}
+
+Test(common, skip_spaces_other_whitespace_ignored) {
+    /* \n, \r, \v, \f должны считаться "непробелами" */
+    const char *s = "\n\r\v\f hello";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s, "Should NOT skip \\n, \\r, \\v, \\f");
+    cr_assert_eq(*res, '\n');
+}
+
+Test(common, skip_spaces_mixed_other_whitespace) {
+    /* Начинается с пробела, потом \n. Должен остановиться на \n */
+    const char *s = "  \n  hello";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 2, "Should skip exactly 2 spaces and stop at \\n");
+    cr_assert_eq(*res, '\n');
+}
+
+Test(common, skip_spaces_tabs_only) {
+    const char *s = "\t\t";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 2, "Should skip exactly 2 tabs");
+    cr_assert_eq(*res, '\0');
+}
+
+Test(common, skip_spaces_single_space) {
+    const char *s = " x";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 1, "Should skip exactly 1 space");
+    cr_assert_str_eq(res, "x");
+}
+
+Test(common, skip_spaces_single_tab) {
+    const char *s = "\tx";
+    const char *res = skip_spaces(s);
+
+    cr_assert_eq(res, s + 1, "Should skip exactly 1 tab");
+    cr_assert_str_eq(res, "x");
+}
