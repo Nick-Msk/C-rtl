@@ -4437,3 +4437,298 @@ Test(fs2_api, parse_long_strict_rejects_trailing) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_serialize_int — format int into existing fs2
+ * ========================================================================= */
+
+Test(fs2_api, serialize_int_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_TRUE("serialize 42", fs2_serialize_int(&dst, 42));
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_EQ("len", dst.len, 2);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_negative) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_serialize_int(&dst, -12345);
+
+    CHECK_STR_EQ("content", dst.v, "-12345");
+    CHECK_EQ("len", dst.len, 6);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_zero) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_serialize_int(&dst, 0);
+
+    CHECK_STR_EQ("content", dst.v, "0");
+    CHECK_EQ("len", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_boundaries) {
+    __fs2_checkreset();
+
+    fs2 s_max = FS2();
+    fs2 s_min = FS2();
+
+    CHECK_TRUE("INT_MAX", fs2_serialize_int(&s_max, INT_MAX));
+    CHECK_TRUE("INT_MIN", fs2_serialize_int(&s_min, INT_MIN));
+
+    CHECK_STR_EQ("max", s_max.v, "2147483647");
+    CHECK_STR_EQ("min", s_min.v, "-2147483648");
+    CHECK_FS2VALID(1, &s_max);
+    CHECK_FS2VALID(2, &s_min);
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_overwrites_existing) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("long existing content");
+
+    fs2_serialize_int(&dst, 7);
+
+    CHECK_STR_EQ("shorter content", dst.v, "7");
+    CHECK_EQ("len updated", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_fits_min_buffer) {
+    __fs2_checkreset();
+    /* fs2_init(4) всё равно даёт sz=16 (FS2_MIN_ALLOC). 
+     * INT_MIN (12 байт с NUL) влезает — reserve не нужен. */
+    fs2 dst = fs2_init(4);
+    size_t orig_sz = dst.sz;
+
+    CHECK_TRUE("serialize", fs2_serialize_int(&dst, INT_MIN));
+
+    CHECK_EQ("sz unchanged (fits)", dst.sz, orig_sz);
+    CHECK_STR_EQ("content", dst.v, "-2147483648");
+    CHECK_EQ("len", dst.len, 11);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_local_buffer) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 32);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_serialize_int(&dst, 2024);
+
+    CHECK_STR_EQ("content", dst.v, "2024");
+    CHECK_EQ("len", dst.len, 4);
+    CHECK_TRUE("still local", fs2_is_local(&dst));
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);   /* no-op */
+}
+
+Test(fs2_api, serialize_int_null_aborts, .signal = SIGABRT) {
+    fs2_serialize_int(NULL, 42);
+}
+
+/* =========================================================================
+ * fs2_fromint_new — stack constructor
+ * ========================================================================= */
+
+Test(fs2_api, fromint_new_basic) {
+    __fs2_checkreset();
+
+    fs2 s = fs2_fromint_new(12345);
+
+    CHECK_STR_EQ("content", s.v, "12345");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_TRUE("is alloc", fs2_is_alloc(&s));
+    CHECK_FALSE("not bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromint_new_negative_and_zero) {
+    __fs2_checkreset();
+
+    fs2 s_neg = fs2_fromint_new(-99);
+    fs2 s_zero = fs2_fromint_new(0);
+
+    CHECK_STR_EQ("neg", s_neg.v, "-99");
+    CHECK_STR_EQ("zero", s_zero.v, "0");
+    CHECK_FS2VALID(1, &s_neg);
+    CHECK_FS2VALID(2, &s_zero);
+
+    fs2_free(&s_neg);
+    fs2_free(&s_zero);
+    assert_balanced();
+}
+
+Test(fs2_api, fromint_new_independent) {
+    __fs2_checkreset();
+
+    /* Два вызова — два независимых буфера */
+    fs2 a = fs2_fromint_new(100);
+    fs2 b = fs2_fromint_new(200);
+
+    CHECK_STR_EQ("a", a.v, "100");
+    CHECK_STR_EQ("b", b.v, "200");
+    CHECK_TRUE("different buffers", a.v != b.v);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    /* Мутация одной не трогает другую */
+    fs2_catstr(&a, "0");
+    CHECK_STR_EQ("a mutated", a.v, "1000");
+    CHECK_STR_EQ("b intact", b.v, "200");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_fromint — heap constructor
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromint_basic) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromint(12345);
+
+    CHECK_STR_EQ("content", h->v, "12345");
+    CHECK_EQ("len", h->len, 5);
+    CHECK_TRUE("is alloc", fs2_is_alloc(h));
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromint_negative) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromint(-42);
+
+    CHECK_STR_EQ("content", h->v, "-42");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromint_boundaries) {
+    __fs2_checkreset();
+
+    fs2 *h_max = fs2_heap_fromint(INT_MAX);
+    fs2 *h_min = fs2_heap_fromint(INT_MIN);
+
+    CHECK_STR_EQ("max", h_max->v, "2147483647");
+    CHECK_STR_EQ("min", h_min->v, "-2147483648");
+    CHECK_FS2VALID(1, h_max);
+    CHECK_FS2VALID(2, h_min);
+
+    fs2_free(h_max);
+    fs2_free(h_min);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromint_no_leak) {
+    __fs2_checkreset();
+
+    /* Цикл heap_fromint — проверяем что каждый free освобождает всё */
+    for (int i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap_fromint(i);
+        fs2_free(h);
+    }
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: int -> fs2 -> string manipulation
+ * ========================================================================= */
+
+Test(fs2_api, composite_int_to_string_pipeline) {
+    __fs2_checkreset();
+
+    /* Собираем "Result: 42 (forty-two)" через серию операций */
+    fs2 msg = fs2_fromint_new(42);
+    CHECK_FS2VALID(1, &msg);
+
+    fs2_rev_catstr(&msg, "Result: ");
+    CHECK_STR_EQ("after prepend", msg.v, "Result: 42");
+    CHECK_FS2VALID(2, &msg);
+
+    fs2_catstr(&msg, " (forty-two)");
+    CHECK_STR_EQ("after append", msg.v, "Result: 42 (forty-two)");
+    CHECK_EQ("len", msg.len, 22);
+    CHECK_FS2VALID(3, &msg);
+
+    fs2_free(&msg);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_heap_to_stack_via_heaptostack) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromint(7);
+    CHECK_FS2VALID(1, h);
+
+    /* Переносим heap -> stack (h обнуляется) */
+    fs2 s = fs2_heaptostack(&h);
+
+    CHECK_PTR_EQ("h reset", h, NULL);
+    CHECK_STR_EQ("content survived", s.v, "7");
+    CHECK_FALSE("no longer bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_TRUE("still alloc", fs2_is_alloc(&s));
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_fromint_build_array) {
+    __fs2_checkreset();
+
+    /* Строим массив "0", "1", "2", ..., "9" */
+    fs2 arr[10];
+    for (int i = 0; i < 10; i++) {
+        arr[i] = fs2_fromint_new(i);
+        CHECK_FS2VALID(i, &arr[i]);
+    }
+
+    CHECK_STR_EQ("arr[0]", arr[0].v, "0");
+    CHECK_STR_EQ("arr[5]", arr[5].v, "5");
+    CHECK_STR_EQ("arr[9]", arr[9].v, "9");
+
+    for (int i = 0; i < 10; i++)
+        fs2_free(&arr[i]);
+
+    assert_balanced();
+}
