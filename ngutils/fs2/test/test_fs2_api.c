@@ -4366,6 +4366,59 @@ Test(fs2_api, pos_parse_llong_rejects_newline) {
     assert_balanced();
 }
 
+Test(fs2_api, tryparse_llong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    long long out = 0;
+
+    CHECK_TRUE("parse", fs2_tryparse_llong(&s, &out, true));
+    CHECK_EQ("val", out, 12345LL);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой регресс: значение вне long — если внутри _long, тут упадёт */
+Test(fs2_api, tryparse_llong_beyond_long_on_llp64) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("9223372036854775807");   /* LLONG_MAX */
+    long long out = 0;
+
+    CHECK_TRUE("LLONG_MAX parses", fs2_tryparse_llong(&s, &out, true));
+    CHECK_EQ("val", out, LLONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_llong_strict_trailing_reject) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    long long out = 0;
+
+    CHECK_TRUE ("non-strict ok", fs2_tryparse_llong(&s, &out, false));
+    CHECK_FALSE("strict rejects", fs2_tryparse_llong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_llong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("5000000000");   /* > INT_MAX */
+
+    CHECK_EQ("parsed", fs2_parse_llong(&s), 5000000000LL);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_llong_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_llong(&s);
+    fs2_free(&s);
+}
+
 /* =========================================================================
  * fs2_pos_parse_long / fs2_pos_parse_int
  * ========================================================================= */
