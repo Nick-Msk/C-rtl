@@ -4167,3 +4167,189 @@ Test(fs2_api, in_bsearch_empty_array) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_pos_parse_long / fs2_pos_parse_int
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_long_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1234567890123 456"); // big long
+    long out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse long", fs2_pos_parse_long(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 1234567890123L);
+    CHECK_EQ("newpos", newpos, 13);
+
+    /* Парсим остаток */
+    CHECK_TRUE("parse next", fs2_pos_parse_long(&s, 14, &newpos, &out));
+    CHECK_EQ("val", out, 456);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_long_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    size_t newpos = 0;
+
+    /* Проверяем валидность префикса, не сохраняя значение */
+    CHECK_TRUE("valid prefix", fs2_pos_parse_long(&s, 0, &newpos, NULL));
+    CHECK_EQ("newpos", newpos, 2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_overflow) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("2147483648");  // INT_MAX + 1
+    fs2 s2 = fs2_fromstr("-2147483649"); // INT_MIN - 1
+    int out = 0;
+
+    CHECK_FALSE("int overflow +", fs2_pos_parse_int(&s1, 0, NULL, &out));
+    CHECK_FALSE("int overflow -", fs2_pos_parse_int(&s2, 0, NULL, &out));
+
+    fs2_free(&s1); fs2_free(&s2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tryparse_long / fs2_tryparse_int (strict mode)
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_strict_exact) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("42");
+    fs2 s2 = fs2_fromstr("-42");
+    int out = 0;
+
+    CHECK_TRUE("clean int", fs2_tryparse_int(&s1, &out, true));
+    CHECK_EQ("val", out, 42);
+
+    CHECK_TRUE("clean negative", fs2_tryparse_int(&s2, &out, true));
+    CHECK_EQ("val", out, -42);
+
+    fs2_free(&s1); fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_strict_rejects_trailing) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("42abc");
+    fs2 s2 = fs2_fromstr("42   "); // Даже пробелы запрещены в strict!
+    int out = 0;
+
+    CHECK_FALSE("trailing garbage", fs2_tryparse_int(&s1, &out, true));
+    CHECK_FALSE("trailing spaces", fs2_tryparse_int(&s2, &out, true));
+
+    fs2_free(&s1); fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_non_strict_prefix) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    int out = 0;
+
+    CHECK_TRUE("non-strict allows garbage", fs2_tryparse_int(&s, &out, false));
+    CHECK_EQ("val", out, 42);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_parse_int / fs2_parse_long (raises on failure)
+ * ========================================================================= */
+
+Test(fs2_api, parse_long_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1234567890123");
+    
+    CHECK_EQ("parsed", fs2_parse_long(&s), 1234567890123L);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_int_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("42   "); // strict fail (trailing spaces)
+    fs2_parse_int(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Whitespace handling
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_long_leading_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  \t42abc");
+    long out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("skip spaces/tabs", fs2_pos_parse_long(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 42);
+    /* skipped = 3 (' ',' ','\t'), num_len = 2 ('4','2'), newpos = 0 + 3 + 2 = 5 */
+    CHECK_EQ("newpos after number", newpos, 5);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_long_rejects_newlines) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\n42");  // \n НЕ пропускается skip_spaces
+    long out = 0;
+
+    /* Должно упасть, потому что \n не является пробелом/табом */
+    CHECK_FALSE("reject newline", fs2_pos_parse_long(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_strict_with_leading_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  42"); // Leading spaces OK
+    int out = 0;
+
+    CHECK_TRUE("strict allows leading spaces", fs2_tryparse_int(&s, &out, true));
+    CHECK_EQ("val", out, 42);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_strict_rejects_trailing_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42  "); // Trailing spaces NOT OK
+    int out = 0;
+
+    CHECK_FALSE("strict rejects trailing spaces", fs2_tryparse_int(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_long_skips_only_spaces_and_tabs) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr(" \t 123");
+    fs2 s2 = fs2_fromstr(" \n 123"); // \n не должен пропускаться
+    long out = 0;
+    size_t newpos = 0;
+
+    /* Пробелы и табы пропускаются */
+    CHECK_TRUE("spaces and tabs", fs2_pos_parse_long(&s1, 0, &newpos, &out));
+    CHECK_EQ("val", out, 123);
+    CHECK_EQ("newpos", newpos, 6); // 3 пробела/таба + 3 цифры
+
+    /* \n не пропускается, поэтому strtol упадет (endptr == start) */
+    CHECK_FALSE("newline not skipped", fs2_pos_parse_long(&s2, 0, NULL, &out));
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
