@@ -876,6 +876,19 @@ fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
 }
 
 static inline bool 
+fs2_tryparse_uint(const fs2 *restrict s, unsigned *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_uint(s, 0, &newpos, out))
+        return false;
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+
+    return true;
+}
+
+static inline bool 
 fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
     size_t newpos = 0;
     if (!fs2_pos_parse_int(s, 0, &newpos, out))
@@ -931,6 +944,17 @@ fs2_parse_long(const fs2 *restrict s) {
               (s && s->v) ? s->v : "(null)");
     return out;
 }
+
+static inline unsigned 
+fs2_parse_uint(const fs2 *restrict s) {
+    unsigned out = 0;
+    if (!fs2_tryparse_uint(s, &out, false))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+              "Failed to parse int from string: '%.15s'", 
+              (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
 
 static inline int 
 fs2_parse_int(const fs2 *restrict s) {
