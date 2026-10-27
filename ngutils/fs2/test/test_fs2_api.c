@@ -4572,6 +4572,216 @@ Test(fs2_api, parse_ullong_fails_userraise, .signal = SIGINT) {
 }
 
 /* =========================================================================
+ * fs2_tryparse_uint / fs2_parse_uint
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_uint_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    unsigned out = 0;
+
+    CHECK_TRUE("parse", fs2_tryparse_uint(&s, &out, true));
+    CHECK_EQ("val", out, 12345u);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint_max) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4294967295");   /* UINT_MAX */
+    unsigned out = 0;
+
+    CHECK_TRUE("UINT_MAX", fs2_tryparse_uint(&s, &out, true));
+    CHECK_EQ("val", out, UINT_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4294967296");   /* UINT_MAX + 1 */
+    unsigned out = 0;
+
+    CHECK_FALSE("overflow", fs2_tryparse_uint(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    unsigned out = 0;
+
+    /* Цепочка: uint → ulong → ullong, минус отвергается на нижнем уровне */
+    CHECK_FALSE("negative rejected", fs2_tryparse_uint(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint_accepts_plus) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+42");
+    unsigned out = 0;
+
+    CHECK_TRUE("plus ok", fs2_tryparse_uint(&s, &out, true));
+    CHECK_EQ("val", out, 42u);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42xyz");
+    unsigned out = 0;
+
+    CHECK_TRUE ("lenient", fs2_tryparse_uint(&s, &out, false));
+    CHECK_EQ   ("val", out, 42u);
+    CHECK_FALSE("strict rejects", fs2_tryparse_uint(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_uint_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("2024");
+
+    CHECK_EQ("parsed", fs2_parse_uint(&s), 2024u);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_uint_max) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4294967295");
+
+    CHECK_EQ("UINT_MAX", fs2_parse_uint(&s), UINT_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_uint_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_uint(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_uint_overflow_aborts, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("4294967296");   /* UINT_MAX + 1 */
+    fs2_parse_uint(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Цепочка uint → ulong → ullong: одно значение, три уровня
+ * ========================================================================= */
+
+Test(fs2_api, uint_chain_rejects_above_uint) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX, < ULONG_MAX на LP64 */
+
+    unsigned           u   = 0;
+    unsigned long      ul  = 0;
+    unsigned long long ull = 0;
+
+    CHECK_FALSE("uint rejects",   fs2_tryparse_uint  (&s, &u,   true));
+    CHECK_TRUE ("ulong accepts",  fs2_tryparse_ulong (&s, &ul,  true));
+    CHECK_EQ   ("ulong val",      ul, 5000000000ul);
+    CHECK_TRUE ("ullong accepts", fs2_tryparse_ullong(&s, &ull, true));
+    CHECK_EQ   ("ullong val",     ull, 5000000000ull);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, uint_chain_all_reject_beyond_ullong) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("99999999999999999999");   /* > ULLONG_MAX */
+
+    unsigned           u   = 0;
+    unsigned long      ul  = 0;
+    unsigned long long ull = 0;
+
+    CHECK_FALSE("uint rejects",   fs2_tryparse_uint  (&s, &u,   true));
+    CHECK_FALSE("ulong rejects",  fs2_tryparse_ulong (&s, &ul,  true));
+    CHECK_FALSE("ullong rejects", fs2_tryparse_ullong(&s, &ull, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Signed vs unsigned: один и тот же вход
+ * ========================================================================= */
+
+Test(fs2_api, parse_signed_vs_unsigned_int) {
+    __fs2_checkreset();
+
+    fs2 s_pos = fs2_fromstr("100");
+    fs2 s_neg = fs2_fromstr("-100");
+
+    /* Положительное: оба справляются */
+    CHECK_EQ("signed int 100",   fs2_parse_int (&s_pos), 100);
+    CHECK_EQ("unsigned int 100", fs2_parse_uint(&s_pos), 100u);
+
+    /* Отрицательное: int ok, uint — нет */
+    CHECK_EQ("signed int -100", fs2_parse_int(&s_neg), -100);
+
+    unsigned u_out = 0;
+    CHECK_FALSE("uint rejects -100", fs2_tryparse_uint(&s_neg, &u_out, true));
+
+    fs2_free(&s_pos);
+    fs2_free(&s_neg);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: uint в реальном коде
+ * ========================================================================= */
+
+Test(fs2_api, composite_parse_uint_port) {
+    __fs2_checkreset();
+
+    /* Сценарий: "port=8080" из конфига */
+    fs2 line = fs2_fromstr("port=8080");
+
+    ptrdiff_t eq = fs2_chr(&line, '=');
+    CHECK_TRUE("eq found", eq >= 0);
+
+    size_t   newpos = 0;
+    unsigned port   = 0;
+    CHECK_TRUE("parse port", 
+               fs2_pos_parse_uint(&line, (size_t)eq + 1, &newpos, &port));
+    CHECK_EQ("port", port, 8080u);
+    CHECK_EQ("consumed all", newpos, line.len);
+    CHECK_TRUE("fits uint", port <= 65535u);
+
+    fs2_free(&line);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_parse_uint_with_validation) {
+    __fs2_checkreset();
+
+    /* Парсим и валидируем диапазон — типичный сценарий */
+    fs2 s = fs2_fromstr("512");
+    unsigned val = 0;
+
+    CHECK_TRUE("parsed", fs2_tryparse_uint(&s, &val, true));
+    CHECK_TRUE("in range [1, 1024]", val >= 1u && val <= 1024u);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
  * Symmetry: signed vs unsigned на одном входе
  * ========================================================================= */
 
