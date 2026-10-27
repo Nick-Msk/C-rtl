@@ -22,6 +22,9 @@ LDLIBS=
 
 all:
 
+pth_test: src/pth_test.c
+	$(CC) $(CFLAGS) $^ -o out/$@_test
+
 rnd_test: src/rnd_test.c
 	$(CC) $(CFLAGS) $^ -o out/$@_test
 
