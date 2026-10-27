@@ -4446,7 +4446,7 @@ Test(fs2_api, serialize_int_basic) {
     __fs2_checkreset();
     fs2 dst = FS2();
 
-    CHECK_TRUE("serialize 42", fs2_serialize_int(&dst, 42));
+    CHECK_TRUE("serialize 42", fs2_serialize_int(&dst, 42) > 0);
     CHECK_STR_EQ("content", dst.v, "42");
     CHECK_EQ("len", dst.len, 2);
     CHECK_FS2VALID(1, &dst);
@@ -4489,8 +4489,8 @@ Test(fs2_api, serialize_int_boundaries) {
     fs2 s_max = FS2();
     fs2 s_min = FS2();
 
-    CHECK_TRUE("INT_MAX", fs2_serialize_int(&s_max, INT_MAX));
-    CHECK_TRUE("INT_MIN", fs2_serialize_int(&s_min, INT_MIN));
+    CHECK_TRUE("INT_MAX", fs2_serialize_int(&s_max, INT_MAX) > 0);
+    CHECK_TRUE("INT_MIN", fs2_serialize_int(&s_min, INT_MIN) > 0);
 
     CHECK_STR_EQ("max", s_max.v, "2147483647");
     CHECK_STR_EQ("min", s_min.v, "-2147483648");
@@ -4523,7 +4523,7 @@ Test(fs2_api, serialize_int_fits_min_buffer) {
     fs2 dst = fs2_init(4);
     size_t orig_sz = dst.sz;
 
-    CHECK_TRUE("serialize", fs2_serialize_int(&dst, INT_MIN));
+    CHECK_TRUE("serialize", fs2_serialize_int(&dst, INT_MIN) > 0);
 
     CHECK_EQ("sz unchanged (fits)", dst.sz, orig_sz);
     CHECK_STR_EQ("content", dst.v, "-2147483648");
@@ -4547,6 +4547,69 @@ Test(fs2_api, serialize_int_local_buffer) {
     CHECK_FS2VALID(2, &dst);
 
     fs2_free(&dst);   /* no-op */
+}
+
+Test(fs2_api, serialize_int_returns_length) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("42 → 2 chars", fs2_serialize_int(&dst, 42), 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_negative_length) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("-12345 → 6 chars", fs2_serialize_int(&dst, -12345), 6);
+    CHECK_STR_EQ("content", dst.v, "-12345");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_zero_length) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("0 → 1 char", fs2_serialize_int(&dst, 0), 1);
+    CHECK_STR_EQ("content", dst.v, "0");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_boundaries_length) {
+    __fs2_checkreset();
+
+    fs2 s_max = FS2();
+    fs2 s_min = FS2();
+
+    CHECK_EQ("INT_MAX → 10 chars", fs2_serialize_int(&s_max, INT_MAX), 10);
+    CHECK_EQ("INT_MIN → 11 chars", fs2_serialize_int(&s_min, INT_MIN), 11);
+    CHECK_STR_EQ("max", s_max.v, "2147483647");
+    CHECK_STR_EQ("min", s_min.v, "-2147483648");
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_int_overwrites_returns_new_length) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("long existing content");
+
+    CHECK_EQ("shorter: 1 char", fs2_serialize_int(&dst, 7), 1);
+    CHECK_STR_EQ("content", dst.v, "7");
+    CHECK_EQ("len", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
 }
 
 Test(fs2_api, serialize_int_null_aborts, .signal = SIGABRT) {
