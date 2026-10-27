@@ -863,7 +863,7 @@ fs2_fromint_new(int value) {
     return res;
 }
 
-// heap constructor (3 строки дублирования)
+// heap constructor
 static inline fs2 *
 fs2_heap_fromint(int value) {
     fs2 *h = fs2_heap();
@@ -875,6 +875,32 @@ fs2_heap_fromint(int value) {
     return h;
 }
 
+// long
+static inline int
+fs2_serialize_long(fs2 *dst, int value) {
+    return fs2_sprintf(dst, "%d", value);
+}
+
+static inline fs2 
+fs2_fromlong_new(long value) {
+    fs2     res = FS2();
+    if (fs2_serialize_int(&res, value) <= 0)
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize int %d", value);
+    return res;
+}
+
+// heap constructor
+static inline fs2 *
+fs2_heap_fromlong(long value) {
+    fs2 *h = fs2_heap();
+    if (fs2_serialize_int(h, value) <= 0) {
+        fs2_free(h);
+        userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
+            "Failed to serialize int %d", value);
+    }
+    return h;
+}
 
 //
 //fs2_verirystr(pattern )
