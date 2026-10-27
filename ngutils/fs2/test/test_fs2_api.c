@@ -4597,6 +4597,184 @@ Test(fs2_api, parse_signed_vs_unsigned) {
 }
 
 /* =========================================================================
+ * fs2_tryparse_ulong / fs2_parse_ulong
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_ulong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    unsigned long out = 0;
+
+    CHECK_TRUE("parse", fs2_tryparse_ulong(&s, &out, true));
+    CHECK_EQ("val", out, 12345ul);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong_max) {
+    __fs2_checkreset();
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lu", ULONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+    unsigned long out = 0;
+
+    CHECK_TRUE("ULONG_MAX", fs2_tryparse_ulong(&s, &out, true));
+    CHECK_EQ("val", out, ULONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    unsigned long out = 0;
+
+    /* strtoull("-1") = ULLONG_MAX, но pos_parse_ulong отвергает минус */
+    CHECK_FALSE("negative rejected", fs2_tryparse_ulong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42xyz");
+    unsigned long out = 0;
+
+    CHECK_TRUE ("lenient", fs2_tryparse_ulong(&s, &out, false));
+    CHECK_EQ   ("val", out, 42ul);
+    CHECK_FALSE("strict rejects", fs2_tryparse_ulong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("99999999999999999999999");   /* >> ULONG_MAX */
+    unsigned long out = 0;
+
+    CHECK_FALSE("overflow", fs2_tryparse_ulong(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong_beyond_uint) {
+    __fs2_checkreset();
+    /* 5e9 — влезает в ulong (LP64), но не в uint.
+     * Проверяем, что на уровне ulong не отсекается. */
+    fs2 s = fs2_fromstr("5000000000");
+
+    unsigned           u_out = 0;
+    unsigned long     ul_out = 0;
+
+    CHECK_FALSE("uint rejects",  fs2_tryparse_uint (&s, &u_out,  true));
+    CHECK_TRUE ("ulong accepts", fs2_tryparse_ulong(&s, &ul_out, true));
+    CHECK_EQ   ("val", ul_out, 5000000000ul);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ulong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345678");
+
+    CHECK_EQ("parsed", fs2_parse_ulong(&s), 12345678ul);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ulong_max) {
+    __fs2_checkreset();
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lu", ULONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    CHECK_EQ("ULONG_MAX", fs2_parse_ulong(&s), ULONG_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ulong_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_ulong(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_ulong_negative_aborts, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("-5");
+    fs2_parse_ulong(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Symmetry: ulong vs ullong на разных значениях
+ * ========================================================================= */
+
+Test(fs2_api, parse_ulong_vs_ullong_symmetry) {
+    __fs2_checkreset();
+
+    /* Обычное положительное — оба справляются */
+    fs2 s_small = fs2_fromstr("42");
+    CHECK_EQ("ulong 42",  fs2_parse_ulong (&s_small), 42ul);
+    CHECK_EQ("ullong 42", fs2_parse_ullong(&s_small), 42ull);
+
+    /* ULLONG_MAX — на LP64 совпадает с ULONG_MAX,
+     * на LLP64 ulong меньше. Проверяем round-trip. */
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%llu", ULLONG_MAX);
+    fs2 s_max = fs2_fromstr(buf);
+
+    CHECK_EQ("ullong ULLONG_MAX", fs2_parse_ullong(&s_max), ULLONG_MAX);
+
+    /* ulong принимает ULLONG_MAX только на LP64 (где они одного размера) */
+    #if ULONG_MAX == ULLONG_MAX
+        CHECK_EQ("ulong ULLONG_MAX", fs2_parse_ulong(&s_max), ULONG_MAX);
+    #else
+        unsigned long ul = 0;
+        CHECK_FALSE("ulong rejects ULLONG_MAX on LLP64",
+                    fs2_tryparse_ulong(&s_max, &ul, true));
+    #endif
+
+    fs2_free(&s_small);
+    fs2_free(&s_max);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: парсинг числа из реального текста
+ * ========================================================================= */
+
+Test(fs2_api, composite_parse_ulong_from_config) {
+    __fs2_checkreset();
+
+    /* Типичный сценарий: "timeout=30" — парсим число после '=' */
+    fs2 line = fs2_fromstr("timeout=30");
+
+    /* Ищем '=' */
+    ptrdiff_t eq = fs2_chr(&line, '=');
+    CHECK_TRUE("eq found", eq >= 0);
+
+    /* Парсим с позиции eq+1 */
+    size_t newpos = 0;
+    unsigned long timeout = 0;
+    CHECK_TRUE("parse", fs2_pos_parse_ulong(&line, (size_t)eq + 1, &newpos, &timeout));
+    CHECK_EQ("timeout", timeout, 30ul);
+    CHECK_EQ("newpos", newpos, line.len);   /* доели до конца */
+
+    fs2_free(&line);
+    assert_balanced();
+}
+
+/* =========================================================================
  * fs2_pos_parse_llong (base)
  * ========================================================================= */
 
