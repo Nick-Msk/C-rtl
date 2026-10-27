@@ -805,6 +805,15 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, l
 extern bool 
 fs2_pos_parse_int(const fs2 *restrict s, size_t pos, size_t *restrict newpos, int *restrict out);
 
+extern bool 
+fs2_pos_parse_ullong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned long long *restrict out);
+
+extern bool 
+fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned long *restrict out);
+
+extern bool 
+fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned *restrict out);
+
 /**
  * @brief Parse the whole string (or prefix) into an int/long.
  * @param strict  If true, `newpos` MUST exactly equal `s->len` (no trailing spaces/garbage).

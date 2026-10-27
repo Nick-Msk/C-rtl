@@ -512,3 +512,78 @@ fs2_pos_parse_int(const fs2 *restrict s, size_t pos, size_t *restrict newpos, in
 
     return true;
 }
+
+bool 
+fs2_pos_parse_ullong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned long long *restrict out) {
+    if (!s || !s->v || pos >= s->len) 
+        return logsimpleerr(false, "Null input or pos %zu out of length", pos);
+
+    const char *base  = s->v + pos;
+    const char *start = skip_spaces(base);
+    
+    if (*start == '\0') 
+        return logsimpleerr(false, "Only spaces detected");
+
+    /* Беззнаковые не принимают минус. strtoull("-1") = ULLONG_MAX — 
+     * это не то, что ожидает вызывающий. */
+    if (*start == '-')
+        return logsimpleerr(false, "Negative sign detected");;
+
+    /* Запрещаем strtoull сам пропускать \n, \r, \v, \f */
+    if (!isdigit((unsigned char)*start) && *start != '+')
+        return logsimpleerr(false, "incorrent sym detected [%c]", *start);
+
+    char *endptr = NULL;
+    errno = 0;
+    unsigned long long val = strtoull(start, &endptr, 10);
+
+    if (errno == ERANGE || endptr == start)
+        return logsimpleerr(false, "Overflow or no digits %d, %zu", errno, endptr - start);
+
+    if (out)
+        *out = val;
+    if (newpos)
+        *newpos = pos + (size_t)(endptr - base);
+
+    return true;
+}
+
+bool 
+fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos, 
+                    size_t *restrict newpos, unsigned long *restrict out) {
+    unsigned long long ull  = 0;
+    size_t             npos = 0;
+
+    if (!fs2_pos_parse_ullong(s, pos, &npos, &ull))
+        return false;
+
+    if (ull > ULONG_MAX)
+        return logsimpleerr(false, "Parsed int is out of bound %llu <= %lu", ull, ULONG_MAX);
+
+    if (out)
+        *out = (unsigned long)ull;
+    if (newpos)
+        *newpos = npos;
+
+    return true;
+}
+
+bool 
+fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, 
+                   size_t *restrict newpos, unsigned *restrict out) {
+    unsigned long ul   = 0;
+    size_t        npos = 0;
+
+    if (!fs2_pos_parse_ulong(s, pos, &npos, &ul))
+        return false;
+
+    if (ul > UINT_MAX)
+        return logsimpleerr(false, "Parsed int is out of bound %lu <= %u", ul, UINT_MAX);
+
+    if (out)
+        *out = (unsigned)ul;
+    if (newpos)
+        *newpos = npos;
+
+    return true;
+}
