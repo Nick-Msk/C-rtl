@@ -849,15 +849,15 @@ fs2_parse_int(const fs2 *restrict s) {
 
 // Format (primitive → string)
 // int 
-static inline bool
+static inline long
 fs2_serialize_int(fs2 *dst, int value) {
-    return fs2_sprintf(dst, "%d", value) > 0;
+    return fs2_sprintf(dst, "%d", value);
 }
 
 static inline fs2 
 fs2_fromint_new(int value) {
     fs2     res = FS2();
-    if (!fs2_serialize_int(&res, value))
+    if (fs2_serialize_int(&res, value) <= 0)
         userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
             "Failed to serialize int %d", value);
     return res;
@@ -867,15 +867,13 @@ fs2_fromint_new(int value) {
 static inline fs2 *
 fs2_heap_fromint(int value) {
     fs2 *h = fs2_heap();
-    if (!fs2_serialize_int(h, value)) {
+    if (fs2_serialize_int(h, value) <= 0) {
         fs2_free(h);
         userraise(-1, ERR_UNABLE_SERIALIZE_DATA, 
             "Failed to serialize int %d", value);
     }
     return h;
 }
-
-// heap - no need, just use  
 
 
 //
