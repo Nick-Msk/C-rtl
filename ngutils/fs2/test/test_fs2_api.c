@@ -4810,3 +4810,247 @@ Test(fs2_api, composite_fromint_build_array) {
 
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_serialize_long — format long into existing fs2
+ * ========================================================================= */
+
+Test(fs2_api, serialize_long_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("42 → 2 chars", fs2_serialize_long(&dst, 42L), 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_EQ("len", dst.len, 2);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_negative) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("-12345 → 6 chars", fs2_serialize_long(&dst, -12345L), 6);
+    CHECK_STR_EQ("content", dst.v, "-12345");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_zero) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("0 → 1 char", fs2_serialize_long(&dst, 0L), 1);
+    CHECK_STR_EQ("content", dst.v, "0");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_boundaries) {
+    __fs2_checkreset();
+
+    fs2 s_max = FS2();
+    fs2 s_min = FS2();
+
+    CHECK_TRUE("LONG_MAX", fs2_serialize_long(&s_max, LONG_MAX) > 0);
+    CHECK_TRUE("LONG_MIN", fs2_serialize_long(&s_min, LONG_MIN) > 0);
+    CHECK_FS2VALID(1, &s_max);
+    CHECK_FS2VALID(2, &s_min);
+
+    /* Не хардкодим точное значение — на LLP64 (Windows) LONG_MAX = 2^31-1,
+     * на LP64 = 2^63-1. Проверяем, что round-trip работает. */
+    CHECK_EQ("LONG_MAX round-trip", fs2_parse_long(&s_max), LONG_MAX);
+    CHECK_EQ("LONG_MIN round-trip", fs2_parse_long(&s_min), LONG_MIN);
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_beyond_int_range) {
+    __fs2_checkreset();
+    /* Ключевой тест: значения, которые НЕ влезают в int.
+     * Если внутри случайно вызывается fs2_serialize_int, 
+     * они truncate'нутся в мусор. */
+    fs2 dst = FS2();
+
+    CHECK_EQ("5e9 → 10 chars", fs2_serialize_long(&dst, 5'000'000'000L), 10);
+    CHECK_STR_EQ("content", dst.v, "5000000000");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_overwrites_existing) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("long existing content");
+
+    fs2_serialize_long(&dst, 7L);
+
+    CHECK_STR_EQ("shorter content", dst.v, "7");
+    CHECK_EQ("len updated", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_long_null_aborts, .signal = SIGABRT) {
+    fs2_serialize_long(NULL, 42L);
+}
+
+/* =========================================================================
+ * fs2_fromlong_new — stack constructor
+ * ========================================================================= */
+
+Test(fs2_api, fromlong_new_basic) {
+    __fs2_checkreset();
+
+    fs2 s = fs2_fromlong_new(12345L);
+
+    CHECK_STR_EQ("content", s.v, "12345");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_TRUE("is alloc", fs2_is_alloc(&s));
+    CHECK_FALSE("not bodyalloc", fs2_is_bodyalloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromlong_new_negative_and_zero) {
+    __fs2_checkreset();
+
+    fs2 s_neg = fs2_fromlong_new(-99L);
+    fs2 s_zero = fs2_fromlong_new(0L);
+
+    CHECK_STR_EQ("neg", s_neg.v, "-99");
+    CHECK_STR_EQ("zero", s_zero.v, "0");
+    CHECK_FS2VALID(1, &s_neg);
+    CHECK_FS2VALID(2, &s_zero);
+
+    fs2_free(&s_neg);
+    fs2_free(&s_zero);
+    assert_balanced();
+}
+
+Test(fs2_api, fromlong_new_beyond_int_range) {
+    __fs2_checkreset();
+    /* Регрессия: если внутри fs2_serialize_int вместо _long, 
+     * получим truncation. */
+    fs2 big   = fs2_fromlong_new(5'000'000'000L);
+    fs2 small = fs2_fromlong_new(-5'000'000'000L);
+
+    CHECK_STR_EQ("big",   big.v,   "5000000000");
+    CHECK_STR_EQ("small", small.v, "-5000000000");
+    CHECK_FS2VALID(1, &big);
+    CHECK_FS2VALID(2, &small);
+
+    fs2_free(&big);
+    fs2_free(&small);
+    assert_balanced();
+}
+
+Test(fs2_api, fromlong_new_independent) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromlong_new(100L);
+    fs2 b = fs2_fromlong_new(200L);
+
+    CHECK_STR_EQ("a", a.v, "100");
+    CHECK_STR_EQ("b", b.v, "200");
+    CHECK_TRUE("different buffers", a.v != b.v);
+
+    fs2_catstr(&a, "0");
+    CHECK_STR_EQ("a mutated", a.v, "1000");
+    CHECK_STR_EQ("b intact", b.v, "200");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_fromlong — heap constructor
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromlong_basic) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromlong(12345L);
+
+    CHECK_STR_EQ("content", h->v, "12345");
+    CHECK_EQ("len", h->len, 5);
+    CHECK_TRUE("is alloc", fs2_is_alloc(h));
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromlong_negative) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromlong(-42L);
+
+    CHECK_STR_EQ("content", h->v, "-42");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromlong_beyond_int_range) {
+    __fs2_checkreset();
+
+    fs2 *h = fs2_heap_fromlong(5'000'000'000L);
+
+    CHECK_STR_EQ("content", h->v, "5000000000");
+    CHECK_EQ("len", h->len, 10);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromlong_no_leak) {
+    __fs2_checkreset();
+
+    for (long i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap_fromlong(i * 1'000'000'000L);
+        fs2_free(h);
+    }
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: long round-trip через строку
+ * ========================================================================= */
+
+Test(fs2_api, composite_long_roundtrip) {
+    __fs2_checkreset();
+
+    /* long → строка → long */
+    long values[] = { 0L, 1L, -1L, 42L, 5'000'000'000L, LONG_MAX, LONG_MIN };
+    size_t n = sizeof(values) / sizeof(values[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_fromlong_new(values[i]);
+        CHECK_FS2VALID(i, &s);
+
+        /* Round-trip: парсим обратно, должно совпасть */
+        CHECK_EQ("round-trip", fs2_parse_long(&s), values[i]);
+
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
