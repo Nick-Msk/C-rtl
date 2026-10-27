@@ -170,13 +170,16 @@ rndint(int max)
 }
 
 /** @brief Random lowercase letter. */
-static inline char rndlowchar(void)   { return (char)('a' + rndint(25)); }
+static inline char 
+rndlowchar(void)   { return (char)('a' + rndint(25)); }
 
 /** @brief Random uppercase letter. */
-static inline char rndupperchar(void) { return (char)('A' + rndint(25)); }
+static inline char 
+rndupperchar(void) { return (char)('A' + rndint(25)); }
 
 /** @brief Random decimal digit. */
-static inline char rnddigitchar(void) { return (char)('0' + rndint(9));  }
+static inline char 
+rnddigitchar(void) { return (char)('0' + rndint(9));  }
 
 /* -------------------------------------------------------------------------
  * C-string helpers
@@ -186,7 +189,19 @@ static inline char rnddigitchar(void) { return (char)('0' + rndint(9));  }
  * @brief Reverse @p len characters of @p s in place.
  * @return @p s (for chaining).
  */
-char *reverse(char *s, int len);
+char *
+reverse(char *s, int len);
+
+static inline const char *
+skip_spaces(const char *str) {
+    if (!str) 
+        return NULL;
+        
+    while (*str == ' ' || *str == '\t') 
+        str++;
+        
+    return str;
+}
 
 /* -------------------------------------------------------------------------
  * String-to-value parsing
