@@ -453,3 +453,59 @@ fs2_genrnd(fs2 *s, size_t len, char type) {
     return fs2_setlen(s, len);
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * Conversion (parse / format primitives), streaming
+ * ───────────────────────────────────────────────────────────────── */
+
+bool 
+fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, long *restrict out) {
+    if (!s || !s->v || pos >= s->len) 
+        return logsimpleerr(false, "Null input or pos %zu out of length", pos);
+
+    const char *base = s->v + pos;
+    
+    // Пропускаем ведущие пробелы и табуляции
+    const char *start = skip_spaces(base);
+    
+    // Если строка состояла только из пробелов до конца
+    if (*start == '\0') 
+        return logsimpleerr(false, "Only spaces detected");;
+
+    char *endptr = NULL;
+    errno = 0;
+    long val = strtol(start, &endptr, 10);
+
+    // Overflow/Underflow или нет цифр
+    if (errno == ERANGE || endptr == start)
+        return logsimpleerr(false, "Overflow or no digits %d, %zu", errno, endptr - start);
+
+    if (out)
+        *out = val;
+        
+    // Вычисляем newpos через разницу указателей
+    if (newpos)
+        *newpos = pos + (size_t)(endptr - base);
+
+    return true;
+}
+
+bool 
+fs2_pos_parse_int(const fs2 *restrict s, size_t pos, size_t *restrict newpos, int *restrict out) {
+    long lval = 0;
+    size_t npos = 0;
+
+    // Сначала парсим как long
+    if (!fs2_pos_parse_long(s, pos, &npos, &lval))
+        return false;
+
+    // Проверяем, влезает ли в int
+    if (lval < INT_MIN || lval > INT_MAX)
+        return logsimpleerr(false, "Parsed int is out of bound %d <= %ld <= %d", INT_MIN, lval, INT_MAX);
+
+    if (out)
+        *out = (int)lval;
+    if (newpos)
+        *newpos = npos;
+
+    return true;
+}

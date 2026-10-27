@@ -776,4 +776,78 @@ fs2_iin_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, si
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * Conversion (parse / format primitives)
+ * ───────────────────────────────────────────────────────────────── */
+
+/**
+ * @brief Parse a long integer starting at @p pos.
+ * @param newpos  Optional. Set to the position AFTER the parsed number.
+ * @param out     Optional. If NULL, the parsed value is discarded.
+ * @return true on success, false on invalid format or overflow.
+ * @note streaming version
+ */
+extern bool 
+fs2_pos_parse_long(const fs2 *restrict s, size_t pos, size_t *restrict newpos, long *restrict out);
+
+extern bool 
+fs2_pos_parse_int(const fs2 *restrict s, size_t pos, size_t *restrict newpos, int *restrict out);
+
+/**
+ * @brief Parse the whole string (or prefix) into an int/long.
+ * @param strict  If true, `newpos` MUST exactly equal `s->len` (no trailing spaces/garbage).
+ */
+static inline bool 
+fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_long(s, 0, &newpos, out))
+        return false;
+    
+    // Строгий режим: после числа не должно быть НИЧЕГО
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);
+        
+    return true;
+}
+
+static inline bool 
+fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_int(s, 0, &newpos, out))
+        return false;
+        
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);;
+        
+    return true;
+}
+
+/**
+ * @brief Parse int/long, raising a user error (SIGINT) on failure.
+ */
+static inline long 
+fs2_parse_long(const fs2 *restrict s) {
+    long out = 0;
+    if (!fs2_tryparse_long(s, &out, true))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+              "Failed to parse long from string: '%.15s'", 
+              (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
+static inline int 
+fs2_parse_int(const fs2 *restrict s) {
+    int out = 0;
+    if (!fs2_tryparse_int(s, &out, true))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+              "Failed to parse int from string: '%.15s'", 
+              (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
+//
+//fs2_verirystr(pattern )
+
 #endif /* !FS2_API_H */
