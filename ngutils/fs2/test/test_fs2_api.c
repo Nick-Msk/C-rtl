@@ -5053,4 +5053,85 @@ Test(fs2_api, composite_long_roundtrip) {
     }
     assert_balanced();
 }
+/* =========================================================================
+ * llong serialization — minimal but critical coverage
+ * ========================================================================= */
 
+Test(fs2_api, serialize_llong_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    CHECK_EQ("42 → 2 chars", fs2_serialize_llong(&dst, 42LL), 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, fromllong_new_beyond_long_range) {
+    __fs2_checkreset();
+    
+    /* 
+     * Ключевой регресс: значение НЕ влезает в long на LLP64 (Windows),
+     * но влезает в long long везде. Если внутри случайно _long — упадёт.
+     * На LP64 (macOS/Linux) пройдёт в любом случае — поэтому 
+     * проверяем в первую очередь LLONG_MAX/LLONG_MIN через round-trip.
+     */
+    fs2 big   = fs2_fromllong_new(LLONG_MAX);
+    fs2 small = fs2_fromllong_new(LLONG_MIN);
+    
+    /* Round-trip: парсим обратно и сравниваем */
+    CHECK_EQ("LLONG_MAX round-trip", fs2_parse_long(&big), LLONG_MAX);
+    CHECK_EQ("LLONG_MIN round-trip", fs2_parse_long(&small), LLONG_MIN);
+    CHECK_FS2VALID(1, &big);
+    CHECK_FS2VALID(2, &small);
+    
+    fs2_free(&big);
+    fs2_free(&small);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_llong_returns_length) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    /* LLONG_MAX = "9223372036854775807" — 19 символов */
+    CHECK_EQ("LLONG_MAX → 19 chars", fs2_serialize_llong(&dst, LLONG_MAX), 19);
+    /* LLONG_MIN = "-9223372036854775808" — 20 символов */
+    CHECK_EQ("LLONG_MIN → 20 chars", fs2_serialize_llong(&dst, LLONG_MIN), 20);
+    CHECK_EQ("len", dst.len, 20);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromllong_basic) {
+    __fs2_checkreset();
+    
+    fs2 *h = fs2_heap_fromllong(LLONG_MIN);
+    
+    CHECK_STR_EQ("content", h->v, "-9223372036854775808");
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+    
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_llong_roundtrip) {
+    __fs2_checkreset();
+    
+    long long values[] = { 0LL, 1LL, -1LL, 5'000'000'000LL, 
+                           LLONG_MAX, LLONG_MIN };
+    size_t n = sizeof(values) / sizeof(values[0]);
+    
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_fromllong_new(values[i]);
+        CHECK_FS2VALID((int)i, &s);
+        CHECK_EQ("round-trip", fs2_parse_long(&s), (long)values[i]);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
