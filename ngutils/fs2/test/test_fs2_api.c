@@ -4419,3 +4419,21 @@ Test(fs2_api, parse_long_lenient_success) {
     fs2_free(&s);
     assert_balanced();
 }
+
+Test(fs2_api, parse_int_strict_rejects_trailing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42   ");
+    int out = 0;
+    CHECK_FALSE("strict rejects trailing spaces", fs2_tryparse_int(&s, &out, true));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_long_strict_rejects_trailing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("4255   ");
+    long out = 0;
+    CHECK_FALSE("strict rejects trailing spaces", fs2_tryparse_long(&s, &out, true));
+    fs2_free(&s);
+    assert_balanced();
+}
