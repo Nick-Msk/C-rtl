@@ -1024,6 +1024,8 @@ fs2_parse_char(const fs2 *restrict s) {
 // Выбор строки формата по типу
 #define FS2_FMT(v) _Generic((v),\
     char:               "%c",   \
+    signed char:        "%hhd", \
+    unsigned char:      "%hhu",                     \
     int:                "%d",   \
     long:               "%ld",  \
     long long:          "%lld", \
@@ -1037,7 +1039,9 @@ fs2_parse_char(const fs2 *restrict s) {
 )
 
 #define FS2_SER_ERRMSG(v) _Generic((v),                                     \
-    char:               "Failed to serialize char %c",                       \
+    char:               "Failed to serialize char %c",                      \
+    signed char:        "Failed to serialize signed char %hhd",             \
+    unsigned char:      "Failed to serialize unsigned char %hhu",           \
     int:                "Failed to serialize int %d",                       \
     long:               "Failed to serialize long %ld",                     \
     long long:          "Failed to serialize long long %lld",               \
