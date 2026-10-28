@@ -7580,3 +7580,263 @@ Test(fs2_api, composite_key_value) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_instr_posn — base (pattern is fs2)
+ * ========================================================================= */
+
+Test(fs2_api, instr_posn_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 pat = FS2LITERAL("world");
+
+    CHECK_EQ("world at 6", fs2_instr_posn(&s, &pat, 0, 1), 6);
+
+    fs2 pat2 = FS2LITERAL("hello");
+    CHECK_EQ("hello at 0", fs2_instr_posn(&s, &pat2, 0, 1), 0);
+
+    fs2 pat3 = FS2LITERAL("l");
+    CHECK_EQ("l at 2", fs2_instr_posn(&s, &pat3, 0, 1), 2);
+
+    fs2_free(&s);   /* pattern — STATIC, fs2_free no-op */
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_nth) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = FS2LITERAL("abc");
+
+    CHECK_EQ("1st", fs2_instr_posn(&s, &pat, 0, 1), 0);
+    CHECK_EQ("2nd", fs2_instr_posn(&s, &pat, 0, 2), 3);
+    CHECK_EQ("3rd", fs2_instr_posn(&s, &pat, 0, 3), 6);
+    CHECK_EQ("4th", fs2_instr_posn(&s, &pat, 0, 4), -1);
+    CHECK_EQ("nth=0", fs2_instr_posn(&s, &pat, 0, 0), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_from_pos) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = FS2LITERAL("abc");
+
+    CHECK_EQ("from 1, 1st", fs2_instr_posn(&s, &pat, 1, 1), 3);
+    CHECK_EQ("from 1, 2nd", fs2_instr_posn(&s, &pat, 1, 2), 6);
+    CHECK_EQ("from 1, 3rd", fs2_instr_posn(&s, &pat, 1, 3), -1);
+    CHECK_EQ("from 4, 1st", fs2_instr_posn(&s, &pat, 4, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_not_found) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("hello world");
+    fs2 pat    = FS2LITERAL("xyz");
+    fs2 pat_ci = FS2LITERAL("WORLD");
+
+    CHECK_EQ("missing",    fs2_instr_posn(&s, &pat,    0, 1), -1);
+    CHECK_EQ("case miss",  fs2_instr_posn(&s, &pat_ci, 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_pattern_too_long) {
+    __fs2_checkreset();
+    fs2 s         = fs2_fromstr("hi");
+    fs2 pat_long  = FS2LITERAL("hello");
+    fs2 pat_exact = FS2LITERAL("hi");
+    fs2 pat_by1   = FS2LITERAL("hii");
+
+    CHECK_EQ("too long", fs2_instr_posn(&s, &pat_long,  0, 1), -1);
+    CHECK_EQ("exact len", fs2_instr_posn(&s, &pat_exact, 0, 1), 0);
+    CHECK_EQ("by 1",     fs2_instr_posn(&s, &pat_by1,   0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_at_end) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("hello");
+    fs2 pat1 = FS2LITERAL("llo");
+    fs2 pat2 = FS2LITERAL("o");
+
+    CHECK_EQ("llo at 2", fs2_instr_posn(&s, &pat1, 0, 1), 2);
+    CHECK_EQ("o at 4",   fs2_instr_posn(&s, &pat2, 0, 1), 4);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: fs2_is_empty покрывает оба случая — "" и FS2() */
+
+Test(fs2_api, instr_posn_empty_pattern_literal) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2EMPTY;                 /* STATIC v="", len=0 */
+
+    CHECK_EQ("empty pattern", fs2_instr_posn(&s, &pat, 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_canonical_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2();                    /* canonical empty: v=NULL, len=0 */
+
+    /* fs2_is_empty() ловит это ДО strstr(NULL, ...) — иначе Segfault */
+    CHECK_EQ("canonical empty pattern", fs2_instr_posn(&s, &pat, 0, 1), -1);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_empty_haystack) {
+    __fs2_checkreset();
+    fs2 s_empty  = fs2_fromstr("");
+    fs2 s_canon  = FS2();
+    fs2 pat      = FS2LITERAL("x");
+
+    CHECK_EQ("empty haystack",     fs2_instr_posn(&s_empty, &pat, 0, 1), -1);
+    CHECK_EQ("canonical haystack", fs2_instr_posn(&s_canon, &pat, 0, 1), -1);
+
+    fs2_free(&s_empty);
+    fs2_free(&s_canon);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_overlap) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aaa");
+    fs2 pat = FS2LITERAL("aa");
+
+    CHECK_EQ("1st overlapping", fs2_instr_posn(&s, &pat, 0, 1), 0);
+    CHECK_EQ("2nd overlapping", fs2_instr_posn(&s, &pat, 0, 2), 1);
+    CHECK_EQ("3rd",             fs2_instr_posn(&s, &pat, 0, 3), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_null_str_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2_instr_posn(NULL, &pat, 0, 1);
+}
+
+Test(fs2_api, instr_posn_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_instr_posn(&s, NULL, 0, 1);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Sugar (fs2 *pattern)
+ * ========================================================================= */
+
+Test(fs2_api, instr_from_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = FS2LITERAL("abc");
+
+    CHECK_EQ("from 0", fs2_instr_from(&s, &pat, 0), 0);
+    CHECK_EQ("from 1", fs2_instr_from(&s, &pat, 1), 3);
+    CHECK_EQ("from 4", fs2_instr_from(&s, &pat, 4), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_nth_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = FS2LITERAL("abc");
+
+    CHECK_EQ("nth 1", fs2_instr_nth(&s, &pat, 1), 0);
+    CHECK_EQ("nth 2", fs2_instr_nth(&s, &pat, 2), 3);
+    CHECK_EQ("nth 3", fs2_instr_nth(&s, &pat, 3), 6);
+    CHECK_EQ("nth 4", fs2_instr_nth(&s, &pat, 4), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_basic) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("the quick brown fox");
+    fs2 pat_q  = FS2LITERAL("quick");
+    fs2 pat_f  = FS2LITERAL("fox");
+    fs2 pat_c  = FS2LITERAL("cat");
+
+    CHECK_EQ("quick", fs2_instr(&s, &pat_q), 4);
+    CHECK_EQ("fox",   fs2_instr(&s, &pat_f), 16);
+    CHECK_EQ("cat",   fs2_instr(&s, &pat_c), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_with_alloc_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("needle in haystack");
+    fs2 pat = fs2_fromstr("needle");   /* ALLOC, не STATIC */
+
+    CHECK_EQ("alloc pattern", fs2_instr(&s, &pat), 0);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite
+ * ========================================================================= */
+
+Test(fs2_api, composite_find_all_occurrences) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("a,b,c,d,e");
+    fs2 pat = FS2LITERAL(",");
+
+    size_t pos    = 0;
+    int    commas = 0;
+
+    ptrdiff_t hit;
+    while ((hit = fs2_instr_from(&s, &pat, pos)) >= 0) {
+        commas++;
+        pos = (size_t)hit + 1;
+    }
+
+    CHECK_EQ("comma count", commas, 4);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_split_by_occurrences) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("key=value=with=equals");
+    fs2 eq   = FS2LITERAL("=");
+
+    ptrdiff_t eq1 = fs2_instr(&s, &eq);
+    CHECK_EQ("first eq", eq1, 3);
+
+    ptrdiff_t eq2 = fs2_instr_from(&s, &eq, (size_t)eq1 + 1);
+    CHECK_EQ("second eq", eq2, 9);
+
+    fs2 key   = fs2_substr_new(&s, 0, (size_t)eq1);
+    fs2 value = fs2_substr_new(&s, (size_t)eq1 + 1, (size_t)eq2 - (size_t)eq1 - 1);
+
+    CHECK_STR_EQ("key",   key.v,   "key");
+    CHECK_STR_EQ("value", value.v, "value");
+
+    fs2_free(&key);
+    fs2_free(&value);
+    fs2_free(&s);
+    assert_balanced();
+}
