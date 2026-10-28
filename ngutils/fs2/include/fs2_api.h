@@ -47,7 +47,7 @@ __fs2_chr_raw(const unsigned char *p, size_t avail, int c) {
  * @return       0-based offset of first match, or -1.
  */
 static inline ptrdiff_t
-__fs2_ichr_raw(const unsigned char *p, size_t avail, int c) {
+__fs2_chr_raw_ci(const unsigned char *p, size_t avail, int c) {
     const int lc = tolower((unsigned char)c);
     for (size_t i = 0; i < avail; i++)
         if (tolower(p[i]) == lc) 
@@ -83,7 +83,7 @@ __fs2_rchr_raw(const unsigned char *p, size_t avail, int c) {
  * @return       0-based offset of the last match, or -1.
  */
 static inline ptrdiff_t
-__fs2_irchr_raw(const unsigned char *p, size_t avail, int c) {
+__fs2_rchr_raw_ci(const unsigned char *p, size_t avail, int c) {
     const int lc = tolower((unsigned char)c);
     for (ptrdiff_t i = (ptrdiff_t) avail - 1; i >= 0; i--)
         if (tolower(p[i]) == lc)
@@ -492,10 +492,10 @@ fs2_chr(const fs2 *str, int c) {
  * @return     0-based offset of first match, or -1.
  */
 static inline ptrdiff_t
-fs2_ichr(const fs2 *str, int c) {
+fs2_chr_ci(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
 
-    return __fs2_ichr_raw((const unsigned char *) str->v, str->len, c);
+    return __fs2_chr_raw_ci((const unsigned char *) str->v, str->len, c);
 }
 
 /**
@@ -523,11 +523,11 @@ fs2_nchr(const fs2 *str, int c, size_t lim) {
  * @return     0-based offset of first match within [0, lim), or -1.
  */
 static inline ptrdiff_t
-fs2_nichr(const fs2 *str, int c, size_t lim) {
+fs2_nchr_ci(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
-    return __fs2_ichr_raw((const unsigned char *) str->v, avail, c);
+    return __fs2_chr_raw_ci((const unsigned char *) str->v, avail, c);
 }
 
 // ------------------------------------------ ONE SYMBOL REVERSE SEARCH  --------------------------------------------------------
@@ -556,10 +556,10 @@ fs2_rchr(const fs2 *str, int c) {
  * @return     0-based offset of the last match, or -1.
  */
 static inline ptrdiff_t
-fs2_irchr(const fs2 *str, int c) {
+fs2_rchr_ci(const fs2 *str, int c) {
     invraise(str != NULL, "Null pointer");
 
-    return __fs2_irchr_raw((const unsigned char *)str->v, str->len, c);
+    return __fs2_rchr_raw_ci((const unsigned char *)str->v, str->len, c);
 }
 
 /**
@@ -579,7 +579,7 @@ fs2_nrchr(const fs2 *str, int c, size_t lim) {
 
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
-    ptrdiff_t hit = __fs2_rchr_raw((const unsigned char *)str->v + off, avail, c);
+    ptrdiff_t hit = __fs2_rchr_raw((const unsigned char *) str->v + off, avail, c);
     return hit < 0 ? -1 : hit + (ptrdiff_t)off;
 }
 
@@ -592,12 +592,12 @@ fs2_nrchr(const fs2 *str, int c, size_t lim) {
  * @return     0-based offset from string start, or -1.
  */
 static inline ptrdiff_t 
-fs2_nirchr(const fs2 *str, int c, size_t lim) {
+fs2_nrchr_ci(const fs2 *str, int c, size_t lim) {
     invraise(str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
-    ptrdiff_t hit = __fs2_irchr_raw((const unsigned char *)str->v + off, avail, c);
+    ptrdiff_t hit = __fs2_rchr_raw_ci((const unsigned char *) str->v + off, avail, c);
     return hit < 0 ? -1 : hit + (ptrdiff_t)off;
 }
 
@@ -632,7 +632,7 @@ ptrdiff_t   fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim);
  * @param k    1-based occurrence number (0 → -1).
  * @return     0-based offset, or -1.
  */
-ptrdiff_t   fs2_ichr_nth  (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_chr_ci_nth  (const fs2 *str, int c, size_t k);
 
 /**
  * @brief Find the k-th forward case-insensitive occurrence within [0, lim).
@@ -643,7 +643,7 @@ ptrdiff_t   fs2_ichr_nth  (const fs2 *str, int c, size_t k);
  * @param lim  Maximum bytes to examine (clamped to s->len).
  * @return     0-based offset, or -1.
  */
-ptrdiff_t   fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim);
+ptrdiff_t   fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim);
 
 // ------------------------------------------ ONE SYMBOL, N occurence REVERSE SEARCH  --------------------------------------------------------
 
@@ -678,7 +678,7 @@ ptrdiff_t   fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim);
  * @param k    1-based reverse occurrence number (0 → -1).
  * @return     0-based offset, or -1.
  */
-ptrdiff_t   fs2_irchr_nth (const fs2 *str, int c, size_t k);
+ptrdiff_t   fs2_rchr_ci_nth (const fs2 *str, int c, size_t k);
 
 /**
  * @brief Find the k-th reverse case-insensitive occurrence within the last @p lim bytes.
@@ -689,7 +689,7 @@ ptrdiff_t   fs2_irchr_nth (const fs2 *str, int c, size_t k);
  * @param lim  Number of trailing bytes to examine (clamped to s->len).
  * @return     0-based offset from string start, or -1.
  */
-ptrdiff_t   fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim);
+ptrdiff_t   fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim);
 
 // ----------------------------------- Finders -----------------------------------
 
@@ -714,7 +714,7 @@ fs2_in(const fs2 *restrict s, const char *restrict strs[]) {
 }
 
 static inline bool           
-fs2_iin(const fs2 *restrict s, const char *restrict strs[]) {
+fs2_in_ci(const fs2 *restrict s, const char *restrict strs[]) {
     return fs2_anyof(s, strs, strcasecmp) >= 0;
 }
 
@@ -724,18 +724,18 @@ fs2_not_in(const fs2 *restrict s, const char *restrict strs[]) {
 }
 
 static inline bool           
-fs2_not_iin(const fs2 *restrict s, const char *restrict strs[]) {
+fs2_not_in_ci(const fs2 *restrict s, const char *restrict strs[]) {
     return fs2_anyof(s, strs, strcasecmp) < 0;
 }
 
 #define                      FS2_NOT_IN(s, ...) \
     fs2_not_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
-#define                      FS2_NOT_IIN(s, ...) \
-    fs2_not_iin( (s), (const char *[]) { __VA_ARGS__, NULL } )
+#define                      FS2_NOT_IN_CI(s, ...) \
+    fs2_not_in_ci( (s), (const char *[]) { __VA_ARGS__, NULL } )
 #define                      FS2_IN(s, ...) \
     fs2_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
-#define                      FS2_IIN(s, ...) \
-    fs2_iin( (s), (const char *[]) { __VA_ARGS__, NULL } )
+#define                      FS2_IN_CI(s, ...) \
+    fs2_in_ci( (s), (const char *[]) { __VA_ARGS__, NULL } )
 
 // =========================================================================
 // Binary Search (index-returning)
@@ -743,7 +743,7 @@ fs2_not_iin(const fs2 *restrict s, const char *restrict strs[]) {
 
 // Array of fs2, case-sensitive
 static inline ptrdiff_t
-fs2_in_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
+fs2_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
     logauto(n);
     logauto((void *) key);
     logauto((void *) arr );
@@ -758,7 +758,7 @@ fs2_in_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
 
 // Array of fs2, case-insensitive
 static inline ptrdiff_t
-fs2_iin_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
+fs2_bsearch_ci(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
     invraise(key != NULL, "Null pointers %p %p", key, arr);
     if (n == 0) return -1;
 
@@ -768,7 +768,7 @@ fs2_iin_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
 
 // Array of C-strings, case-sensitive
 static inline ptrdiff_t
-fs2_in_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
+fs2_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
     invraise(key != NULL, "Null pointers %p %p", key, arr);
     if (n == 0) return -1;
     
@@ -779,7 +779,7 @@ fs2_in_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, siz
 
 // Array of C-strings, case-insensitive
 static inline ptrdiff_t
-fs2_iin_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
+fs2_bsearch_ci_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
     invraise(key != NULL, "Null pointers %p %p", key, arr);
     if (n == 0) return -1;
 
@@ -1210,5 +1210,7 @@ static inline ptrdiff_t
 fs2_instr(const fs2 *restrict str, const fs2 *restrict pattern) {
     return fs2_instr_posn(str, pattern, 0, 1);
 }
+
+
 
 #endif /* !FS2_API_H */

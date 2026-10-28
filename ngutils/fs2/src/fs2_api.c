@@ -117,7 +117,7 @@ fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
 /**
  * @brief Find the k-th (1-based) forward case-insensitive occurrence of @p c.
  *
- * Delegates to fs2_nichr_nth with lim = str->len.
+ * Delegates to fs2_nchr_ci_nth with lim = str->len.
  *
  * @param str  Non-NULL fs2.
  * @param c    Byte to find (case-insensitive).
@@ -125,10 +125,10 @@ fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
  * @return     0-based offset, or -1.
  */
 ptrdiff_t
-fs2_ichr_nth  (const fs2 *str, int c, size_t k) {
+fs2_chr_ci_nth  (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
 
-    return fs2_nichr_nth(str, c, k, str->len);
+    return fs2_nchr_ci_nth(str, c, k, str->len);
 }
 
 /**
@@ -141,7 +141,7 @@ fs2_ichr_nth  (const fs2 *str, int c, size_t k) {
  * @return     0-based offset from string start, or -1.
  */
 ptrdiff_t
-fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim) {
+fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
     
     if (k == 0)
@@ -152,7 +152,7 @@ fs2_nichr_nth (const fs2 *str, int c, size_t k, size_t lim) {
     size_t avail = (lim < str->len) ? lim : str->len;
 
     for (size_t i = 0; i < k; i++) {
-        ptrdiff_t hit = __fs2_ichr_raw(base, avail, c);
+        ptrdiff_t hit = __fs2_chr_raw_ci(base, avail, c);
         if (hit < 0)
             return -1;
         if (i == k - 1)
@@ -225,7 +225,7 @@ fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
 /**
  * @brief Find the k-th (1-based) reverse case-insensitive occurrence of @p c.
  *
- * Scans from the end. Delegates to fs2_nirchr_nth with lim = str->len.
+ * Scans from the end. Delegates to fs2_nrchr_ci_nth with lim = str->len.
  *
  * @param str  Non-NULL fs2.
  * @param c    Byte to find (case-insensitive).
@@ -233,10 +233,10 @@ fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
  * @return     0-based offset, or -1.
  */
 ptrdiff_t
-fs2_irchr_nth (const fs2 *str, int c, size_t k) {
+fs2_rchr_ci_nth (const fs2 *str, int c, size_t k) {
     invraise(str != NULL, "Null pointer");
 
-    return fs2_nirchr_nth(str, c, k, str->len);
+    return fs2_nrchr_ci_nth(str, c, k, str->len);
 }
 
 /**
@@ -249,7 +249,7 @@ fs2_irchr_nth (const fs2 *str, int c, size_t k) {
  * @return     0-based offset from string start, or -1.
  */
 ptrdiff_t
-fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim) {
+fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim) {
     invraise(str != NULL, "Null pointer");
 
     if (k == 0)
@@ -261,7 +261,7 @@ fs2_nirchr_nth(const fs2 *str, int c, size_t k, size_t lim) {
     size_t end   = avail;
 
     for (size_t i = 0; i < k; i++) {
-        ptrdiff_t hit = __fs2_irchr_raw(base, end, c);
+        ptrdiff_t hit = __fs2_rchr_raw_ci(base, end, c);
         if (hit < 0)
             return -1;
         if (i == k - 1)

@@ -777,7 +777,7 @@ Test(fs2_api, nchr_null_aborts, .signal = SIGABRT) {
 }
 
 /* -------------------------------------------------------------------------
- * fs2_nichr — first occurrence within first `lim` bytes, case-insensitive
+ * fs2_nchr_ci — first occurrence within first `lim` bytes, case-insensitive
  * ------------------------------------------------------------------------- */
 
 /* ── lowercase haystack: works on current code ──────────────────── */
@@ -787,10 +787,10 @@ Test(fs2_api, nichr_lowercase_haystack) {
     fs2 s = fs2_fromstr("hello");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("h at 0", fs2_nichr(&s, 'h', 5), 0);
-    CHECK_EQ("H at 0", fs2_nichr(&s, 'H', 5), 0);
-    CHECK_EQ("L at 2", fs2_nichr(&s, 'L', 5), 2);
-    CHECK_EQ("O at 4", fs2_nichr(&s, 'O', 5), 4);
+    CHECK_EQ("h at 0", fs2_nchr_ci(&s, 'h', 5), 0);
+    CHECK_EQ("H at 0", fs2_nchr_ci(&s, 'H', 5), 0);
+    CHECK_EQ("L at 2", fs2_nchr_ci(&s, 'L', 5), 2);
+    CHECK_EQ("O at 4", fs2_nchr_ci(&s, 'O', 5), 4);
     CHECK_FS2VALID(2, &s);
 
     fs2_free(&s);
@@ -801,9 +801,9 @@ Test(fs2_api, nichr_first_occurrence_only) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("banana");
 
-    CHECK_EQ("B at 0", fs2_nichr(&s, 'B', 6), 0);
-    CHECK_EQ("A at 1", fs2_nichr(&s, 'A', 6), 1);
-    CHECK_EQ("N at 2", fs2_nichr(&s, 'N', 6), 2);
+    CHECK_EQ("B at 0", fs2_nchr_ci(&s, 'B', 6), 0);
+    CHECK_EQ("A at 1", fs2_nchr_ci(&s, 'A', 6), 1);
+    CHECK_EQ("N at 2", fs2_nchr_ci(&s, 'N', 6), 2);
 
     fs2_free(&s);
     assert_balanced();
@@ -813,8 +813,8 @@ Test(fs2_api, nichr_limit_respected) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("O at lim=5",  fs2_nichr(&s, 'O', 5),  4);
-    CHECK_EQ("O missed lim=4", fs2_nichr(&s, 'O', 4), -1);
+    CHECK_EQ("O at lim=5",  fs2_nchr_ci(&s, 'O', 5),  4);
+    CHECK_EQ("O missed lim=4", fs2_nchr_ci(&s, 'O', 4), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -824,7 +824,7 @@ Test(fs2_api, nichr_lim_zero) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("lim=0", fs2_nichr(&s, 'H', 0), -1);
+    CHECK_EQ("lim=0", fs2_nchr_ci(&s, 'H', 0), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -834,8 +834,8 @@ Test(fs2_api, nichr_nul_never_matches) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("NUL lim=5",   fs2_nichr(&s, '\0', 5), -1);
-    CHECK_EQ("NUL lim=100", fs2_nichr(&s, '\0', 100), -1);
+    CHECK_EQ("NUL lim=5",   fs2_nchr_ci(&s, '\0', 5), -1);
+    CHECK_EQ("NUL lim=100", fs2_nchr_ci(&s, '\0', 100), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -845,8 +845,8 @@ Test(fs2_api, nichr_not_found) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("Z missing", fs2_nichr(&s, 'Z', 5), -1);
-    CHECK_EQ("z missing", fs2_nichr(&s, 'z', 5), -1);
+    CHECK_EQ("Z missing", fs2_nchr_ci(&s, 'Z', 5), -1);
+    CHECK_EQ("z missing", fs2_nchr_ci(&s, 'z', 5), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -857,7 +857,7 @@ Test(fs2_api, nichr_empty_string) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("nothing in empty", fs2_nichr(&s, 'A', 5), -1);
+    CHECK_EQ("nothing in empty", fs2_nchr_ci(&s, 'A', 5), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -868,8 +868,8 @@ Test(fs2_api, nichr_local) {
     FS2LOCALFILL(s, "%s", "abcdef");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("C at 2", fs2_nichr(&s, 'C', 6), 2);
-    CHECK_EQ("C beyond lim=2", fs2_nichr(&s, 'C', 2), -1);
+    CHECK_EQ("C at 2", fs2_nchr_ci(&s, 'C', 6), 2);
+    CHECK_EQ("C beyond lim=2", fs2_nchr_ci(&s, 'C', 2), -1);
 
     fs2_free(&s);
 }
@@ -882,10 +882,10 @@ Test(fs2_api, nichr_uppercase_haystack) {
     CHECK_FS2VALID(1, &s);
 
     /* Symmetry: lowercase needle must find uppercase bytes */
-    CHECK_EQ("h at 0", fs2_nichr(&s, 'h', 5), 0);   /* FAIL: *p=='H' != lc=='h' */
-    CHECK_EQ("e at 1", fs2_nichr(&s, 'e', 5), 1);   /* FAIL */
-    CHECK_EQ("l at 2", fs2_nichr(&s, 'l', 5), 2);   /* FAIL */
-    CHECK_EQ("o at 4", fs2_nichr(&s, 'o', 5), 4);   /* FAIL */
+    CHECK_EQ("h at 0", fs2_nchr_ci(&s, 'h', 5), 0);   /* FAIL: *p=='H' != lc=='h' */
+    CHECK_EQ("e at 1", fs2_nchr_ci(&s, 'e', 5), 1);   /* FAIL */
+    CHECK_EQ("l at 2", fs2_nchr_ci(&s, 'l', 5), 2);   /* FAIL */
+    CHECK_EQ("o at 4", fs2_nchr_ci(&s, 'o', 5), 4);   /* FAIL */
 
     fs2_free(&s);
     assert_balanced();
@@ -897,8 +897,8 @@ Test(fs2_api, nichr_mixed_case) {
     CHECK_FS2VALID(1, &s);
 
     /* 'l' must match 'L' at position 2 */
-    CHECK_EQ("l at 2", fs2_nichr(&s, 'l', 5), 2);   /* FAIL: returns -1 */
-    CHECK_EQ("L at 2", fs2_nichr(&s, 'L', 5), 2);   /* FAIL: returns -1 */
+    CHECK_EQ("l at 2", fs2_nchr_ci(&s, 'l', 5), 2);   /* FAIL: returns -1 */
+    CHECK_EQ("L at 2", fs2_nchr_ci(&s, 'L', 5), 2);   /* FAIL: returns -1 */
 
     fs2_free(&s);
     assert_balanced();
@@ -909,7 +909,7 @@ Test(fs2_api, nichr_masked_c_uppercase) {
     fs2 s = fs2_fromstr("A");   /* 0x41 */
 
     /* (unsigned char)0x141 == 'A' -> tolower -> 'a'; haystack 'A' must match */
-    CHECK_EQ("0x141 → 'A'", fs2_nichr(&s, 0x141, 1), 0);   /* FAIL */
+    CHECK_EQ("0x141 → 'A'", fs2_nchr_ci(&s, 0x141, 1), 0);   /* FAIL */
 
     fs2_free(&s);
     assert_balanced();
@@ -922,7 +922,7 @@ Test(fs2_api, nichr_byte_ge_128_masked) {
 
     /* (unsigned char)-1 == 0xFF; in C locale tolower(0xFF)==0xFF — unchanged,
      * so it must match the 0xFF byte in haystack */
-    CHECK_EQ("-1 → 0xFF", fs2_nichr(&s, -1, 2), 0);
+    CHECK_EQ("-1 → 0xFF", fs2_nchr_ci(&s, -1, 2), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -931,10 +931,10 @@ Test(fs2_api, nichr_byte_ge_128_masked) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, nichr_null_aborts, .signal = SIGABRT) {
-    fs2_nichr(NULL, 'a', 5);
+    fs2_nchr_ci(NULL, 'a', 5);
 }
 /* -------------------------------------------------------------------------
- * fs2_ichr — first occurrence, unlimited, case-insensitive
+ * fs2_chr_ci — first occurrence, unlimited, case-insensitive
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, ichr_lowercase_haystack) {
@@ -942,9 +942,9 @@ Test(fs2_api, ichr_lowercase_haystack) {
     fs2 s = fs2_fromstr("hello");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("H at 0", fs2_ichr(&s, 'H'), 0);
-    CHECK_EQ("E at 1", fs2_ichr(&s, 'E'), 1);
-    CHECK_EQ("O at 4", fs2_ichr(&s, 'O'), 4);
+    CHECK_EQ("H at 0", fs2_chr_ci(&s, 'H'), 0);
+    CHECK_EQ("E at 1", fs2_chr_ci(&s, 'E'), 1);
+    CHECK_EQ("O at 4", fs2_chr_ci(&s, 'O'), 4);
     CHECK_FS2VALID(2, &s);
 
     fs2_free(&s);
@@ -957,8 +957,8 @@ Test(fs2_api, ichr_uppercase_haystack) {
     fs2 s = fs2_fromstr("HELLO");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("h at 0", fs2_ichr(&s, 'h'), 0);   /* FAIL */
-    CHECK_EQ("l at 2", fs2_ichr(&s, 'l'), 2);   /* FAIL */
+    CHECK_EQ("h at 0", fs2_chr_ci(&s, 'h'), 0);   /* FAIL */
+    CHECK_EQ("l at 2", fs2_chr_ci(&s, 'l'), 2);   /* FAIL */
 
     fs2_free(&s);
     assert_balanced();
@@ -968,8 +968,8 @@ Test(fs2_api, ichr_first_occurrence_only) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("banana");
 
-    CHECK_EQ("B at 0", fs2_ichr(&s, 'B'), 0);
-    CHECK_EQ("A at 1", fs2_ichr(&s, 'A'), 1);
+    CHECK_EQ("B at 0", fs2_chr_ci(&s, 'B'), 0);
+    CHECK_EQ("A at 1", fs2_chr_ci(&s, 'A'), 1);
 
     fs2_free(&s);
     assert_balanced();
@@ -979,7 +979,7 @@ Test(fs2_api, ichr_not_found) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("Z missing", fs2_ichr(&s, 'Z'), -1);
+    CHECK_EQ("Z missing", fs2_chr_ci(&s, 'Z'), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -990,7 +990,7 @@ Test(fs2_api, ichr_empty_string) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("nothing in empty", fs2_ichr(&s, 'a'), -1);
+    CHECK_EQ("nothing in empty", fs2_chr_ci(&s, 'a'), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1001,8 +1001,8 @@ Test(fs2_api, ichr_local) {
     FS2LOCALFILL(s, "%s", "hello");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("H at 0", fs2_ichr(&s, 'H'), 0);
-    CHECK_EQ("X missing", fs2_ichr(&s, 'X'), -1);
+    CHECK_EQ("H at 0", fs2_chr_ci(&s, 'H'), 0);
+    CHECK_EQ("X missing", fs2_chr_ci(&s, 'X'), -1);
 
     fs2_free(&s);
 }
@@ -1010,7 +1010,7 @@ Test(fs2_api, ichr_local) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, ichr_null_aborts, .signal = SIGABRT) {
-    fs2_ichr(NULL, 'a');
+    fs2_chr_ci(NULL, 'a');
 }
 
 /* -------------------------------------------------------------------------
@@ -1169,7 +1169,7 @@ Test(fs2_api, rchr_null_aborts, .signal = SIGABRT) {
 }
 
 /* -------------------------------------------------------------------------
- * fs2_irchr — last occurrence, unlimited, case-insensitive
+ * fs2_rchr_ci — last occurrence, unlimited, case-insensitive
  *
  * Logic is already correct (tolower on both sides), no failing tests.
  * Below — regression suite to ensure the `p` -> `p[pos]` fix does not
@@ -1181,10 +1181,10 @@ Test(fs2_api, irchr_lowercase_haystack) {
     fs2 s = fs2_fromstr("hello");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("H at 0", fs2_irchr(&s, 'H'), 0);
-    CHECK_EQ("E at 1", fs2_irchr(&s, 'E'), 1);
-    CHECK_EQ("L at 3", fs2_irchr(&s, 'L'), 3);   /* last L */
-    CHECK_EQ("O at 4", fs2_irchr(&s, 'O'), 4);
+    CHECK_EQ("H at 0", fs2_rchr_ci(&s, 'H'), 0);
+    CHECK_EQ("E at 1", fs2_rchr_ci(&s, 'E'), 1);
+    CHECK_EQ("L at 3", fs2_rchr_ci(&s, 'L'), 3);   /* last L */
+    CHECK_EQ("O at 4", fs2_rchr_ci(&s, 'O'), 4);
     CHECK_FS2VALID(2, &s);
 
     fs2_free(&s);
@@ -1197,10 +1197,10 @@ Test(fs2_api, irchr_uppercase_haystack) {
     CHECK_FS2VALID(1, &s);
 
     /* Symmetry — unlike nichr/ichr (pre-fix) this works */
-    CHECK_EQ("h at 0", fs2_irchr(&s, 'h'), 0);
-    CHECK_EQ("e at 1", fs2_irchr(&s, 'e'), 1);
-    CHECK_EQ("l at 3", fs2_irchr(&s, 'l'), 3);
-    CHECK_EQ("o at 4", fs2_irchr(&s, 'o'), 4);
+    CHECK_EQ("h at 0", fs2_rchr_ci(&s, 'h'), 0);
+    CHECK_EQ("e at 1", fs2_rchr_ci(&s, 'e'), 1);
+    CHECK_EQ("l at 3", fs2_rchr_ci(&s, 'l'), 3);
+    CHECK_EQ("o at 4", fs2_rchr_ci(&s, 'o'), 4);
 
     fs2_free(&s);
     assert_balanced();
@@ -1210,9 +1210,9 @@ Test(fs2_api, irchr_mixed_case) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("HeLLo");
 
-    CHECK_EQ("L at 3", fs2_irchr(&s, 'L'), 3);
-    CHECK_EQ("l at 3", fs2_irchr(&s, 'l'), 3);
-    CHECK_EQ("O at 4", fs2_irchr(&s, 'o'), 4);
+    CHECK_EQ("L at 3", fs2_rchr_ci(&s, 'L'), 3);
+    CHECK_EQ("l at 3", fs2_rchr_ci(&s, 'l'), 3);
+    CHECK_EQ("O at 4", fs2_rchr_ci(&s, 'o'), 4);
 
     fs2_free(&s);
     assert_balanced();
@@ -1222,8 +1222,8 @@ Test(fs2_api, irchr_returns_last_not_first) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("BaNaNa");
 
-    CHECK_EQ("A last at 5", fs2_irchr(&s, 'a'), 5);
-    CHECK_EQ("N last at 4", fs2_irchr(&s, 'n'), 4);
+    CHECK_EQ("A last at 5", fs2_rchr_ci(&s, 'a'), 5);
+    CHECK_EQ("N last at 4", fs2_rchr_ci(&s, 'n'), 4);
 
     fs2_free(&s);
     assert_balanced();
@@ -1233,7 +1233,7 @@ Test(fs2_api, irchr_nul_never_matches) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("NUL missing", fs2_irchr(&s, '\0'), -1);
+    CHECK_EQ("NUL missing", fs2_rchr_ci(&s, '\0'), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1243,8 +1243,8 @@ Test(fs2_api, irchr_not_found) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("Z missing", fs2_irchr(&s, 'Z'), -1);
-    CHECK_EQ("z missing", fs2_irchr(&s, 'z'), -1);
+    CHECK_EQ("Z missing", fs2_rchr_ci(&s, 'Z'), -1);
+    CHECK_EQ("z missing", fs2_rchr_ci(&s, 'z'), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1255,7 +1255,7 @@ Test(fs2_api, irchr_empty_string) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("nothing in empty", fs2_irchr(&s, 'a'), -1);
+    CHECK_EQ("nothing in empty", fs2_rchr_ci(&s, 'a'), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1267,7 +1267,7 @@ Test(fs2_api, irchr_c_masked_to_unsigned_char) {
     fs2 s = fs2_fromstr("A");   /* 0x41 */
 
     /* tolower((unsigned char)0x141) == tolower(0x41) == 'a' */
-    CHECK_EQ("0x141 → 'A'", fs2_irchr(&s, 0x141), 0);
+    CHECK_EQ("0x141 → 'A'", fs2_rchr_ci(&s, 0x141), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -1279,7 +1279,7 @@ Test(fs2_api, irchr_negative_c) {
     CHECK_FS2VALID(1, &s);
 
     /* (unsigned char)-1 == 0xFF; in C locale tolower(0xFF)==0xFF */
-    CHECK_EQ("-1 → 0xFF", fs2_irchr(&s, -1), 0);
+    CHECK_EQ("-1 → 0xFF", fs2_rchr_ci(&s, -1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -1290,8 +1290,8 @@ Test(fs2_api, irchr_local) {
     FS2LOCALFILL(s, "%s", "hello");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("L at 3", fs2_irchr(&s, 'L'), 3);
-    CHECK_EQ("X missing", fs2_irchr(&s, 'X'), -1);
+    CHECK_EQ("L at 3", fs2_rchr_ci(&s, 'L'), 3);
+    CHECK_EQ("X missing", fs2_rchr_ci(&s, 'X'), -1);
 
     fs2_free(&s);
 }
@@ -1301,8 +1301,8 @@ Test(fs2_api, irchr_local_uppercase) {
     FS2LOCALFILL(s, "%s", "HELLO");
     CHECK_FS2VALID(1, &s);
 
-    CHECK_EQ("l at 3", fs2_irchr(&s, 'l'), 3);
-    CHECK_EQ("h at 0", fs2_irchr(&s, 'h'), 0);
+    CHECK_EQ("l at 3", fs2_rchr_ci(&s, 'l'), 3);
+    CHECK_EQ("h at 0", fs2_rchr_ci(&s, 'h'), 0);
 
     fs2_free(&s);
 }
@@ -1310,7 +1310,7 @@ Test(fs2_api, irchr_local_uppercase) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, irchr_null_aborts, .signal = SIGABRT) {
-    fs2_irchr(NULL, 'a');
+    fs2_rchr_ci(NULL, 'a');
 }
 
 Test(fs2_api, chr_vs_rchr_hello_l) {
@@ -1358,12 +1358,12 @@ Test(fs2_api, nul_rejected_by_all_finders) {
 
     CHECK_EQ("chr",    fs2_chr   (&s, '\0'), -1);
     CHECK_EQ("nchr",   fs2_nchr  (&s, '\0', 5), -1);
-    CHECK_EQ("ichr",   fs2_ichr  (&s, '\0'), -1);
-    CHECK_EQ("nichr",  fs2_nichr (&s, '\0', 5), -1);
+    CHECK_EQ("ichr",   fs2_chr_ci  (&s, '\0'), -1);
+    CHECK_EQ("nichr",  fs2_nchr_ci (&s, '\0', 5), -1);
     CHECK_EQ("rchr",   fs2_rchr  (&s, '\0'), -1);
     CHECK_EQ("nrchr",  fs2_nrchr (&s, '\0', 5), -1);
-    CHECK_EQ("irchr",  fs2_irchr (&s, '\0'), -1);
-    CHECK_EQ("nirchr", fs2_nirchr(&s, '\0', 5), -1);
+    CHECK_EQ("irchr",  fs2_rchr_ci (&s, '\0'), -1);
+    CHECK_EQ("nirchr", fs2_nrchr_ci(&s, '\0', 5), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1663,11 +1663,11 @@ Test(fs2_api, chrn_symmetry_insensitive) {
 
     for (size_t k = 1; k <= 3; k++) {
         CHECK_EQ("ichr_nth(k) == irchr_nth(total+1-k)",
-                 fs2_ichr_nth (&s, 'A', k),
-                 fs2_irchr_nth(&s, 'A', 4 - k));
+                 fs2_chr_ci_nth (&s, 'A', k),
+                 fs2_rchr_ci_nth(&s, 'A', 4 - k));
         CHECK_EQ("nichr_nth(k) == nirchr_nth(total+1-k)",
-                 fs2_nichr_nth(&s, 'A', k, 100),
-                 fs2_nirchr_nth(&s, 'A', 4 - k, 100));
+                 fs2_nchr_ci_nth(&s, 'A', k, 100),
+                 fs2_nrchr_ci_nth(&s, 'A', 4 - k, 100));
     }
 
     fs2_free(&s);
@@ -1680,15 +1680,15 @@ Test(fs2_api, chrn_insensitive_uppercase_haystack) {
     CHECK_FS2VALID(1, &s);
 
     /* Forward + insensitive: finds lowercase needle in uppercase haystack */
-    CHECK_EQ("ichr_nth   k=1 → 1", fs2_ichr_nth  (&s, 'a', 1), 1);
-    CHECK_EQ("ichr_nth   k=2 → 3", fs2_ichr_nth  (&s, 'a', 2), 3);
-    CHECK_EQ("ichr_nth   k=3 → 5", fs2_ichr_nth  (&s, 'a', 3), 5);
-    CHECK_EQ("nichr_nth  k=2 → 3", fs2_nichr_nth (&s, 'a', 2, 100), 3);
+    CHECK_EQ("ichr_nth   k=1 → 1", fs2_chr_ci_nth  (&s, 'a', 1), 1);
+    CHECK_EQ("ichr_nth   k=2 → 3", fs2_chr_ci_nth  (&s, 'a', 2), 3);
+    CHECK_EQ("ichr_nth   k=3 → 5", fs2_chr_ci_nth  (&s, 'a', 3), 5);
+    CHECK_EQ("nichr_nth  k=2 → 3", fs2_nchr_ci_nth (&s, 'a', 2, 100), 3);
 
     /* Reverse + insensitive: mirror */
-    CHECK_EQ("irchr_nth  k=1 → 5", fs2_irchr_nth (&s, 'a', 1), 5);
-    CHECK_EQ("irchr_nth  k=3 → 1", fs2_irchr_nth (&s, 'a', 3), 1);
-    CHECK_EQ("nirchr_nth k=2 → 3", fs2_nirchr_nth(&s, 'a', 2, 100), 3);
+    CHECK_EQ("irchr_nth  k=1 → 5", fs2_rchr_ci_nth (&s, 'a', 1), 5);
+    CHECK_EQ("irchr_nth  k=3 → 1", fs2_rchr_ci_nth (&s, 'a', 3), 1);
+    CHECK_EQ("nirchr_nth k=2 → 3", fs2_nrchr_ci_nth(&s, 'a', 2, 100), 3);
 
     fs2_free(&s);
     assert_balanced();
@@ -1705,7 +1705,7 @@ Test(fs2_api, rchr_nth_consecutive) {
     CHECK_EQ("k=2 → 0", fs2_rchr_nth (&s, 'a', 2), 0);
     CHECK_EQ("k=3 → -1", fs2_rchr_nth(&s, 'a', 3), -1);
 
-    CHECK_EQ("irchr k=2 → 0", fs2_irchr_nth(&s, 'A', 2), 0);
+    CHECK_EQ("irchr k=2 → 0", fs2_rchr_ci_nth(&s, 'A', 2), 0);
     CHECK_EQ("nrchr k=2 → 0", fs2_nrchr_nth(&s, 'a', 2, 100), 0);
 
     fs2_free(&s);
@@ -1724,8 +1724,8 @@ Test(fs2_api, nrchr_nth_lim_offset) {
     CHECK_EQ("k=3 lim=4 → -1", fs2_nrchr_nth(&s, 'a', 3, 4), -1);
 
     /* lim=1 -> window [5, 6) = "a"; only position 5 */
-    CHECK_EQ("k=1 lim=1 → 5", fs2_nirchr_nth(&s, 'A', 1, 1), 5);
-    CHECK_EQ("k=2 lim=1 → -1", fs2_nirchr_nth(&s, 'A', 2, 1), -1);
+    CHECK_EQ("k=1 lim=1 → 5", fs2_nrchr_ci_nth(&s, 'A', 1, 1), 5);
+    CHECK_EQ("k=2 lim=1 → -1", fs2_nrchr_ci_nth(&s, 'A', 2, 1), -1);
 
     fs2_free(&s);
     assert_balanced();
@@ -1739,25 +1739,25 @@ Test(fs2_api, chrn_all_variants_banana_k2) {
     /* k=2 — the only occurrence where forward and reverse agree */
     CHECK_EQ("chr_nth   k=2", fs2_chr_nth   (&s, 'a', 2),     3);
     CHECK_EQ("nchr_nth  k=2", fs2_nchr_nth  (&s, 'a', 2, 10), 3);
-    CHECK_EQ("ichr_nth  k=2", fs2_ichr_nth  (&s, 'a', 2),     3);
-    CHECK_EQ("nichr_nth k=2", fs2_nichr_nth (&s, 'a', 2, 10), 3);
+    CHECK_EQ("ichr_nth  k=2", fs2_chr_ci_nth  (&s, 'a', 2),     3);
+    CHECK_EQ("nichr_nth k=2", fs2_nchr_ci_nth (&s, 'a', 2, 10), 3);
     CHECK_EQ("rchr_nth  k=2", fs2_rchr_nth  (&s, 'a', 2),     3);
     CHECK_EQ("nrchr_nth k=2", fs2_nrchr_nth (&s, 'a', 2, 10), 3);
-    CHECK_EQ("irchr_nth k=2", fs2_irchr_nth (&s, 'a', 2),     3);
-    CHECK_EQ("nirchr_nth k=2", fs2_nirchr_nth(&s, 'a', 2, 10), 3);
-    CHECK_EQ("irchr_nth k=0", fs2_irchr_nth(&s, 'a', 0), -1);
-    CHECK_EQ("nirchr_nth k=0", fs2_nirchr_nth(&s, 'a', 0, 10), -1);
+    CHECK_EQ("irchr_nth k=2", fs2_rchr_ci_nth (&s, 'a', 2),     3);
+    CHECK_EQ("nirchr_nth k=2", fs2_nrchr_ci_nth(&s, 'a', 2, 10), 3);
+    CHECK_EQ("irchr_nth k=0", fs2_rchr_ci_nth(&s, 'a', 0), -1);
+    CHECK_EQ("nirchr_nth k=0", fs2_nrchr_ci_nth(&s, 'a', 0, 10), -1);
 
     fs2_free(&s);
     assert_balanced();
 }
 // null
-Test(fs2_api, ichr_nth_null,   .signal = SIGABRT) { fs2_ichr_nth  (NULL, 'a', 1);    }
-Test(fs2_api, nichr_nth_null,  .signal = SIGABRT) { fs2_nichr_nth (NULL, 'a', 1, 10);}
+Test(fs2_api, ichr_nth_null,   .signal = SIGABRT) { fs2_chr_ci_nth  (NULL, 'a', 1);    }
+Test(fs2_api, nichr_nth_null,  .signal = SIGABRT) { fs2_nchr_ci_nth (NULL, 'a', 1, 10);}
 Test(fs2_api, rchr_nth_null,   .signal = SIGABRT) { fs2_rchr_nth  (NULL, 'a', 1);    }
 Test(fs2_api, nrchr_nth_null,  .signal = SIGABRT) { fs2_nrchr_nth (NULL, 'a', 1, 10);}
-Test(fs2_api, irchr_nth_null,  .signal = SIGABRT) { fs2_irchr_nth (NULL, 'a', 1);    }
-Test(fs2_api, nirchr_nth_null, .signal = SIGABRT) { fs2_nirchr_nth(NULL, 'a', 1, 10);}
+Test(fs2_api, irchr_nth_null,  .signal = SIGABRT) { fs2_rchr_ci_nth (NULL, 'a', 1);    }
+Test(fs2_api, nirchr_nth_null, .signal = SIGABRT) { fs2_nrchr_ci_nth(NULL, 'a', 1, 10);}
 
 /* ─── fs2_wrap ────────────────────────────────────────────────────── */
 
@@ -4023,7 +4023,7 @@ Test(fs2_api, genrnd_bounds_regression) {
 }
 
 /* =========================================================================
- * fs2_in / fs2_iin (case-sensitive / insensitive match)
+ * fs2_in / fs2_in_ci (case-sensitive / insensitive match)
  * ========================================================================= */
 
 Test(fs2_api, in_basic) {
@@ -4058,8 +4058,8 @@ Test(fs2_api, iin_case_insensitive) {
     /* Обычный in не найдет (APPLE != apple) */
     CHECK_FALSE("case-sensitive miss", fs2_in(&s, list));
     /* iin должен найти */
-    CHECK_TRUE("case-insensitive hit", fs2_iin(&s, list));
-    CHECK_FALSE("case-insensitive notin", fs2_not_iin(&s, list));
+    CHECK_TRUE("case-insensitive hit", fs2_in_ci(&s, list));
+    CHECK_FALSE("case-insensitive notin", fs2_not_in_ci(&s, list));
 
     fs2_free(&s);
     assert_balanced();
@@ -4142,8 +4142,8 @@ Test(fs2_api, in_wrappers) {
     CHECK_TRUE("notin hit", fs2_not_in(&s, list));
 
     /* case-insensitive: находит */
-    CHECK_TRUE ("iin hit", fs2_iin(&s, list));
-    CHECK_FALSE("not_iin miss", fs2_not_iin(&s, list));
+    CHECK_TRUE ("iin hit", fs2_in_ci(&s, list));
+    CHECK_FALSE("not_iin miss", fs2_not_in_ci(&s, list));
 
     fs2_free(&s);
     assert_balanced();
@@ -4171,8 +4171,8 @@ Test(fs2_api, iin_macro_basic) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("Banana");
 
-    CHECK_TRUE("FS2_IIN", FS2_IIN(&s, "apple", "banana", "cherry"));
-    CHECK_TRUE("FS2_NOT_IIN", FS2_NOT_IIN(&s, "apple", "grape"));
+    CHECK_TRUE("fs2_in_ci", FS2_IN_CI(&s, "apple", "banana", "cherry"));
+    CHECK_TRUE("FS2_NOT_IN_CI", FS2_NOT_IN_CI(&s, "apple", "grape"));
 
     fs2_free(&s);
     assert_balanced();
@@ -4225,10 +4225,10 @@ Test(fs2_api, in_bsearch_fs2_array) {
     fs2 k3 = fs2_fromstr("zucchini"); // Больше всех
     fs2 k4 = fs2_fromstr("a");        // Меньше всех
 
-    CHECK_EQ("banana index", fs2_in_bsearch(&k1, arr, 4), 1);
-    CHECK_EQ("cherry index", fs2_in_bsearch(&k2, arr, 4), 2);
-    CHECK_EQ("missing large", fs2_in_bsearch(&k3, arr, 4), -1);
-    CHECK_EQ("missing small", fs2_in_bsearch(&k4, arr, 4), -1);
+    CHECK_EQ("banana index", fs2_bsearch(&k1, arr, 4), 1);
+    CHECK_EQ("cherry index", fs2_bsearch(&k2, arr, 4), 2);
+    CHECK_EQ("missing large", fs2_bsearch(&k3, arr, 4), -1);
+    CHECK_EQ("missing small", fs2_bsearch(&k4, arr, 4), -1);
 
     for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
     fs2_free(&k1); fs2_free(&k2); fs2_free(&k3); fs2_free(&k4);
@@ -4245,9 +4245,9 @@ Test(fs2_api, in_bsearch_str_array) {
     fs2 k2 = fs2_fromstr("elderberry"); // Правый край (индекс 4)
     fs2 k3 = fs2_fromstr("avocado");    // Промах
 
-    CHECK_EQ("left boundary", fs2_in_bsearch_str(&k1, arr, n), 0);
-    CHECK_EQ("right boundary", fs2_in_bsearch_str(&k2, arr, n), 4);
-    CHECK_EQ("in-between miss", fs2_in_bsearch_str(&k3, arr, n), -1);
+    CHECK_EQ("left boundary", fs2_bsearch_str(&k1, arr, n), 0);
+    CHECK_EQ("right boundary", fs2_bsearch_str(&k2, arr, n), 4);
+    CHECK_EQ("in-between miss", fs2_bsearch_str(&k3, arr, n), -1);
 
     fs2_free(&k1); fs2_free(&k2); fs2_free(&k3);
     assert_balanced();
@@ -4261,8 +4261,8 @@ Test(fs2_api, in_bsearch_canonical_empty) {
     fs2 key_empty = FS2EMPTY;
     fs2 key_a = fs2_fromstr("a");
 
-    CHECK_EQ("empty matches empty at 0", fs2_in_bsearch(&key_empty, arr, 3), 0);
-    CHECK_EQ("a at 1", fs2_in_bsearch(&key_a, arr, 3), 1);
+    CHECK_EQ("empty matches empty at 0", fs2_bsearch(&key_empty, arr, 3), 0);
+    CHECK_EQ("a at 1", fs2_bsearch(&key_a, arr, 3), 1);
 
     fs2_free(&arr[1]);
     fs2_free(&arr[2]);
@@ -4284,9 +4284,9 @@ Test(fs2_api, iin_bsearch_case_insensitive) {
     fs2 k1 = fs2_fromstr("cherry"); // Lowercase
     fs2 k2 = fs2_fromstr("BANANA"); // Uppercase
 
-    CHECK_EQ("miss case-sensitive", fs2_in_bsearch(&k1, arr, 3), -1);
-    CHECK_EQ("hit case-insens cherry", fs2_iin_bsearch(&k1, arr, 3), 2);
-    CHECK_EQ("hit case-insens banana", fs2_iin_bsearch(&k2, arr, 3), 1);
+    CHECK_EQ("miss case-sensitive", fs2_bsearch(&k1, arr, 3), -1);
+    CHECK_EQ("hit case-insens cherry", fs2_bsearch_ci(&k1, arr, 3), 2);
+    CHECK_EQ("hit case-insens banana", fs2_bsearch_ci(&k2, arr, 3), 1);
 
     for (int i = 0; i < 3; i++) fs2_free(&arr[i]);
     fs2_free(&k1); fs2_free(&k2);
@@ -4297,8 +4297,8 @@ Test(fs2_api, in_bsearch_empty_array) {
     __fs2_checkreset();
     fs2 key = fs2_fromstr("anything");
     
-    CHECK_EQ("n=0", fs2_in_bsearch(&key, NULL, 0), -1);
-    CHECK_EQ("n=0 str", fs2_in_bsearch_str(&key, NULL, 0), -1);
+    CHECK_EQ("n=0", fs2_bsearch(&key, NULL, 0), -1);
+    CHECK_EQ("n=0 str", fs2_bsearch_str(&key, NULL, 0), -1);
 
     fs2_free(&key);
     assert_balanced();

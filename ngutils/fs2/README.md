@@ -217,20 +217,20 @@ All return `ptrdiff_t` (offset or `-1`). Never match `'\0'`.
 |---|---|---|---|
 | `fs2_chr` | first | sensitive | – |
 | `fs2_nchr` | first | sensitive | first `lim` |
-| `fs2_ichr` | first | insensitive | – |
-| `fs2_nichr` | first | insensitive | first `lim` |
+| `fs2_chr_ci` | first | insensitive | – |
+| `fs2_nchr_ci` | first | insensitive | first `lim` |
 | `fs2_rchr` | last | sensitive | – |
 | `fs2_nrchr` | last | sensitive | last `lim` |
-| `fs2_irchr` | last | insensitive | – |
-| `fs2_nirchr` | last | insensitive | last `lim` |
+| `fs2_rchr_ci` | last | insensitive | – |
+| `fs2_nrchr_ci` | last | insensitive | last `lim` |
 
 Nth-occurrence variants (`_nth` suffix, `k` is 1-based):
 
 ```text
 fs2_chr_nth(s, c, k)         fs2_rchr_nth(s, c, k)
 fs2_nchr_nth(s, c, k, lim)   fs2_nrchr_nth(s, c, k, lim)
-fs2_ichr_nth(s, c, k)        fs2_irchr_nth(s, c, k)
-fs2_nichr_nth(s, c, k, lim)  fs2_nirchr_nth(s, c, k, lim)
+fs2_chr_ci_nth(s, c, k)        fs2_rchr_ci_nth(s, c, k)
+fs2_nchr_ci_nth(s, c, k, lim)  fs2_nrchr_ci_nth(s, c, k, lim)
 ```
 
 Invariant: `fs2_chr_nth(s, c, 1) == fs2_chr(s, c)`.
@@ -242,17 +242,17 @@ Search a NULL-terminated array of C-strings (full scan):
 ```c
 bool fs2_in      (const fs2 *s, const char *restrict strs[]);
 bool fs2_notin   (const fs2 *s, const char *restrict strs[]);
-bool fs2_iin     (const fs2 *s, const char *restrict strs[]);   // case-insens
-bool fs2_not_iin (const fs2 *s, const char *restrict strs[]);
+bool fs2_in_ci     (const fs2 *s, const char *restrict strs[]);   // case-insens
+bool fs2_not_in_ci (const fs2 *s, const char *restrict strs[]);
 ```
 
 Variadic macros for ergonomics:
 
 ```c
 FS2_IN     (&s, "apple", "banana", "cherry")
-FS2_IIN    (&s, "apple", "banana", "cherry")
+fs2_in_ci    (&s, "apple", "banana", "cherry")
 FS2_NOT_IN (&s, "apple", "banana")
-FS2_NOT_IIN(&s, "apple", "banana")
+FS2_NOT_IN_CI(&s, "apple", "banana")
 ```
 
 ### Formatting
@@ -388,7 +388,7 @@ string work. What's in:
 
 - **Comparators** (`fs2_cmp`, `fs2_icmp`, `fs2_ncmp`) — needed before
   `bsearch` and sorting.
-- **Binary search finders** (`fs2_in_bsearch`, etc.) — depends on
+- **Binary search finders** (`fs2_bsearch`, etc.) — depends on
   comparators.
 - **Substring search** (`fs2_strstr`, `fs2_istrstr`).
 - **Sorting** (`fs2_sort` with custom comparator).
