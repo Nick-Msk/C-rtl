@@ -2,6 +2,7 @@
 
 #include "test_fs2.h"
 #include "fs2_api.h"
+#include <locale.h>
 
 TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
 
@@ -6268,5 +6269,197 @@ Test(fs2_api, composite_serialize_concat_with_from_new) {
     CHECK_FS2VALID(1, &s);
 
     fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14abc");
+    double out = 0.0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_double(&s, 0, &newpos, &out));
+    CHECK_TRUE("val", fabs(out - 3.14) < 1e-9);
+    CHECK_EQ("newpos", newpos, 4);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-2.5");
+    double out = 0.0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_double(&s, 0, NULL, &out));
+    CHECK_TRUE("val", fabs(out - (-2.5)) < 1e-9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_scientific) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1.5e10");
+    double out = 0.0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_double(&s, 0, NULL, &out));
+    CHECK_TRUE("val", fabs(out - 1.5e10) < 1e-3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_plus_sign) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+3.14");
+    double out = 0.0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_double(&s, 0, NULL, &out));
+    CHECK_TRUE("val", fabs(out - 3.14) < 1e-9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14xyz");
+    double out = 0.0;
+
+    CHECK_TRUE ("lenient", fs2_tryparse_double(&s, &out, false));
+    CHECK_TRUE ("val", fabs(out - 3.14) < 1e-9);
+    CHECK_FALSE("strict rejects trailing", fs2_tryparse_double(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_accepts_leading_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  \t3.14");
+    double out = 0.0;
+
+    CHECK_TRUE("parse", fs2_tryparse_double(&s, &out, true));
+    CHECK_TRUE("val", fabs(out - 3.14) < 1e-9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_rejects_newline) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\n3.14");
+    double out = 0.0;
+
+    /* strtod съел бы \n сам — мы отвергаем до вызова */
+    CHECK_FALSE("newline rejected", fs2_tryparse_double(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_double_uses_current_locale) {
+    __fs2_checkreset();
+    
+    /* Документируем: парсер использует текущую локаль.
+     * В C locale (по умолчанию для тестов) десятичный разделитель — '.'.
+     * Если CI когда-нибудь запустит тесты в не-C локали — этот тест
+     * покажет реальное поведение. */
+    fs2 s = fs2_fromstr("3.14");
+    double out = 0.0;
+
+    CHECK_TRUE("parses with dot", fs2_tryparse_double(&s, &out, true));
+    CHECK_TRUE("val ~3.14", fabs(out - 3.14) < 1e-9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1e400");   /* >> DBL_MAX (~1.8e308) */
+    double out = 0.0;
+
+    CHECK_FALSE("overflow", fs2_tryparse_double(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_underflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1e-400");   /* << DBL_MIN (~2.2e-308) */
+    double out = 0.0;
+
+    /* strtod возвращает 0.0 + ERANGE. Мы отвергаем. */
+    CHECK_FALSE("underflow", fs2_tryparse_double(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_nan) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("nan");
+    double out = 0.0;
+
+    CHECK_TRUE("parses", fs2_tryparse_double(&s, &out, true));
+    CHECK_TRUE("is nan", isnan(out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double_inf) {
+    __fs2_checkreset();
+    fs2 s_pos = fs2_fromstr("inf");
+    fs2 s_neg = fs2_fromstr("-infinity");
+    double out = 0.0;
+
+    CHECK_TRUE("inf", fs2_tryparse_double(&s_pos, &out, true));
+    CHECK_TRUE("is +inf", isinf(out) && out > 0);
+
+    CHECK_TRUE("-infinity", fs2_tryparse_double(&s_neg, &out, true));
+    CHECK_TRUE("is -inf", isinf(out) && out < 0);
+
+    fs2_free(&s_pos);
+    fs2_free(&s_neg);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_double_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14159");
+
+    CHECK_TRUE("parsed", fabs(fs2_parse_double(&s) - 3.14159) < 1e-9);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_double_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_double(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, composite_parse_double_from_json) {
+    __fs2_checkreset();
+
+    /* {"score":9.5} — парсим значение после ":" */
+    fs2 json = fs2_fromstr("{\"score\":9.5}");
+
+    ptrdiff_t colon = fs2_chr(&json, ':');
+    CHECK_TRUE("colon found", colon >= 0);
+
+    size_t newpos = 0;
+    double score  = 0.0;
+    CHECK_TRUE("parse", 
+               fs2_pos_parse_double(&json, (size_t)colon + 1, &newpos, &score));
+    CHECK_TRUE("val", fabs(score - 9.5) < 1e-9);
+    CHECK_EQ("stopped at '}'", json.v[newpos], '}');
+
+    fs2_free(&json);
     assert_balanced();
 }
