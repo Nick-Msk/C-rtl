@@ -7481,3 +7481,102 @@ Test(fs2_api, parse_ushort_overflow_aborts, .signal = SIGINT) {
     fs2_parse_ushort(&s);
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * fs2_spn / fs2_cspn
+ * ========================================================================= */
+
+Test(fs2_api, spn_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbb");
+
+    CHECK_EQ("3 a's",     fs2_spn(&s, 0, "a"), 3);
+    CHECK_EQ("3 b's",     fs2_spn(&s, 3, "b"), 3);
+    CHECK_EQ("no match",  fs2_spn(&s, 0, "xyz"), 0);
+    CHECK_EQ("mixed set", fs2_spn(&s, 0, "ab"), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, spn_eof) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 empty = FS2();
+
+    CHECK_EQ("at end",     fs2_spn(&s, 3, "a"), 0);
+    CHECK_EQ("beyond end", fs2_spn(&s, 10, "a"), 0);
+    CHECK_EQ("canonical empty", fs2_spn(&empty, 0, "a"), 0);
+
+    fs2_free(&s);
+    fs2_free(&empty);
+    assert_balanced();
+}
+
+Test(fs2_api, cspn_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello=world");
+
+    CHECK_EQ("until '='",      fs2_cspn(&s, 0, "="), 5);
+    CHECK_EQ("from 'world'",   fs2_cspn(&s, 6, "="), 5);
+    CHECK_EQ("at '='",         fs2_cspn(&s, 5, "="), 0);
+    CHECK_EQ("not found",      fs2_cspn(&s, 0, "z"), 11);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nonspace_span_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world\nfoo");
+
+    CHECK_EQ("hello",  fs2_nonspace_span(&s, 0), 5);
+    CHECK_EQ("space",  fs2_nonspace_span(&s, 5), 0);
+    CHECK_EQ("world",  fs2_nonspace_span(&s, 6), 5);
+    CHECK_EQ("at \\n", fs2_nonspace_span(&s, 11), 0);
+    CHECK_EQ("foo",    fs2_nonspace_span(&s, 12), 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Composite: tokenizer в 5 строк */
+Test(fs2_api, composite_tokenize) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("the quick brown fox");
+    size_t pos = 0;
+    int    count = 0;
+
+    while (pos < s.len) {
+        size_t len = fs2_nonspace_span(&s, pos);
+        if (len > 0) count++;
+        pos += len > 0 ? len : 1;   /* пропустить whitespace */
+    }
+
+    CHECK_EQ("token count", count, 4);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Composite: key=value */
+Test(fs2_api, composite_key_value) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("timeout=30");
+
+    /* 1. Найти '=' через cspn */
+    size_t key_len = fs2_cspn(&s, 0, "=");
+    CHECK_EQ("key len", key_len, 7);
+    CHECK_EQ("eq found", s.v[key_len], '=');
+
+    /* 2. Парсить число ПОСЛЕ '=' через pos_parse_int (не tryparse!) */
+    size_t val_end = 0;
+    int    value   = 0;
+    CHECK_TRUE("parse value after '='", 
+               fs2_pos_parse_int(&s, key_len + 1, &val_end, &value));
+    CHECK_EQ("value", value, 30);
+    CHECK_EQ("consumed all", val_end, s.len);
+
+    fs2_free(&s);
+    assert_balanced();
+}
