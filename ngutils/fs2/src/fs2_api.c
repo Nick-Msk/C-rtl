@@ -272,6 +272,17 @@ fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim) {
 }
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------
+
+/**
+ * @brief Append @p src to @p dst in place.
+ *
+ * Grows the buffer of @p dst via `fs2_reserve`.
+ * Empty @p src is a no-op.
+ *
+ * @param dst  Non-NULL fs2 (ALLOC or LOCAL).
+ * @param src  Non-NULL fs2 (any flavor). Not modified.
+ * @return     @p dst.
+ */
 fs2 *
 fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
     invraise(dst != NULL && src != NULL, "Null pointers %p %p", dst, src);
@@ -284,7 +295,16 @@ fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
     return dst;
 }
 
-// beginner-null safe version
+/**
+ * @brief Prepend a C-string @p beginner to @p dst in place.
+ *
+ * Moves existing content forward and copies @p beginner at position 0.
+ * NULL or empty @p beginner is a no-op.
+ *
+ * @param dst       Non-NULL fs2 (ALLOC or LOCAL).
+ * @param beginner  NUL-terminated string (NULL is safe).
+ * @return          @p dst.
+ */
 fs2 *
 fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
     invraise(dst != NULL, "Null pointer %p", dst);
@@ -301,6 +321,18 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
     return fs2_setlen(dst, dst->len + len);
 }
 
+/**
+ * @brief Internal: format into @p s starting at @p pos using a va_list.
+ *
+ * Grows the buffer if needed. Does NOT update `s->len` — the caller
+ * is responsible for calling `fs2_setlen` with the result.
+ *
+ * @param s    Non-NULL fs2 (ALLOC).
+ * @param pos  0-based offset to start writing.
+ * @param fmt  Format string (non-NULL).
+ * @param ap   Pre-initialized argument list.
+ * @return     Number of characters written (excluding NUL), or -1 on error.
+ */
 long                  
 fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap) {
     invraise(s != NULL && fmt != NULL, "Null pointers %p %p", s, fmt);
@@ -322,6 +354,17 @@ fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_
     return cnt;    
 }
 
+/**
+ * @brief Replace content of @p s with the substring [from, from+len).
+ *
+ * In-place: moves the selected bytes to the beginning and truncates.
+ * Bounds are clamped via `fs2_substr_bounds`.
+ *
+ * @param s     Non-NULL fs2 (ALLOC or LOCAL). Modified in place.
+ * @param from  Start offset (clamped to s->len).
+ * @param len   Number of bytes to keep (clamped to remaining tail).
+ * @return      @p s.
+ */
 fs2 *
 fs2_substr(fs2 *s, size_t from, size_t len) {
     invraise(s != NULL, "Null pointer");
@@ -337,6 +380,16 @@ fs2_substr(fs2 *s, size_t from, size_t len) {
     return s;
 }
 
+/**
+ * @brief Return a stack-allocated fs2 containing the substring [from, from+len).
+ *
+ * Does NOT modify @p s (works with STATIC fs2 as well).
+ *
+ * @param s     Non-NULL fs2 (any flavor). Not modified.
+ * @param from  Start offset (clamped).
+ * @param len   Number of bytes to extract (clamped).
+ * @return      A new fs2 (stack, FS2_BODYALLOC body).
+ */
 fs2 
 fs2_substr_new(const fs2 *s, size_t from, size_t len) {
     invraise(s != NULL, "Null pointer");
@@ -353,6 +406,14 @@ fs2_substr_new(const fs2 *s, size_t from, size_t len) {
     return res;
 }
 
+/**
+ * @brief Return a heap-allocated fs2 containing the substring [from, from+len).
+ *
+ * @param s     Non-NULL fs2 (any flavor). Not modified.
+ * @param from  Start offset (clamped).
+ * @param len   Number of bytes to extract (clamped).
+ * @return      A new heap-allocated fs2.
+ */
 fs2 *
 fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
     invraise(s != NULL, "Null pointer");
@@ -364,7 +425,14 @@ fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
 }
 
 // ------------------------------- Upper / Lower case ---------------------------------------
-// upper
+/**
+ * @brief Convert all bytes to upper case in place (byte-wise, NOT Unicode-aware).
+ *
+ * NULL-safe: returns NULL unchanged.
+ *
+ * @param str  fs2 (ALLOC or LOCAL). May be NULL.
+ * @return     @p str (or NULL).
+ */
 fs2 *
 fs2_toupper(fs2 *str) {
     if (!str)
@@ -374,7 +442,14 @@ fs2_toupper(fs2 *str) {
     return str;
 }
 
-//lower
+/**
+ * @brief Convert all bytes to lower case in place (byte-wise, NOT Unicode-aware).
+ *
+ * NULL-safe: returns NULL unchanged.
+ *
+ * @param str  fs2 (ALLOC or LOCAL). May be NULL.
+ * @return     @p str (or NULL).
+ */
 fs2 *
 fs2_tolower(fs2 *str) {
     if (!str)
@@ -385,6 +460,18 @@ fs2_tolower(fs2 *str) {
 }
 
 // ------------------------------------- Padding -------------------------------------------
+
+/**
+ * @brief Right-pad @p str to total length @p len using bytes from @p pad (in-place).
+ *
+ * If `len < str->len`, the string is truncated via `fs2_left`.
+ * If `pad->len == 0` or `len == str->len`, no change.
+ *
+ * @param str  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param len  Target total length.
+ * @param pad  Non-NULL non-empty fs2 used as the repeating pad pattern.
+ * @return     @p str.
+ */
 fs2 *                    
 fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
     invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
@@ -407,7 +494,17 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 
     return fs2_setlen(str, len);
 }
-// left
+/**
+ * @brief Left-pad @p str to total length @p len using bytes from @p pad (in-place).
+ *
+ * The existing content is shifted right; the pad pattern fills the gap on the left.
+ * If `len < str->len`, the string is truncated via `fs2_left`.
+ *
+ * @param str  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param len  Target total length.
+ * @param pad  Non-NULL non-empty fs2 used as the repeating pad pattern.
+ * @return     @p str.
+ */
 fs2 *                    
 fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
     invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
@@ -431,7 +528,20 @@ fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 
     return fs2_setlen(str, len);
 }
-// generators
+/**
+ * @brief Fill @p s with @p len random characters in place.
+ *
+ * Supported @p type values:
+ *  - `'a'` — lowercase letters a-z
+ *  - `'A'` — uppercase letters A-Z
+ *  - `'0'` — digits 0-9
+ *  - any other — fills with `'?'`
+ *
+ * @param s     Non-NULL fs2 (ALLOC or LOCAL). Buffer is grown as needed.
+ * @param len   Number of random characters to generate.
+ * @param type  Character set selector (see above).
+ * @return      @p s.
+ */
 fs2 *           
 fs2_genrnd(fs2 *s, size_t len, char type) {
     invraise(s != NULL, "Null pointer");
@@ -460,6 +570,17 @@ fs2_genrnd(fs2 *s, size_t len, char type) {
  * Conversion (parse / format primitives), streaming
  * ───────────────────────────────────────────────────────────────── */
 
+/**
+ * @brief Parse a long long integer starting at @p pos (streaming).
+ *
+ * Skips leading spaces. Accepts an optional sign. Uses `strtoll`.
+ *
+ * @param s       Non-NULL fs2 with v != NULL.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position AFTER the parsed number.
+ * @param out     Optional. If NULL, the parsed value is discarded.
+ * @return        true on success, false on invalid format or overflow.
+ */
 bool 
 fs2_pos_parse_llong(const fs2 *restrict s, size_t pos, 
                     size_t *restrict newpos, long long *restrict out) {
@@ -482,7 +603,7 @@ fs2_pos_parse_llong(const fs2 *restrict s, size_t pos,
     if (errno == ERANGE || endptr == start)
         return logsimpleerr(false, 
             "Overflow or no digits (errno=%d, consumed=%td)", 
-            errno, endptr - start);   /* ← %td вместо %zu */
+            errno, endptr - start);   /* ← use %td instead of %zu */
 
     if (out)
         *out = val;
@@ -492,6 +613,17 @@ fs2_pos_parse_llong(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse a long integer starting at @p pos (streaming).
+ *
+ * Delegates to `fs2_pos_parse_llong` then range-checks to `long`.
+ *
+ * @param s       Non-NULL fs2.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format, overflow, or range.
+ */
 bool 
 fs2_pos_parse_long(const fs2 *restrict s, size_t pos, 
                    size_t *restrict newpos, long *restrict out) {
@@ -499,7 +631,7 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos,
     size_t    npos   = 0;
 
     if (!fs2_pos_parse_llong(s, pos, &npos, &ll_val))
-        return false;   /* лог уже был в базовой */
+        return false;   /* log was already emitted in the base function */
 
     if (ll_val < LONG_MIN || ll_val > LONG_MAX)
         return logsimpleerr(false, 
@@ -514,6 +646,17 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse an int starting at @p pos (streaming).
+ *
+ * Delegates to `fs2_pos_parse_long` then range-checks to `int`.
+ *
+ * @param s       Non-NULL fs2.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format, overflow, or range.
+ */
 bool 
 fs2_pos_parse_int(const fs2 *restrict s, size_t pos, 
                   size_t *restrict newpos, int *restrict out) {
@@ -536,6 +679,17 @@ fs2_pos_parse_int(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse an unsigned long long starting at @p pos (streaming).
+ *
+ * Skips leading spaces. Rejects a leading minus sign. Uses `strtoull`.
+ *
+ * @param s       Non-NULL fs2 with v != NULL.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format or overflow.
+ */
 bool 
 fs2_pos_parse_ullong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned long long *restrict out) {
     if (!s || !s->v || pos >= s->len) 
@@ -547,12 +701,12 @@ fs2_pos_parse_ullong(const fs2 *restrict s, size_t pos, size_t *restrict newpos,
     if (*start == '\0') 
         return logsimpleerr(false, "Only spaces detected");
 
-    /* Беззнаковые не принимают минус. strtoull("-1") = ULLONG_MAX — 
-     * это не то, что ожидает вызывающий. */
+    /* Unsigned types do not accept a minus sign. strtoull("-1") = ULLONG_MAX —
+     * that is not what the caller expects. */
     if (*start == '-')
         return logsimpleerr(false, "Negative sign detected");;
 
-    /* Запрещаем strtoull сам пропускать \n, \r, \v, \f */
+    /* Prevent strtoull from silently skipping \n, \r, \v, \f */
     if (!isdigit((unsigned char)*start) && *start != '+')
         return logsimpleerr(false, "incorrent sym detected [%c]", *start);
 
@@ -571,6 +725,17 @@ fs2_pos_parse_ullong(const fs2 *restrict s, size_t pos, size_t *restrict newpos,
     return true;
 }
 
+/**
+ * @brief Parse an unsigned long starting at @p pos (streaming).
+ *
+ * Delegates to `fs2_pos_parse_ullong` then range-checks.
+ *
+ * @param s       Non-NULL fs2.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format, overflow, or range.
+ */
 bool 
 fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos, 
                     size_t *restrict newpos, unsigned long *restrict out) {
@@ -591,6 +756,17 @@ fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse an unsigned int starting at @p pos (streaming).
+ *
+ * Delegates to `fs2_pos_parse_ulong` then range-checks.
+ *
+ * @param s       Non-NULL fs2.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format, overflow, or range.
+ */
 bool 
 fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, 
                    size_t *restrict newpos, unsigned *restrict out) {
@@ -611,6 +787,17 @@ fs2_pos_parse_uint(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse a double starting at @p pos (streaming).
+ *
+ * Accepts a digit, dot, sign, and letters for nan/inf. Uses `strtod`.
+ *
+ * @param s       Non-NULL fs2 with v != NULL.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format or overflow.
+ */
 bool 
 fs2_pos_parse_double(const fs2 *restrict s, size_t pos, 
                      size_t *restrict newpos, double *restrict out) {
@@ -623,7 +810,7 @@ fs2_pos_parse_double(const fs2 *restrict s, size_t pos,
     if (*start == '\0') 
         return logsimpleerr(false, "Only spaces detected");
 
-    /* Принимаем цифру, точку, знак, а также буквы для nan/inf */
+    /* Accept a digit, dot, sign, and also letters for nan/inf */
     unsigned char c = (unsigned char)*start;
     if (!isdigit(c) && c != '.' && c != '+' && c != '-' &&
         c != 'i' && c != 'I' && c != 'n' && c != 'N')
@@ -647,6 +834,17 @@ fs2_pos_parse_double(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse a single character at @p pos (streaming).
+ *
+ * Advances the position by 1.
+ *
+ * @param s       Non-NULL fs2 with v != NULL.
+ * @param pos     Start offset (must be < s->len).
+ * @param newpos  Optional. Set to pos + 1.
+ * @param out     Optional. If NULL, the character is discarded.
+ * @return        true on success, false if pos is out of bounds.
+ */
 bool 
 fs2_pos_parse_char(const fs2 *restrict s, size_t pos, 
                    size_t *restrict newpos, char *restrict out) {
@@ -665,7 +863,7 @@ fs2_pos_parse_char(const fs2 *restrict s, size_t pos,
 bool 
 fs2_pos_parse_short(const fs2 *restrict s, size_t pos, 
                     size_t *restrict newpos, short *restrict out) {
-    long long ll = 0;                 /* ← llong, не long */
+    long long ll = 0;                 /* ← long long, not long */
     size_t npos = 0;
 
     if (!fs2_pos_parse_llong(s, pos, &npos, &ll))
@@ -708,8 +906,8 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
 /* ─────────────────────────────────────────────────────────────────
  * String search API
  * ───────────────────────────────────────────────────────────────── */
-/* Тип функции поиска: haystack → позиция первого вхождения needle,
- * или NULL если не найдено. Ровно как strstr/strcasestr. */
+/* Search function type: haystack -> position of first occurrence of needle,
+ * or NULL if not found. Exactly like strstr/strcasestr. */
 typedef char *(*fs2_findfn_t)(const char *haystack,
                                     const char *needle);
 
@@ -738,7 +936,7 @@ _fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
     return -1;
 }
 
-/* Публичные врапперы передают свой finder */
+/* Public wrappers pass their own finder */
 ptrdiff_t
 fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth) {

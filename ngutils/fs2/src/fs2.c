@@ -778,15 +778,6 @@ int
 fs2_cmp_wrap_ci(const void *str1, const void *str2) {
     return fs2_cmp_ci(str1, str2);
 }
-// int                  
-// fs2_cmpstr_wrap(const void *str1, const void *str2) {
-//     return fs2_cmpstr(str1, str2);
-// }
-
-// int                  
-// fs2_cmpstr_wrap_ci(const void *str1, const void *str2) {
-//     return fs2_cmp_ci_str(str1, str2);
-// }
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer
