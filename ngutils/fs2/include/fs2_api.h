@@ -762,7 +762,7 @@ fs2_bsearch_ci(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
     invraise(key != NULL, "Null pointers %p %p", key, arr);
     if (n == 0) return -1;
 
-    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_icmp_wrap);
+    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_cmp_wrap_ci);
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
 

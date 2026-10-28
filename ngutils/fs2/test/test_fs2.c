@@ -2549,7 +2549,7 @@ Test(fs2_api, icmp_case_insensitive) {
     fs2 s2 = fs2_fromstr("apple");
 
     CHECK_TRUE("cs distinct", fs2_cmp(&s1, &s2) != 0);
-    CHECK_EQ("ci equal", fs2_icmp(&s1, &s2), 0);
+    CHECK_EQ("ci equal", fs2_cmp_ci(&s1, &s2), 0);
 
     fs2_free(&s1);
     fs2_free(&s2);
@@ -2689,7 +2689,7 @@ Test(fs2_api, icmp_wrap_qsort_case_insensitive) {
         fs2_fromstr("banana")
     };
 
-    qsort(arr, 4, sizeof(fs2), fs2_icmp_wrap);
+    qsort(arr, 4, sizeof(fs2), fs2_cmp_wrap_ci);
 
     /* Регистронезависимая сортировка */
     CHECK_STR_EQ("0", arr[0].v, "apple");

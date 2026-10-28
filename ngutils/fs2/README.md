@@ -386,7 +386,7 @@ string work. What's in:
 
 **Not yet implemented**:
 
-- **Comparators** (`fs2_cmp`, `fs2_icmp`, `fs2_ncmp`) — needed before
+- **Comparators** (`fs2_cmp`, `fs2_cmp_ci`, `fs2_ncmp`) — needed before
   `bsearch` and sorting.
 - **Binary search finders** (`fs2_bsearch`, etc.) — depends on
   comparators.

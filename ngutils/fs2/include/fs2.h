@@ -140,7 +140,8 @@ typedef int (*fs2_cmp_t)(const char *a, const char *b);
  * @param s  Non-NULL pointer to an fs2.
  * @return   Number of significant bytes.
  */
-static inline size_t      fs2_len (const fs2 *s) { return s->len; }
+static inline size_t      
+fs2_len (const fs2 *s) { return s->len; }
 
 /**
  * @brief Total buffer capacity in bytes (including room for NUL).
@@ -148,7 +149,8 @@ static inline size_t      fs2_len (const fs2 *s) { return s->len; }
  * @param s  Non-NULL pointer to an fs2.
  * @return   Allocated capacity.
  */
-static inline size_t      fs2_sz  (const fs2 *s) { return s->sz;  }
+static inline size_t      
+fs2_sz  (const fs2 *s) { return s->sz;  }
 
 /**
  * @brief Mutable pointer to the underlying NUL-terminated buffer.
@@ -159,7 +161,8 @@ static inline size_t      fs2_sz  (const fs2 *s) { return s->sz;  }
  * @param s  Non-NULL pointer to an fs2.
  * @return   `char*` to the buffer; `NULL` if the buffer has been released.
  */
-static inline char       *fs2_str (fs2 *s)       { return s->v;   }
+static inline char       *
+fs2_str (fs2 *s)       { return s->v;   }
 
 /**
  * @brief Const pointer to the underlying NUL-terminated buffer.
@@ -169,26 +172,32 @@ static inline char       *fs2_str (fs2 *s)       { return s->v;   }
  * @param s  Non-NULL pointer to an fs2.
  * @return   `const char*` to the buffer; `NULL` if the buffer has been released.
  */
-static inline const char *fs2_cstr(const fs2 *s) { return s->v;   }
+static inline const char *
+fs2_cstr(const fs2 *s) { return s->v;   }
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Predicates
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** @brief Check if the buffer is an external read-only literal (FS2_STATIC). */
-static inline bool          fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
+static inline bool          
+fs2_is_static   (const fs2 *s) { return (s->flags & FS2_STATIC)    != 0; }
 
 /** @brief Check if the buffer is a caller-owned fixed-size buffer (FS2LOCAL). */
-static inline bool          fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
+static inline bool          
+fs2_is_local    (const fs2 *s) { return (s->flags & FS2_LOCAL)     != 0; }
 
 /** @brief Check if the buffer is heap-allocated and growable (FS2_ALLOC). */
-static inline bool          fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
+static inline bool          
+fs2_is_alloc    (const fs2 *s) { return (s->flags & FS2_ALLOC)     != 0; }
 
 /** @brief Check if the fs2 struct itself is heap-allocated (FS2_BODYALLOC). */
-static inline bool          fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
+static inline bool          
+fs2_is_bodyalloc(const fs2 *s) { return (s->flags & FS2_BODYALLOC) != 0; }
 
 /** @brief Logical emptiness: len == 0. */
-static inline bool          fs2_is_empty(const fs2 *s) { 
+static inline bool          
+fs2_is_empty(const fs2 *s) { 
     return s == NULL || s->len == 0;
 }
 
@@ -197,7 +206,8 @@ static inline bool          fs2_is_empty(const fs2 *s) {
  *
  * Defunct values have @c v == NULL and therefore also report as null.
  */
-static inline bool          fs2_is_null(const fs2 *s) { 
+static inline bool          
+fs2_is_null(const fs2 *s) { 
     return s == NULL || s->v == NULL; 
 }
 
@@ -259,9 +269,11 @@ static inline bool          fs2_is_null(const fs2 *s) {
  * @brief Ensure capacity for at least `need` bytes (including NUL).
  * No-op for STATIC/LOCAL (cannot grow external buffers).
  */
-extern void       fs2_reserve(fs2 *s, size_t need);
+extern void       
+fs2_reserve(fs2 *s, size_t need);
 
-extern fs2 *      fs_shrink(fs2 *s);
+extern fs2 *      
+fs_shrink(fs2 *s);
 
 // internal, clamps from/len to valid range
 static inline void 
@@ -674,28 +686,32 @@ static inline fs2 *fs2_clear(fs2 *s) {
  * ───────────────────────────────────────────────────────────────────────── */
 
 // unlim, bare level
-static inline int            fs2_cmp(const fs2 *restrict str1, const fs2 *restrict str2) {
+static inline int            
+fs2_cmp(const fs2 *restrict str1, const fs2 *restrict str2) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strcmp(str1->v, str2->v);
 }
 // limited
-static inline int            fs2_ncmp(const fs2 *restrict str1, const fs2 *restrict str2, size_t len) {
+static inline int            
+fs2_ncmp(const fs2 *restrict str1, const fs2 *restrict str2, size_t len) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strncmp(str1->v, str2->v, len);
 }
 // unlim, insensitive
-static inline int            fs2_icmp(const fs2* restrict str1, const fs2* restrict str2) {
+static inline int            
+fs2_cmp_ci(const fs2* restrict str1, const fs2* restrict str2) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strcasecmp(str1->v, str2->v);
 }
 // limited, insensitive, limited
-static inline int            fs2_nicmp(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
+static inline int            
+fs2_ncmp_ci(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
         "Null pointers %p %p", str1, str2);
 
@@ -703,28 +719,32 @@ static inline int            fs2_nicmp(const fs2* restrict str1, const fs2* rest
 }
 // c-str wrappers
 // unlim, c-str wrap
-static inline int            fs2_cmpstr(const fs2 *restrict str1, const char *restrict str2) {
+static inline int            
+fs2_cmpstr(const fs2 *restrict str1, const char *restrict str2) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strcmp(str1->v, str2);
 }
 // limited, c-str wrap
-static inline int            fs2_ncmpstr(const fs2 *restrict str1, const char *restrict str2, size_t len) {
+static inline int            
+fs2_ncmpstr(const fs2 *restrict str1, const char *restrict str2, size_t len) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strncmp(str1->v, str2, len);
 }
 // unlim, insensitive, c-str wrap
-static inline int            fs2_icmpstr(const fs2* restrict str1, const char *restrict str2) {
+static inline int            
+fs2_cmp_ci_str(const fs2* restrict str1, const char *restrict str2) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
         "Null pointers %p %p", str1, str2);
 
     return strcasecmp(str1->v, str2);
 }
 // limited, insensitive, c-str wrap
-static inline int            fs2_nicmpstr(const fs2* restrict str1, const char *restrict str2, size_t len) {
+static inline int            
+fs2_ncmp_ci_str(const fs2* restrict str1, const char *restrict str2, size_t len) {
     invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
         "Null pointers %p %p", str1, str2);
 
@@ -733,11 +753,11 @@ static inline int            fs2_nicmpstr(const fs2* restrict str1, const char *
 // ------------------ const void *, const void * wrappers -------------------
 extern int                  fs2_cmp_wrap(const void *str1, const void *str2);
 
-extern int                  fs2_icmp_wrap(const void *str1, const void *str2);
+extern int                  fs2_cmp_wrap_ci(const void *str1, const void *str2);
 
 extern int                  fs2_cmpstr_wrap(const void *str1, const void *str2);
 
-extern int                  fs2_icmpstr_wrap(const void *str1, const void *str2);
+extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str2);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer

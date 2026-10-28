@@ -775,8 +775,8 @@ fs2_cmp_wrap(const void *str1, const void *str2) {
 }
 
 int                  
-fs2_icmp_wrap(const void *str1, const void *str2) {
-    return fs2_icmp(str1, str2);
+fs2_cmp_wrap_ci(const void *str1, const void *str2) {
+    return fs2_cmp_ci(str1, str2);
 }
 // int                  
 // fs2_cmpstr_wrap(const void *str1, const void *str2) {
@@ -784,8 +784,8 @@ fs2_icmp_wrap(const void *str1, const void *str2) {
 // }
 
 // int                  
-// fs2_icmpstr_wrap(const void *str1, const void *str2) {
-//     return fs2_icmpstr(str1, str2);
+// fs2_cmpstr_wrap_ci(const void *str1, const void *str2) {
+//     return fs2_cmp_ci_str(str1, str2);
 // }
 
  /* ─────────────────────────────────────────────────────────────────────────

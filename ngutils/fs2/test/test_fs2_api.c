@@ -8008,7 +8008,7 @@ Test(fs2_api, composite_split_ci) {
     fs2_substr(&key, 0, 12);
     /* Проверим insensitive-сравнение: "content-type" == "Content-Type" */
     fs2 expected_key = FS2LITERAL("content-type");
-    CHECK_EQ("key ci match", fs2_icmp(&key, &expected_key), 0);
+    CHECK_EQ("key ci match", fs2_cmp_ci(&key, &expected_key), 0);
     
     fs2_free(&key);
     fs2_free(&line);
