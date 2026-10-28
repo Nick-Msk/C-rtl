@@ -646,3 +646,19 @@ fs2_pos_parse_double(const fs2 *restrict s, size_t pos,
 
     return true;
 }
+
+bool 
+fs2_pos_parse_char(const fs2 *restrict s, size_t pos, 
+                   size_t *restrict newpos, char *restrict out) {
+    if (!s || !s->v || pos >= s->len)
+        return logsimpleerr(false, 
+            "Null input or pos %zu out of length %zu", pos, s ? s->len : 0);
+    
+    if (out)    
+        *out    = s->v[pos];
+    if (newpos) 
+        *newpos = pos + 1;
+    
+    return true;
+}
+

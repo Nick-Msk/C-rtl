@@ -820,6 +820,9 @@ fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, size_t *restrict newpos, u
 extern bool 
 fs2_pos_parse_double(const fs2 *restrict s, size_t pos, size_t *restrict newpos, double *restrict out);
 
+extern bool 
+fs2_pos_parse_char(const fs2 *restrict s, size_t pos, size_t *restrict newpos, char *restrict out);
+
 /**
  * @brief Parse the whole string (or prefix) into an int/long.
  * @param strict  If true, `newpos` MUST exactly equal `s->len` (no trailing spaces/garbage).
@@ -918,6 +921,21 @@ fs2_tryparse_double(const fs2 *restrict s, double *restrict out, bool strict) {
     return true;
 }
 
+static inline bool 
+fs2_tryparse_char(const fs2 *restrict s, char *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_char(s, 0, &newpos, out))
+        return false;
+    
+    /* strict = true: отвергаем пробельные символы (space, \t, \n, \r, \v, \f) */
+    if (strict && isspace((unsigned char)s->v[0]))
+        return logsimpleerr(false, 
+            "Strict char parse: leading char '%c' (0x%02x) is whitespace", 
+            s->v[0], (unsigned char)s->v[0]);
+    
+    return true;
+}
+
 /**
  * @brief Parse int/long, raising a user error (SIGINT) on failure. Non-strict.
  */
@@ -989,6 +1007,15 @@ fs2_parse_double(const fs2 *restrict s) {
         userraise(-1, ERR_UNABLE_PARSE_DATA, 
               "Failed to parse double from string: '%.40s'", 
               (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
+static inline char 
+fs2_parse_char(const fs2 *restrict s) {
+    char out = '\0';
+    if (!fs2_tryparse_char(s, &out, false))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+            "Failed to parse char from empty string");
     return out;
 }
 
