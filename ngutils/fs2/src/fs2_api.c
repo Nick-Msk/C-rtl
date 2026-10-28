@@ -689,7 +689,7 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
     unsigned long long  ull   = 0;
     size_t              npos = 0;
 
-    if (!fs2_pos_parse_ulong(s, pos, &npos, &ull))
+    if (!fs2_pos_parse_ullong(s, pos, &npos, &ull))
         return false;
 
     if (ull > USHRT_MAX)
