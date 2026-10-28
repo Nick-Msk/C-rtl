@@ -1073,6 +1073,8 @@ fs2_parse_short(const fs2 *restrict s) {
     return out;
 }
 
+
+
 // Format (primitive → string)
 
 // Выбор строки формата по типу
@@ -1135,6 +1137,40 @@ fs2_parse_short(const fs2 *restrict s) {
 
 #define fs2_serialize_concat(dst, val) \
     fs2_sprintf_concat((dst), FS2_FMT(val), (val))
+
+// string parsers
+
+/**
+ * @brief Length of initial run in @p s (from @p pos) of chars in @p accept.
+ * @return 0 on null, empty, or pos >= s->len.
+ */
+
+static inline size_t
+fs2_spn(const fs2 *restrict s, size_t pos, const char *restrict accept) {
+    invraise(s != NULL && accept != NULL, "Null pointers %p %p", s, accept);
+    if (pos >= s->len) return 0;
+    return strspn(s->v + pos, accept);
+}
+
+/**
+ * @brief Length of initial run in @p s (from @p pos) not in @p reject.
+ */
+static inline size_t
+fs2_cspn(const fs2 *restrict s, size_t pos, const char *restrict reject) {
+    invraise(s != NULL && reject != NULL, "Null pointers %p %p", s, reject);
+    if (pos >= s->len) return 0;
+    return strcspn(s->v + pos, reject);
+}
+
+/**
+ * @brief Length of initial non-whitespace run.
+ *
+ * Whitespace = " \t\n\r\v\f" (C locale, locale-independent).
+ */
+static inline size_t
+fs2_nonspace_span(const fs2 *restrict s, size_t pos) {
+    return fs2_cspn(s, pos, " \t\n\r\v\f");
+}
 
 //
 //fs2_verirystr(pattern )
