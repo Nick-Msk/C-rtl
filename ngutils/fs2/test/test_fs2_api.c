@@ -6963,3 +6963,98 @@ Test(fs2_api, char_literal_goes_through_int_branch) {
     fs2_free(&s2);
     assert_balanced();
 }
+
+Test(fs2_api, serialize_signed_char_as_number) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    signed char c = -100;
+
+    fs2_serialize(&dst, c);
+
+    CHECK_STR_EQ("number", dst.v, "-100");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_unsigned_char_as_number) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    unsigned char c = 200;
+
+    fs2_serialize(&dst, c);
+
+    /* Если кто-то перепутал %hhu и %c — получит байт 0xC8 вместо "200" */
+    CHECK_STR_EQ("number", dst.v, "200");
+    CHECK_EQ("len", dst.len, 3);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_signed_char_negative) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    signed char c = -128;                  /* INT8_MIN */
+
+    fs2_serialize(&dst, c);
+
+    CHECK_STR_EQ("min int8", dst.v, "-128");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_unsigned_char_max) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    unsigned char c = 255;                 /* UINT8_MAX */
+
+    fs2_serialize(&dst, c);
+
+    CHECK_STR_EQ("max uint8", dst.v, "255");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_char_vs_unsigned_char) {
+    __fs2_checkreset();
+    
+    /* Один и тот же байт 65 ('A' = UINT8 65) — но разные типы дают разный вывод */
+    char          c_char = 'A';            /* char   → "%c"  → "A" */
+    unsigned char c_uchar = 65;            /* uchar  → "%hhu" → "65" */
+    
+    fs2 s_char  = FS2();
+    fs2 s_uchar = FS2();
+    
+    fs2_serialize(&s_char,  c_char);
+    fs2_serialize(&s_uchar, c_uchar);
+    
+    CHECK_STR_EQ("char → 'A'",       s_char.v,  "A");
+    CHECK_STR_EQ("uchar → '65'",     s_uchar.v, "65");
+    CHECK_EQ   ("char len 1",        s_char.len,  1);
+    CHECK_EQ   ("uchar len 2",       s_uchar.len, 2);
+    
+    fs2_free(&s_char);
+    fs2_free(&s_uchar);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_uint8_via_uchar) {
+    __fs2_checkreset();
+    
+    /* Типичное использование: uint8_t как счётчик */
+    unsigned char flags = 42;
+    fs2 s = fs2_from_new(flags);
+    
+    CHECK_STR_EQ("counter as number", s.v, "42");
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
