@@ -662,3 +662,24 @@ fs2_pos_parse_char(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+bool 
+fs2_pos_parse_short(const fs2 *restrict s, size_t pos, 
+                    size_t *restrict newpos, short *restrict out) {
+    long long ll = 0;                 /* ← llong, не long */
+    size_t npos = 0;
+
+    if (!fs2_pos_parse_llong(s, pos, &npos, &ll))
+        return false;
+
+    if (ll < SHRT_MIN || ll > SHRT_MAX)
+        return logsimpleerr(false, 
+            "Value %lld out of short range [%d, %d]", 
+            ll, SHRT_MIN, SHRT_MAX);
+
+    if (out)    
+        *out    = (short)ll;
+    if (newpos) 
+        *newpos = npos;
+    return true;
+}
+
