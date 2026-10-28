@@ -6746,3 +6746,220 @@ Test(fs2_api, tryparse_char_signature_matches) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * char in FS2_FMT / FS2_SER_ERRMSG
+ * ========================================================================= */
+
+Test(fs2_api, serialize_char_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    char c = 'A';                          /* ← именно char, не литерал */
+
+    long res = fs2_serialize(&dst, c);
+
+    CHECK_EQ("return 1 char", res, 1);
+    CHECK_STR_EQ("content", dst.v, "A");
+    CHECK_EQ("len", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_char_is_not_int) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    char c = 'A';
+
+    fs2_serialize(&dst, c);
+
+    /* Если _Generic выбрал %d вместо %c, получим "65" вместо "A".
+     * Этот тест — главный регресс на правильную ветку. */
+    CHECK_STR_EQ("is char not int", dst.v, "A");
+    CHECK_EQ("len is 1 not 2", dst.len, 1);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_char_space) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    char c = ' ';
+
+    fs2_serialize(&dst, c);
+
+    CHECK_STR_EQ("content", dst.v, " ");
+    CHECK_EQ("len", dst.len, 1);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_char_tab_newline) {
+    __fs2_checkreset();
+
+    fs2 s_tab = FS2();
+    fs2 s_nl  = FS2();
+    char tab = '\t';
+    char nl  = '\n';
+
+    fs2_serialize(&s_tab, tab);
+    fs2_serialize(&s_nl,  nl);
+
+    CHECK_STR_EQ("tab",     s_tab.v, "\t");
+    CHECK_EQ   ("tab len",  s_tab.len, 1);
+    CHECK_STR_EQ("newline", s_nl.v,  "\n");
+    CHECK_EQ   ("nl len",   s_nl.len, 1);
+
+    fs2_free(&s_tab);
+    fs2_free(&s_nl);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_char_non_ascii) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    char c = (char)0xE4;                   /* Latin-1 'ä' */
+
+    fs2_serialize(&dst, c);
+
+    /* %c пишет сырой байт — 0xE4 */
+    CHECK_EQ("len", dst.len, 1);
+    CHECK_EQ("byte", (unsigned char)dst.v[0], 0xE4u);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * from_new / serialize_concat — char варианты
+ * ========================================================================= */
+
+Test(fs2_api, from_new_char) {
+    __fs2_checkreset();
+    char c = 'Z';
+
+    fs2 s = fs2_from_new(c);
+
+    CHECK_STR_EQ("content", s.v, "Z");
+    CHECK_EQ("len", s.len, 1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_from_char) {
+    __fs2_checkreset();
+    char c = '!';
+
+    fs2 *h = fs2_heap_from(c);
+
+    CHECK_STR_EQ("content", h->v, "!");
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_concat_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("cmd:");
+    char c = 'X';
+
+    long res = fs2_serialize_concat(&s, c);
+
+    CHECK_EQ("return 1 char", res, 1);
+    CHECK_STR_EQ("appended", s.v, "cmd:X");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: построение строки посимвольно
+ * ========================================================================= */
+
+Test(fs2_api, composite_char_by_char_build) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* Собираем "hello" через serialize_concat по одному символу */
+    const char *word = "hello";
+    for (size_t i = 0; i < strlen(word); i++) {
+        char c = word[i];
+        fs2_serialize_concat(&s, c);
+    }
+
+    CHECK_STR_EQ("built", s.v, "hello");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_mixed_char_and_int) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    char   c  = '=';
+    int    n  = 42;
+
+    /* Типичный сценарий "key=42" — символ + число */
+    fs2_serialize_concat(&s, c);
+    fs2_serialize_concat(&s, n);
+
+    CHECK_STR_EQ("content", s.v, "=42");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_roundtrip_char) {
+    __fs2_checkreset();
+
+    /* char → fs2 → char, round-trip */
+    char original = 'Q';
+    fs2 s = fs2_from_new(original);
+    CHECK_EQ("len", s.len, 1);
+
+    char parsed = 0;
+    CHECK_TRUE("parse back", fs2_tryparse_char(&s, &parsed, false));
+    CHECK_EQ("round-trip", parsed, original);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Regression: character literal 'x' goes through int branch, not char
+ * ========================================================================= */
+
+Test(fs2_api, char_literal_goes_through_int_branch) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* В C 'x' имеет тип int. _Generic выберет int → %d → "120".
+     * Это НЕ баг, это стандарт C. Фиксируем поведение. */
+    fs2_serialize(&s, 'x');            /* int literal */
+    CHECK_STR_EQ("literal as int → decimal", s.v, "120");
+
+    fs2_free(&s);
+
+    /* Для char — переменная или явный каст */
+    fs2 s2 = FS2();
+    fs2_serialize(&s2, (char)'x');
+    CHECK_STR_EQ("cast to char → char", s2.v, "x");
+
+    fs2_free(&s2);
+    assert_balanced();
+}
