@@ -708,21 +708,20 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
 /* ─────────────────────────────────────────────────────────────────
  * String search API
  * ───────────────────────────────────────────────────────────────── */
-ptrdiff_t
-fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
-               size_t pos, size_t nth) {
-    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
-    
-    if (fs2_is_empty(pattern))   
-        return -1;   /* NULL v or len==0 */
-    if (nth == 0)                
-        return -1;
-    if (pos >= str->len)         
-        return -1;
+/* Тип функции поиска: haystack → позиция первого вхождения needle,
+ * или NULL если не найдено. Ровно как strstr/strcasestr. */
+typedef char *(*fs2_findfn_t)(const char *haystack,
+                                    const char *needle);
+
+static inline ptrdiff_t
+_fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
+                       size_t pos, size_t nth, fs2_findfn_t find) {
+    if (fs2_is_empty(pattern))       return -1;
+    if (nth == 0)                    return -1;
+    if (pos >= str->len)             return -1;
     
     size_t pat_len = pattern->len;
-    if (pat_len > str->len - pos)
-        return -1;
+    if (pat_len > str->len - pos)    return -1;
     
     const char *needle       = pattern->v;
     const char *haystack     = str->v + pos;
@@ -730,15 +729,27 @@ fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
     size_t      count        = 0;
     
     while (haystack <= haystack_end) {
-        const char *hit = strstr(haystack, needle);
-        if (!hit)
-            break;
-        
+        const char *hit = find(haystack, needle);
+        if (!hit) break;
         count++;
         if (count == nth) return (ptrdiff_t)(hit - str->v);
-        
-        haystack = hit + 1;   /* overlapping search */
+        haystack = hit + 1;
     }
-    
     return -1;
 }
+
+/* Публичные врапперы передают свой finder */
+ptrdiff_t
+fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
+               size_t pos, size_t nth) {
+    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
+    return _fs2_instr_posn_common(str, pattern, pos, nth, strstr);
+}
+
+ptrdiff_t
+fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
+                  size_t pos, size_t nth) {
+    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
+    return _fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
+}
+

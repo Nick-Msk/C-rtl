@@ -1193,6 +1193,23 @@ ptrdiff_t
 fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth);
 
+ /**
+ * @brief Case Insesitive Find the nth occurrence of @p pattern starting at @p pos.
+ *
+ * @param str      Haystack (must not be NULL, must have v != NULL).
+ * @param pattern  NUL-terminated needle (must not be NULL).
+ * @param pos      Start position (search begins here).
+ * @param nth      1-based occurrence number (1 = first, 0 = invalid).
+ * @return         Byte offset in @p str, or -1 if not found / invalid.
+ *
+ * @note Overlapping matches count separately: "aaa" / "aa" with nth=2
+ *       returns 1 (not -1), because "aa" occurs at positions 0 and 1.
+ * @note Empty pattern is invalid: returns -1.
+ */              
+ptrdiff_t
+fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
+                  size_t pos, size_t nth);               
+
 /* First occurrence from pos */
 static inline ptrdiff_t
 fs2_instr_from(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
@@ -1211,6 +1228,21 @@ fs2_instr(const fs2 *restrict str, const fs2 *restrict pattern) {
     return fs2_instr_posn(str, pattern, 0, 1);
 }
 
+/*  First occurrence from pos, case-insensitive */
+static inline ptrdiff_t
+fs2_instr_from_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
+    return fs2_instr_posn_ci(str, pattern, pos, 1);
+}
 
+/* Nth occurrence from start, case-insensitive */
+static inline ptrdiff_t
+fs2_instr_nth_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) {
+    return fs2_instr_posn_ci(str, pattern, 0, nth);
+}
+/* First occurrence from start, case-insensitive  */
+static inline ptrdiff_t
+fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
+    return fs2_instr_posn_ci(str, pattern, 0, 1);
+}
 
 #endif /* !FS2_API_H */
