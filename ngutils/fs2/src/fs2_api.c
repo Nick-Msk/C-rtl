@@ -705,3 +705,40 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * String search API
+ * ───────────────────────────────────────────────────────────────── */
+ptrdiff_t
+fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
+               size_t pos, size_t nth) {
+    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
+    
+    if (fs2_is_empty(pattern))   
+        return -1;   /* NULL v or len==0 */
+    if (nth == 0)                
+        return -1;
+    if (pos >= str->len)         
+        return -1;
+    
+    size_t pat_len = pattern->len;
+    if (pat_len > str->len - pos)
+        return -1;
+    
+    const char *needle       = pattern->v;
+    const char *haystack     = str->v + pos;
+    const char *haystack_end = str->v + str->len - pat_len;
+    size_t      count        = 0;
+    
+    while (haystack <= haystack_end) {
+        const char *hit = strstr(haystack, needle);
+        if (!hit)
+            break;
+        
+        count++;
+        if (count == nth) return (ptrdiff_t)(hit - str->v);
+        
+        haystack = hit + 1;   /* overlapping search */
+    }
+    
+    return -1;
+}
