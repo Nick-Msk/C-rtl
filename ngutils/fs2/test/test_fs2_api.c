@@ -7840,3 +7840,197 @@ Test(fs2_api, composite_split_by_occurrences) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_instr_posn_ci
+ * ========================================================================= */
+
+Test(fs2_api, instr_posn_ci_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("Hello World");
+    fs2 pat = FS2LITERAL("world");
+
+    CHECK_EQ("lower needle, upper haystack", 
+             fs2_instr_posn_ci(&s, &pat, 0, 1), 6);
+
+    fs2 pat_up = FS2LITERAL("WORLD");
+    CHECK_EQ("upper needle, mixed haystack",
+             fs2_instr_posn_ci(&s, &pat_up, 0, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Регресс: sensitive должен miss, CI — hit */
+Test(fs2_api, instr_posn_ci_vs_sensitive) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("Hello World");
+    fs2 pat = FS2LITERAL("world");
+
+    CHECK_EQ("sensitive miss", fs2_instr_posn(&s, &pat, 0, 1), -1);
+    CHECK_EQ("ci hit",         fs2_instr_posn_ci(&s, &pat, 0, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_ci_nth) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("AbCabcABC");   /* 3 варианта регистра */
+    fs2 pat = FS2LITERAL("abc");
+
+    CHECK_EQ("1st (AbC)", fs2_instr_posn_ci(&s, &pat, 0, 1), 0);
+    CHECK_EQ("2nd (abc)", fs2_instr_posn_ci(&s, &pat, 0, 2), 3);
+    CHECK_EQ("3rd (ABC)", fs2_instr_posn_ci(&s, &pat, 0, 3), 6);
+    CHECK_EQ("4th",       fs2_instr_posn_ci(&s, &pat, 0, 4), -1);
+    CHECK_EQ("nth=0",     fs2_instr_posn_ci(&s, &pat, 0, 0), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_ci_from) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcABCabc");
+    fs2 pat = FS2LITERAL("ABC");
+
+    CHECK_EQ("from 0", fs2_instr_posn_ci(&s, &pat, 0, 1), 0);
+    CHECK_EQ("from 1", fs2_instr_posn_ci(&s, &pat, 1, 1), 3);
+    CHECK_EQ("from 4", fs2_instr_posn_ci(&s, &pat, 4, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_ci_overlap) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("AAA");
+    fs2 pat = FS2LITERAL("aa");
+
+    CHECK_EQ("1st overlapping", fs2_instr_posn_ci(&s, &pat, 0, 1), 0);
+    CHECK_EQ("2nd overlapping", fs2_instr_posn_ci(&s, &pat, 0, 2), 1);
+    CHECK_EQ("3rd",             fs2_instr_posn_ci(&s, &pat, 0, 3), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_ci_pattern_too_long) {
+    __fs2_checkreset();
+    fs2 s     = fs2_fromstr("Hi");
+    fs2 p_long = FS2LITERAL("hello");
+    fs2 p_exact = FS2LITERAL("hi");
+
+    CHECK_EQ("too long",  fs2_instr_posn_ci(&s, &p_long,  0, 1), -1);
+    CHECK_EQ("exact len", fs2_instr_posn_ci(&s, &p_exact, 0, 1), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_ci_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s        = fs2_fromstr("hello");
+    fs2 p_empty  = FS2EMPTY;
+    fs2 p_canon  = FS2();   /* canonical empty */
+
+    CHECK_EQ("STATIC empty",    fs2_instr_posn_ci(&s, &p_empty, 0, 1), -1);
+    CHECK_EQ("canonical empty", fs2_instr_posn_ci(&s, &p_canon, 0, 1), -1);
+
+    fs2_free(&s);
+    fs2_free(&p_canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Sugar — _ci варианты
+ * ========================================================================= */
+
+Test(fs2_api, instr_ci_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("the QUICK brown FOX");
+    fs2 pq  = FS2LITERAL("quick");
+    fs2 pf  = FS2LITERAL("fox");
+    fs2 pn  = FS2LITERAL("cat");
+
+    CHECK_EQ("quick", fs2_instr_ci(&s, &pq), 4);
+    CHECK_EQ("fox",   fs2_instr_ci(&s, &pf), 16);
+    CHECK_EQ("cat",   fs2_instr_ci(&s, &pn), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_from_ci) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = FS2LITERAL("ABC");
+
+    CHECK_EQ("from 0", fs2_instr_from_ci(&s, &pat, 0), 0);
+    CHECK_EQ("from 1", fs2_instr_from_ci(&s, &pat, 1), 3);
+    CHECK_EQ("from 4", fs2_instr_from_ci(&s, &pat, 4), 6);
+    CHECK_EQ("from 7", fs2_instr_from_ci(&s, &pat, 7), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_nth_ci) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcABCabc");
+    fs2 pat = FS2LITERAL("AbC");
+
+    CHECK_EQ("nth 1", fs2_instr_nth_ci(&s, &pat, 1), 0);
+    CHECK_EQ("nth 2", fs2_instr_nth_ci(&s, &pat, 2), 3);
+    CHECK_EQ("nth 3", fs2_instr_nth_ci(&s, &pat, 3), 6);
+    CHECK_EQ("nth 4", fs2_instr_nth_ci(&s, &pat, 4), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: case-insensitive split
+ * ========================================================================= */
+
+Test(fs2_api, composite_split_ci) {
+    __fs2_checkreset();
+    
+    /* Парсим "KEY=Value=With=Equals" — insensitive на '=' (нет разницы)
+     * Но для реального кейса: ключ-значение с любым регистром ключа */
+    fs2 line   = fs2_fromstr("Content-Type: text/html");
+    fs2 sep    = FS2LITERAL(":");
+    
+    ptrdiff_t colon = fs2_instr(&line, &sep);
+    CHECK_EQ("colon at", colon, 12);
+    
+    fs2 key = fs2_substr_new(&line, 0, 12);
+    fs2_substr(&key, 0, 12);
+    /* Проверим insensitive-сравнение: "content-type" == "Content-Type" */
+    fs2 expected_key = FS2LITERAL("content-type");
+    CHECK_EQ("key ci match", fs2_icmp(&key, &expected_key), 0);
+    
+    fs2_free(&key);
+    fs2_free(&line);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_find_all_ci) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aXbxcXC");     /* хотим найти все 'x' в любом регистре */
+    fs2 pat = FS2LITERAL("x");
+
+    size_t pos   = 0;
+    int    count = 0;
+    ptrdiff_t hit;
+
+    while ((hit = fs2_instr_from_ci(&s, &pat, pos)) >= 0) {
+        count++;
+        pos = (size_t)hit + 1;
+    }
+
+    CHECK_EQ("found 3 'x' variants", count, 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
