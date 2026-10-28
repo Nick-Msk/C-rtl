@@ -7278,3 +7278,114 @@ Test(fs2_api, composite_parse_short_range_validation) {
     fs2_free(&line);
     assert_balanced();
 }
+
+/* =========================================================================
+ * short / unsigned short in FS2_FMT / FS2_SER_ERRMSG
+ * ========================================================================= */
+
+Test(fs2_api, serialize_short_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    short s_val = 42;
+
+    long res = fs2_serialize(&dst, s_val);
+
+    CHECK_EQ("return", res, 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_short_negative) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    short s_val = -1234;
+
+    fs2_serialize(&dst, s_val);
+
+    CHECK_STR_EQ("content", dst.v, "-1234");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* ⚠ Главный тест: ловит %hhd (signed char) вместо %hd (short).
+ * Для SHRT_MAX=32767: %hd даст "32767", %hhd даст "-1". */
+Test(fs2_api, serialize_short_boundaries) {
+    __fs2_checkreset();
+
+    fs2 s_max = FS2();
+    fs2 s_min = FS2();
+    short v_max = SHRT_MAX;   /* 32767 */
+    short v_min = SHRT_MIN;   /* -32768 */
+
+    fs2_serialize(&s_max, v_max);
+    fs2_serialize(&s_min, v_min);
+
+    CHECK_STR_EQ("SHRT_MAX", s_max.v, "32767");
+    CHECK_STR_EQ("SHRT_MIN", s_min.v, "-32768");
+    CHECK_EQ("max len", s_max.len, 5);
+    CHECK_EQ("min len", s_min.len, 6);
+    CHECK_FS2VALID(1, &s_max);
+    CHECK_FS2VALID(2, &s_min);
+
+    fs2_free(&s_max);
+    fs2_free(&s_min);
+    assert_balanced();
+}
+
+Test(fs2_api, serialize_ushort_basic) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    unsigned short us_val = 42;
+
+    fs2_serialize(&dst, us_val);
+
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* ⚠ Главный тест: ловит %hhu (unsigned char) вместо %hu (unsigned short).
+ * Для USHRT_MAX=65535: %hu даст "65535", %hhu даст "255". */
+Test(fs2_api, serialize_ushort_max) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    unsigned short us_val = USHRT_MAX;   /* 65535 */
+
+    fs2_serialize(&dst, us_val);
+
+    CHECK_STR_EQ("USHRT_MAX", dst.v, "65535");
+    CHECK_EQ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* Sanity: short vs unsigned short с одинаковым числовым значением 
+ * в зоне пересечения — вывод одинаковый (оба "42"), но это разные ветки. */
+Test(fs2_api, serialize_short_vs_ushort_same_value) {
+    __fs2_checkreset();
+
+    fs2 s_signed   = FS2();
+    fs2 s_unsigned = FS2();
+    short          v_s = 42;
+    unsigned short v_u = 42;
+
+    fs2_serialize(&s_signed,   v_s);
+    fs2_serialize(&s_unsigned, v_u);
+
+    CHECK_STR_EQ("signed",   s_signed.v,   "42");
+    CHECK_STR_EQ("unsigned", s_unsigned.v, "42");
+
+    fs2_free(&s_signed);
+    fs2_free(&s_unsigned);
+    assert_balanced();
+}

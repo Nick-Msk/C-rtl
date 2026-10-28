@@ -1052,10 +1052,12 @@ fs2_parse_short(const fs2 *restrict s) {
 #define FS2_FMT(v) _Generic((v),\
     char:               "%c",   \
     signed char:        "%hhd", \
-    unsigned char:      "%hhu",                     \
+    unsigned char:      "%hhu", \
+    short:              "%hd",  \
     int:                "%d",   \
     long:               "%ld",  \
     long long:          "%lld", \
+    unsigned short:     "%hu",  \
     unsigned:           "%u",   \
     unsigned long:      "%lu",  \
     unsigned long long: "%llu", \
@@ -1069,9 +1071,11 @@ fs2_parse_short(const fs2 *restrict s) {
     char:               "Failed to serialize char %c",                      \
     signed char:        "Failed to serialize signed char %hhd",             \
     unsigned char:      "Failed to serialize unsigned char %hhu",           \
+    short:              "Failed to serialize short %hd",                    \
     int:                "Failed to serialize int %d",                       \
     long:               "Failed to serialize long %ld",                     \
     long long:          "Failed to serialize long long %lld",               \
+    unsigned short:     "Failed to serialize unsigned short %hu",           \
     unsigned:           "Failed to serialize unsigned %u",                  \
     unsigned long:      "Failed to serialize unsigned long %lu",            \
     unsigned long long: "Failed to serialize unsigned long long %llu",      \
