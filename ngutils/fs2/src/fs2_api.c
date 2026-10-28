@@ -5,6 +5,9 @@
  */
 
 #include "fs2_api.h"
+#include <locale.h>
+
+// Utilities
 
 /**
  * @brief Reverse the string in place.
@@ -604,6 +607,42 @@ fs2_pos_parse_uint(const fs2 *restrict s, size_t pos,
         *out = (unsigned)ul;
     if (newpos)
         *newpos = npos;
+
+    return true;
+}
+
+bool 
+fs2_pos_parse_double(const fs2 *restrict s, size_t pos, 
+                     size_t *restrict newpos, double *restrict out) {
+    if (!s || !s->v || pos >= s->len) 
+        return logsimpleerr(false, "Null input or pos %zu out of length", pos);
+
+    const char *base  = s->v + pos;
+    const char *start = skip_spaces(base);
+    
+    if (*start == '\0') 
+        return logsimpleerr(false, "Only spaces detected");
+
+    /* Принимаем цифру, точку, знак, а также буквы для nan/inf */
+    unsigned char c = (unsigned char)*start;
+    if (!isdigit(c) && c != '.' && c != '+' && c != '-' &&
+        c != 'i' && c != 'I' && c != 'n' && c != 'N')
+        return logsimpleerr(false, "Incorrect sym detected [%c]", c);
+
+    char *endptr = NULL;
+    errno = 0;
+    
+    double val = strtod(start, &endptr);
+
+    if (errno == ERANGE || endptr == start)
+        return logsimpleerr(false, 
+            "Overflow or no digits (errno=%d, consumed=%td)", 
+            errno, endptr - start);
+
+    if (out)
+        *out = val;
+    if (newpos)
+        *newpos = pos + (size_t)(endptr - base);
 
     return true;
 }

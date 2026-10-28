@@ -817,6 +817,9 @@ fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos, size_t *restrict newpos, 
 extern bool 
 fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, size_t *restrict newpos, unsigned *restrict out);
 
+extern bool 
+fs2_pos_parse_double(const fs2 *restrict s, size_t pos, size_t *restrict newpos, double *restrict out);
+
 /**
  * @brief Parse the whole string (or prefix) into an int/long.
  * @param strict  If true, `newpos` MUST exactly equal `s->len` (no trailing spaces/garbage).
@@ -901,6 +904,19 @@ fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
     return true;
 }
 
+static inline bool 
+fs2_tryparse_double(const fs2 *restrict s, double *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_double(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+        
+    return true;
+}
 
 /**
  * @brief Parse int/long, raising a user error (SIGINT) on failure. Non-strict.
@@ -962,6 +978,16 @@ fs2_parse_int(const fs2 *restrict s) {
     if (!fs2_tryparse_int(s, &out, false))
         userraise(-1, ERR_UNABLE_PARSE_DATA, 
               "Failed to parse int from string: '%.15s'", 
+              (s && s->v) ? s->v : "(null)");
+    return out;
+}
+
+static inline double
+fs2_parse_double(const fs2 *restrict s) {
+    double out = 0.0;
+    if (!fs2_tryparse_double(s, &out, false))
+        userraise(-1, ERR_UNABLE_PARSE_DATA, 
+              "Failed to parse double from string: '%.40s'", 
               (s && s->v) ? s->v : "(null)");
     return out;
 }
