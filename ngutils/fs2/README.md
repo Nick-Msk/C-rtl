@@ -12,6 +12,9 @@ struct records *who owns what*, and the caller decides.
 
 Depends on `common`, `error`, `log`, `bool`, `checker`.
 
+**Requires C23** (`-std=gnu2x`) and `-D_GNU_SOURCE` for POSIX extensions 
+(`strcasestr`, `strtod_l`).
+
 ## Design: two orthogonal axes
 
 Every `fs2` value is described by **two independent flags**:
@@ -28,11 +31,6 @@ Every `fs2` value is described by **two independent flags**:
 exactly one is set. `FS2_BODYALLOC` is **independent** — it can combine
 with any of the three.
 
-Plus two state flags, orthogonal to both:
-
-- `FS2_CONST` — reserved for future const-correctness.
-- `FS2_DEFUNCT` — moved out; only `fs2_free` / assignment is valid.
-
 ### Full combination table
 
 | Flags | What it means | `fs2_free` releases |
@@ -45,415 +43,168 @@ Plus two state flags, orthogonal to both:
 | `ALLOC \| BODYALLOC` | everything on heap | `free(string)`, `free(struct)` |
 
 This is what "symmetric API" means in this project: every value
-operation (`fs2_fromstr`, `fs2_clone`, `fs2_substr_new`, ...) has a
-matching heap-body variant (`fs2_heap_fromstr`, `fs2_heap_clone`,
-`fs2_heap_substr`, ...), and both accept any string-axis.
+operation has a matching heap-body variant, and both accept any
+string-axis.
 
 ## Value macros
 
 | Macro | Result |
 |---|---|
-| `FS2()` | empty growable (`ALLOC`, no capacity yet) |
-| `FS2EMPTY` | empty read-only (`STATIC`, `""`) |
+| `FS2()` | empty growable (`ALLOC`, `v=NULL`, no capacity) |
+| `FS2EMPTY` | empty read-only (`STATIC`, `v=""`) |
 | `FS2LITERAL(s)` | wrap a compile-time string; `strlen` for free via `sizeof` |
 | `FS2LOCAL(buf)` | wrap a caller-owned `char[]` (fixed capacity) |
 | `FS2LOCALFILL(name, fmt, ...)` | same, but pre-filled via `snprintf` (VLA) |
+
+## Naming Conventions
+
+- **Base operations** use the shortest clear name: `fs2_chr`, `fs2_cat`, `fs2_instr`.
+- **Modifiers** are appended as suffixes:
+  - `_ci` — case-insensitive (`fs2_chr_ci`, `fs2_instr_ci`).
+  - `_nth` — k-th occurrence (`fs2_chr_nth`, k is 1-based).
+  - `_from` — start searching from a specific position (`fs2_instr_from`).
+  - `_posn` — return position explicitly (`fs2_instr_posn`).
+- **Heap constructors** use the `fs2_heap_*` prefix.
+- **Stack constructors** use `_new` suffix where necessary to distinguish from in-place mutators (`fs2_substr` vs `fs2_substr_new`).
 
 ## Architecture: Primitive vs Protected
 
 `fs2` deliberately splits into **two layers**:
 
 ### Primitive layer (`fs2.h`, `fs2_api.h`)
-
 Maximum speed, zero checks. Under `-DNDEBUG` **all** `invraise` calls
 compile to nothing. Passing `NULL`, out-of-range indices, or read-only
-buffers to mutators is UB — you asked for speed, you got it.
-
-Every `@pre` is documented in the header. If it says "src must not alias
-dst", that's a `restrict` contract you break at your own risk.
+buffers to mutators is UB — you asked for speed, you got it. Every
+`@pre` is documented in the header.
 
 ### Protected layer (`pfs2.h` — *planned*)
-
 Thin wrappers around the primitive layer that validate arguments via
-`userraise` (SIGINT) / `sysraise` (OOM). This is what application code
-should call. `pfs2_*` never has more overhead than a few branches, and
-in release builds (`-DNDEBUG`) it compiles down to the exact same
-machine code as the primitive layer.
+`userraise` (SIGINT) / `sysraise` (OOM). `pfs2_*` compiles down to the
+exact same machine code as the primitive layer in release builds.
 
 **Rule of thumb**: primitives assume the caller knows what they're
 doing. `pfs2` assumes the caller is human.
 
 ## Semantics worth knowing
 
-These behaviours look subtle but are pinned down by tests:
-
-### Canonical empty: `FS2()` has `v == NULL`
-
-Many operations treat `FS2()` (len=0, sz=0, v=NULL) as a valid empty
-string. `fs2_cat`, `fs2_substr`, `fs2_in` all handle it. Only
-`fs2_setlen(&s, pos)` with `pos > 0` on a NULL buffer is a hard error
-(it would mean "write NUL at v[pos]" with no buffer).
-
-### Finders never match `'\0'`
-
-`fs2_chr(&s, '\0')` returns `-1`, not `s->len`. This is `memchr`
-semantics — NUL is terminator, not content. Consistent across all
-eight `fs2_*chr*` functions.
-
-### `fs2_cpy` clears first, then appends
-
-Equivalent to `fs2_setlen(dst, 0); fs2_cat(dst, src);`. Self-copy
-(`fs2_cpy(&s, &s)`) is UB due to `restrict`.
-
-### `fs2_rpad`/`fs2_lpad` follow PostgreSQL
-
-```text
-rpad('hi', 5, 'xy') -> 'hixyx'
-rpad('hello', 2)    -> 'he'   (truncate right, keep left)
-lpad('hi', 5, 'xy') -> 'xyxhi'
-lpad('hello', 2)    -> 'he'
-```
-
-Empty `pad` does not extend (silently no-op).
-
-### `fs2_wrap(NULL)` is `FS2EMPTY`
-
-Wrapping a NULL C-string gives a valid read-only empty view. No crash,
-no special case at every call site.
+- **Canonical empty**: `FS2()` has `v == NULL`. Many operations treat this as a valid empty string. Only `fs2_setlen(&s, pos)` with `pos > 0` on a NULL buffer is a hard error.
+- **Finders never match `'\0'`**: `fs2_chr(&s, '\0')` returns `-1`. NUL is a terminator, not content (consistent with `memchr`).
+- **`fs2_cpy` clears first, then appends**: Equivalent to `fs2_setlen(dst, 0); fs2_cat(dst, src);`.
+- **`fs2_rpad`/`fs2_lpad` follow PostgreSQL**: `rpad('hello', 2) -> 'he'` (truncates from the right, keeps left). Empty `pad` does not extend.
+- **`fs2_wrap(NULL)` is `FS2EMPTY`**: Wrapping NULL gives a valid read-only empty view.
+- **Overlapping matches**: `fs2_instr_posn("aaa", "aa")` finds matches at 0 and 1 (like `grep -o`).
+- **Parsers & Locales**: `fs2_parse_double` uses `strtod` and respects the current `LC_NUMERIC` locale. Call `setlocale(LC_NUMERIC, "C")` if you need locale-independent parsing.
 
 ## API
 
-### Getters
+### Constructors (Value & Heap)
+Return an `fs2` by value (or `fs2 *` for heap). Free with `fs2_free`.
+- `fs2_init`, `fs2_fromstr`, `fs2_fromstrf`, `fs2_clone`, `fs2_wrap`
+- Substrings: `fs2_substr_new`, `fs2_left_new`, `fs2_right_new`, `fs2_slice` (view, zero-copy)
+- Transformations: `fs2_toupper_new`, `fs2_tolower_new`, `fs2_lpad_new`, `fs2_rpad_new`
+- Generators: `fs2_genrnd_new`
+- **Generic serializer**: `fs2_from_new(val)` (macro, uses `_Generic`, supports int, long, double, char, etc.)
+- All of the above have `fs2_heap_*` twins.
 
-All const-safe, no allocation:
+### Mutation (In-place)
+- Append: `fs2_cat`, `fs2_catstr`, `fs2_rev_catstr` (prepend)
+- Overwrite: `fs2_cpy`, `fs2_cpystr`
+- Substrings: `fs2_substr`, `fs2_left`, `fs2_right`
+- Padding: `fs2_lpad`, `fs2_rpad`, `fs2_lpadstr`, `fs2_rpadstr`
+- Case: `fs2_toupper`, `fs2_tolower`
+- Generate: `fs2_genrnd`
 
+### Formatting & Serialization
+- `fs2_sprintf(dst, fmt, ...)` — write from pos 0, updates len.
+- `fs2_sprintf_position(dst, pos, fmt, ...)` — write at pos, does NOT update len.
+- `fs2_sprintf_concat(dst, fmt, ...)` — append formatted text, updates len.
+- **Generic macros**: `fs2_serialize(dst, val)`, `fs2_serialize_concat(dst, val)`.
+
+### Finders — Characters
+All return `ptrdiff_t` (offset or `-1`).
+- `fs2_chr`, `fs2_nchr` (limited), `fs2_rchr` (reverse), `fs2_nrchr`
+- `_ci` suffix for case-insensitive (`fs2_chr_ci`, etc.)
+- `_nth` suffix for k-th occurrence (`fs2_chr_nth`, `fs2_rchr_nth`)
+
+### Finders — Substrings (Instr)
+`pattern` is a `const fs2 *`.
+- `fs2_instr(str, pattern)` — first occurrence.
+- `fs2_instr_from(str, pattern, pos)` — first from `pos`.
+- `fs2_instr_nth(str, pattern, nth)` — nth occurrence from start.
+- `fs2_instr_posn(str, pattern, pos, nth)` — base function (all params explicit).
+- `_ci` suffix for insensitive (`fs2_instr_ci`, `fs2_instr_posn_ci`, etc.).
+
+### Finders — Sets & Spans
+- `fs2_spn(s, pos, accept)` — length of prefix containing only `accept`.
+- `fs2_cspn(s, pos, reject)` — length of prefix containing none of `reject`.
+- `fs2_nonspace_span(s, pos)` — token until whitespace (`" \t\n\r\v\f"`).
+- `fs2_in(s, list)`, `fs2_notin(s, list)` — search NULL-terminated arrays (with `_ci` variants and `FS2_IN` macros).
+
+### Comparators
+- `fs2_cmp`, `fs2_ncmp`, `fs2_cmp_ci`, `fs2_ncmp_ci`
+- `fs2_cmpstr` (fs2 vs c-string)
+- `fs2_cmp_wrap`, `fs2_cmp_ci_wrap` (for `qsort`/`bsearch` via `void *`)
+- Binary search: `fs2_in_bsearch`, `fs2_in_bsearch_ci` (returns index or `-1`).
+
+### Parsers
+Three levels of abstraction:
+1. **`fs2_pos_parse_*(s, pos, &newpos, &out)`** — raw scanner, starts at `pos`, returns `bool`.
+2. **`fs2_tryparse_*(s, &out, strict)`** — parses from 0, `strict` requires consuming the whole string.
+3. **`fs2_parse_*(s)`** — calls `tryparse` in lenient mode, throws `userraise` on failure.
+
+Supported types: `int`, `long`, `llong`, `uint`, `ulong`, `ullong`, `short`, `ushort`, `double`, `char`.
+
+### Move & Destructor
+- `fs2_move(to, from)` — steals `from` into `to`, marks `from` DEFUNCT.
+- `fs2_free(s)` — releases buffer if `ALLOC`, struct if `BODYALLOC`. Idempotent.
+
+## Internal helpers
+Used by the API to prevent raw `memcpy` footguns.
 ```c
-size_t      fs2_len (const fs2 *s);
-size_t      fs2_sz  (const fs2 *s);
-char       *fs2_str (fs2 *s);
-const char *fs2_cstr(const fs2 *s);
-```
-
-### Predicates
-
-```c
-bool fs2_is_static   (const fs2 *s);
-bool fs2_is_local    (const fs2 *s);
-bool fs2_is_alloc    (const fs2 *s);
-bool fs2_is_bodyalloc(const fs2 *s);
-bool fs2_is_empty    (const fs2 *s);   /* len == 0 */
-bool fs2_is_null     (const fs2 *s);   /* s == NULL || v == NULL */
-```
-
-### Constructors — value
-
-Return an `fs2` by value. Free with `fs2_free` when done.
-
-| Function | Purpose |
-|---|---|
-| `fs2 fs2_init(size_t sz)` | growable, capacity `sz` (rounded up, min 16) |
-| `fs2 fs2_fromstr(const char *src)` | copy of a C-string |
-| `fs2 fs2_fromstrf(const char *fmt, ...)` | printf-formatted copy |
-| `fs2 fs2_clone(const fs2 *src)` | deep copy of any `fs2` |
-| `fs2 fs2_movefrom(fs2 *src)` | steal; `*src` becomes `DEFUNCT` |
-| `fs2 fs2_movefromstr(const char **from)` | steal a heap C-string |
-| `fs2 fs2_wrap(const char *str)` | zero-copy STATIC view (NULL -> empty) |
-| `fs2 fs2_substr_new(const fs2 *s, size_t from, size_t len)` | substring, clamped |
-| `fs2 fs2_left_new(const fs2 *s, size_t len)` | prefix |
-| `fs2 fs2_right_new(const fs2 *s, size_t len)` | suffix |
-| `fs2 fs2_toupper_new(const fs2 *s)` | clone + uppercase |
-| `fs2 fs2_tolower_new(const fs2 *s)` | clone + lowercase |
-| `fs2 fs2_genrnd_new(size_t len, char type)` | random string (`'a'`/`'A'`/`'0'`) |
-| `fs2 fs2_lpad_new(const fs2 *s, size_t len, const fs2 *pad)` | left pad (clone + pad) |
-| `fs2 fs2_rpad_new(const fs2 *s, size_t len, const fs2 *pad)` | right pad |
-
-### Constructors — heap
-
-Same operations, but the `fs2` struct itself is `malloc`-ed. Free with
-`fs2_free` (releases buffer, struct, or both per flags).
-
-Every `fs2_heap_*` twin of the value constructors exists:
-`fs2_heap_init`, `fs2_heap_fromstr`, `fs2_heap_fromstrf`,
-`fs2_heap_clone`, `fs2_heap_movefrom`, `fs2_heap_movefromstr`,
-`fs2_heap_substr`, `fs2_heap_left`, `fs2_heap_right`,
-`fs2_heap_toupper`, `fs2_heap_tolower`, `fs2_heap_genrnd`,
-`fs2_heap_lpad`, `fs2_heap_rpad`.
-
-### Mutation — append / overwrite
-
-| Function | Purpose |
-|---|---|
-| `fs2 *fs2_cat(fs2 *dst, const fs2 *src)` | append `src` |
-| `fs2 *fs2_catstr(fs2 *dst, const char *src)` | append C-string |
-| `fs2 *fs2_rev_catstr(fs2 *dst, const char *beginner)` | prepend C-string |
-| `fs2 *fs2_cpy(fs2 *dst, const fs2 *src)` | overwrite with `src` |
-| `fs2 *fs2_cpystr(fs2 *dst, const char *src)` | overwrite with C-string (NULL -> clear) |
-
-### Mutation — substrings
-
-| Function | Purpose |
-|---|---|
-| `fs2 *fs2_substr(fs2 *s, size_t from, size_t len)` | in-place; clamped |
-| `fs2 *fs2_left(fs2 *s, size_t len)` | keep first `len` bytes |
-| `fs2 *fs2_right(fs2 *s, size_t len)` | keep last `len` bytes |
-
-### Mutation — padding / case / random
-
-| Function | Purpose |
-|---|---|
-| `fs2 *fs2_lpad(fs2 *s, size_t len, const fs2 *pad)` | left pad (Postgres) |
-| `fs2 *fs2_rpad(fs2 *s, size_t len, const fs2 *pad)` | right pad (Postgres) |
-| `fs2 *fs2_lpadstr(fs2 *s, size_t len, const char *pad)` | C-string variant |
-| `fs2 *fs2_rpadstr(fs2 *s, size_t len, const char *pad)` | C-string variant |
-| `fs2 *fs2_toupper(fs2 *s)` | uppercase in place (UTF-8 safe) |
-| `fs2 *fs2_tolower(fs2 *s)` | lowercase in place (UTF-8 safe) |
-| `fs2 *fs2_genrnd(fs2 *s, size_t len, char type)` | random string |
-
-### Finders — characters
-
-All return `ptrdiff_t` (offset or `-1`). Never match `'\0'`.
-
-| Function | Search | Case | Limit |
-|---|---|---|---|
-| `fs2_chr` | first | sensitive | – |
-| `fs2_nchr` | first | sensitive | first `lim` |
-| `fs2_chr_ci` | first | insensitive | – |
-| `fs2_nchr_ci` | first | insensitive | first `lim` |
-| `fs2_rchr` | last | sensitive | – |
-| `fs2_nrchr` | last | sensitive | last `lim` |
-| `fs2_rchr_ci` | last | insensitive | – |
-| `fs2_nrchr_ci` | last | insensitive | last `lim` |
-
-Nth-occurrence variants (`_nth` suffix, `k` is 1-based):
-
-```text
-fs2_chr_nth(s, c, k)         fs2_rchr_nth(s, c, k)
-fs2_nchr_nth(s, c, k, lim)   fs2_nrchr_nth(s, c, k, lim)
-fs2_chr_ci_nth(s, c, k)        fs2_rchr_ci_nth(s, c, k)
-fs2_nchr_ci_nth(s, c, k, lim)  fs2_nrchr_ci_nth(s, c, k, lim)
-```
-
-Invariant: `fs2_chr_nth(s, c, 1) == fs2_chr(s, c)`.
-
-### Finders — arrays
-
-Search a NULL-terminated array of C-strings (full scan):
-
-```c
-bool fs2_in      (const fs2 *s, const char *restrict strs[]);
-bool fs2_notin   (const fs2 *s, const char *restrict strs[]);
-bool fs2_in_ci     (const fs2 *s, const char *restrict strs[]);   // case-insens
-bool fs2_not_in_ci (const fs2 *s, const char *restrict strs[]);
-```
-
-Variadic macros for ergonomics:
-
-```c
-FS2_IN     (&s, "apple", "banana", "cherry")
-fs2_in_ci    (&s, "apple", "banana", "cherry")
-FS2_NOT_IN (&s, "apple", "banana")
-FS2_NOT_IN_CI(&s, "apple", "banana")
-```
-
-### Formatting
-
-| Function | Purpose |
-|---|---|
-| `long fs2_sprintf(fs2 *s, const char *fmt, ...)` | write from pos 0, updates len |
-| `long fs2_sprintf_position(fs2 *s, size_t pos, const char *fmt, ...)` | raw writer, no len update |
-| `long fs2_vsprintf_position(fs2 *s, size_t pos, const char *fmt, va_list ap)` | va_list variant |
-
-`fs2_sprintf` returns the number of characters written, or negative on
-format error (len is left untouched in that case).
-
-### Move assignment
-
-```c
-fs2 *fs2_move(fs2 *to, fs2 *from);
-```
-
-`to <- from`, then `from -> DEFUNCT`. Frees whatever `to` held before.
-Safe on same pointer (`to == from` -> no-op).
-
-### Destructor
-
-```c
-void fs2_free(fs2 *s);
-```
-
-- No-op on `STATIC`, `LOCAL`, `DEFUNCT`.
-- Frees the buffer if `ALLOC`.
-- Frees the struct if `BODYALLOC`.
-- Idempotent for value cases.
-
-### Utilities
-
-| Function | Purpose |
-|---|---|
-| `fs2 *fs2_setlen(fs2 *s, size_t pos)` | set `len = pos`, write NUL at `v[pos]` |
-| `fs2 *fs2_clear(fs2 *s)` | shorthand for `fs2_setlen(s, 0)` |
-| `bool fs2_validate(FILE *out, const fs2 *s)` | check invariants; log to `out` + log |
-| `long fs_techfprint(FILE *out, const fs2 *s, const char *name)` | debug dump |
-
-## Internal helpers (used by the API, exposed for advanced users)
-
-Do not call these from application code unless you know why. They exist
-to keep `fs2_api.c` free of raw `memcpy`/`memmove` footguns.
-
-```c
-// Copy between strings (src must not alias dst — restrict).
-fs2 *fs2_memcpy    (fs2 *restrict dst, size_t dstpos,
-                    const fs2 *restrict src, size_t srcpos, size_t len);
-
-// Copy from C-string.
-fs2 *fs2_memcpy_str(fs2 *restrict dst, size_t dstpos,
-                    const char *restrict src, size_t len);
-
-// Move within or between strings (handles realloc + overlap).
-// src == NULL means "move inside dst".
-fs2 *fs2_memmove   (fs2 *dst, size_t dstpos,
-                    const fs2 *src, size_t srcpos, size_t len);
-
-// Sugar for in-place moves.
+fs2 *fs2_memcpy    (fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len);
+fs2 *fs2_memcpy_str(fs2 *dst, size_t dstpos, const char *src, size_t len);
+fs2 *fs2_memmove   (fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len);
 fs2 *fs2_selfmove  (fs2 *dst, size_t to, size_t from, size_t len);
-
-// Clamp from/len to a valid range for substring operations.
 void fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len);
 ```
 
-## Usage
-
-```c
-#include <fs2.h>
-#include <fs2_api.h>
-
-int main(void) {
-    fs2 greeting = FS2LITERAL("hello");
-    fs2 buffer = fs2_fromstr("world");
-
-    fs2_catstr(&buffer, "!");
-    // buffer == "world!"
-
-    fs2_cat(&buffer, &greeting);
-    // buffer == "world!hello"
-
-    fs2_rev_catstr(&buffer, ">>> ");
-    // buffer == ">>> world!hello"
-
-    fs2_substr(&buffer, 4, 5);
-    // buffer == "world"
-
-    fs2_free(&buffer);
-    return 0;
-}
-```
-
-Compile with:
-
-```text
-cc -std=gnu11 \
-   -Ipath/to/fs2/include \
-   -Ipath/to/common/include \
-   -Ipath/to/error/include \
-   -Ipath/to/log/include \
-   -Ipath/to/bool/include \
-   -Ipath/to/checker/include \
-   main.c \
-   -Lpath/to/build/debug -lfs2 -lerror -llog -lcommon -lbool -lchecker \
-   -o main
-```
-
-`REQUIRES` in `fs2/Makefile` maps to the `-I` / `-l` chain automatically
-when building inside `ngutils`.
-
 ## Status
 
-**0.1.0** — the primitive layer is feature-complete for common
-string work. What's in:
-
-- struct, flags, all value macros,
-- getters, predicates, validation, tech print,
-- all constructors (value + heap),
-- append / overwrite (`cat`, `cpy`, and string variants),
-- substrings (`substr`, `left`, `right`),
-- padding (`lpad`, `rpad`, Postgres semantics),
-- case conversion (UTF-8 safe),
-- random generator (3 modes),
-- character finders (8 base + 8 nth-occurrence),
-- array finders (`in`, `notin`, insensitive, variadic macros),
-- formatting (`sprintf` family with position),
-- internal `memcpy`/`memmove` wrappers.
+**0.2.0** — the primitive layer is feature-complete. What's in:
+- Struct, flags, macros, validation.
+- Full constructor/mutator suite (append, prepend, slice, pad, case).
+- Character & substring finders (forward, reverse, ci, nth).
+- Span scanning (`spn`, `cspn`, `nonspace_span`).
+- Array finders and binary search.
+- Generic serializers (`_Generic`) and serializers for all base types.
+- Parsers for all base types with strict/lenient modes.
+- Formatting (`sprintf`, `sprintf_concat`).
 
 **Not yet implemented**:
-
-- **Comparators** (`fs2_cmp`, `fs2_cmp_ci`, `fs2_ncmp`) — needed before
-  `bsearch` and sorting.
-- **Binary search finders** (`fs2_bsearch`, etc.) — depends on
-  comparators.
-- **Substring search** (`fs2_strstr`, `fs2_istrstr`).
-- **Sorting** (`fs2_sort` with custom comparator).
-- **Protected layer** (`pfs2.h`, `pfs2.c`) — wraps every primitive with
-  `userraise`/`sysraise` checks.
-- **Checked header** (`cfs2.h`) — header-only guards that compile out
-  under `-DNOINVARIANT` (alternative naming for the same idea).
+- **`pfs2.h` / `cfs2.h`** — protected / checked layers.
+- **`fs2_iter`** — stateful string iterator (tokenizer).
+- **`fs2_tok.h`** — specialized lexer for quotes/escapes.
+- **`fs2_regex` / `fs2_glob`** — separate libraries.
 
 ## Notes
-
-- **`fs2` is the unchecked layer.** No NULL checks in release builds, no
-  overflow checks, no "are you sure" questions. If you want guards,
-  include `cfs2.h`/`pfs2.h` (planned) or call `fs2_validate` yourself at
-  strategic points.
-- **`invraise` is debug-only.** It expands to nothing under `-DNDEBUG`.
-  `userraise` and `sysraise` survive in release (they signal real user
-  errors or OOM), and `err_raise` is `__attribute__((noreturn))`.
-- **OOM is not fatal-by-abort.** Allocation failures route through
-  `sysraise(...)`, so an enclosing `TRY()` can catch them, or the
-  process raises `SIGINT` and produces a core dump.
-- **Minimum allocation** is `FS2_MIN_ALLOC` (16 bytes). Growth uses a
-  power-of-two policy (`calcnewsize(SIZE_POWER2, ...)`).
-- **`restrict` is everywhere it matters.** `fs2_cat(&s, &s)` and
-  `fs2_cpy(&s, &s)` are UB. If you need to append a string to itself,
-  clone it first.
-- **Byte counters** (`g_alloc_cnt`, `g_free_cnt`, `g_alloc_body_cnt`,
-  `g_free_body_cnt`) are `atomic_int`, exposed via
-  `fs2_checkleak(...)` for test harnesses.
-- **UTF-8 is bytes, not characters.** `fs2_toupper`/`fs2_tolower` use
-  `tolower((unsigned char)c)` which only affects ASCII in the C locale.
-  Multi-byte UTF-8 is preserved verbatim (no corruption, no
-  transformation).
+- **`invraise` is debug-only.** It expands to nothing under `-DNDEBUG`. `userraise` and `sysraise` survive in release.
+- **OOM is not fatal-by-abort.** Allocation failures route through `sysraise(...)`, allowing `TRY()` to catch them.
+- **Minimum allocation** is `FS2_MIN_ALLOC` (16 bytes).
+- **`restrict` is everywhere it matters.** `fs2_cat(&s, &s)` is UB. Clone first.
+- **UTF-8 is bytes, not characters.** `fs2_toupper`/`fs2_tolower` use `tolower((unsigned char)c)` which only affects ASCII.
+- **CI workaround**: release build uses `-Wno-error=format-truncation` for GCC 13+ due to a false positive in `_FORTIFY_SOURCE=3` (GCC Bugzilla #102218).
 
 ## Development
-
-Uses [Criterion](https://criterion.readthedocs.io/) for unit tests.
-Runs under ASan+UBSan on Linux (Docker) and native on macOS.
-
+Uses [Criterion](https://criterion.readthedocs.io/) for unit tests. Runs under ASan+UBSan on Linux (Docker) and native on macOS.
 ```text
 make test             # build and run tests
 make lib              # debug library
 make librelease       # release library
 make check            # clang-tidy
 make analyze          # clang static analyzer
-make clean
 ```
 
-CI (`.github/workflows/ci.yml`) runs a matrix:
-
-| Job | Compiler | Sanitizer |
-|---|---|---|
-| `test (clang)` | clang | – |
-| `test (gcc)` | gcc | – |
-| `sanitize (lsan)` | clang | ASan + LeakSanitizer |
-| `sanitize (ubsan)` | clang | ASan + UBSan |
-
-Sanitizer jobs are clang-only — reference implementation, tighter
-diagnostics than GCC's port.
-
-**Known CI workaround**: release build passes
-`-Wno-error=format-truncation` to work around a false positive in
-GCC 13+ `_FORTIFY_SOURCE=3` builds (GCC Bugzilla #102218).
-
 ### Layout
-
 ```text
 .
 ├── include/
@@ -468,12 +219,10 @@ GCC 13+ `_FORTIFY_SOURCE=3` builds (GCC Bugzilla #102218).
 │   └── test_fs2.h      shared helpers
 ├── build/              artifacts (gitignored)
 ├── logs/               test logs (gitignored)
-├── Makefile            PROJNAME + REQUIRES
-├── README.md
+├── Makefile
 └── CHANGELOG.md
 ```
 
 ## License
-
 See the top-level `LICENSE` file.
 
