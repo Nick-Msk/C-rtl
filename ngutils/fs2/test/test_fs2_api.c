@@ -7389,3 +7389,95 @@ Test(fs2_api, serialize_short_vs_ushort_same_value) {
     fs2_free(&s_unsigned);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_tryparse_ushort / fs2_parse_ushort — minimal coverage
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_ushort_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    unsigned short out = 0;
+
+    CHECK_TRUE("parse", fs2_tryparse_ushort(&s, &out, true));
+    CHECK_EQ("val", out, 42);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort_max_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("65535");   /* USHRT_MAX */
+    unsigned short out = 0;
+
+    CHECK_TRUE("USHRT_MAX ok", fs2_tryparse_ushort(&s, &out, true));
+    CHECK_EQ("val", out, USHRT_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort_overflow_plus_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("65536");   /* USHRT_MAX + 1 */
+    unsigned short out = 0;
+
+    CHECK_FALSE("USHRT_MAX+1 rejected", fs2_tryparse_ushort(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    unsigned short out = 0;
+
+    /* strtoull("-1") = ULLONG_MAX, но pos_parse_ullong отвергает минус */
+    CHECK_FALSE("negative rejected", fs2_tryparse_ushort(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42xyz");
+    unsigned short out = 0;
+
+    CHECK_TRUE ("lenient", fs2_tryparse_ushort(&s, &out, false));
+    CHECK_EQ   ("val", out, 42);
+    CHECK_FALSE("strict rejects trailing", fs2_tryparse_ushort(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0");
+    unsigned short out = 99;
+
+    CHECK_TRUE("zero ok", fs2_tryparse_ushort(&s, &out, true));
+    CHECK_EQ("val", out, 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ushort_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1234");
+
+    CHECK_EQ("parsed", fs2_parse_ushort(&s), 1234);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ushort_overflow_aborts, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("70000");   /* > USHRT_MAX */
+    fs2_parse_ushort(&s);
+    fs2_free(&s);
+}
