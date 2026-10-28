@@ -7058,3 +7058,223 @@ Test(fs2_api, serialize_uint8_via_uchar) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_short — boundary checks
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    short out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_short(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 12345);
+    CHECK_EQ("newpos", newpos, 5);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_max_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("32767");   /* SHRT_MAX */
+    short out = 0;
+
+    CHECK_TRUE("SHRT_MAX ok", fs2_pos_parse_short(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, SHRT_MAX);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_min_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-32768");   /* SHRT_MIN */
+    short out = 0;
+
+    CHECK_TRUE("SHRT_MIN ok", fs2_pos_parse_short(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, SHRT_MIN);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_overflow_plus_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("32768");   /* SHRT_MAX + 1 */
+    short out = 0;
+
+    CHECK_FALSE("SHRT_MAX + 1 rejected", fs2_pos_parse_short(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_underflow_minus_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-32769");   /* SHRT_MIN - 1 */
+    short out = 0;
+
+    CHECK_FALSE("SHRT_MIN - 1 rejected", fs2_pos_parse_short(&s, 0, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_far_beyond) {
+    __fs2_checkreset();
+    fs2 s_big  = fs2_fromstr("1000000");
+    fs2 s_neg  = fs2_fromstr("-1000000");
+    short out = 0;
+
+    /* Влезает в long, но не в short */
+    CHECK_FALSE("1M rejected",   fs2_pos_parse_short(&s_big, 0, NULL, &out));
+    CHECK_FALSE("-1M rejected",  fs2_pos_parse_short(&s_neg, 0, NULL, &out));
+
+    fs2_free(&s_big);
+    fs2_free(&s_neg);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_just_inside_bounds) {
+    __fs2_checkreset();
+    
+    /* Границы: SHRT_MAX-1 и SHRT_MIN+1 — должны проходить */
+    fs2 s_hi = fs2_fromstr("32766");
+    fs2 s_lo = fs2_fromstr("-32767");
+    short out = 0;
+
+    CHECK_TRUE("32766 ok",  fs2_pos_parse_short(&s_hi, 0, NULL, &out));
+    CHECK_EQ   ("val", out, (short)32766);
+    CHECK_TRUE("-32767 ok", fs2_pos_parse_short(&s_lo, 0, NULL, &out));
+    CHECK_EQ   ("val", out, (short)-32767);
+
+    fs2_free(&s_hi);
+    fs2_free(&s_lo);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0");
+    short out = 99;
+
+    CHECK_TRUE("zero ok", fs2_pos_parse_short(&s, 0, NULL, &out));
+    CHECK_EQ("val", out, 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tryparse_short / fs2_parse_short
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_short_strict_vs_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    short out = 0;
+
+    CHECK_TRUE ("lenient",       fs2_tryparse_short(&s, &out, false));
+    CHECK_EQ   ("val", out, 42);
+    CHECK_FALSE("strict rejects", fs2_tryparse_short(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_short_overflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("32768");
+    short out = 0;
+
+    CHECK_FALSE("strict overflow", fs2_tryparse_short(&s, &out, true));
+    CHECK_FALSE("lenient overflow", fs2_tryparse_short(&s, &out, false));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_short_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1234");
+
+    CHECK_EQ("parsed", fs2_parse_short(&s), (short)-1234);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_short_fails_userraise, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_parse_short(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_short_overflow_aborts, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("40000");   /* > SHRT_MAX */
+    fs2_parse_short(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Цепочка int → short: одно значение, разные результаты
+ * ========================================================================= */
+
+Test(fs2_api, short_vs_int_chain) {
+    __fs2_checkreset();
+    
+    fs2 s_big = fs2_fromstr("100000");   /* > SHRT_MAX, < INT_MAX */
+    
+    short s_out = 0;
+    int   i_out = 0;
+    
+    CHECK_FALSE("short rejects", fs2_tryparse_short(&s_big, &s_out, true));
+    CHECK_TRUE ("int accepts",   fs2_tryparse_int  (&s_big, &i_out, true));
+    CHECK_EQ   ("int val",       i_out, 100000);
+    
+    fs2_free(&s_big);
+    assert_balanced();
+}
+
+Test(fs2_api, short_vs_long_chain) {
+    __fs2_checkreset();
+    
+    fs2 s = fs2_fromstr("32768");   /* SHRT_MAX + 1, но влезает в long */
+    
+    short s_out = 0;
+    long  l_out = 0;
+    
+    CHECK_FALSE("short rejects", fs2_tryparse_short(&s, &s_out, true));
+    CHECK_TRUE ("long accepts",  fs2_tryparse_long (&s, &l_out, true));
+    CHECK_EQ   ("long val",      l_out, 32768L);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: short в реальном коде
+ * ========================================================================= */
+
+Test(fs2_api, composite_parse_short_range_validation) {
+    __fs2_checkreset();
+    
+    /* Сценарий: парсим "temperature=25" и валидируем диапазон [-40, 80] */
+    fs2 line = fs2_fromstr("temperature=25");
+    
+    ptrdiff_t eq = fs2_chr(&line, '=');
+    CHECK_TRUE("eq found", eq >= 0);
+    
+    size_t newpos = 0;
+    short  temp   = 0;
+    CHECK_TRUE("parse", 
+               fs2_pos_parse_short(&line, (size_t)eq + 1, &newpos, &temp));
+    CHECK_EQ("temp", temp, 25);
+    CHECK_TRUE("in [-40, 80]", temp >= -40 && temp <= 80);
+    
+    fs2_free(&line);
+    assert_balanced();
+}
