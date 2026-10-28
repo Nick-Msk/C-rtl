@@ -639,7 +639,7 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos,
             ll_val, LONG_MIN, LONG_MAX);
 
     if (out)    
-        *out    = (long)ll_val;
+        *out    = (long) ll_val;
     if (newpos) 
         *newpos = npos;
 
@@ -660,19 +660,19 @@ fs2_pos_parse_long(const fs2 *restrict s, size_t pos,
 bool 
 fs2_pos_parse_int(const fs2 *restrict s, size_t pos, 
                   size_t *restrict newpos, int *restrict out) {
-    long   l_val = 0;
-    size_t npos  = 0;
+    long long   ll_val = 0;
+    size_t      npos  = 0;
 
-    if (!fs2_pos_parse_long(s, pos, &npos, &l_val))
+    if (!fs2_pos_parse_llong(s, pos, &npos, &ll_val))
         return false;
 
-    if (l_val < INT_MIN || l_val > INT_MAX)
+    if (ll_val < INT_MIN || ll_val > INT_MAX)
         return logsimpleerr(false, 
-            "Value %ld out of int range [%d, %d]", 
-            l_val, INT_MIN, INT_MAX);
+            "Value %lld out of int range [%d, %d]", 
+            ll_val, INT_MIN, INT_MAX);
 
     if (out)    
-        *out    = (int)l_val;
+        *out    = (int) ll_val;
     if (newpos) 
         *newpos = npos;
 
