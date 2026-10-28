@@ -1064,8 +1064,8 @@ fs2_parse_short(const fs2 *restrict s) {
 }
 
 static inline unsigned short 
-fs2_parse_short(const fs2 *restrict s) {
-    short out = 0;
+fs2_parse_ushort(const fs2 *restrict s) {
+    unsigned short out = 0;
     if (!fs2_tryparse_ushort(s, &out, false))
         userraise(-1, ERR_UNABLE_PARSE_DATA, 
               "Failed to parse unsigned short from string: '%.40s'", 
