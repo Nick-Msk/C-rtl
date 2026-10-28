@@ -683,3 +683,25 @@ fs2_pos_parse_short(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+bool 
+fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos, 
+                     size_t *restrict newpos, unsigned short *restrict out) {
+    unsigned long long  ull   = 0;
+    size_t              npos = 0;
+
+    if (!fs2_pos_parse_ulong(s, pos, &npos, &ull))
+        return false;
+
+    if (ull > USHRT_MAX)
+        return logsimpleerr(false, 
+            "Value %llu out of unsigned short range [0, %u]", 
+            ull, USHRT_MAX);
+
+    if (out)    
+        *out    = (unsigned short) ull;
+    if (newpos) 
+        *newpos = npos;
+
+    return true;
+}
+
