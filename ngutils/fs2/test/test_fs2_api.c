@@ -6463,3 +6463,286 @@ Test(fs2_api, composite_parse_double_from_json) {
     fs2_free(&json);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_char
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    char out = 0;
+    size_t newpos = 0;
+
+    CHECK_TRUE("parse", fs2_pos_parse_char(&s, 0, &newpos, &out));
+    CHECK_EQ("val", out, 'a');
+    CHECK_EQ("newpos", newpos, 1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_sequential) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xyz");
+    char out = 0;
+    size_t pos = 0;
+
+    /* Парсим посимвольно — типичный сценарий для токенизации */
+    CHECK_TRUE ("x", fs2_pos_parse_char(&s, pos, &pos, &out));
+    CHECK_EQ   ("val", out, 'x');
+    CHECK_TRUE ("y", fs2_pos_parse_char(&s, pos, &pos, &out));
+    CHECK_EQ   ("val", out, 'y');
+    CHECK_TRUE ("z", fs2_pos_parse_char(&s, pos, &pos, &out));
+    CHECK_EQ   ("val", out, 'z');
+    CHECK_FALSE("eof", fs2_pos_parse_char(&s, pos, &pos, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_out_of_range) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+    char out = 0;
+
+    CHECK_FALSE("pos == len",   fs2_pos_parse_char(&s, 2, NULL, &out));
+    CHECK_FALSE("pos > len",    fs2_pos_parse_char(&s, 5, NULL, &out));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tryparse_char — strict/lenient
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_char_lenient_accepts_space) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(" abc");
+    char out = 0;
+
+    CHECK_TRUE("lenient space", fs2_tryparse_char(&s, &out, false));
+    CHECK_EQ("val is space", out, ' ');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_lenient_accepts_tab) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\tabc");
+    char out = 0;
+
+    CHECK_TRUE("lenient tab", fs2_tryparse_char(&s, &out, false));
+    CHECK_EQ("val is tab", out, '\t');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_lenient_accepts_newline) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\nabc");
+    char out = 0;
+
+    CHECK_TRUE("lenient newline", fs2_tryparse_char(&s, &out, false));
+    CHECK_EQ("val is newline", out, '\n');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_rejects_space) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(" X");
+    char out = 0;
+
+    CHECK_FALSE("strict rejects space", fs2_tryparse_char(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_rejects_tab) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\tX");
+    char out = 0;
+
+    CHECK_FALSE("strict rejects tab", fs2_tryparse_char(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_rejects_newline) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("\nX");
+    char out = 0;
+
+    CHECK_FALSE("strict rejects newline", fs2_tryparse_char(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_rejects_all_isspace) {
+    __fs2_checkreset();
+
+    /* Все шесть isspace-символов: ' ', \t, \n, \v, \f, \r */
+    const char ws[] = { ' ', '\t', '\n', '\v', '\f', '\r' };
+    for (size_t i = 0; i < sizeof(ws); i++) {
+        char buf[2] = { ws[i], '\0' };
+        fs2 s = fs2_fromstr(buf);
+        char out = 0;
+
+        CHECK_FALSE("strict rejects isspace", 
+                    fs2_tryparse_char(&s, &out, true));
+
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_accepts_nonspace) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("X");
+    char out = 0;
+
+    CHECK_TRUE("strict accepts 'X'", fs2_tryparse_char(&s, &out, true));
+    CHECK_EQ("val", out, 'X');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_accepts_digit) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("5");
+    char out = 0;
+
+    CHECK_TRUE("strict accepts digit", fs2_tryparse_char(&s, &out, true));
+    CHECK_EQ("val", out, '5');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_accepts_sign) {
+    __fs2_checkreset();
+    fs2 s_plus  = fs2_fromstr("+");
+    fs2 s_minus = fs2_fromstr("-");
+    char out = 0;
+
+    /* '+' и '-' не пробельные — проходят strict */
+    CHECK_TRUE("strict '+'", fs2_tryparse_char(&s_plus, &out, true));
+    CHECK_EQ("val", out, '+');
+
+    CHECK_TRUE("strict '-'", fs2_tryparse_char(&s_minus, &out, true));
+    CHECK_EQ("val", out, '-');
+
+    fs2_free(&s_plus);
+    fs2_free(&s_minus);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_accepts_non_ascii) {
+    __fs2_checkreset();
+    /* UTF-8 lead byte 0xC3 — не isspace в C locale */
+    fs2 s = fs2_fromstr("\xC3\xA4");
+    char out = 0;
+
+    CHECK_TRUE("strict accepts non-ascii", fs2_tryparse_char(&s, &out, true));
+    CHECK_EQ("val is 0xC3", out, (char)0xC3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_empty_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+    char out = 0;
+
+    CHECK_FALSE("empty lenient", fs2_tryparse_char(&s, &out, false));
+    CHECK_FALSE("empty strict",  fs2_tryparse_char(&s, &out, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    char out = 0;
+
+    CHECK_FALSE("canonical empty", fs2_tryparse_char(&s, &out, false));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+
+    CHECK_TRUE ("lenient with NULL out", fs2_tryparse_char(&s, NULL, false));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_parse_char — raises on empty
+ * ========================================================================= */
+
+Test(fs2_api, parse_char_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Z");
+
+    CHECK_EQ("parsed", fs2_parse_char(&s), 'Z');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_char_space_is_valid_lenient) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(" x");
+
+    /* fs2_parse_char — lenient, пробел валиден */
+    CHECK_EQ("parsed", fs2_parse_char(&s), ' ');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_char_empty_aborts, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("");
+    fs2_parse_char(&s);
+    fs2_free(&s);
+}
+
+Test(fs2_api, parse_char_canonical_empty_aborts, .signal = SIGINT) {
+    fs2 s = FS2();
+    fs2_parse_char(&s);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Signature compatibility for container dispatcher
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_char_signature_matches) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("X");
+    char out = 0;
+
+    /* Проверяем, что сигнатура (const fs2*, T*, bool) → bool совместима */
+    bool (*fn)(const fs2 *, char *, bool) = fs2_tryparse_char;
+    CHECK_TRUE("callable via fn ptr", fn(&s, &out, true));
+    CHECK_EQ("val", out, 'X');
+
+    fs2_free(&s);
+    assert_balanced();
+}
