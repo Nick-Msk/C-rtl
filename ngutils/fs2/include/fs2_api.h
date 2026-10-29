@@ -2260,4 +2260,49 @@ fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
     return fs2_strip_suffix(s, &tmp);
 }
 
+/* ==================== Stack constructor ==================== */
+
+static inline fs2
+fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
+    invraise(src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
+    fs2 r = fs2_clone(src);
+    fs2_strip_prefix(&r, prefix);
+    return r;
+}
+
+static inline fs2
+fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
+    invraise(src != NULL && suffix != NULL, "Null pointers %p %p", src, suffix);
+    fs2 r = fs2_clone(src);
+    fs2_strip_suffix(&r, suffix);
+    return r;
+}
+
+static inline fs2
+fs2_strip_prefix_str_new(const fs2 *restrict src, const char *restrict prefix) {
+    fs2 tmp = fs2_wrap(prefix);
+    return fs2_strip_prefix_new(src, &tmp);
+}
+
+static inline fs2
+fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
+    fs2 tmp = fs2_wrap(suffix);
+    return fs2_strip_suffix_new(src, &tmp);
+}
+
+/* ==================== Heap constructor ==================== */
+
+static inline fs2 *
+fs2_heap_strip_prefix(const fs2 *restrict src, const fs2 *restrict prefix) {
+    fs2 tmp = fs2_strip_prefix_new(src, prefix);
+    return fs2_stacktoheap(&tmp);
+}
+
+static inline fs2 *
+fs2_heap_strip_suffix(const fs2 *restrict src, const fs2 *restrict suffix) {
+    fs2 tmp = fs2_strip_suffix_new(src, suffix);
+    return fs2_stacktoheap(&tmp);
+}
+
+
 #endif /* !FS2_API_H */
