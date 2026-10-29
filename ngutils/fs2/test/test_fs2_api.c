@@ -8645,3 +8645,106 @@ Test(fs2_api, replace_with_realloc) {
     fs2_free(&rep);
     assert_balanced();
 }
+/* =========================================================================
+ * fs2_replace c-str wrappers
+ * ========================================================================= */
+
+Test(fs2_api, replace_cstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2_replace_cstr(&s, "world", "there");
+
+    CHECK_STR_EQ("content", s.v, "hello there");
+    CHECK_EQ("len", s.len, 11);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_cstr_null_repl_deletes) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbXc");
+
+    fs2_replace_cstr(&s, "X", NULL);
+
+    CHECK_STR_EQ("deleted", s.v, "abc");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_cstr_null_pat_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, NULL, "X");
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_cstr_empty_pat_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, "", "X");
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_cstr_both_null_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, NULL, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_cstr_equivalent_to_base) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("x.y.z");
+    fs2 s2 = fs2_fromstr("x.y.z");
+
+    fs2 pat  = FS2LITERAL(".");
+    fs2 repl = FS2LITERAL("::");
+
+    fs2_replace      (&s1, &pat, &repl);
+    fs2_replace_cstr (&s2, ".", "::");
+
+    CHECK_STR_EQ("same result", s1.v, s2.v);
+    CHECK_FS2VALID(1, &s1);
+    CHECK_FS2VALID(2, &s2);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_replace_cstr_template) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello, {name}! You are {age} years old.");
+
+    fs2_replace_cstr(&s, "{name}", "Alice");
+    fs2_replace_cstr(&s, "{age}",  "30");
+
+    CHECK_STR_EQ("rendered", s.v, "Hello, Alice! You are 30 years old.");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
