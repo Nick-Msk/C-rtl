@@ -8748,3 +8748,321 @@ Test(fs2_api, composite_replace_cstr_template) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_trim — both sides
+ * ========================================================================= */
+
+Test(fs2_api, trim_whitespace) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  \t hello world \n ");
+    fs2 pat = FS2LITERAL(" \t\n\r\v\f");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("trimmed", s.v, "hello world");
+    CHECK_EQ("len", s.len, 11);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_left_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_ltrim(&s, &pat);
+
+    CHECK_STR_EQ("left trimmed", s.v, "hello  ");
+    CHECK_EQ("len", s.len, 7);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_right_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_rtrim(&s, &pat);
+
+    CHECK_STR_EQ("right trimmed", s.v, "  hello");
+    CHECK_EQ("len", s.len, 7);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_both_sides) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xxxHELLOxxx");
+    fs2 pat = FS2LITERAL("x");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("trimmed", s.v, "HELLO");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_multichar_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xyxabcxyx");
+    fs2 pat = FS2LITERAL("xy");
+
+    fs2_trim(&s, &pat);
+
+    /* x, y, x all in pattern → trimmed; abc unchanged */
+    CHECK_STR_EQ("trimmed", s.v, "abc");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_trim — edge cases
+ * ========================================================================= */
+
+Test(fs2_api, trim_nothing_to_trim) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_all_content) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("     ");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_empty_string) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s   = FS2();   /* v == NULL */
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_empty_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = FS2();
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("unchanged", s.v, "  hello  ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_pattern_covers_all) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabc");
+    fs2 pat = FS2LITERAL("abc");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("all trimmed", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * c-string pattern wrappers
+ * ========================================================================= */
+
+Test(fs2_api, trim_str_whitespace) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello  ");
+
+    fs2_trim_str(&s, " \t\n\r\v\f");
+
+    CHECK_STR_EQ("trimmed", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_str_null_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello  ");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → no-op */
+    fs2_trim_str(&s, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "  hello  ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_left_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(">>>hello");
+
+    fs2_ltrim_str(&s, ">");
+
+    CHECK_STR_EQ("left trimmed", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, trim_right_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello<<<");
+
+    fs2_rtrim_str(&s, "<");
+
+    CHECK_STR_EQ("right trimmed", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Non-ASCII bytes — regression for (unsigned char) cast
+ * ========================================================================= */
+
+Test(fs2_api, trim_non_ascii) {
+    __fs2_checkreset();
+    /* UTF-8 continuation byte 0x80 at the edges */
+    fs2 s   = fs2_fromstr("\x80\x80hello\x80");
+    fs2 pat = fs2_fromstr("\x80");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("trimmed", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: trim then parse
+ * ========================================================================= */
+
+Test(fs2_api, composite_trim_then_parse_int) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  \t42 \n");
+
+    fs2_trim_str(&s, " \t\n\r\v\f");
+
+    int val = 0;
+    CHECK_TRUE("parse after trim", fs2_tryparse_int(&s, &val, true));
+    CHECK_EQ("val", val, 42);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_trim_csv_field) {
+    __fs2_checkreset();
+    fs2 line = fs2_fromstr("  alice  ,  bob  ,  charlie  ");
+    
+    /* Разбиваем по ',' и тримим каждое поле */
+    fs2_trim_str(&line, " ");
+    CHECK_STR_EQ("trimmed line", line.v, "alice  ,  bob  ,  charlie");
+
+    fs2_free(&line);
+    assert_balanced();
+}
+
+Test(fs2_api, btrim_equivalent_to_trim) {
+    __fs2_checkreset();
+    fs2 s1 = fs2_fromstr("  hello  ");
+    fs2 s2 = fs2_fromstr("  hello  ");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_trim (&s1, &pat);
+    fs2_trim(&s2, &pat);
+
+    CHECK_STR_EQ("same result", s1.v, s2.v);
+    CHECK_STR_EQ("content", s2.v, "hello");
+    CHECK_FS2VALID(1, &s1);
+    CHECK_FS2VALID(2, &s2);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api, ltrim_rtrim_btrim_matrix) {
+    __fs2_checkreset();
+
+    fs2 s_l = fs2_fromstr("  hello  ");
+    fs2 s_r = fs2_fromstr("  hello  ");
+    fs2 s_b = fs2_fromstr("  hello  ");
+    fs2 pat = FS2LITERAL(" ");
+
+    fs2_ltrim(&s_l, &pat);
+    fs2_rtrim(&s_r, &pat);
+    fs2_trim(&s_b, &pat);
+
+    CHECK_STR_EQ("ltrim keeps right", s_l.v, "hello  ");
+    CHECK_STR_EQ("rtrim keeps left",  s_r.v, "  hello");
+    CHECK_STR_EQ("btrim both",        s_b.v, "hello");
+
+    fs2_free(&s_l);
+    fs2_free(&s_r);
+    fs2_free(&s_b);
+    assert_balanced();
+}
