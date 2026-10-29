@@ -10312,3 +10312,240 @@ Test(fs2_api, composite_strip_both_sides) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_strip_prefix_new / fs2_strip_suffix_new
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("https://example.com");
+    fs2 pfx = FS2LITERAL("https://");
+
+    fs2 r = fs2_strip_prefix_new(&src, &pfx);
+
+    CHECK_STR_EQ("content", r.v, "example.com");
+    CHECK_EQ("len", r.len, 11);
+    CHECK_FALSE("not bodyalloc", fs2_is_bodyalloc(&r));
+    CHECK_FS2VALID(1, &r);
+
+    /* ⚠ Источник не мутирован */
+    CHECK_STR_EQ("src intact", src.v, "https://example.com");
+    CHECK_EQ("src len intact", src.len, 19);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("archive.tar.gz");
+    fs2 sfx = FS2LITERAL(".gz");
+
+    fs2 r = fs2_strip_suffix_new(&src, &sfx);
+
+    CHECK_STR_EQ("content", r.v, "archive.tar");
+    CHECK_FS2VALID(1, &r);
+    CHECK_STR_EQ("src intact", src.v, "archive.tar.gz");
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_new_no_match) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    fs2 pfx = FS2LITERAL("world");
+
+    fs2 r = fs2_strip_prefix_new(&src, &pfx);
+
+    /* Должна быть копия src без изменений */
+    CHECK_STR_EQ("content", r.v, "hello");
+    CHECK_TRUE ("independent buffer", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_new_whole_string) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    fs2 pfx = FS2LITERAL("hello");
+
+    fs2 r = fs2_strip_prefix_new(&src, &pfx);
+
+    CHECK_STR_EQ("empty", r.v, "");
+    CHECK_EQ("len", r.len, 0);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_new_null_src_aborts, .signal = SIGABRT) {
+    fs2 pfx = FS2LITERAL("x");
+    fs2_strip_prefix_new(NULL, &pfx);
+}
+
+Test(fs2_api, strip_prefix_new_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("abc");
+    fs2_strip_prefix_new(&src, NULL);
+    fs2_free(&src);
+}
+
+/* =========================================================================
+ * _str_new — c-string pattern
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_str_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("https://example.com");
+
+    fs2 r = fs2_strip_prefix_str_new(&src, "https://");
+
+    CHECK_STR_EQ("content", r.v, "example.com");
+    CHECK_FS2VALID(1, &r);
+    CHECK_STR_EQ("src intact", src.v, "https://example.com");
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_str_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("main.c");
+
+    fs2 r = fs2_strip_suffix_str_new(&src, ".c");
+
+    CHECK_STR_EQ("content", r.v, "main");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_str_new_null_pattern) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → no-op */
+    fs2 r = fs2_strip_prefix_str_new(&src, NULL);
+
+    CHECK_STR_EQ("content", r.v, "hello");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Heap constructors
+ * ========================================================================= */
+
+Test(fs2_api, heap_strip_prefix_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("https://example.com");
+    fs2 pfx = FS2LITERAL("https://");
+
+    fs2 *r = fs2_heap_strip_prefix(&src, &pfx);
+
+    CHECK_STR_EQ("content", r->v, "example.com");
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_TRUE("is alloc", fs2_is_alloc(r));
+    CHECK_FS2VALID(1, r);
+    CHECK_STR_EQ("src intact", src.v, "https://example.com");
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_strip_suffix_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("archive.tar.gz");
+    fs2 sfx = FS2LITERAL(".gz");
+
+    fs2 *r = fs2_heap_strip_suffix(&src, &sfx);
+
+    CHECK_STR_EQ("content", r->v, "archive.tar");
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Equivalence matrix: все варианты дают одинаковый результат
+ * ========================================================================= */
+
+Test(fs2_api, strip_all_variants_equivalent) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("https://example.com");
+    fs2 pfx = FS2LITERAL("https://");
+
+    /* 1. In-place */
+    fs2 inplace = fs2_clone(&src);
+    fs2_strip_prefix(&inplace, &pfx);
+
+    /* 2. Stack new */
+    fs2 v_new = fs2_strip_prefix_new(&src, &pfx);
+
+    /* 3. Stack _str_new */
+    fs2 v_str_new = fs2_strip_prefix_str_new(&src, "https://");
+
+    /* 4. Heap */
+    fs2 *v_heap = fs2_heap_strip_prefix(&src, &pfx);
+
+    CHECK_STR_EQ("inplace",   inplace.v,   "example.com");
+    CHECK_STR_EQ("new",       v_new.v,     "example.com");
+    CHECK_STR_EQ("_str_new",  v_str_new.v, "example.com");
+    CHECK_STR_EQ("heap",      v_heap->v,   "example.com");
+    CHECK_FS2VALID(1, &inplace);
+    CHECK_FS2VALID(2, &v_new);
+    CHECK_FS2VALID(3, &v_str_new);
+    CHECK_FS2VALID(4, v_heap);
+
+    fs2_free(&src);
+    fs2_free(&inplace);
+    fs2_free(&v_new);
+    fs2_free(&v_str_new);
+    fs2_free(v_heap);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: strip file extension pipeline
+ * ========================================================================= */
+
+Test(fs2_api, composite_strip_double_extension) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("archive.tar.gz");
+
+    /* Отрезаем .gz — новая копия */
+    fs2 v1 = fs2_strip_suffix_str_new(&src, ".gz");
+    CHECK_STR_EQ("after .gz", v1.v, "archive.tar");
+
+    /* Отрезаем .tar — ещё одна копия от v1 */
+    fs2 v2 = fs2_strip_suffix_str_new(&v1, ".tar");
+    CHECK_STR_EQ("after .tar", v2.v, "archive");
+
+    /* Оригинал не тронут */
+    CHECK_STR_EQ("src intact", src.v, "archive.tar.gz");
+
+    fs2_free(&src);
+    fs2_free(&v1);
+    fs2_free(&v2);
+    assert_balanced();
+}
+
