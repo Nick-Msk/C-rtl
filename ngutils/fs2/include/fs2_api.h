@@ -2220,4 +2220,44 @@ fs2_heap_repeat_str(const char *restrict s, size_t n) {
     return fs2_stacktoheap(&tmp);
 }
 
+// prefix/suffix removers
+
+static inline fs2 *
+fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
+    invraise(s != NULL && prefix != NULL, "Null pointers %p %p", s, prefix);
+    if (fs2_is_empty(prefix))         
+        return s;
+    if (!fs2_starts_with(s, prefix))  
+        return s;
+    
+    /* Shift remainder left: [prefix->len, s->len) → [0, s->len - prefix->len) */
+    fs2_selfmove(s, 0, prefix->len, s->len - prefix->len);
+    return fs2_setlen(s, s->len - prefix->len);
+}
+
+static inline fs2 *
+fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
+    invraise(s != NULL && suffix != NULL, "Null pointers %p %p", s, suffix);
+    if (fs2_is_empty(suffix))         
+        return s;
+    if (!fs2_ends_with(s, suffix))    
+        return s;
+    
+    /* Only shrink — no shift needed */
+    return fs2_setlen(s, s->len - suffix->len);
+}
+
+/* c-string wrappers */
+static inline fs2 *
+fs2_strip_prefix_str(fs2 *restrict s, const char *restrict prefix) {
+    fs2 tmp = fs2_wrap(prefix);
+    return fs2_strip_prefix(s, &tmp);
+}
+
+static inline fs2 *
+fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
+    fs2 tmp = fs2_wrap(suffix);
+    return fs2_strip_suffix(s, &tmp);
+}
+
 #endif /* !FS2_API_H */
