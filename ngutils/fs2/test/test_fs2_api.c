@@ -9327,3 +9327,231 @@ Test(fs2_api, starts_with_consistent_with_instr) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_contains
+ * ========================================================================= */
+
+Test(fs2_api, contains_basic) {
+    __fs2_checkreset();
+    fs2 s     = fs2_fromstr("hello world");
+    fs2 world = FS2LITERAL("world");
+    fs2 xyz   = FS2LITERAL("xyz");
+    fs2 hl    = FS2LITERAL("hello world");   /* whole string */
+
+    CHECK_TRUE ("'world'",  fs2_contains(&s, &world));
+    CHECK_FALSE("'xyz'",    fs2_contains(&s, &xyz));
+    CHECK_TRUE ("whole",    fs2_contains(&s, &hl));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: пустой паттерн — Python/JS semantics → true */
+Test(fs2_api, contains_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("hello");
+    fs2 empty1 = FS2EMPTY;
+    fs2 empty2 = FS2();
+
+    CHECK_TRUE("FS2EMPTY pattern",   fs2_contains(&s, &empty1));
+    CHECK_TRUE("canonical empty",    fs2_contains(&s, &empty2));
+
+    fs2_free(&s);
+    fs2_free(&empty2);
+    assert_balanced();
+}
+
+Test(fs2_api, contains_empty_haystack) {
+    __fs2_checkreset();
+    fs2 s     = fs2_fromstr("");
+    fs2 canon = FS2();
+    fs2 x     = FS2LITERAL("x");
+    fs2 empty = FS2();
+
+    /* Непустой паттерн в пустой строке — false */
+    CHECK_FALSE("empty + 'x'",     fs2_contains(&s, &x));
+    CHECK_FALSE("canonical + 'x'", fs2_contains(&canon, &x));
+
+    /* Пустой паттерн в пустой строке — true (Python) */
+    CHECK_TRUE("empty + empty",     fs2_contains(&s, &empty));
+    CHECK_TRUE("canonical + empty", fs2_contains(&canon, &empty));
+
+    fs2_free(&s);
+    fs2_free(&canon);
+    fs2_free(&empty);
+    assert_balanced();
+}
+
+Test(fs2_api, contains_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("world", fs2_contains_str(&s, "world"));
+    CHECK_FALSE("xyz",   fs2_contains_str(&s, "xyz"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, contains_str_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* NULL → FS2EMPTY → empty pattern → true (consistent with "" ) */
+    CHECK_TRUE("NULL pattern", fs2_contains_str(&s, NULL));
+    CHECK_TRUE("empty pattern", fs2_contains_str(&s, ""));
+    CHECK_EQ ("null == empty",
+              fs2_contains_str(&s, NULL),
+              fs2_contains_str(&s, ""));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, contains_null_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2_contains(NULL, &pat);
+}
+
+/* =========================================================================
+ * fs2_count — non-overlapping semantics
+ * ========================================================================= */
+
+Test(fs2_api, count_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_EQ("'o' twice",      fs2_count_str(&s, "o"), 2);
+    CHECK_EQ("'l' three",      fs2_count_str(&s, "l"), 3);
+    CHECK_EQ("'world' once",   fs2_count_str(&s, "world"), 1);
+    CHECK_EQ("'xyz' zero",     fs2_count_str(&s, "xyz"), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Главный тест: non-overlapping, как Python */
+Test(fs2_api, count_non_overlapping) {
+    __fs2_checkreset();
+
+    fs2 s1 = fs2_fromstr("aaa");
+    fs2 p1 = FS2LITERAL("aa");
+    /* Python: "aaa".count("aa") == 1 */
+    CHECK_EQ("'aaa' / 'aa' = 1", fs2_count(&s1, &p1), 1);
+
+    fs2 s2 = fs2_fromstr("aaaa");
+    fs2 p2 = FS2LITERAL("aa");
+    /* Python: "aaaa".count("aa") == 2 */
+    CHECK_EQ("'aaaa' / 'aa' = 2", fs2_count(&s2, &p2), 2);
+
+    fs2 s3 = fs2_fromstr("aaaaa");
+    /* Python: "aaaaa".count("aa") == 2 (позиции 0, 2, остаток "a") */
+    CHECK_EQ("'aaaaa' / 'aa' = 2", fs2_count(&s3, &p2), 2);
+
+    fs2_free(&s1);
+    fs2_free(&s2);
+    fs2_free(&s3);
+    assert_balanced();
+}
+
+Test(fs2_api, count_empty_pattern_zero) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("hello");
+    fs2 empty1 = FS2EMPTY;
+    fs2 empty2 = FS2();
+
+    /* Расходимся с Python (len+1), но осмысленнее: 0 */
+    CHECK_EQ("FS2EMPTY → 0",   fs2_count(&s, &empty1), 0);
+    CHECK_EQ("canonical → 0",  fs2_count(&s, &empty2), 0);
+
+    fs2_free(&s);
+    fs2_free(&empty2);
+    assert_balanced();
+}
+
+Test(fs2_api, count_pattern_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("xyz not found", fs2_count_str(&s, "xyz"), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, count_empty_string) {
+    __fs2_checkreset();
+    fs2 s_empty = fs2_fromstr("");
+    fs2 s_canon = FS2();
+
+    CHECK_EQ("empty → 0",     fs2_count_str(&s_empty, "x"), 0);
+    CHECK_EQ("canonical → 0", fs2_count_str(&s_canon, "x"), 0);
+
+    fs2_free(&s_empty);
+    fs2_free(&s_canon);
+    assert_balanced();
+}
+
+Test(fs2_api, count_str_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* NULL → FS2EMPTY → count 0 */
+    CHECK_EQ("NULL pattern → 0", fs2_count_str(&s, NULL), 0);
+    CHECK_EQ("empty pattern → 0", fs2_count_str(&s, ""), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, count_null_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2_count(NULL, &pat);
+}
+
+Test(fs2_api, count_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_count(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Consistency: contains(s,p) == (count(s,p) > 0) для непустого p
+ * ========================================================================= */
+
+Test(fs2_api, contains_consistent_with_count) {
+    __fs2_checkreset();
+
+    const char *haystacks[] = { "hello", "aaa", "aaaa", "", "abcabc" };
+    const char *patterns[]  = { "a", "aa", "abc", "xyz", "l" };
+
+    for (size_t i = 0; i < sizeof(haystacks) / sizeof(haystacks[0]); i++) {
+        fs2 s = fs2_fromstr(haystacks[i]);
+        for (size_t j = 0; j < sizeof(patterns) / sizeof(patterns[0]); j++) {
+            fs2 p = fs2_wrap(patterns[j]);
+            CHECK_EQ("contains == (count > 0)",
+                     fs2_contains(&s, &p),
+                     fs2_count(&s, &p) > 0);
+        }
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: word frequency
+ * ========================================================================= */
+
+Test(fs2_api, composite_count_keywords) {
+    __fs2_checkreset();
+    fs2 text = fs2_fromstr("the cat and the dog and the bird");
+
+    CHECK_EQ("'the' 3 times", fs2_count_str(&text, "the"), 3);
+    CHECK_EQ("'and' 2 times", fs2_count_str(&text, "and"), 2);
+    CHECK_EQ("'cat' 1 time",  fs2_count_str(&text, "cat"), 1);
+    CHECK_EQ("'fox' 0 times", fs2_count_str(&text, "fox"), 0);
+
+    fs2_free(&text);
+    assert_balanced();
+}
