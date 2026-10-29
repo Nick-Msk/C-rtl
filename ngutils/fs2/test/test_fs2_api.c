@@ -8365,3 +8365,283 @@ Test(fs2_api, instr_all_str_variants_empty_pattern_no_crash) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_replace — same length
+ * ========================================================================= */
+
+Test(fs2_api, replace_same_length) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 pat = FS2LITERAL("o");
+    fs2 rep = FS2LITERAL("0");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "hell0 w0rld");
+    CHECK_EQ("len unchanged", s.len, 11);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace — growing
+ * ========================================================================= */
+
+Test(fs2_api, replace_growing) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("a b c");
+    fs2 pat = FS2LITERAL(" ");
+    fs2 rep = FS2LITERAL("__");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "a__b__c");
+    CHECK_EQ("len", s.len, 7);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_massive_growth) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("x x x");
+    fs2 pat = FS2LITERAL("x");
+    fs2 rep = FS2LITERAL("0123456789");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "0123456789 0123456789 0123456789");
+    CHECK_EQ("len", s.len, 32);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace — shrinking
+ * ========================================================================= */
+
+Test(fs2_api, replace_shrinking) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aXXbXXc");
+    fs2 pat = FS2LITERAL("XX");
+    fs2 rep = FS2LITERAL("-");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "a-b-c");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_delete) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2LITERAL("l");
+    fs2 rep = FS2EMPTY;
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "heo");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_delete_all) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aaa");
+    fs2 pat = FS2LITERAL("a");
+    fs2 rep = FS2EMPTY;
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace — edge cases
+ * ========================================================================= */
+
+Test(fs2_api, replace_pattern_not_found) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2LITERAL("xyz");
+    fs2 rep = FS2LITERAL("ABC");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2();
+    fs2 rep = FS2LITERAL("X");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_pat_longer_than_string) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hi");
+    fs2 pat = FS2LITERAL("hello");
+    fs2 rep = FS2LITERAL("X");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("content unchanged", s.v, "hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_canonical_empty_s) {
+    __fs2_checkreset();
+    fs2 s   = FS2();
+    fs2 pat = FS2LITERAL("x");
+    fs2 rep = FS2LITERAL("y");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace — non-overlapping semantics (Python-style)
+ * ========================================================================= */
+
+Test(fs2_api, replace_non_overlapping) {
+    __fs2_checkreset();
+    /* Python: "aaa".replace("aa", "b") = "ba" */
+    fs2 s   = fs2_fromstr("aaa");
+    fs2 pat = FS2LITERAL("aa");
+    fs2 rep = FS2LITERAL("b");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("non-overlapping like Python", s.v, "ba");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_no_recursive) {
+    __fs2_checkreset();
+    /* "x".replace("x", "xx") = "xx" (не "xxxx" — не ресканируем вставленное) */
+    fs2 s   = fs2_fromstr("x");
+    fs2 pat = FS2LITERAL("x");
+    fs2 rep = FS2LITERAL("xx");
+
+    fs2_replace(&s, &pat, &rep);
+
+    CHECK_STR_EQ("no recursive replacement", s.v, "xx");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace — NULL arguments
+ * ========================================================================= */
+
+Test(fs2_api, replace_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2 rep = FS2LITERAL("y");
+    fs2_replace(NULL, &pat, &rep);
+}
+
+Test(fs2_api, replace_null_pat_aborts, .signal = SIGABRT) {
+    fs2 s   = fs2_fromstr("abc");
+    fs2 rep = FS2LITERAL("y");
+    fs2_replace(&s, NULL, &rep);
+    fs2_free(&s);
+}
+
+Test(fs2_api, replace_null_repl_aborts, .signal = SIGABRT) {
+    fs2 s   = fs2_fromstr("abc");
+    fs2 pat = FS2LITERAL("x");
+    fs2_replace(&s, &pat, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Composite: HTML escape
+ * ========================================================================= */
+
+Test(fs2_api, composite_replace_html_escape) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("<b>bold</b>");
+    fs2 lt   = FS2LITERAL("<");
+    fs2 amp_lt = FS2LITERAL("&lt;");
+    fs2 gt   = FS2LITERAL(">");
+    fs2 amp_gt = FS2LITERAL("&gt;");
+
+    fs2_replace(&s, &lt, &amp_lt);
+    fs2_replace(&s, &gt, &amp_gt);
+
+    CHECK_STR_EQ("escaped", s.v, "&lt;b&gt;bold&lt;/b&gt;");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, replace_with_realloc) {
+    __fs2_checkreset();
+    /* Маленький буфер, огромное расширение — гарантированный realloc */
+    fs2 s   = fs2_fromstr("a|b|c");
+    fs2 pat = FS2LITERAL("|");
+    
+    char big[256];
+    memset(big, 'X', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+    fs2 rep = fs2_fromstr(big);
+    
+    size_t orig_sz = s.sz;
+    fs2_replace(&s, &pat, &rep);
+    
+    CHECK_TRUE("buffer grew massively", s.sz > orig_sz);
+    CHECK_EQ  ("len", s.len, 1 + 255 + 1 + 255 + 1);
+    CHECK_EQ  ("a intact", s.v[0], 'a');
+    CHECK_EQ  ("b after repl", s.v[256], 'b');
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    fs2_free(&rep);
+    assert_balanced();
+}
