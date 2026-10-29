@@ -2304,5 +2304,17 @@ fs2_heap_strip_suffix(const fs2 *restrict src, const fs2 *restrict suffix) {
     return fs2_stacktoheap(&tmp);
 }
 
+/**
+ * @brief Capitalize first letter of each word, lowercase the rest.
+ *
+ * Words are delimited by non-alphanumeric characters, matching
+ * PostgreSQL initcap('hi THOMAS') → 'Hi Thomas'.
+ *
+ * @note ASCII-only in C locale. Bytes >= 128 are treated as
+ *       non-alphanumeric (word separators), like PostgreSQL's
+ *       default behavior without ICU collation.
+ */
+extern fs2 *
+fs2_initcap(fs2 *restrict s);
 
 #endif /* !FS2_API_H */

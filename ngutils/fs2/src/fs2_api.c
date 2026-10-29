@@ -1069,3 +1069,24 @@ fs2_repeat(fs2 *restrict s, size_t n) {
     
     return fs2_setlen(s, total);
 }
+
+// Initcap
+fs2 *
+fs2_initcap(fs2 *restrict s) {
+    invraise(s != NULL, "Null pointer");
+    if (fs2_is_empty(s)) return s;
+    
+    bool at_word_start = true;
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->v[i];
+        bool alnum = isalnum(c) != 0;
+        
+        if (at_word_start && alnum) {
+            s->v[i] = (char)toupper(c);
+        } else {
+            s->v[i] = (char)tolower(c);
+        }
+        at_word_start = !alnum;
+    }
+    return s;
+}
