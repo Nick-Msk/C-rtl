@@ -2084,4 +2084,37 @@ fs2_rtrim_str(fs2 *restrict s, const char *restrict pattern) {
     return fs2_rtrim(s, &tmp);
 }
 
+static inline bool
+fs2_starts_with(const fs2 *restrict s, const fs2 *restrict prefix) {
+    invraise(s != NULL && prefix != NULL, "Null pointers %p %p", s, prefix);
+    if (prefix->len == 0)        
+        return true;
+    if (prefix->len > s->len)    
+        return false;
+    return memcmp(s->v, prefix->v, prefix->len) == 0;
+}
+
+static inline bool
+fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
+    invraise(s != NULL && suffix != NULL, "Null pointers %p %p", s, suffix);
+    if (suffix->len == 0)        
+        return true;
+    if (suffix->len > s->len)    
+        return false;
+    return memcmp(s->v + s->len - suffix->len, suffix->v, suffix->len) == 0;
+}
+
+/* c-string wrappers */
+static inline bool
+fs2_starts_with_str(const fs2 *restrict s, const char *restrict prefix) {
+    fs2 tmp = fs2_wrap(prefix);
+    return fs2_starts_with(s, &tmp);
+}
+
+static inline bool
+fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
+    fs2 tmp = fs2_wrap(suffix);
+    return fs2_ends_with(s, &tmp);
+}
+
 #endif /* !FS2_API_H */
