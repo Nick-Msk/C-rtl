@@ -1782,11 +1782,11 @@ Test(fs2_api, wrap_empty_string) {
 Test(fs2_api, wrap_null_returns_empty_view) {
     fs2 w = fs2_wrap(NULL);
     CHECK_EQ("len", w.len, 0);
-    CHECK_EQ("sz",  w.sz, 1);          /* FS2_EMPTY, не {0,0} */
+    CHECK_EQ("sz",  w.sz, 1);          /* FS2_EMPTY, not {0,0} */
     CHECK_TRUE("STATIC", fs2_is_static(&w));
     CHECK_NOT_NULL("v non-NULL", w.v);
     CHECK_STR_EQ("v empty", w.v, "");
-    CHECK_FS2VALID(1, &w);             /* ← проходит */
+    CHECK_FS2VALID(1, &w);             /* ← passes */
 }
 
 /* ─── fs2_cat ──────────────────────────────────────────────────── */
@@ -1804,7 +1804,7 @@ Test(fs2_api, cat_basic) {
     CHECK_STR_EQ("content", dst.v, "hello world");
     CHECK_EQ("len", dst.len, 11);
     CHECK_FS2VALID(3, &dst);
-    CHECK_FS2VALID(4, &src);   /* src не тронут */
+    CHECK_FS2VALID(4, &src);   /* src untouched */
 
     fs2_free(&dst);
     fs2_free(&src);
@@ -1819,7 +1819,7 @@ Test(fs2_api, cat_static_src) {
     fs2_cat(&dst, &src);
     CHECK_STR_EQ("appended", dst.v, "hello world");
     CHECK_FS2VALID(2, &dst);
-    CHECK_FS2VALID(3, &src);   /* STATIC не меняется */
+    CHECK_FS2VALID(3, &src);   /* STATIC does not change */
 
     fs2_free(&dst);            /* src — STATIC, free no-op */
     assert_balanced();
@@ -1879,12 +1879,12 @@ Test(fs2_api, catstr_via_wrap_no_copy) {
     __fs2_checkreset();
     fs2 s = FS2();
     fs2_catstr(&s, "hello");
-    /* Проверим, что промежуточный fs2 не аллоцировал:
-     * один alloc/free — на dst, zero — на wrap. */
+    /* Verify the intermediate fs2 did not allocate:
+     * one alloc/free on dst, zero on wrap. */
     CHECK_STR_EQ("appended", s.v, "hello");
     CHECK_FS2VALID(2, &s);
     fs2_free(&s);
-    assert_balanced();   /* ← поймал бы утечку от fs2_fromstr-варианта */
+    assert_balanced();   /* ← would catch a leak from the fs2_fromstr variant */
 }
 
 Test(fs2_api, catstr_basic) {
@@ -1907,7 +1907,7 @@ Test(fs2_api, catstr_empty_src) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* FS2WRAP("") даёт валидный {len=0, sz=1, STATIC, v=""} */
+    /* FS2WRAP("") yields valid {len=0, sz=1, STATIC, v=""} */
     fs2_catstr(&s, "");
     CHECK_STR_EQ("unchanged", s.v, "hello");
     CHECK_FS2VALID(2, &s);
@@ -2048,16 +2048,16 @@ Test(fs2_api, rev_catstr_null_src_is_noop) {
     assert_balanced();
 }
 
-/* Регрессия на баг memcpy vs memmove:
- * если используется memcpy вместо memmove, старая строка затирается. */
+/* Regression for memcpy vs memmove bug:
+ * if memcpy is used instead of memmove, the old string gets overwritten. */
 Test(fs2_api, rev_catstr_shifts_correctly) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("world");
 
     fs2_rev_catstr(&dst, "hello ");
 
-    /* Если был memcpy(dst->v, "hello ", 6), то "world" затрётся,
-     * и dst.v[6] будет 'd', но остальное — мусор, strlen < len. */
+    /* If memcpy(dst->v, "hello ", 6) was called, "world" gets clobbered,
+     * and dst.v[6] will be 'd', but the rest is garbage, strlen < len. */
     CHECK_STR_EQ("suffix intact", dst.v + 6, "world");
     CHECK_FS2VALID(2, &dst);
 
@@ -2070,7 +2070,7 @@ Test(fs2_api, rev_catstr_triggers_growth) {
     fs2 dst = fs2_fromstr("world");
     size_t orig_sz = dst.sz;
     
-    // 100 символов 'A'
+    // 100 A characters
     char big[128];
     memset(big, 'A', 100);
     big[100] = '\0';
@@ -2112,11 +2112,11 @@ Test(fs2_api, rev_catstr_null_dst_aborts, .signal = SIGABRT) {
 Test(fs2_api, composite_pipeline_basic) {
     __fs2_checkreset();
 
-    /* 1. Создаём "base" */
+    /* 1. Create "base" */
     fs2 s = fs2_fromstr("base");
     CHECK_FS2VALID(1, &s);
 
-    /* 2. Клонируем: deep copy, но независимые буферы */
+    /* 2. Clone: deep copy, but independent buffers */
     fs2 c = fs2_clone(&s);
     CHECK_FS2VALID(2, &c);
 
@@ -2137,7 +2137,7 @@ Test(fs2_api, composite_pipeline_basic) {
     CHECK_EQ("final len", c.len, 15);
     CHECK_FS2VALID(5, &c);
 
-    /* Оригинал не тронут */
+    /* Original untouched */
     CHECK_STR_EQ("orig intact", s.v, "base");
     CHECK_FS2VALID(6, &s);
 
@@ -2166,9 +2166,9 @@ Test(fs2_api, composite_order_matters) {
 
 Test(fs2_api, composite_stress_reallocs) {
     __fs2_checkreset();
-    fs2 s = FS2();  /* начинаем с нуля */
+    fs2 s = FS2();  /* start from zero */
     
-    /* 100 раз добавляем спереди и сзади, чтобы вызвать много realloc'ов */
+    /* 100 times prepend and append to trigger many reallocs */
     for (int i = 0; i < 100; i++) {
         fs2_catstr(&s, "R");
         fs2_rev_catstr(&s, "L");
@@ -2177,8 +2177,8 @@ Test(fs2_api, composite_stress_reallocs) {
     
     CHECK_EQ("len", s.len, 200);
     
-    /* Проверяем, что "L" и "R" чередуются как надо:
-     * "LLL...RRR..." — все L в начале, все R в конце */
+    /* Verify "L" and "R" are arranged correctly:
+     * "LLL...RRR..." — all L at the front, all R at the end */
     for (size_t i = 0; i < 100; i++) {
         CHECK_EQ("front is L", s.v[i], 'L');
         CHECK_EQ("back is R",  s.v[100 + i], 'R');
@@ -2215,13 +2215,13 @@ Test(fs2_api, composite_clone_independence) {
     CHECK_FS2VALID(1, &a);
     CHECK_FS2VALID(2, &b);
 
-    /* Мутируем b разными способами */
+    /* Mutate b in various ways */
     fs2_catstr(&b, "_b");
     fs2_rev_catstr(&b, "b_");
     CHECK_STR_EQ("b modified", b.v, "b_shared_b");
     CHECK_FS2VALID(3, &b);
 
-    /* a не должен измениться */
+    /* a must not change */
     CHECK_STR_EQ("a intact", a.v, "shared");
     CHECK_EQ("a len intact", a.len, 6);
     CHECK_FS2VALID(4, &a);
@@ -2247,7 +2247,7 @@ Test(fs2_api, cpy_basic) {
     CHECK_STR_EQ("copied", dst.v, "world");
     CHECK_EQ("len", dst.len, 5);
     CHECK_FS2VALID(2, &dst);
-    CHECK_FS2VALID(3, &src); // src не тронут
+    CHECK_FS2VALID(3, &src); // src untouched
 
     fs2_free(&dst);
     fs2_free(&src);
@@ -2259,14 +2259,14 @@ Test(fs2_api, cpy_shrink) {
     fs2 dst = fs2_fromstr("longer string");
     fs2 src = fs2_fromstr("short");
     
-    /* dst был 13, стал 5. Буфер не должен уменьшаться (sz остается прежним) */
+    /* dst was 13, now 5. Buffer must not shrink (sz stays the same) */
     size_t orig_sz = dst.sz;
     
     fs2_cpy(&dst, &src);
 
     CHECK_STR_EQ("copied shorter", dst.v, "short");
     CHECK_EQ("len", dst.len, 5);
-    CHECK_EQ("sz unchanged", dst.sz, orig_sz); // reserve не сжимает
+    CHECK_EQ("sz unchanged", dst.sz, orig_sz); // reserve does not shrink
     CHECK_FS2VALID(2, &dst);
 
     fs2_free(&dst);
@@ -2350,7 +2350,7 @@ Test(fs2_api, cpystr_null_clears) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("hello");
 
-    /* fs2_wrap(NULL) -> FS2EMPTY -> fs2_cpy -> очищает dst */
+    /* fs2_wrap(NULL) -> FS2EMPTY -> fs2_cpy -> clears dst */
     fs2_cpystr(&dst, NULL);
 
     CHECK_STR_EQ("cleared", dst.v, "");
@@ -2397,7 +2397,7 @@ Test(fs2_api, cpystr_null_no_alloc) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("hello");
 
-    /* Проверяем, что счетчики аллокаций не изменятся */
+    /* Verify allocation counters did not change */
     int alloc_before, freed_before, ba_before, bf_before;
     fs2_checkleak(&alloc_before, &freed_before, &ba_before, &bf_before);
 
@@ -2431,7 +2431,7 @@ Test(fs2_api, sprintf_basic) {
     CHECK_EQ("return value", res, 14); // strlen("Hello world 42")
     CHECK_STR_EQ("content", s.v, "Hello world 42");
     CHECK_EQ("len updated", s.len, 14);
-    CHECK_FS2VALID(2, &s); // Инвариант strlen == len соблюден
+    CHECK_FS2VALID(2, &s); // Invariant strlen == len holds
 
     fs2_free(&s);
     assert_balanced();
@@ -2442,7 +2442,7 @@ Test(fs2_api, sprintf_overwrite_shorter) {
     fs2 s = fs2_fromstr("long string here");
     size_t orig_sz = s.sz;
 
-    /* Пишем строку короче, чем была. Буфер не должен сжиматься. */
+    /* Write a shorter string. Buffer must not shrink. */
     long res = fs2_sprintf(&s, "short");
 
     CHECK_EQ("return value", res, 5);
@@ -2460,9 +2460,9 @@ Test(fs2_api, sprintf_triggers_growth) {
     fs2 s = FS2(); // canonical empty
     size_t orig_sz = s.sz;
 
-    /* 100 символов 'A' через формат */
+    /* 100 'A' characters via format */
     long res = fs2_sprintf(&s, "%0100d", 0); 
-    // %0100d даст 100 символов (нули + '0')
+    // %0100d yields 100 characters (zeros + '0')
 
     CHECK_EQ("return value", res, 100);
     CHECK_EQ("len updated", s.len, 100);
@@ -2475,10 +2475,10 @@ Test(fs2_api, sprintf_triggers_growth) {
 
 Test(fs2_api, sprintf_exact_fit_no_realloc) {
     __fs2_checkreset();
-    /* Создаем буфер ровно на 5 символов + NUL = 6 */
+    /* Create buffer for exactly 5 chars + NUL = 6 */
     fs2 s = fs2_init(6); 
     
-    /* Пишем ровно 5 символов */
+    /* Write exactly 5 characters */
     long res = fs2_sprintf(&s, "12345");
 
     CHECK_EQ("return value", res, 5);
@@ -2495,8 +2495,8 @@ Test(fs2_api, sprintf_regression_last_char_not_eaten) {
     __fs2_checkreset();
     fs2 s = FS2();
     
-    /* Регрессия на баг: vsnprintf(s->v, needed, ...) съедал последний символ. 
-     * Тут needed = 5. Если передать size=5 вместо 6, получится "1234". */
+    /* Regression for a bug: vsnprintf(s->v, needed, ...) ate the last character.
+     * Here needed = 5. If size=5 is passed instead of 6, we get "1234". */
     fs2_sprintf(&s, "12345");
 
     CHECK_STR_EQ("last char kept", s.v, "12345");
@@ -2724,7 +2724,7 @@ Test(fs2_api, composite_sprintf_concat_100_appends) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* 100 small appends — гарантированно 3-4 realloc'а */
+    /* 100 small appends — guaranteed 3-4 reallocs */
     for (int i = 0; i < 100; i++) {
         fs2_sprintf_concat(&s, "%d", i);
         if (i < 99) fs2_sprintf_concat(&s, ",");
@@ -2744,8 +2744,8 @@ Test(fs2_api, sprintf_bad_format_returns_negative) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("initial");
     
-    /* %d без аргумента — UB в C, лучше не тестировать.
-     * А вот невалидный спецификатор (например, %q) даст -1. */
+    /* %d without an argument is UB in C, better not to test it.
+     * An invalid specifier (e.g. %q) will return -1 though. */
 
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wformat"
@@ -2753,7 +2753,7 @@ Test(fs2_api, sprintf_bad_format_returns_negative) {
     #pragma GCC diagnostic pop
 
     CHECK_TRUE("return value < 0", res <= 0);
-    /* len не обязан меняться, поэтому просто проверяем, что мы живы */
+    /* len does not have to change, so we just check we are alive */
     
     fs2_free(&s);
     assert_balanced();
@@ -2833,7 +2833,7 @@ Test(fs2_api, substr_new_basic) {
     CHECK_EQ("len", res.len, 3);
     CHECK_TRUE("is alloc", fs2_is_alloc(&res));
     CHECK_FS2VALID(1, &res);
-    CHECK_FS2VALID(2, &s); // оригинал не тронут
+    CHECK_FS2VALID(2, &s); // original untouched
     CHECK_STR_EQ("original intact", s.v, "abcdef");
 
     fs2_free(&s);
@@ -2874,7 +2874,7 @@ Test(fs2_api, substr_new_oob) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
-    /* from > len, должен вернуть пустой fs2 */
+    /* from > len, must return empty fs2 */
     fs2 res = fs2_substr_new(&s, 10, 5); 
 
     CHECK_EQ("len", res.len, 0);
@@ -2918,7 +2918,7 @@ Test(fs2_api, heap_substr_basic) {
     CHECK_FS2VALID(2, &s);
 
     fs2_free(&s);
-    fs2_free(res); // освобождает и структуру, и буфер
+    fs2_free(res); // frees both the struct and the buffer
     assert_balanced();
 }
 
@@ -2955,51 +2955,51 @@ Test(fs2_api, heap_substr_empty) {
 Test(fs2_api, composite_substr_pipeline) {
     __fs2_checkreset();
 
-    /* 1. Исходная строка */
+    /* 1. Original string */
     fs2 src = fs2_fromstr("Hello, World! This is fs2.");
     CHECK_FS2VALID(1, &src);
 
-    /* 2. Извлекаем "Hello" на кучу (heap) */
+    /* 2. Extract "Hello" to heap */
     fs2 *hello = fs2_heap_substr(&src, 0, 5); // "Hello"
     CHECK_STR_EQ("extracted hello", hello->v, "Hello");
     CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(hello));
     CHECK_FS2VALID(2, hello);
 
-    /* 3. Извлекаем "World!" на стек */
+    /* 3. Extract "World!" to stack */
     fs2 world = fs2_substr_new(&src, 7, 6); // "World!"
     CHECK_STR_EQ("extracted world", world.v, "World!");
     CHECK_FS2VALID(3, &world);
 
-    /* 4. Склеиваем: "Hello" + "World!" = "HelloWorld!" */
+    /* 4. Concatenate: "Hello" + "World!" = "HelloWorld!" */
     fs2_cat(hello, &world);
     CHECK_STR_EQ("concatenated", hello->v, "HelloWorld!");
     CHECK_EQ("len", hello->len, 11);
     CHECK_FS2VALID(4, hello);
 
-    /* 5. Добавляем строку через catstr */
+    /* 5. Append a string via catstr */
     fs2_catstr(hello, " And fs2");
     CHECK_STR_EQ("appended", hello->v, "HelloWorld! And fs2");
     CHECK_EQ("len", hello->len, 19);
     CHECK_FS2VALID(5, hello);
 
-    /* 6. Обрезаем на месте (in-place) до "HelloWorld" */
+    /* 6. Trim in-place to "HelloWorld" */
     fs2_substr(hello, 0, 10);
     CHECK_STR_EQ("truncated in-place", hello->v, "HelloWorld");
     CHECK_EQ("len", hello->len, 10);
     CHECK_FS2VALID(6, hello);
 
-    /* 7. Создаем пустую строку и копируем в неё результат (cpy) */
+    /* 7. Create an empty string and copy the result into it (cpy) */
     fs2 final_copy = FS2();
     fs2_cpy(&final_copy, hello);
     CHECK_STR_EQ("copied", final_copy.v, "HelloWorld");
     CHECK_FS2VALID(7, &final_copy);
 
-    /* 8. Проверяем, что оригинал не тронут всеми этими манипуляциями */
+    /* 8. Verify the original is untouched by all these operations */
     CHECK_STR_EQ("src intact", src.v, "Hello, World! This is fs2.");
     CHECK_FS2VALID(8, &src);
 
-    /* 9. Убираем мусор */
-    fs2_free(hello);     // освобождает и структуру, и буфер
+    /* 9. Clean up */
+    fs2_free(hello);     // frees both the struct and the buffer
     fs2_free(&world);
     fs2_free(&final_copy);
     fs2_free(&src);
@@ -3013,8 +3013,8 @@ Test(fs2_api, composite_substr_clamping_pipeline) {
     fs2 s = fs2_fromstr("abcdef");
     
     /* 
-     * 1. Берем len=100 (должно обрезаться до 3). 
-     * Получаем "def".
+     * 1. Take len=100 (should be clamped to 3). 
+     * We get "def".
      */
     fs2 *part1 = fs2_heap_substr(&s, 3, 100);
     CHECK_STR_EQ("part1 clamped", part1->v, "def");
@@ -3022,7 +3022,7 @@ Test(fs2_api, composite_substr_clamping_pipeline) {
     CHECK_FS2VALID(1, part1);
 
     /* 
-     * 2. Берем from=10 (за пределами). Должна быть пустая строка.
+     * 2. Take from=10 (out of bounds). Should be an empty string.
      */
     fs2 part2 = fs2_substr_new(&s, 10, 5);
     CHECK_EQ("part2 is empty", part2.len, 0);
@@ -3030,7 +3030,7 @@ Test(fs2_api, composite_substr_clamping_pipeline) {
     CHECK_FS2VALID(2, &part2);
 
     /* 
-     * 3. Приклеиваем пустоту к part1. part1 не должен измениться.
+     * 3. Glue emptiness to part1. part1 must not change.
      */
     fs2_cat(part1, &part2);
     CHECK_STR_EQ("cat empty", part1->v, "def");
@@ -3038,15 +3038,15 @@ Test(fs2_api, composite_substr_clamping_pipeline) {
     CHECK_FS2VALID(3, part1);
 
     /* 
-     * 4. Делаем in-place substr с from = 1 и len = 100. 
-     * Осталось 2 символа ("ef").
+     * 4. Do in-place substr with from = 1 and len = 100. 
+     * 2 characters remain ("ef").
      */
     fs2_substr(part1, 1, 100);
     CHECK_STR_EQ("in-place clamped", part1->v, "ef");
     CHECK_EQ("len clamped", part1->len, 2);
     CHECK_FS2VALID(4, part1);
 
-    /* 5. Пробуем сдвинуть за пределы (from=10). Должна остаться пустой. */
+    /* 5. Try to shift beyond bounds (from=10). Should remain empty. */
     fs2_substr(part1, 10, 10);
     CHECK_EQ("in-place empty", part1->len, 0);
     CHECK_FS2VALID(5, part1);
@@ -3078,7 +3078,7 @@ Test(fs2_api, left_clamp) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
     
-    /* Просим больше, чем есть — должны получить всю строку */
+    /* Request more than available — should get the entire string */
     fs2_left(&s, 100);
     CHECK_STR_EQ("whole string", s.v, "abc");
     CHECK_EQ("len", s.len, 3);
@@ -3113,7 +3113,7 @@ Test(fs2_api, heap_left_basic) {
 }
 
 /* =========================================================================
- * fs2_right (in-place, value, heap) — регрессия на underflow!
+ * fs2_right (in-place, value, heap) — regression on underflow!
  * ========================================================================= */
 
 Test(fs2_api, right_basic) {
@@ -3128,7 +3128,7 @@ Test(fs2_api, right_basic) {
     assert_balanced();
 }
 
-/* ⚠ РЕГРЕССИЯ: этот тест падал бы на старом коде из-за underflow! */
+/* ⚠ REGRESSION: this test would have crashed on the old code due to underflow! */
 Test(fs2_api, right_len_ge_slen) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
@@ -3227,7 +3227,7 @@ Test(fs2_api, toupper_empty) {
     __fs2_checkreset();
     fs2 s = FS2(); // v=NULL
     
-    fs2_toupper(&s); // Не должно упасть
+    fs2_toupper(&s); // Should not crash
     CHECK_EQ("len", s.len, 0);
     CHECK_FS2VALID(1, &s);
     
@@ -3260,7 +3260,7 @@ Test(fs2_api, toupper_new_static_src) {
     __fs2_checkreset();
     fs2 src = FS2LITERAL("hello");
     
-    /* Клонирует STATIC в ALLOC, затем делает upper. Оригинал не трогается. */
+    /* Clones STATIC to ALLOC, then does upper. Original is untouched. */
     fs2 res = fs2_toupper_new(&src);
     
     CHECK_STR_EQ("new uppercased from static", res.v, "HELLO");
@@ -3350,12 +3350,12 @@ Test(fs2_api, heap_tolower_basic) {
 Test(fs2_api, toupper_non_ascii_no_crash) {
     __fs2_checkreset();
     
-    /* Строка из байтов >= 128 (например, UTF-8 кириллица) */
-    fs2 s = fs2_fromstr("\xD0\xB4" "\xD0\xB0"); // "да"
+    /* String with bytes >= 128 (e.g. UTF-8 Cyrillic) */
+    fs2 s = fs2_fromstr("\xD0\xB4" "\xD0\xB0"); // "da" (Cyrillic)
     size_t orig_len = s.len;
 
-    /* Раньше это могло упасть с Segfault из-за signed char.
-     * Теперь должно просто вернуть строку (в C locale они не меняются). */
+    /* This used to crash with a Segfault due to signed char.
+     * It should now simply return the string (in C locale they are unchanged). */
     fs2_toupper(&s);
     
     CHECK_EQ("len unchanged", s.len, orig_len);
@@ -3368,7 +3368,7 @@ Test(fs2_api, toupper_non_ascii_no_crash) {
 Test(fs2_api, tolower_non_ascii_no_crash) {
     __fs2_checkreset();
     
-    fs2 s = fs2_fromstr("\xC4\xE4"); // 'Ä' 'ä' в Latin-1
+    fs2 s = fs2_fromstr("\xC4\xE4"); // 'Ä' 'ä' in Latin-1
     size_t orig_len = s.len;
 
     fs2_tolower(&s);
@@ -3381,7 +3381,7 @@ Test(fs2_api, tolower_non_ascii_no_crash) {
 }
 
 /* =========================================================================
- * Проверка на смешанных символах
+ * Check on mixed characters
  * ========================================================================= */
 
 Test(fs2_api, toupper_mixed) {
@@ -3434,7 +3434,7 @@ Test(fs2_api, rpad_pad_longer_than_needed) {
     fs2 s = fs2_fromstr("x");
     fs2 pad = fs2_fromstr("abcdef");
 
-    /* Pad длиннее, чем нужно дополнить. Должен взяться префикс pad'а. */
+    /* Pad longer than needed to fill. A prefix of the pad is taken. */
     fs2_rpad(&s, 4, &pad);
 
     CHECK_STR_EQ("padded", s.v, "xabc");
@@ -3446,16 +3446,16 @@ Test(fs2_api, rpad_pad_longer_than_needed) {
     assert_balanced();
 }
 
-/* ⚠ РЕГРЕССИЯ: если использовать fs2_right вместо fs2_left, тест упадет */
+/* ⚠ REGRESSION: using fs2_right instead of fs2_left would crash this test */
 Test(fs2_api, rpad_truncation) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abcdef");
     fs2 pad = fs2_fromstr(".");
 
-    /* Если len < str->len, rpad должен обрезать до левых len символов */
+    /* If len < str->len, rpad must trim to the left len characters */
     fs2_rpad(&s, 3, &pad);
 
-    CHECK_STR_EQ("truncated", s.v, "abc"); // а не "def"!
+    CHECK_STR_EQ("truncated", s.v, "abc"); // not "def"!
     CHECK_EQ("len", s.len, 3);
     CHECK_FS2VALID(1, &s);
 
@@ -3469,7 +3469,7 @@ Test(fs2_api, rpad_empty_pad) {
     fs2 s = fs2_fromstr("abc");
     fs2 pad = fs2_fromstr("");
 
-    /* Пустой pad — строка не меняется (если не нужно обрезать) */
+    /* Empty pad — string is unchanged (if no trimming needed) */
     fs2_rpad(&s, 10, &pad);
 
     CHECK_STR_EQ("unchanged", s.v, "abc");
@@ -3518,7 +3518,7 @@ Test(fs2_api, rpadstr_null_pad) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
-    /* fs2_wrap(NULL) -> FS2EMPTY (len=0), поэтому padding не произойдет */
+    /* fs2_wrap(NULL) -> FS2EMPTY (len=0), so no padding will occur */
     fs2_rpadstr(&s, 10, NULL);
 
     CHECK_STR_EQ("unchanged", s.v, "abc");
@@ -3557,7 +3557,7 @@ Test(fs2_api, rpad_new_null_pad) {
     __fs2_checkreset();
     fs2 str = fs2_fromstr("abc");
 
-    /* В fs2_rpad_new стоит if (!pad) return res; */
+    /* fs2_rpad_new has if (!pad) return res; */
     fs2 res = fs2_rpad_new(&str, 10, NULL);
 
     CHECK_STR_EQ("cloned but not padded", res.v, "abc");
@@ -3593,7 +3593,7 @@ Test(fs2_api, rpad_postgres_example) {
     fs2 s = fs2_fromstr("hi");
     fs2 pad = fs2_fromstr("xy");
 
-    /* Пример из документации Postgres: rpad('hi', 5, 'xy') → hixyx */
+    /* From the Postgres docs: rpad('hi', 5, 'xy') → hixyx */
     fs2_rpad(&s, 5, &pad);
 
     CHECK_STR_EQ("postgres example", s.v, "hixyx");
@@ -3610,7 +3610,7 @@ Test(fs2_api, rpad_truncates_from_right) {
     fs2 s = fs2_fromstr("hello");
     fs2 pad = fs2_fromstr("x");
 
-    /* Пример: rpad('hello', 2) → 'he' (обрезает хвост, оставляет левую часть) */
+    /* Example: rpad('hello', 2) → 'he' (trims the tail, keeps the left part) */
     fs2_rpad(&s, 2, &pad);
 
     CHECK_STR_EQ("truncated left part", s.v, "he");
@@ -3627,7 +3627,7 @@ Test(fs2_api, rpad_empty_pad_does_not_extend) {
     fs2 s = fs2_fromstr("abc");
     fs2 pad = fs2_fromstr("");
 
-    /* Если pad пустой, а len больше, строка не меняется (нельзя дополнить пустотой) */
+    /* If pad is empty but len is larger, string is unchanged (cannot pad with nothing) */
     fs2_rpad(&s, 10, &pad);
 
     CHECK_STR_EQ("unchanged", s.v, "abc");
@@ -3644,7 +3644,7 @@ Test(fs2_api, rpad_len_zero) {
     fs2 s = fs2_fromstr("hello");
     fs2 pad = fs2_fromstr("x");
 
-    /* Если len = 0, от строки ничего не остается */
+    /* If len = 0, nothing remains of the string */
     fs2_rpad(&s, 0, &pad);
 
     CHECK_STR_EQ("empty", s.v, "");
@@ -3665,7 +3665,7 @@ Test(fs2_api, lpad_postgres_example) {
     fs2 s = fs2_fromstr("hi");
     fs2 pad = fs2_fromstr("xy");
 
-    /* Пример из документации Postgres: lpad('hi', 5, 'xy') → xyxhi */
+    /* From the Postgres docs: lpad('hi', 5, 'xy') → xyxhi */
     fs2 *ret = fs2_lpad(&s, 5, &pad);
 
     CHECK_PTR_EQ("returns str", ret, &s);
@@ -3683,7 +3683,7 @@ Test(fs2_api, lpad_pad_longer_than_needed) {
     fs2 s = fs2_fromstr("x");
     fs2 pad = fs2_fromstr("abcdef");
 
-    /* Pad длиннее, чем нужно (нужно 3 символа). Берется префикс "abc" */
+    /* Pad longer than needed (3 chars needed). The prefix "abc" is taken */
     fs2_lpad(&s, 4, &pad);
 
     CHECK_STR_EQ("padded", s.v, "abcx");
@@ -3700,10 +3700,10 @@ Test(fs2_api, lpad_truncates_from_right) {
     fs2 s = fs2_fromstr("hello");
     fs2 pad = fs2_fromstr("x");
 
-    /* Если len < str->len, lpad обрезает до ЛЕВОЙ части */
+    /* If len < str->len, lpad trims to the LEFT part */
     fs2_lpad(&s, 3, &pad);
 
-    CHECK_STR_EQ("truncated", s.v, "hel"); // а не "llo"
+    CHECK_STR_EQ("truncated", s.v, "hel"); // not "llo"
     CHECK_EQ("len", s.len, 3);
     CHECK_FS2VALID(1, &s);
 
@@ -3717,7 +3717,7 @@ Test(fs2_api, lpad_empty_pad) {
     fs2 s = fs2_fromstr("abc");
     fs2 pad = fs2_fromstr("");
 
-    /* Пустой pad — строка не меняется */
+    /* Empty pad — string is unchanged */
     fs2_lpad(&s, 10, &pad);
 
     CHECK_STR_EQ("unchanged", s.v, "abc");
@@ -3782,7 +3782,7 @@ Test(fs2_api, lpadstr_null_pad) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
-    /* fs2_wrap(NULL) -> FS2EMPTY (len=0), padding не произойдет */
+    /* fs2_wrap(NULL) -> FS2EMPTY (len=0), no padding will occur */
     fs2_lpadstr(&s, 10, NULL);
 
     CHECK_STR_EQ("unchanged", s.v, "abc");
@@ -3821,7 +3821,7 @@ Test(fs2_api, lpad_new_null_pad) {
     __fs2_checkreset();
     fs2 str = fs2_fromstr("abc");
 
-    /* В fs2_lpad_new стоит if (!pad) return res; */
+    /* fs2_lpad_new has if (!pad) return res; */
     fs2 res = fs2_lpad_new(&str, 10, NULL);
 
     CHECK_STR_EQ("cloned but not padded", res.v, "abc");
@@ -3911,7 +3911,7 @@ Test(fs2_api, genrnd_unknown_type_fallback) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* Передаем неизвестный тип, ожидаем fallback '?' */
+    /* Pass an unknown type, expect fallback '?' */
     fs2_genrnd(&s, 10, 'X');
 
     CHECK_EQ("len", s.len, 10);
@@ -3943,7 +3943,7 @@ Test(fs2_api, genrnd_overwrite_existing) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("old_string");
 
-    /* Генерируем 5 символов поверх старой строки */
+    /* Generate 5 characters over the old string */
     fs2_genrnd(&s, 5, 'a');
 
     CHECK_EQ("len", s.len, 5);
@@ -4003,8 +4003,8 @@ Test(fs2_api, genrnd_bounds_regression) {
     fs2 s = FS2();
 
     /* 
-     * Генерируем много символов. Если rndint(26) выдает 26,
-     * то мы получим '{', и тест упадет.
+     * Generate many characters. If rndint(26) returns 26,
+     * we get '{', and the test will fail.
      */
     fs2_genrnd(&s, 1000, 'a');
 
@@ -4055,9 +4055,9 @@ Test(fs2_api, iin_case_insensitive) {
     fs2 s = fs2_fromstr("APPLE");
     const char *list[] = { "banana", "apple", "cherry", NULL };
 
-    /* Обычный in не найдет (APPLE != apple) */
+    /* Plain in will not find (APPLE != apple) */
     CHECK_FALSE("case-sensitive miss", fs2_in(&s, list));
-    /* iin должен найти */
+    /* iin must find it */
     CHECK_TRUE("case-insensitive hit", fs2_in_ci(&s, list));
     CHECK_FALSE("case-insensitive notin", fs2_not_in_ci(&s, list));
 
@@ -4070,7 +4070,7 @@ Test(fs2_api, in_canonical_empty) {
     fs2 s = FS2(); // v = NULL
     const char *list[] = { "", "a", NULL };
 
-    /* Не должно упасть с Segfault! */
+    /* Must not crash with a Segfault! */
     CHECK_TRUE("empty matches empty", fs2_in(&s, list));
     CHECK_FALSE("empty notin", fs2_not_in(&s, list));
 
@@ -4121,7 +4121,7 @@ Test(fs2_api, anyof_canonical_empty) {
     fs2 s = FS2(); // v = NULL
     const char *list[] = { "a", "", "b", NULL };
 
-    /* Пустая строка находится на индексе 1 */
+    /* Empty string is at index 1 */
     CHECK_EQ("empty matches at index 1", fs2_anyof(&s, list, strcmp), 1);
 
     fs2_free(&s);
@@ -4137,11 +4137,11 @@ Test(fs2_api, in_wrappers) {
     fs2 s = fs2_fromstr("APPLE");
     const char *list[] = { "apple", "banana", NULL };
 
-    /* case-sensitive: не находит APPLE */
+    /* case-sensitive: does not find APPLE */
     CHECK_FALSE("in miss", fs2_in(&s, list));
     CHECK_TRUE("notin hit", fs2_not_in(&s, list));
 
-    /* case-insensitive: находит */
+    /* case-insensitive: finds it */
     CHECK_TRUE ("iin hit", fs2_in_ci(&s, list));
     CHECK_FALSE("not_iin miss", fs2_not_in_ci(&s, list));
 
@@ -4182,7 +4182,7 @@ Test(fs2_api, in_macro_empty_list) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("anything");
 
-    /* Передаем только NULL (пустой список) */
+    /* Pass only NULL (empty list) */
     CHECK_FALSE("empty list -> false", FS2_IN(&s, NULL));
     CHECK_TRUE("empty list -> notin true", FS2_NOT_IN(&s, NULL));
 
@@ -4194,11 +4194,11 @@ Test(fs2_api, in_canonical_empty_matches_empty_string) {
     __fs2_checkreset();
     fs2 s = FS2(); // v = NULL, len = 0
 
-    /* Если в списке нет "", то FS2() там нет */
+    /* If the list does not have "", then FS2() is not there */
     CHECK_FALSE("empty not in [a, b]", FS2_IN(&s, "a", "b"));
     CHECK_TRUE ("empty notin [a, b]", FS2_NOT_IN(&s, "a", "b"));
 
-    /* Если в списке есть "", то FS2() там есть */
+    /* If the list has "", then FS2() is there */
     CHECK_TRUE ("empty in [a, \"\"]", FS2_IN(&s, "a", ""));
     CHECK_FALSE("empty notin [a, \"\"]", FS2_NOT_IN(&s, "a", ""));
 
@@ -4222,8 +4222,8 @@ Test(fs2_api, in_bsearch_fs2_array) {
 
     fs2 k1 = fs2_fromstr("banana");
     fs2 k2 = fs2_fromstr("cherry");
-    fs2 k3 = fs2_fromstr("zucchini"); // Больше всех
-    fs2 k4 = fs2_fromstr("a");        // Меньше всех
+    fs2 k3 = fs2_fromstr("zucchini"); // Largest of all
+    fs2 k4 = fs2_fromstr("a");        // Smallest of all
 
     CHECK_EQ("banana index", fs2_bsearch(&k1, arr, 4), 1);
     CHECK_EQ("cherry index", fs2_bsearch(&k2, arr, 4), 2);
@@ -4241,9 +4241,9 @@ Test(fs2_api, in_bsearch_str_array) {
     const char *arr[] = { "apple", "banana", "cherry", "date", "elderberry" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
 
-    fs2 k1 = fs2_fromstr("apple");      // Левый край (индекс 0)
-    fs2 k2 = fs2_fromstr("elderberry"); // Правый край (индекс 4)
-    fs2 k3 = fs2_fromstr("avocado");    // Промах
+    fs2 k1 = fs2_fromstr("apple");      // Left edge (index 0)
+    fs2 k2 = fs2_fromstr("elderberry"); // Right edge (index 4)
+    fs2 k3 = fs2_fromstr("avocado");    // Miss
 
     CHECK_EQ("left boundary", fs2_bsearch_str(&k1, arr, n), 0);
     CHECK_EQ("right boundary", fs2_bsearch_str(&k2, arr, n), 4);
@@ -4256,7 +4256,7 @@ Test(fs2_api, in_bsearch_str_array) {
 Test(fs2_api, in_bsearch_canonical_empty) {
     __fs2_checkreset();
     
-    /* Массив содержит пустую строку (FS2EMPTY) на позиции 0 */
+    /* Array contains an empty string (FS2EMPTY) at position 0 */
     fs2 arr[3] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
     fs2 key_empty = FS2EMPTY;
     fs2 key_a = fs2_fromstr("a");
@@ -4274,7 +4274,7 @@ Test(fs2_api, in_bsearch_canonical_empty) {
 Test(fs2_api, iin_bsearch_case_insensitive) {
     __fs2_checkreset();
     
-    /* Отсортировано без учета регистра для iin_bsearch */
+    /* Sorted case-insensitively for iin_bsearch */
     fs2 arr[3] = {
         fs2_fromstr("Apple"),
         fs2_fromstr("banana"),
@@ -4351,8 +4351,8 @@ Test(fs2_api, pos_parse_uint_rejects_negative) {
     fs2 s = fs2_fromstr("-1");
     unsigned out = 0;
 
-    /* Ключевая проверка: strtoull("-1") вернул бы ULLONG_MAX,
-     * но мы отвергаем минус явно */
+    /* Key check: strtoull("-1") would return ULLONG_MAX,
+     * but we explicitly reject the minus */
     CHECK_FALSE("negative rejected", fs2_pos_parse_uint(&s, 0, NULL, &out));
 
     fs2_free(&s);
@@ -4400,7 +4400,7 @@ Test(fs2_api, pos_parse_ulong_max) {
 
 Test(fs2_api, pos_parse_ulong_rejects_beyond_uint) {
     __fs2_checkreset();
-    /* На LP64: значение, которое влезает в ulong, но не в uint */
+    /* On LP64: a value that fits in ulong but not in uint */
     fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX */
     unsigned out = 0;
     unsigned long ul_out = 0;
@@ -4440,7 +4440,7 @@ Test(fs2_api, pos_parse_ullong_out_null) {
     fs2 s = fs2_fromstr("999abc");
     size_t newpos = 0;
 
-    /* out == NULL — только валидация, значение не нужно */
+    /* out == NULL — validation only, value not needed */
     CHECK_TRUE("valid prefix", fs2_pos_parse_ullong(&s, 0, &newpos, NULL));
     CHECK_EQ("newpos", newpos, 3);
 
@@ -4467,7 +4467,7 @@ Test(fs2_api, pos_parse_ullong_rejects_newline) {
     fs2 s = fs2_fromstr("\n42");
     unsigned long long out = 0;
 
-    /* strtoull пропустил бы \n сам — мы отвергаем до вызова */
+    /* strtoull would skip \n on its own — we reject before the call */
     CHECK_FALSE("newline rejected", fs2_pos_parse_ullong(&s, 0, NULL, &out));
 
     fs2_free(&s);
@@ -4476,9 +4476,9 @@ Test(fs2_api, pos_parse_ullong_rejects_newline) {
 
 Test(fs2_api, pos_parse_uint_chain_range) {
     __fs2_checkreset();
-    /* Каждая функция отвергает значения за своим диапазоном */
+    /* Each function rejects values outside its range */
     fs2 s_u  = fs2_fromstr("4294967296");          /* UINT_MAX + 1 */
-    fs2 s_ul = fs2_fromstr("18446744073709551615"); /* ULONG_MAX на LP64 */
+    fs2 s_ul = fs2_fromstr("18446744073709551615"); /* ULONG_MAX on LP64 */
     fs2 s_ull = fs2_fromstr("18446744073709551615"); /* ULLONG_MAX */
 
     unsigned           u  = 0;
@@ -4524,8 +4524,8 @@ Test(fs2_api, tryparse_ullong_rejects_negative) {
     fs2 s = fs2_fromstr("-1");
     unsigned long long out = 0;
 
-    /* Ключевой: strtoull("-1") = ULLONG_MAX, но мы отвергаем минус 
-     * на уровне pos_parse_ullong */
+    /* Key: strtoull("-1") = ULLONG_MAX, but we reject the minus 
+     * at the pos_parse_ullong level */
     CHECK_FALSE("negative rejected", fs2_tryparse_ullong(&s, &out, true));
 
     fs2_free(&s);
@@ -4616,7 +4616,7 @@ Test(fs2_api, tryparse_uint_rejects_negative) {
     fs2 s = fs2_fromstr("-1");
     unsigned out = 0;
 
-    /* Цепочка: uint → ulong → ullong, минус отвергается на нижнем уровне */
+    /* Chain: uint → ulong → ullong, minus is rejected at the lowest level */
     CHECK_FALSE("negative rejected", fs2_tryparse_uint(&s, &out, true));
 
     fs2_free(&s);
@@ -4681,12 +4681,12 @@ Test(fs2_api, parse_uint_overflow_aborts, .signal = SIGINT) {
 }
 
 /* =========================================================================
- * Цепочка uint → ulong → ullong: одно значение, три уровня
+ * Chain uint → ulong → ullong: one value, three levels
  * ========================================================================= */
 
 Test(fs2_api, uint_chain_rejects_above_uint) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX, < ULONG_MAX на LP64 */
+    fs2 s = fs2_fromstr("5000000000");   /* > UINT_MAX, < ULONG_MAX on LP64 */
 
     unsigned           u   = 0;
     unsigned long      ul  = 0;
@@ -4719,7 +4719,7 @@ Test(fs2_api, uint_chain_all_reject_beyond_ullong) {
 }
 
 /* =========================================================================
- * Signed vs unsigned: один и тот же вход
+ * Signed vs unsigned: the same input
  * ========================================================================= */
 
 Test(fs2_api, parse_signed_vs_unsigned_int) {
@@ -4728,11 +4728,11 @@ Test(fs2_api, parse_signed_vs_unsigned_int) {
     fs2 s_pos = fs2_fromstr("100");
     fs2 s_neg = fs2_fromstr("-100");
 
-    /* Положительное: оба справляются */
+    /* Positive: both handle it */
     CHECK_EQ("signed int 100",   fs2_parse_int (&s_pos), 100);
     CHECK_EQ("unsigned int 100", fs2_parse_uint(&s_pos), 100u);
 
-    /* Отрицательное: int ok, uint — нет */
+    /* Negative: int ok, uint — no */
     CHECK_EQ("signed int -100", fs2_parse_int(&s_neg), -100);
 
     unsigned u_out = 0;
@@ -4744,13 +4744,13 @@ Test(fs2_api, parse_signed_vs_unsigned_int) {
 }
 
 /* =========================================================================
- * Composite: uint в реальном коде
+ * Composite: uint in real code
  * ========================================================================= */
 
 Test(fs2_api, composite_parse_uint_port) {
     __fs2_checkreset();
 
-    /* Сценарий: "port=8080" из конфига */
+    /* Scenario: "port=8080" from a config */
     fs2 line = fs2_fromstr("port=8080");
 
     ptrdiff_t eq = fs2_chr(&line, '=');
@@ -4771,7 +4771,7 @@ Test(fs2_api, composite_parse_uint_port) {
 Test(fs2_api, composite_parse_uint_with_validation) {
     __fs2_checkreset();
 
-    /* Парсим и валидируем диапазон — типичный сценарий */
+    /* Parse and validate range — a typical scenario */
     fs2 s = fs2_fromstr("512");
     unsigned val = 0;
 
@@ -4783,7 +4783,7 @@ Test(fs2_api, composite_parse_uint_with_validation) {
 }
 
 /* =========================================================================
- * Symmetry: signed vs unsigned на одном входе
+ * Symmetry: signed vs unsigned on one input
  * ========================================================================= */
 
 Test(fs2_api, parse_signed_vs_unsigned) {
@@ -4792,13 +4792,13 @@ Test(fs2_api, parse_signed_vs_unsigned) {
     fs2 s_pos = fs2_fromstr("100");
     fs2 s_neg = fs2_fromstr("-100");
 
-    /* Положительное — оба справляются */
+    /* Positive — both handle it */
     CHECK_EQ("signed 100",   fs2_parse_llong (&s_pos), 100LL);
     CHECK_EQ("unsigned 100", fs2_parse_ullong(&s_pos), 100ULL);
 
-    /* Отрицательное — signed ok, unsigned падает */
+    /* Negative — signed ok, unsigned fails */
     CHECK_EQ("signed -100", fs2_parse_llong(&s_neg), -100LL);
-    /* fs2_parse_ullong(&s_neg) → SIGINT; проверяем через tryparse */
+    /* fs2_parse_ullong(&s_neg) → SIGINT; check via tryparse */
     unsigned long long u_out = 0;
     CHECK_FALSE("unsigned rejects -100", fs2_tryparse_ullong(&s_neg, &u_out, true));
 
@@ -4843,7 +4843,7 @@ Test(fs2_api, tryparse_ulong_rejects_negative) {
     fs2 s = fs2_fromstr("-1");
     unsigned long out = 0;
 
-    /* strtoull("-1") = ULLONG_MAX, но pos_parse_ulong отвергает минус */
+    /* strtoull("-1") = ULLONG_MAX, but pos_parse_ulong rejects the minus */
     CHECK_FALSE("negative rejected", fs2_tryparse_ulong(&s, &out, true));
 
     fs2_free(&s);
@@ -4876,8 +4876,8 @@ Test(fs2_api, tryparse_ulong_overflow) {
 
 Test(fs2_api, tryparse_ulong_beyond_uint) {
     __fs2_checkreset();
-    /* 5e9 — влезает в ulong (LP64), но не в uint.
-     * Проверяем, что на уровне ulong не отсекается. */
+    /* 5e9 — fits in ulong (LP64) but not in uint.
+     * Check it is not truncated at the ulong level. */
     fs2 s = fs2_fromstr("5000000000");
 
     unsigned           u_out = 0;
@@ -4927,26 +4927,26 @@ Test(fs2_api, parse_ulong_negative_aborts, .signal = SIGINT) {
 }
 
 /* =========================================================================
- * Symmetry: ulong vs ullong на разных значениях
+ * Symmetry: ulong vs ullong on different values
  * ========================================================================= */
 
 Test(fs2_api, parse_ulong_vs_ullong_symmetry) {
     __fs2_checkreset();
 
-    /* Обычное положительное — оба справляются */
+    /* Ordinary positive — both handle it */
     fs2 s_small = fs2_fromstr("42");
     CHECK_EQ("ulong 42",  fs2_parse_ulong (&s_small), 42ul);
     CHECK_EQ("ullong 42", fs2_parse_ullong(&s_small), 42ull);
 
-    /* ULLONG_MAX — на LP64 совпадает с ULONG_MAX,
-     * на LLP64 ulong меньше. Проверяем round-trip. */
+    /* ULLONG_MAX — equals ULONG_MAX on LP64,
+     * but ulong is smaller on LLP64. Check round-trip. */
     char buf[32];
     snprintf(buf, sizeof(buf), "%llu", ULLONG_MAX);
     fs2 s_max = fs2_fromstr(buf);
 
     CHECK_EQ("ullong ULLONG_MAX", fs2_parse_ullong(&s_max), ULLONG_MAX);
 
-    /* ulong принимает ULLONG_MAX только на LP64 (где они одного размера) */
+    /* ulong accepts ULLONG_MAX only on LP64 (where they are the same size) */
     #if ULONG_MAX == ULLONG_MAX
         CHECK_EQ("ulong ULLONG_MAX", fs2_parse_ulong(&s_max), ULONG_MAX);
     #else
@@ -4961,25 +4961,25 @@ Test(fs2_api, parse_ulong_vs_ullong_symmetry) {
 }
 
 /* =========================================================================
- * Composite: парсинг числа из реального текста
+ * Composite: parsing a number from real text
  * ========================================================================= */
 
 Test(fs2_api, composite_parse_ulong_from_config) {
     __fs2_checkreset();
 
-    /* Типичный сценарий: "timeout=30" — парсим число после '=' */
+    /* Typical scenario: "timeout=30" — parse the number after '=' */
     fs2 line = fs2_fromstr("timeout=30");
 
-    /* Ищем '=' */
+    /* Look for '=' */
     ptrdiff_t eq = fs2_chr(&line, '=');
     CHECK_TRUE("eq found", eq >= 0);
 
-    /* Парсим с позиции eq+1 */
+    /* Parse from position eq+1 */
     size_t newpos = 0;
     unsigned long timeout = 0;
     CHECK_TRUE("parse", fs2_pos_parse_ulong(&line, (size_t)eq + 1, &newpos, &timeout));
     CHECK_EQ("timeout", timeout, 30ul);
-    CHECK_EQ("newpos", newpos, line.len);   /* доели до конца */
+    CHECK_EQ("newpos", newpos, line.len);   /* consumed to the end */
 
     fs2_free(&line);
     assert_balanced();
@@ -5060,7 +5060,7 @@ Test(fs2_api, tryparse_llong_basic) {
     assert_balanced();
 }
 
-/* ⚠ Ключевой регресс: значение вне long — если внутри _long, тут упадёт */
+/* ⚠ Key regression: value out of long range — if inside _long, will crash here */
 Test(fs2_api, tryparse_llong_beyond_long_on_llp64) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("9223372036854775807");   /* LLONG_MAX */
@@ -5115,7 +5115,7 @@ Test(fs2_api, pos_parse_long_basic) {
     CHECK_EQ("val", out, 1234567890123L);
     CHECK_EQ("newpos", newpos, 13);
 
-    /* Парсим остаток */
+    /* Parse the remainder */
     CHECK_TRUE("parse next", fs2_pos_parse_long(&s, 14, &newpos, &out));
     CHECK_EQ("val", out, 456);
 
@@ -5128,7 +5128,7 @@ Test(fs2_api, pos_parse_long_out_null) {
     fs2 s = fs2_fromstr("42abc");
     size_t newpos = 0;
 
-    /* Проверяем валидность префикса, не сохраняя значение */
+    /* Validate the prefix without storing the value */
     CHECK_TRUE("valid prefix", fs2_pos_parse_long(&s, 0, &newpos, NULL));
     CHECK_EQ("newpos", newpos, 2);
 
@@ -5156,8 +5156,8 @@ Test(fs2_api, pos_parse_int_overflow) {
 Test(fs2_api, pos_parse_chain_range_check) {
     __fs2_checkreset();
     
-    /* Одно и то же значение — разные результаты на разных уровнях.
-     * 3000000000 влезает в long (LP64), но не в int. */
+    /* Same value — different results at different levels.
+     * 3000000000 fits in long (LP64) but not in int. */
     fs2 s = fs2_fromstr("3000000000");
 
     int  i_val = 0;
@@ -5177,14 +5177,14 @@ Test(fs2_api, pos_parse_chain_range_check) {
 Test(fs2_api, pos_parse_llong_rejects_beyond_llong) {
     __fs2_checkreset();
     
-    /* "99999999999999999999" — 20 девяток, > LLONG_MAX (~9.2e18) */
+    /* "99999999999999999999" — 20 nines, > LLONG_MAX (~9.2e18) */
     fs2 s = fs2_fromstr("99999999999999999999");
 
     int       i_val  = 0;
     long      l_val  = 0;
     long long ll_val = 0;
 
-    /* Все три должны отвергнуть — ошибка на самом нижнем уровне */
+    /* All three must reject — error at the lowest level */
     CHECK_FALSE("int rejects",   fs2_pos_parse_int  (&s, 0, NULL, &i_val));
     CHECK_FALSE("long rejects",  fs2_pos_parse_long (&s, 0, NULL, &l_val));
     CHECK_FALSE("llong rejects", fs2_pos_parse_llong(&s, 0, NULL, &ll_val));
@@ -5216,7 +5216,7 @@ Test(fs2_api, tryparse_strict_exact) {
 Test(fs2_api, tryparse_strict_rejects_trailing) {
     __fs2_checkreset();
     fs2 s1 = fs2_fromstr("42abc");
-    fs2 s2 = fs2_fromstr("42   "); // Даже пробелы запрещены в strict!
+    fs2 s2 = fs2_fromstr("42   "); // Even spaces are forbidden in strict mode!
     int out = 0;
 
     CHECK_FALSE("trailing garbage", fs2_tryparse_int(&s1, &out, true));
@@ -5253,8 +5253,8 @@ Test(fs2_api, parse_long_basic) {
 }
 
 Test(fs2_api, parse_int_fails_userraise, .signal = SIGINT) {
-    /* "abc42" — цифры начинаются только с 4-го символа.
-     * Мягкий режим тоже не найдёт число в начале, будет userraise -> SIGINT. */
+    /* "abc42" — digits start only at the 4th character.
+     * Lenient mode also will not find a number at the start, userraise -> SIGINT. */
     fs2 s = fs2_fromstr("abc42");
     fs2_parse_int(&s);
     fs2_free(&s);
@@ -5281,10 +5281,10 @@ Test(fs2_api, pos_parse_long_leading_spaces) {
 
 Test(fs2_api, pos_parse_long_rejects_newlines) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("\n42");  // \n НЕ пропускается skip_spaces
+    fs2 s = fs2_fromstr("\n42");  // \n is NOT skipped by skip_spaces
     long out = 0;
 
-    /* Должно упасть, потому что \n не является пробелом/табом */
+    /* Should fail because \n is not a space/tab */
     CHECK_FALSE("reject newline", fs2_pos_parse_long(&s, 0, NULL, &out));
 
     fs2_free(&s);
@@ -5317,16 +5317,16 @@ Test(fs2_api, tryparse_strict_rejects_trailing_spaces) {
 Test(fs2_api, pos_parse_long_skips_only_spaces_and_tabs) {
     __fs2_checkreset();
     fs2 s1 = fs2_fromstr(" \t 123");
-    fs2 s2 = fs2_fromstr(" \n 123"); // \n не должен пропускаться
+    fs2 s2 = fs2_fromstr(" \n 123"); // \n must not be skipped
     long out = 0;
     size_t newpos = 0;
 
-    /* Пробелы и табы пропускаются */
+    /* Spaces and tabs are skipped */
     CHECK_TRUE("spaces and tabs", fs2_pos_parse_long(&s1, 0, &newpos, &out));
     CHECK_EQ("val", out, 123);
-    CHECK_EQ("newpos", newpos, 6); // 3 пробела/таба + 3 цифры
+    CHECK_EQ("newpos", newpos, 6); // 3 spaces/tabs + 3 digits
 
-    /* \n не пропускается, поэтому strtol упадет (endptr == start) */
+    /* \n is not skipped, so strtol will fail (endptr == start) */
     CHECK_FALSE("newline not skipped", fs2_pos_parse_long(&s2, 0, NULL, &out));
 
     fs2_free(&s1);
@@ -5367,8 +5367,8 @@ Test(fs2_api, parse_int_lenient_negative) {
 
 Test(fs2_api, parse_int_lenient_overflow_still_fails, .signal = SIGINT) {
     /* 
-     * В мягком режиме мы все равно проверяем, влезает ли число в int.
-     * "999999999999" не влезет, поэтому должен быть userraise.
+     * In lenient mode we still check if the number fits in int.
+     * "999999999999" will not fit, so userraise is expected.
      */
     fs2 s = fs2_fromstr("999999999999");
     fs2_parse_int(&s);
@@ -5376,7 +5376,7 @@ Test(fs2_api, parse_int_lenient_overflow_still_fails, .signal = SIGINT) {
 }
 
 Test(fs2_api, parse_int_lenient_no_digits_fails, .signal = SIGINT) {
-    /* Буквы в начале — парсить нечего */
+    /* Letters at the start — nothing to parse */
     fs2 s = fs2_fromstr("abc42");
     fs2_parse_int(&s);
     fs2_free(&s);
@@ -5459,7 +5459,7 @@ Test(fs2_api, from_new_unsigned) {
 
 Test(fs2_api, from_new_float_double) {
     __fs2_checkreset();
-    fs2 s1 = fs2_from_new(3.14f);  // float (промоутится в double для printf)
+    fs2 s1 = fs2_from_new(3.14f);  // float (will be promoted to double for printf)
     fs2 s2 = fs2_from_new(2.71828); // double
     
     CHECK_STR_EQ("float", s1.v, "3.140000");
@@ -5478,7 +5478,7 @@ Test(fs2_api, from_new_pointer) {
     void *ptr = &x;
     fs2 s = fs2_from_new(ptr);
     
-    /* Проверяем, что строка начинается с "0x" */
+    /* Verify the string starts with "0x" */
     CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
     CHECK_FS2VALID(1, &s);
     
@@ -5504,7 +5504,7 @@ Test(fs2_api, serialize_into_existing) {
 Test(fs2_api, heap_from_via_generic) {
     __fs2_checkreset();
     
-    /* Тестируем, что макрос возвращает fs2* и корректно использует stacktoheap */
+    /* Test that the macro returns fs2* and correctly uses stacktoheap */
     fs2 *h1 = fs2_heap_from(12'345L);
     fs2 *h2 = fs2_heap_from(3.14f);
     
@@ -5519,7 +5519,7 @@ Test(fs2_api, heap_from_via_generic) {
     
     fs2_free(h1);
     fs2_free(h2);
-    assert_balanced();  /* Если stacktoheap внутри макроса течет, assert_balanced это поймает */
+    assert_balanced();  /* If stacktoheap inside the macro leaks, assert_balanced will catch it */
 }
 
 /* =========================================================================
@@ -5574,7 +5574,7 @@ Test(fs2_api, serialize_long_beyond_int_range) {
     __fs2_checkreset();
     fs2 dst = FS2();
 
-    /* Регрессия: если _Generic выбрал %d вместо %ld — truncation */
+    /* Regression: if _Generic picked %d instead of %ld — truncation */
     fs2_serialize(&dst, 5'000'000'000L);
 
     CHECK_STR_EQ("content", dst.v, "5000000000");
@@ -5639,7 +5639,7 @@ Test(fs2_api, serialize_float_double) {
     fs2_serialize(&s_f, 3.14f);
     fs2_serialize(&s_d, 2.71828);
 
-    /* %f даёт 6 знаков после точки по умолчанию */
+    /* %f gives 6 digits after the decimal point by default */
     CHECK_STR_EQ("float", s_f.v, "3.140000");
     CHECK_STR_EQ("double", s_d.v, "2.718280");
     CHECK_FS2VALID(1, &s_f);
@@ -5658,7 +5658,7 @@ Test(fs2_api, serialize_pointer) {
     fs2 s = FS2();
     fs2_serialize(&s, ptr);
 
-    /* %p печатает hex-адрес "0x..." */
+    /* %p prints a hex address "0x..." */
     CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
     CHECK_FS2VALID(1, &s);
 
@@ -5683,7 +5683,7 @@ Test(fs2_api, serialize_overwrites_existing) {
 Test(fs2_api, serialize_return_equals_len) {
     __fs2_checkreset();
 
-    /* Возврат должен всегда совпадать с len после записи */
+    /* Return must always match len after writing */
     int values[] = { 0, 1, -1, 42, INT_MAX, INT_MIN };
     for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
         fs2 dst = FS2();
@@ -5721,7 +5721,7 @@ Test(fs2_api, from_new_int2) {
 
 Test(fs2_api, from_new_long_beyond_int_range) {
     __fs2_checkreset();
-    /* Регрессия: _Generic должен выбрать %ld, не %d */
+    /* Regression: _Generic must pick %ld, not %d */
     fs2 s = fs2_from_new(5000000000L);
 
     CHECK_STR_EQ("content", s.v, "5000000000");
@@ -5836,7 +5836,7 @@ Test(fs2_api, heap_from_double) {
 Test(fs2_api, heap_from_no_leak) {
     __fs2_checkreset();
 
-    /* Цикл — if макрос течёт через stacktoheap, assert_balanced это поймает */
+    /* Loop — if the macro leaks via stacktoheap, assert_balanced will catch it */
     for (int i = 0; i < 100; i++) {
         fs2 *h = fs2_heap_from(i);
         fs2_free(h);
@@ -5845,7 +5845,7 @@ Test(fs2_api, heap_from_no_leak) {
 }
 
 /* =========================================================================
- * Composite — roundtrip через строку
+ * Composite — roundtrip through a string
  * ========================================================================= */
 
 Test(fs2_api, composite_int_roundtrip) {
@@ -5888,7 +5888,7 @@ Test(fs2_api, composite_llong_roundtrip) {
     for (size_t i = 0; i < n; i++) {
         fs2 s = fs2_from_new(values[i]);
         CHECK_FS2VALID((int)i, &s);
-        /* parse_long работает на LP64 (long == long long по размеру) */
+        /* parse_long works on LP64 (long == long long in size) */
         CHECK_EQ("roundtrip", fs2_parse_long(&s), (long)values[i]);
         fs2_free(&s);
     }
@@ -5898,7 +5898,7 @@ Test(fs2_api, composite_llong_roundtrip) {
 Test(fs2_api, composite_int_to_string_pipeline) {
     __fs2_checkreset();
 
-    /* Собираем "Result: 42 (forty-two)" */
+    /* Build "Result: 42 (forty-two)" */
     fs2 msg = fs2_from_new(42);
     CHECK_FS2VALID(1, &msg);
 
@@ -5918,16 +5918,16 @@ Test(fs2_api, composite_int_to_string_pipeline) {
 Test(fs2_api, composite_build_csv_row) {
     __fs2_checkreset();
 
-    /* Собираем CSV: id,name,score */
+    /* Build CSV: id,name,score */
     fs2 row = fs2_from_new(42);              // id
     fs2_catstr(&row, ",");
     fs2_catstr(&row, "alice");
     fs2_catstr(&row, ",");
-    fs2_serialize(&row, 3.14);               // score (append после "42,alice,")
+    fs2_serialize(&row, 3.14);               // score (append after "42,alice,")
 
-    /* Внимание: fs2_serialize пишет С НАЧАЛА (pos=0), не в конец!
-     * Для CSV в конец нужна fs2_catstr с ручным форматированием,
-     * либо fs2_sprintf_position. Проверяем реальное поведение. */
+    /* Note: fs2_serialize writes FROM THE BEGINNING (pos=0), not at the end!
+     * For CSV at the end you need fs2_catstr with manual formatting,
+     * or fs2_sprintf_position. Checking real behavior. */
     CHECK_STR_EQ("row", row.v, "3.140000");
     CHECK_FS2VALID(1, &row);
 
@@ -5956,7 +5956,7 @@ Test(fs2_api, composite_heap_to_stack) {
 Test(fs2_api, composite_array_of_values) {
     __fs2_checkreset();
 
-    /* Массив из 10 сериализованных int */
+    /* Array of 10 serialized ints */
     fs2 arr[10];
     for (int i = 0; i < 10; i++) {
         arr[i] = fs2_from_new(i);
@@ -5976,9 +5976,9 @@ Test(fs2_api, composite_mixed_types_in_array) {
     __fs2_checkreset();
 
     /* 
-     * Хитрый сценарий: сериализуем разные типы, склеиваем.
-     * Демонстрирует, что макрос работает с любым типом в одном цикле
-     * (тут — вручную, в реальном коде — через отдельные вызовы).
+     * Tricky scenario: serialize different types, concatenate.
+     * Demonstrates the macro works with any type in one loop
+     * (here — manually, in real code — via separate calls).
      */
     fs2 a = fs2_from_new(42);
     fs2 b = fs2_from_new(5000000000L);
@@ -6059,7 +6059,7 @@ Test(fs2_api, serialize_concat_long_no_truncation) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* Регрессия: если _Generic случайно выбрал %d, получим мусор */
+    /* Regression: if _Generic accidentally picked %d, we get garbage */
     fs2_serialize_concat(&s, 5000000000L);
 
     CHECK_STR_EQ("content", s.v, "5000000000");
@@ -6109,7 +6109,7 @@ Test(fs2_api, serialize_concat_pointer) {
 
     fs2_serialize_concat(&s, ptr);
 
-    /* %p печатает "0x..." */
+    /* %p prints "0x..." */
     CHECK_TRUE("starts with 0x", s.len > 2 && s.v[0] == '0' && s.v[1] == 'x');
     CHECK_FS2VALID(1, &s);
 
@@ -6141,13 +6141,13 @@ Test(fs2_api, serialize_concat_chain_ints) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* Собираем "0,1,2,...,99" через 100 int-append'ов */
+    /* Build "0,1,2,...,99" via 100 int-appends */
     for (int i = 0; i < 100; i++) {
         fs2_serialize_concat(&s, i);
         if (i < 99) fs2_catstr(&s, ",");
     }
 
-    CHECK_EQ("len", s.len, 289);            /* известно из предыдущего теста */
+    CHECK_EQ("len", s.len, 289);            /* known from the previous test */
     CHECK_EQ("starts", strncmp(s.v, "0,1,2,", 6), 0);
     CHECK_EQ("ends", strcmp(s.v + s.len - 2, "99"), 0);
     CHECK_FS2VALID(1, &s);
@@ -6161,7 +6161,7 @@ Test(fs2_api, serialize_concat_many_reallocs) {
     fs2 s = FS2();
     size_t initial_sz = s.sz;               /* 0 */
 
-    /* Огромное число append'ов — гарантирует 4-5 realloc'ов */
+    /* Huge number of appends — guarantees 4-5 reallocs */
     for (int i = 0; i < 500; i++) {
         fs2_serialize_concat(&s, i);
     }
@@ -6170,7 +6170,7 @@ Test(fs2_api, serialize_concat_many_reallocs) {
     CHECK_TRUE("sz >= len+1", s.sz >= s.len + 1);
     CHECK_FS2VALID(1, &s);
 
-    /* Проверяем, что контент не потерялся на границах realloc'ов */
+    /* Verify no content was lost at realloc boundaries */
     CHECK_EQ("starts with 012", strncmp(s.v, "012", 3), 0);
     CHECK_EQ("ends with 499", strcmp(s.v + s.len - 3, "499"), 0);
 
@@ -6236,15 +6236,15 @@ Test(fs2_api, composite_serialize_concat_mixed_widths) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* Смешиваем все целочисленные ширины — если _Generic перепутает,
-     * одно из значений truncate'нется в мусор */
+    /* Mix all integer widths — if _Generic confuses them,
+     * one of the values will be truncated to garbage */
     fs2_serialize_concat(&s, (int)INT_MIN);
     fs2_catstr(&s, ",");
     fs2_serialize_concat(&s, (long)LONG_MIN);
     fs2_catstr(&s, ",");
     fs2_serialize_concat(&s, (long long)LLONG_MIN);
 
-    /* Проверяем, что каждое значение влезло без искажений */
+    /* Verify each value fit without distortion */
     CHECK_EQ("starts with INT_MIN",
              strncmp(s.v, "-2147483648,", 12), 0);
     CHECK_TRUE("contains LONG_MIN",
@@ -6260,7 +6260,7 @@ Test(fs2_api, composite_serialize_concat_mixed_widths) {
 Test(fs2_api, composite_serialize_concat_with_from_new) {
     __fs2_checkreset();
 
-    /* Комбинируем: from_new создаёт, потом дописываем через concat */
+    /* Combine: from_new creates, then append via concat */
     fs2 s = fs2_from_new(100);
     fs2_serialize_concat(&s, 200);
     fs2_serialize_concat(&s, 300);
@@ -6352,7 +6352,7 @@ Test(fs2_api, tryparse_double_rejects_newline) {
     fs2 s = fs2_fromstr("\n3.14");
     double out = 0.0;
 
-    /* strtod съел бы \n сам — мы отвергаем до вызова */
+    /* strtod would eat the \n on its own — we reject before the call */
     CHECK_FALSE("newline rejected", fs2_tryparse_double(&s, &out, true));
 
     fs2_free(&s);
@@ -6362,10 +6362,10 @@ Test(fs2_api, tryparse_double_rejects_newline) {
 Test(fs2_api, parse_double_uses_current_locale) {
     __fs2_checkreset();
     
-    /* Документируем: парсер использует текущую локаль.
-     * В C locale (по умолчанию для тестов) десятичный разделитель — '.'.
-     * Если CI когда-нибудь запустит тесты в не-C локали — этот тест
-     * покажет реальное поведение. */
+    /* Documenting: the parser uses the current locale.
+     * In C locale (default for tests) the decimal separator is '.'.
+     * If CI ever runs the tests in a non-C locale — this test
+     * will reveal the real behavior. */
     fs2 s = fs2_fromstr("3.14");
     double out = 0.0;
 
@@ -6392,7 +6392,7 @@ Test(fs2_api, tryparse_double_underflow) {
     fs2 s = fs2_fromstr("1e-400");   /* << DBL_MIN (~2.2e-308) */
     double out = 0.0;
 
-    /* strtod возвращает 0.0 + ERANGE. Мы отвергаем. */
+    /* strtod returns 0.0 + ERANGE. We reject it. */
     CHECK_FALSE("underflow", fs2_tryparse_double(&s, &out, true));
 
     fs2_free(&s);
@@ -6447,7 +6447,7 @@ Test(fs2_api, parse_double_fails_userraise, .signal = SIGINT) {
 Test(fs2_api, composite_parse_double_from_json) {
     __fs2_checkreset();
 
-    /* {"score":9.5} — парсим значение после ":" */
+    /* {"score":9.5} — parse the value after ":" */
     fs2 json = fs2_fromstr("{\"score\":9.5}");
 
     ptrdiff_t colon = fs2_chr(&json, ':');
@@ -6488,7 +6488,7 @@ Test(fs2_api, pos_parse_char_sequential) {
     char out = 0;
     size_t pos = 0;
 
-    /* Парсим посимвольно — типичный сценарий для токенизации */
+    /* Parse character by character — a typical tokenization scenario */
     CHECK_TRUE ("x", fs2_pos_parse_char(&s, pos, &pos, &out));
     CHECK_EQ   ("val", out, 'x');
     CHECK_TRUE ("y", fs2_pos_parse_char(&s, pos, &pos, &out));
@@ -6589,7 +6589,7 @@ Test(fs2_api, tryparse_char_strict_rejects_newline) {
 Test(fs2_api, tryparse_char_strict_rejects_all_isspace) {
     __fs2_checkreset();
 
-    /* Все шесть isspace-символов: ' ', \t, \n, \v, \f, \r */
+    /* All six isspace characters: ' ', \t, \n, \v, \f, \r */
     const char ws[] = { ' ', '\t', '\n', '\v', '\f', '\r' };
     for (size_t i = 0; i < sizeof(ws); i++) {
         char buf[2] = { ws[i], '\0' };
@@ -6634,7 +6634,7 @@ Test(fs2_api, tryparse_char_strict_accepts_sign) {
     fs2 s_minus = fs2_fromstr("-");
     char out = 0;
 
-    /* '+' и '-' не пробельные — проходят strict */
+    /* '+' and '-' are not whitespace — pass strict */
     CHECK_TRUE("strict '+'", fs2_tryparse_char(&s_plus, &out, true));
     CHECK_EQ("val", out, '+');
 
@@ -6648,7 +6648,7 @@ Test(fs2_api, tryparse_char_strict_accepts_sign) {
 
 Test(fs2_api, tryparse_char_strict_accepts_non_ascii) {
     __fs2_checkreset();
-    /* UTF-8 lead byte 0xC3 — не isspace в C locale */
+    /* UTF-8 lead byte 0xC3 — not isspace in C locale */
     fs2 s = fs2_fromstr("\xC3\xA4");
     char out = 0;
 
@@ -6710,7 +6710,7 @@ Test(fs2_api, parse_char_space_is_valid_lenient) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr(" x");
 
-    /* fs2_parse_char — lenient, пробел валиден */
+    /* fs2_parse_char — lenient, space is valid */
     CHECK_EQ("parsed", fs2_parse_char(&s), ' ');
 
     fs2_free(&s);
@@ -6738,7 +6738,7 @@ Test(fs2_api, tryparse_char_signature_matches) {
     fs2 s = fs2_fromstr("X");
     char out = 0;
 
-    /* Проверяем, что сигнатура (const fs2*, T*, bool) → bool совместима */
+    /* Verify the signature (const fs2*, T*, bool) → bool is compatible */
     bool (*fn)(const fs2 *, char *, bool) = fs2_tryparse_char;
     CHECK_TRUE("callable via fn ptr", fn(&s, &out, true));
     CHECK_EQ("val", out, 'X');
@@ -6754,7 +6754,7 @@ Test(fs2_api, tryparse_char_signature_matches) {
 Test(fs2_api, serialize_char_basic) {
     __fs2_checkreset();
     fs2 dst = FS2();
-    char c = 'A';                          /* ← именно char, не литерал */
+    char c = 'A';                          /* ← specifically char, not a literal */
 
     long res = fs2_serialize(&dst, c);
 
@@ -6774,8 +6774,8 @@ Test(fs2_api, serialize_char_is_not_int) {
 
     fs2_serialize(&dst, c);
 
-    /* Если _Generic выбрал %d вместо %c, получим "65" вместо "A".
-     * Этот тест — главный регресс на правильную ветку. */
+    /* If _Generic picked %d instead of %c, we get "65" instead of "A".
+     * This test is the main regression for the correct branch. */
     CHECK_STR_EQ("is char not int", dst.v, "A");
     CHECK_EQ("len is 1 not 2", dst.len, 1);
 
@@ -6826,7 +6826,7 @@ Test(fs2_api, serialize_char_non_ascii) {
 
     fs2_serialize(&dst, c);
 
-    /* %c пишет сырой байт — 0xE4 */
+    /* %c writes a raw byte — 0xE4 */
     CHECK_EQ("len", dst.len, 1);
     CHECK_EQ("byte", (unsigned char)dst.v[0], 0xE4u);
     CHECK_FS2VALID(1, &dst);
@@ -6836,7 +6836,7 @@ Test(fs2_api, serialize_char_non_ascii) {
 }
 
 /* =========================================================================
- * from_new / serialize_concat — char варианты
+ * from_new / serialize_concat — char variants
  * ========================================================================= */
 
 Test(fs2_api, from_new_char) {
@@ -6883,14 +6883,14 @@ Test(fs2_api, serialize_concat_char) {
 }
 
 /* =========================================================================
- * Composite: построение строки посимвольно
+ * Composite: building a string character by character
  * ========================================================================= */
 
 Test(fs2_api, composite_char_by_char_build) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* Собираем "hello" через serialize_concat по одному символу */
+    /* Build "hello" via serialize_concat one character at a time */
     const char *word = "hello";
     for (size_t i = 0; i < strlen(word); i++) {
         char c = word[i];
@@ -6912,7 +6912,7 @@ Test(fs2_api, composite_mixed_char_and_int) {
     char   c  = '=';
     int    n  = 42;
 
-    /* Типичный сценарий "key=42" — символ + число */
+    /* Typical scenario "key=42" — character + number */
     fs2_serialize_concat(&s, c);
     fs2_serialize_concat(&s, n);
 
@@ -6948,14 +6948,14 @@ Test(fs2_api, char_literal_goes_through_int_branch) {
     __fs2_checkreset();
     fs2 s = FS2();
 
-    /* В C 'x' имеет тип int. _Generic выберет int → %d → "120".
-     * Это НЕ баг, это стандарт C. Фиксируем поведение. */
+    /* In C, 'x' has type int. _Generic picks int → %d → "120".
+     * This is NOT a bug, it is the C standard. We fix the behavior. */
     fs2_serialize(&s, 'x');            /* int literal */
     CHECK_STR_EQ("literal as int → decimal", s.v, "120");
 
     fs2_free(&s);
 
-    /* Для char — переменная или явный каст */
+    /* For char — a variable or an explicit cast */
     fs2 s2 = FS2();
     fs2_serialize(&s2, (char)'x');
     CHECK_STR_EQ("cast to char → char", s2.v, "x");
@@ -6985,7 +6985,7 @@ Test(fs2_api, serialize_unsigned_char_as_number) {
 
     fs2_serialize(&dst, c);
 
-    /* Если кто-то перепутал %hhu и %c — получит байт 0xC8 вместо "200" */
+    /* If someone confused %hhu and %c — they get byte 0xC8 instead of "200" */
     CHECK_STR_EQ("number", dst.v, "200");
     CHECK_EQ("len", dst.len, 3);
     CHECK_FS2VALID(1, &dst);
@@ -7025,7 +7025,7 @@ Test(fs2_api, serialize_unsigned_char_max) {
 Test(fs2_api, serialize_char_vs_unsigned_char) {
     __fs2_checkreset();
     
-    /* Один и тот же байт 65 ('A' = UINT8 65) — но разные типы дают разный вывод */
+    /* Same byte 65 ('A' = UINT8 65) — but different types produce different output */
     char          c_char = 'A';            /* char   → "%c"  → "A" */
     unsigned char c_uchar = 65;            /* uchar  → "%hhu" → "65" */
     
@@ -7048,7 +7048,7 @@ Test(fs2_api, serialize_char_vs_unsigned_char) {
 Test(fs2_api, serialize_uint8_via_uchar) {
     __fs2_checkreset();
     
-    /* Типичное использование: uint8_t как счётчик */
+    /* Typical use: uint8_t as a counter */
     unsigned char flags = 42;
     fs2 s = fs2_from_new(flags);
     
@@ -7129,7 +7129,7 @@ Test(fs2_api, pos_parse_short_far_beyond) {
     fs2 s_neg  = fs2_fromstr("-1000000");
     short out = 0;
 
-    /* Влезает в long, но не в short */
+    /* Fits in long but not in short */
     CHECK_FALSE("1M rejected",   fs2_pos_parse_short(&s_big, 0, NULL, &out));
     CHECK_FALSE("-1M rejected",  fs2_pos_parse_short(&s_neg, 0, NULL, &out));
 
@@ -7141,7 +7141,7 @@ Test(fs2_api, pos_parse_short_far_beyond) {
 Test(fs2_api, pos_parse_short_just_inside_bounds) {
     __fs2_checkreset();
     
-    /* Границы: SHRT_MAX-1 и SHRT_MIN+1 — должны проходить */
+    /* Bounds: SHRT_MAX-1 and SHRT_MIN+1 — must pass */
     fs2 s_hi = fs2_fromstr("32766");
     fs2 s_lo = fs2_fromstr("-32767");
     short out = 0;
@@ -7220,7 +7220,7 @@ Test(fs2_api, parse_short_overflow_aborts, .signal = SIGINT) {
 }
 
 /* =========================================================================
- * Цепочка int → short: одно значение, разные результаты
+ * Chain int → short: one value, different results
  * ========================================================================= */
 
 Test(fs2_api, short_vs_int_chain) {
@@ -7242,7 +7242,7 @@ Test(fs2_api, short_vs_int_chain) {
 Test(fs2_api, short_vs_long_chain) {
     __fs2_checkreset();
     
-    fs2 s = fs2_fromstr("32768");   /* SHRT_MAX + 1, но влезает в long */
+    fs2 s = fs2_fromstr("32768");   /* SHRT_MAX + 1, but fits in long */
     
     short s_out = 0;
     long  l_out = 0;
@@ -7256,13 +7256,13 @@ Test(fs2_api, short_vs_long_chain) {
 }
 
 /* =========================================================================
- * Composite: short в реальном коде
+ * Composite: short in real code
  * ========================================================================= */
 
 Test(fs2_api, composite_parse_short_range_validation) {
     __fs2_checkreset();
     
-    /* Сценарий: парсим "temperature=25" и валидируем диапазон [-40, 80] */
+    /* Scenario: parse "temperature=25" and validate range [-40, 80] */
     fs2 line = fs2_fromstr("temperature=25");
     
     ptrdiff_t eq = fs2_chr(&line, '=');
@@ -7313,8 +7313,8 @@ Test(fs2_api, serialize_short_negative) {
     assert_balanced();
 }
 
-/* ⚠ Главный тест: ловит %hhd (signed char) вместо %hd (short).
- * Для SHRT_MAX=32767: %hd даст "32767", %hhd даст "-1". */
+/* ⚠ Main test: catches %hhd (signed char) instead of %hd (short).
+ * For SHRT_MAX=32767: %hd gives "32767", %hhd gives "-1". */
 Test(fs2_api, serialize_short_boundaries) {
     __fs2_checkreset();
 
@@ -7352,8 +7352,8 @@ Test(fs2_api, serialize_ushort_basic) {
     assert_balanced();
 }
 
-/* ⚠ Главный тест: ловит %hhu (unsigned char) вместо %hu (unsigned short).
- * Для USHRT_MAX=65535: %hu даст "65535", %hhu даст "255". */
+/* ⚠ Main test: catches %hhu (unsigned char) instead of %hu (unsigned short).
+ * For USHRT_MAX=65535: %hu gives "65535", %hhu gives "255". */
 Test(fs2_api, serialize_ushort_max) {
     __fs2_checkreset();
     fs2 dst = FS2();
@@ -7369,8 +7369,8 @@ Test(fs2_api, serialize_ushort_max) {
     assert_balanced();
 }
 
-/* Sanity: short vs unsigned short с одинаковым числовым значением 
- * в зоне пересечения — вывод одинаковый (оба "42"), но это разные ветки. */
+/* Sanity: short vs unsigned short with the same numeric value
+ * in the overlap zone — output is the same (both "42"), but these are different branches. */
 Test(fs2_api, serialize_short_vs_ushort_same_value) {
     __fs2_checkreset();
 
@@ -7434,7 +7434,7 @@ Test(fs2_api, tryparse_ushort_rejects_negative) {
     fs2 s = fs2_fromstr("-1");
     unsigned short out = 0;
 
-    /* strtoull("-1") = ULLONG_MAX, но pos_parse_ullong отвергает минус */
+    /* strtoull("-1") = ULLONG_MAX, but pos_parse_ullong rejects the minus */
     CHECK_FALSE("negative rejected", fs2_tryparse_ushort(&s, &out, true));
 
     fs2_free(&s);
@@ -7540,7 +7540,7 @@ Test(fs2_api, nonspace_span_basic) {
     assert_balanced();
 }
 
-/* Composite: tokenizer в 5 строк */
+/* Composite: tokenizer in 5 lines */
 Test(fs2_api, composite_tokenize) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("the quick brown fox");
@@ -7550,7 +7550,7 @@ Test(fs2_api, composite_tokenize) {
     while (pos < s.len) {
         size_t len = fs2_nonspace_span(&s, pos);
         if (len > 0) count++;
-        pos += len > 0 ? len : 1;   /* пропустить whitespace */
+        pos += len > 0 ? len : 1;   /* skip whitespace */
     }
 
     CHECK_EQ("token count", count, 4);
@@ -7564,12 +7564,12 @@ Test(fs2_api, composite_key_value) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("timeout=30");
 
-    /* 1. Найти '=' через cspn */
+    /* 1. Find '=' via cspn */
     size_t key_len = fs2_cspn(&s, 0, "=");
     CHECK_EQ("key len", key_len, 7);
     CHECK_EQ("eq found", s.v[key_len], '=');
 
-    /* 2. Парсить число ПОСЛЕ '=' через pos_parse_int (не tryparse!) */
+    /* 2. Parse the number AFTER '=' via pos_parse_int (not tryparse!) */
     size_t val_end = 0;
     int    value   = 0;
     CHECK_TRUE("parse value after '='", 
@@ -7672,7 +7672,7 @@ Test(fs2_api, instr_posn_at_end) {
     assert_balanced();
 }
 
-/* ⚠ Ключевой: fs2_is_empty покрывает оба случая — "" и FS2() */
+/* ⚠ Key: fs2_is_empty covers both cases — "" and FS2() */
 
 Test(fs2_api, instr_posn_empty_pattern_literal) {
     __fs2_checkreset();
@@ -7690,7 +7690,7 @@ Test(fs2_api, instr_posn_canonical_empty_pattern) {
     fs2 s   = fs2_fromstr("hello");
     fs2 pat = FS2();                    /* canonical empty: v=NULL, len=0 */
 
-    /* fs2_is_empty() ловит это ДО strstr(NULL, ...) — иначе Segfault */
+    /* fs2_is_empty() catches this BEFORE strstr(NULL, ...) — otherwise Segfault */
     CHECK_EQ("canonical empty pattern", fs2_instr_posn(&s, &pat, 0, 1), -1);
 
     fs2_free(&s);
@@ -7785,7 +7785,7 @@ Test(fs2_api, instr_basic) {
 Test(fs2_api, instr_with_alloc_pattern) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("needle in haystack");
-    fs2 pat = fs2_fromstr("needle");   /* ALLOC, не STATIC */
+    fs2 pat = fs2_fromstr("needle");   /* ALLOC, not STATIC */
 
     CHECK_EQ("alloc pattern", fs2_instr(&s, &pat), 0);
 
@@ -7861,7 +7861,7 @@ Test(fs2_api, instr_posn_ci_basic) {
     assert_balanced();
 }
 
-/* ⚠ Регресс: sensitive должен miss, CI — hit */
+/* ⚠ Regression: sensitive must miss, CI must hit */
 Test(fs2_api, instr_posn_ci_vs_sensitive) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("Hello World");
@@ -7876,7 +7876,7 @@ Test(fs2_api, instr_posn_ci_vs_sensitive) {
 
 Test(fs2_api, instr_posn_ci_nth) {
     __fs2_checkreset();
-    fs2 s   = fs2_fromstr("AbCabcABC");   /* 3 варианта регистра */
+    fs2 s   = fs2_fromstr("AbCabcABC");   /* 3 case variants */
     fs2 pat = FS2LITERAL("abc");
 
     CHECK_EQ("1st (AbC)", fs2_instr_posn_ci(&s, &pat, 0, 1), 0);
@@ -7943,7 +7943,7 @@ Test(fs2_api, instr_posn_ci_empty_pattern) {
 }
 
 /* =========================================================================
- * Sugar — _ci варианты
+ * Sugar — _ci variants
  * ========================================================================= */
 
 Test(fs2_api, instr_ci_basic) {
@@ -7996,8 +7996,8 @@ Test(fs2_api, instr_nth_ci) {
 Test(fs2_api, composite_split_ci) {
     __fs2_checkreset();
     
-    /* Парсим "KEY=Value=With=Equals" — insensitive на '=' (нет разницы)
-     * Но для реального кейса: ключ-значение с любым регистром ключа */
+    /* Parse "KEY=Value=With=Equals" — insensitive on '=' (no difference)
+     * But for the real case: key-value with any case of the key */
     fs2 line   = fs2_fromstr("Content-Type: text/html");
     fs2 sep    = FS2LITERAL(":");
     
@@ -8006,7 +8006,7 @@ Test(fs2_api, composite_split_ci) {
     
     fs2 key = fs2_substr_new(&line, 0, 12);
     fs2_substr(&key, 0, 12);
-    /* Проверим insensitive-сравнение: "content-type" == "Content-Type" */
+    /* Verify insensitive comparison: "content-type" == "Content-Type" */
     fs2 expected_key = FS2LITERAL("content-type");
     CHECK_EQ("key ci match", fs2_cmp_ci(&key, &expected_key), 0);
     
@@ -8017,7 +8017,7 @@ Test(fs2_api, composite_split_ci) {
 
 Test(fs2_api, composite_find_all_ci) {
     __fs2_checkreset();
-    fs2 s   = fs2_fromstr("aXbxcXC");     /* хотим найти все 'x' в любом регистре */
+    fs2 s   = fs2_fromstr("aXbxcXC");     /* we want to find all 'x' in any case */
     fs2 pat = FS2LITERAL("x");
 
     size_t pos   = 0;

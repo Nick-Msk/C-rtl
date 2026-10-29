@@ -236,7 +236,7 @@ Test(fs2, setlen_to_zero) {
 
 Test(fs2_api, setlen_nonzero_on_empty_aborts, .signal = SIGINT) {
     fs2 s = FS2();
-    fs2_setlen(&s, 5); // должно упасть
+    fs2_setlen(&s, 5); // should fail
 }
 
 Test(fs2_api, setlen_zero_on_empty_ok) {
@@ -2125,7 +2125,7 @@ Test(fs2_api, memcpy_basic) {
     fs2 dst = fs2_fromstr("0123456789");
     fs2 src = fs2_fromstr("XXX");
     
-    /* Копируем "XXX" из src (0) в dst (4) */
+    /* Copy "XXX" from src (0) to dst (4) */
     fs2 *ret = fs2_memcpy(&dst, 4, &src, 0, 3);
 
     CHECK_PTR_EQ("returns dst", ret, &dst);
@@ -2145,7 +2145,7 @@ Test(fs2_api, memcpy_growth_realloc) {
     fs2 src = fs2_fromstr("hello");
     size_t orig_sz = dst.sz;
     (void) orig_sz;
-    /* Пишем далеко за пределы (pos=20) */
+    /* Write far beyond bounds (pos=20) */
     fs2_memcpy(&dst, 20, &src, 0, 5);
 
     CHECK_TRUE("sz grew", dst.sz > 20);
@@ -2161,7 +2161,7 @@ Test(fs2_api, memcpy_zero_length) {
     fs2 dst = fs2_fromstr("hello");
     fs2 src = fs2_fromstr("world");
 
-    /* len=0 должен быть no-op без выделения памяти */
+    /* len=0 must be a no-op without memory allocation */
     fs2_memcpy(&dst, 2, &src, 0, 0);
 
     CHECK_STR_EQ("unchanged", dst.v, "hello");
@@ -2229,10 +2229,10 @@ Test(fs2_api, memmove_shift_right_overlap) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc"); // len=3, v="abc\0"
     
-    /* Сдвигаем вправо: из 0 в 2, размер 4 (включая NUL) */
+    /* Shift right: from 0 to 2, size 4 (including NUL) */
     fs2_memmove(&s, 2, &s, 0, 4);
 
-    /* В памяти: 'a', 'b', 'a', 'b', 'c', '\0' */
+    /* In memory: 'a', 'b', 'a', 'b', 'c', '\0' */
     CHECK_EQ("v[0] intact", s.v[0], 'a');
     CHECK_EQ("v[1] intact", s.v[1], 'b');
     CHECK_STR_EQ("suffix shifted", s.v + 2, "abc");
@@ -2248,9 +2248,9 @@ Test(fs2_api, memmove_shift_left_overlap) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abcdef"); // len=6
     
-    /* Сдвигаем влево: из 2 в 0, размер 4 ("cdef") */
+    /* Shift left: from 2 to 0, size 4 ("cdef") */
     fs2_memmove(&s, 0, &s, 2, 4);
-    s.v[4] = '\0'; // NUL руками, т.к. memmove его не ставит
+    s.v[4] = '\0'; // NUL manually, since memmove does not set it
 
     CHECK_STR_EQ("shifted left", s.v, "cdef");
     fs2_setlen(&s, 4);
@@ -2266,15 +2266,15 @@ Test(fs2_api, memmove_realloc_and_shift) {
     size_t orig_sz = s.sz;
     (void) orig_sz;
 
-    /* Сдвигаем "hello\0" (6 байт) из 0 в 50. 
-     * Это вызовет realloc, и старый указатель s.v станет невалидным.
-     * Но так как мы передаем &s и работаем с индексами, всё должно быть ок. */
+    /* Shift "hello\0" (6 bytes) from 0 to 50.
+     * This will trigger realloc, and the old s.v pointer becomes invalid.
+     * But since we pass &s and work with indices, everything should be fine. */
     fs2_memmove(&s, 50, &s, 0, 6);
 
     CHECK_TRUE("sz grew", s.sz > 50);
     CHECK_STR_EQ("shifted far right", s.v + 50, "hello");
     
-    /* Проверяем, что невалидных обращений не было (ASan бы ругнулся) */
+    /* Verify no invalid accesses occurred (ASan would complain) */
     fs2_free(&s);
     assert_balanced();
 }
@@ -2283,8 +2283,8 @@ Test(fs2_api, memmove_null_src_sugar) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("world"); // len=5
     
-    /* Используем сахар: src = NULL означает "сдвигаем s внутри самого себя" */
-    fs2_memmove(&s, 2, NULL, 0, 6); // "world\0" -> сдвиг вправо на 2
+    /* Sugar: src = NULL means "shift s within itself" */
+    fs2_memmove(&s, 2, NULL, 0, 6); // "world\0" -> shift right by 2
 
     CHECK_STR_EQ("shifted right via NULL sugar", s.v + 2, "world");
     
@@ -2300,8 +2300,8 @@ Test(fs2_api, memmove_between_different_fs2) {
     fs2 dst = fs2_fromstr("abc");
     fs2 src = fs2_fromstr("XYZ");
     
-    /* Копируем "XYZ" из src в dst с позиции 1. 
-     * (Это не пересечение, но memmove справится и с этим). */
+    /* Copy "XYZ" from src to dst at position 1.
+     * (Not an overlap, but memmove handles that too). */
     fs2_memmove(&dst, 1, &src, 0, 3);
 
     CHECK_EQ("raw bytes", memcmp(dst.v, "aXYZ", 4), 0);
@@ -2319,7 +2319,7 @@ Test(fs2_api, memmove_zero_length) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* Должен быть no-op, даже если dstpos за пределами (не будет reserve) */
+    /* Must be no-op, even if dstpos is out of bounds (no reserve) */
     fs2_memmove(&s, 100, NULL, 0, 0);
 
     CHECK_EQ("sz unchanged", s.sz, 16);
@@ -2341,11 +2341,11 @@ Test(fs2_api, selfmove_shift_right_overlap) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc"); // len=3, v="abc\0"
     
-    /* Сдвигаем "abc\0" (4 байта) из позиции 0 в позицию 2 */
+    /* Shift "abc\0" (4 bytes) from position 0 to position 2 */
     fs2 *ret = fs2_selfmove(&s, 2, 0, 4);
 
     CHECK_PTR_EQ("returns dst", ret, &s);
-    /* В памяти: 'a', 'b', 'a', 'b', 'c', '\0' */
+    /* In memory: 'a', 'b', 'a', 'b', 'c', '\0' */
     CHECK_STR_EQ("shifted right", s.v + 2, "abc");
     CHECK_EQ("v[0] intact", s.v[0], 'a');
     CHECK_EQ("v[1] intact", s.v[1], 'b');
@@ -2361,9 +2361,9 @@ Test(fs2_api, selfmove_shift_left_overlap) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abcdef"); // len=6
     
-    /* Сдвигаем "cdef" (4 байта) из позиции 2 в позицию 0 */
+    /* Shift "cdef" (4 bytes) from position 2 to position 0 */
     fs2_selfmove(&s, 0, 2, 4);
-    s.v[4] = '\0'; // ставим NUL руками
+    s.v[4] = '\0'; // set NUL manually
 
     CHECK_STR_EQ("shifted left", s.v, "cdef");
     fs2_setlen(&s, 4);
@@ -2379,9 +2379,9 @@ Test(fs2_api, selfmove_triggers_realloc) {
     size_t orig_sz = s.sz;
     (void) orig_sz;
 
-    /* Сдвигаем "hello\0" (6 байт) на позицию 50. 
-     * Внутри fs2_memmove сработает fs2_reserve, который сделает realloc. 
-     * Так как мы передаем индексы, realloc не сломает указатели. */
+    /* Shift "hello\0" (6 bytes) to position 50.
+     * Inside fs2_memmove, fs2_reserve will fire, doing realloc.
+     * Since we pass indices, realloc will not break pointers. */
     fs2_selfmove(&s, 50, 0, 6);
 
     CHECK_TRUE("sz grew", s.sz > 50);
@@ -2395,7 +2395,7 @@ Test(fs2_api, selfmove_zero_length) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    /* len=0 должен быть no-op, reserve не вызовется */
+    /* len=0 must be no-op, reserve will not be called */
     fs2_selfmove(&s, 100, 0, 0);
 
     CHECK_EQ("sz unchanged", s.sz, 16);
@@ -2479,7 +2479,7 @@ Test(fs2_api, substr_bounds_overflow_protection) {
 
     fs2_substr_bounds(&s, &from, &len);
 
-    /* Защита от underflow: len должно стать 3 - 1 = 2, а не SIZE_MAX */
+    /* Underflow protection: len must become 3 - 1 = 2, not SIZE_MAX */
     CHECK_EQ("from unchanged", from, 1);
     CHECK_EQ("len clamped safely", len, 2);
     
@@ -2490,11 +2490,11 @@ Test(fs2_api, substr_bounds_len_null) {
     fs2 s = fs2_fromstr("abcdef"); // len=6
     size_t from = 2;
     
-    /* len = NULL должен быть безопасен, функция нормализует только from */
+    /* len = NULL must be safe, function only normalizes from */
     fs2_substr_bounds(&s, &from, NULL);
 
     CHECK_EQ("from unchanged", from, 2);
-    /* Проверяем, что мы не упали и не изменили ничего лишнего */
+    /* Verify we did not crash and did not change anything extra */
     
     fs2_free(&s);
 }
@@ -2503,7 +2503,7 @@ Test(fs2_api, substr_bounds_len_null_oob) {
     fs2 s = fs2_fromstr("abc"); // len=3
     size_t from = 100;
     
-    /* from за пределами, len = NULL. from должен обнулиться */
+    /* from out of bounds, len = NULL. from must be zeroed */
     fs2_substr_bounds(&s, &from, NULL);
 
     CHECK_EQ("from clamped to len", from, 3);
@@ -2580,7 +2580,7 @@ Test(fs2_api, cmpstr_basic) {
     assert_balanced();
 }
 
-/* Композитный тест: сортировка массива fs2 через qsort */
+/* Composite test: sorting fs2 array via qsort */
 Test(fs2_api, cmp_qsort_array) {
     __fs2_checkreset();
     
@@ -2636,7 +2636,7 @@ Test(fs2_api, cmp_wrap_bsearch) {
         fs2_fromstr("cherry"),
         fs2_fromstr("date")
     };
-    /* Массив уже отсортирован для bsearch */
+    /* Array is already sorted for bsearch */
 
     fs2 key = fs2_fromstr("cherry");
     fs2 *found = bsearch(&key, arr, 4, sizeof(fs2), fs2_cmp_wrap);
@@ -2664,8 +2664,8 @@ Test(fs2_api, bsearch_with_cstr_key_via_wrap) {
     };
 
     /* 
-     * Безопасный путь: оборачиваем C-строку в fs2 (zero-copy, STATIC).
-     * Никаких кастов void* и скрытых контрактов.
+     * Safe path: wrap a C string in fs2 (zero-copy, STATIC).
+     * No void* casts or hidden contracts.
      */
     const char *key_str = "banana";
     fs2 key = fs2_wrap(key_str); 
@@ -2691,7 +2691,7 @@ Test(fs2_api, icmp_wrap_qsort_case_insensitive) {
 
     qsort(arr, 4, sizeof(fs2), fs2_cmp_wrap_ci);
 
-    /* Регистронезависимая сортировка */
+    /* Case-insensitive sort */
     CHECK_STR_EQ("0", arr[0].v, "apple");
     CHECK_STR_EQ("1", arr[1].v, "banana");
     CHECK_STR_EQ("2", arr[2].v, "Cherry");
