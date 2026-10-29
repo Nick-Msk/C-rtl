@@ -1045,3 +1045,27 @@ fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
     fs2_setlen(s, end - start);
     return s;
 }
+
+fs2 *
+fs2_repeat(fs2 *restrict s, size_t n) {
+    invraise(s != NULL, "Null pointer");
+    
+    if (n == 0) { fs2_setlen(s, 0); return s; }
+    if (n == 1) return s;
+    if (s->len == 0) return s;
+    
+    if (n > (SIZE_MAX - 1) / s->len)
+        userraise(-1, ERR_OUT_OF_RANGE,
+                 "fs2_repeat: %zu * %zu overflows size_t", n, s->len);
+    
+    size_t orig  = s->len;
+    size_t total = orig * n;
+    fs2_reserve(s, total + 1);
+    
+    /* Disjoint regions: [i*orig, (i+1)*orig) vs [0, orig). memcpy safe. */
+    for (size_t i = 1; i < n; i++) {
+        memcpy(s->v + i * orig, s->v, orig);
+    }
+    
+    return fs2_setlen(s, total);
+}

@@ -566,6 +566,17 @@ fs2_heap_tolower(const fs2 *str) {
  * @param len  Target total length.
  * @param pad  Non-NULL non-empty fs2 used as the repeating pad pattern.
  * @return     @p str.
+ * 
+ * @pre str != pad  (restrict: str and pad must not alias)
+ *
+ * @note For self-padding — pad the string with itself — use
+ *       fs2_repeat(). It's semantically different (n copies
+ *       vs pad to length) and is UB-free.
+ *
+ *       fs2_rpad("ab", 8, "ab")  → "abababab"   (pad to length 8)
+ *       fs2_repeat("ab", 4)      → "abababab"   (4 copies, also length 8)
+ *
+ *       The first form (self-pad) is UB. Use the second.
  */
 extern fs2 *                    
 fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
@@ -630,6 +641,17 @@ fs2_rpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr
  * @param len  Target total length.
  * @param pad  Non-NULL non-empty fs2 used as the repeating pad pattern.
  * @return     @p str.
+ *
+ * @pre str != pad  (restrict: str and pad must not alias)
+ *
+ * @note For self-padding — pad the string with itself — use
+ *       fs2_repeat(). It's semantically different (n copies
+ *       vs pad to length) and is UB-free.
+ *
+ *       fs2_rpad("ab", 8, "ab")  → "abababab"   (pad to length 8)
+ *       fs2_repeat("ab", 4)      → "abababab"   (4 copies, also length 8)
+ *
+ *       The first form (self-pad) is UB. Use the second.
  */
 extern fs2 *                    
 fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
@@ -2153,6 +2175,49 @@ static inline size_t
 fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
     fs2 tmp = fs2_wrap(pat);
     return fs2_count(s, &tmp);
+}
+
+// Repeat  Stack from fs2
+static inline fs2
+fs2_repeat_new(const fs2 *restrict s, size_t n) {
+    invraise(s != NULL, "Null pointer");
+    if (fs2_is_empty(s) || n == 0)  
+        return FS2();
+    
+    /* Overflow: n * s->len (и +1 для NUL) */
+    if (n > (SIZE_MAX - 1) / s->len) 
+        userraise(-1, ERR_OUT_OF_RANGE, 
+                 "fs2_repeat_new: n * len overflows size_t");
+    
+    return fs2_rpad_new(&FS2EMPTY, n * s->len, s);
+}
+
+// in-place
+extern fs2 *
+fs2_repeat(fs2 *restrict s, size_t n);
+
+/* ========== Heap from fs2 ========== */
+
+static inline fs2 *
+fs2_heap_repeat(const fs2 *restrict s, size_t n) {
+    fs2 tmp = fs2_repeat_new(s, n);
+    return fs2_stacktoheap(&tmp);
+}
+
+/* ========== Stack from c-string ========== */
+
+static inline fs2
+fs2_repeat_str_new(const char *restrict s, size_t n) {
+    fs2 tmp = fs2_wrap(s);
+    return fs2_repeat_new(&tmp, n);
+}
+
+/* ========== Heap from c-string ========== */
+
+static inline fs2 *
+fs2_heap_repeat_str(const char *restrict s, size_t n) {
+    fs2 tmp = fs2_repeat_str_new(s, n);
+    return fs2_stacktoheap(&tmp);
 }
 
 #endif /* !FS2_API_H */
