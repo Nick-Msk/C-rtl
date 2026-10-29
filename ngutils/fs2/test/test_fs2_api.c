@@ -9289,3 +9289,41 @@ Test(fs2_api, composite_http_status_check) {
     fs2_free(&status_line);
     assert_balanced();
 }
+// composite, fs2_starts_with vs fs2_instr
+Test(fs2_api, starts_with_consistent_with_instr) {
+    __fs2_checkreset();
+    
+    fs2 s = fs2_fromstr("hello");
+    
+    /* Non-empty pattern — согласовано */
+    fs2 he = FS2LITERAL("he");
+    fs2 x  = FS2LITERAL("x");
+    
+    CHECK_EQ("he", 
+             fs2_starts_with(&s, &he),
+             fs2_instr(&s, &he) == 0);
+    
+    CHECK_EQ("x",
+             fs2_starts_with(&s, &x),
+             fs2_instr(&s, &x) == 0);
+    
+    /* ⚠ Пустой паттерн — РАСХОЖДЕНИЕ */
+    fs2 empty = FS2EMPTY;
+    
+    CHECK_TRUE("starts_with(hello, '') == true",  
+               fs2_starts_with(&s, &empty));
+    
+    CHECK_EQ("instr(hello, '') == -1",
+             fs2_instr(&s, &empty), -1);
+    
+    /* Инвариант, который должен держаться, но не держится: */
+    CHECK_EQ("EQUIVALENCE BROKEN on empty pattern",
+             fs2_starts_with(&s, &empty),
+             fs2_instr(&s, &empty) == 0);
+    /*   ^ true          ^ (-1 == 0) == false
+     *   → ASSERTION FAILS
+     */
+    
+    fs2_free(&s);
+    assert_balanced();
+}
