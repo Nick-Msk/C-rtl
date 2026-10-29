@@ -925,12 +925,24 @@ typedef char *(*fs2_findfn_t)(const char *haystack,
 static inline ptrdiff_t
 fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
                        size_t pos, size_t nth, fs2_findfn_t find) {
-    if (fs2_is_empty(pattern))       return -1;
-    if (nth == 0)                    return -1;
-    if (pos >= str->len)             return -1;
-    
+    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
+    if (nth == 0)                    
+        return -1;
+
+    /* Empty pattern: matches at every position [pos, str->len].
+     * Python semantics: "abc".find("", 2) → 2; "" matches at pos+nth-1. */
+    if (fs2_is_empty(pattern)) {
+        if (pos > str->len || nth > str->len - pos + 1)
+            return -1;
+        return (ptrdiff_t)(pos + nth - 1);
+    }
+
+    if (pos >= str->len)
+        return -1;
+
     size_t pat_len = pattern->len;
-    if (pat_len > str->len - pos)    return -1;
+    if (pat_len > str->len - pos)
+        return -1;
     
     const char *needle       = pattern->v;
     const char *haystack     = str->v + pos;
