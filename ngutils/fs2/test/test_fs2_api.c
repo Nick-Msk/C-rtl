@@ -10399,6 +10399,38 @@ Test(fs2_api, strip_prefix_new_null_pattern_aborts, .signal = SIGABRT) {
     fs2_free(&src);
 }
 
+Test(fs2_api, strip_suffix_new_allocates_only_result_size) {
+    __fs2_checkreset();
+    
+    /* Суффикс = 100 'X' (закончим на конце src) */
+    char big_sfx[101];
+    memset(big_sfx, 'X', 100);
+    big_sfx[100] = '\0';
+    
+    /* src = "hello" + X*100 = 105 байт */
+    fs2 src = fs2_fromstr("hello");
+    fs2_catstr(&src, big_sfx);          /* ← было: наоборот */
+    CHECK_EQ("src len", src.len, 105);
+    
+    fs2 sfx = fs2_fromstr(big_sfx);     /* 100 байт */
+    
+    fs2 r = fs2_strip_suffix_new(&src, &sfx);
+    
+    CHECK_STR_EQ("content", r.v, "hello");
+    CHECK_EQ("len", r.len, 5);
+    /* 
+     * Если _new через fs2_substr_new: sz ≈ 16 (5+1 round-up).
+     * Если через clone + strip: sz ≈ 128 (105+1 round-up, не уменьшается).
+     */
+    CHECK_TRUE("allocated for result, not for source", r.sz <= 16);
+    CHECK_FS2VALID(1, &r);
+    
+    fs2_free(&src);
+    fs2_free(&sfx);
+    fs2_free(&r);
+    assert_balanced();
+}
+
 /* =========================================================================
  * _str_new — c-string pattern
  * ========================================================================= */
@@ -10549,3 +10581,279 @@ Test(fs2_api, composite_strip_double_extension) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_initcap — in-place
+ * ========================================================================= */
+
+Test(fs2_api, initcap_postgres_example) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi THOMAS");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hi Thomas");
+    CHECK_EQ("len unchanged", s.len, 9);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hello World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_all_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO WORLD");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hello World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_all_lower) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hello World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_already_correct) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("idempotent", s.v, "Hello World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Delimiters — any non-alnum is a word boundary
+ * ========================================================================= */
+
+Test(fs2_api, initcap_hyphen_delim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab-cd-ef");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Ab-Cd-Ef");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_underscore_delim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello_world");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hello_World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_punctuation_delims) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello,world.foo");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "Hello,World.Foo");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_digits_not_word_starts) {
+    __fs2_checkreset();
+    /* Цифры — alnum, значит "1abc" — одно слово, "abc" не капитализируется */
+    fs2 s = fs2_fromstr("1abc 2def");
+
+    fs2_initcap(&s);
+
+    /* '1' alnum → at_start сбрасывается, 'a' становится lowercase */
+    CHECK_STR_EQ("content", s.v, "1abc 2def");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_leading_trailing_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello  world  ");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("content", s.v, "  Hello  World  ");
+    CHECK_EQ("len unchanged", s.len, 16);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Edge cases
+ * ========================================================================= */
+
+Test(fs2_api, initcap_empty_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+
+    fs2_initcap(&s);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_initcap(&s);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_only_punctuation) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("---!!!...");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("unchanged", s.v, "---!!!...");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_only_digits) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("123 456");
+
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("unchanged", s.v, "123 456");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_null_aborts, .signal = SIGABRT) {
+    fs2_initcap(NULL);
+}
+
+/* =========================================================================
+ * Non-ASCII — documented limitation
+ * ========================================================================= */
+
+Test(fs2_api, initcap_non_ascii_c_locale) {
+    __fs2_checkreset();
+    /* UTF-8 кириллица: каждый байт >= 128 → isalnum=false в C locale */
+    fs2 s = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82"); /* "привет" */
+
+    fs2_initcap(&s);
+
+    /* 
+     * В C locale байты >= 128 считаются non-alnum, поэтому каждый 
+     * байт — "разделитель слов". toupper/tolower на них — no-op 
+     * (в C locale). Строка должна остаться нетронутой.
+     */
+    CHECK_STR_EQ("unchanged in C locale", s.v, 
+                 "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
+    CHECK_EQ("len unchanged", s.len, 12);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: clean up user input
+ * ========================================================================= */
+
+Test(fs2_api, composite_initcap_trim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hELLO wORLD  ");
+
+    fs2_trim_str(&s, " \t\n\r\v\f");
+    fs2_initcap(&s);
+
+    CHECK_STR_EQ("cleaned", s.v, "Hello World");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_initcap_key_value) {
+    __fs2_checkreset();
+    /* Нормализуем ключи конфига: "user_name" → "User_Name" */
+    fs2 key = fs2_fromstr("user_name");
+
+    fs2_initcap(&key);
+
+    CHECK_STR_EQ("normalized", key.v, "User_Name");
+    CHECK_FS2VALID(1, &key);
+
+    fs2_free(&key);
+    assert_balanced();
+}
+
+Test(fs2_api, initcap_on_clone) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hi THOMAS");
+
+    /* Кто хочет копию — clone сам, initcap мутирует in-place */
+    fs2 r = fs2_clone(&src);
+    fs2_initcap(&r);
+
+    CHECK_STR_EQ("content", r.v, "Hi Thomas");
+    CHECK_FS2VALID(1, &r);
+    CHECK_STR_EQ("src intact", src.v, "hi THOMAS");
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
