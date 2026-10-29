@@ -1956,4 +1956,46 @@ fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
     return fs2_instr_posn_ci(str, pattern, 0, 1);
 }
 
+// -------------------------- C-str wrappers -----------------------------------
+
+static inline ptrdiff_t
+fs2_instr_posn_str(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
+    fs2 wrapped = fs2_wrap(pattern);
+    return fs2_instr_posn(str, &wrapped, pos, nth);
+}
+
+static inline ptrdiff_t
+fs2_instr_posn_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
+    fs2 wrapped = fs2_wrap(pattern);
+    return fs2_instr_posn_ci(str, &wrapped, pos, nth);
+}
+// wrapper over fs2_instr_posn_str!!, non-ci
+static inline ptrdiff_t
+fs2_instr_from_str(const fs2 *restrict str, const char *restrict pattern, size_t pos) {
+    return fs2_instr_posn_str(str, pattern, pos, 1);
+}
+
+static inline ptrdiff_t
+fs2_instr_nth_str(const fs2 *restrict str, const char *restrict pattern, size_t nth) {
+    return fs2_instr_posn_str(str, pattern, 0, nth);
+}
+
+static inline ptrdiff_t
+fs2_instr_str(const fs2 *restrict str, const char *restrict pattern) {
+    return fs2_instr_posn_str(str, pattern, 0, 1);
+}
+//wrappers over fs2_instr_posn_str_ci! ci
+static inline ptrdiff_t
+fs2_instr_from_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos) {
+    return fs2_instr_posn_str_ci(str, pattern, pos, 1);
+}
+static inline ptrdiff_t
+fs2_instr_nth_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t nth) {
+    return fs2_instr_posn_str_ci(str, pattern, 0, nth);
+}
+static inline ptrdiff_t
+fs2_instr_str_ci(const fs2 *restrict str, const char *restrict pattern) {
+    return fs2_instr_posn_str_ci(str, pattern, 0, 1);
+}
+
 #endif /* !FS2_API_H */
