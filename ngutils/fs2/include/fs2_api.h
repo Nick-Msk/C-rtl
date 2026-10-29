@@ -2116,5 +2116,43 @@ fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
     fs2 tmp = fs2_wrap(suffix);
     return fs2_ends_with(s, &tmp);
 }
+// 
+static inline bool
+fs2_contains(const fs2 *restrict s, const fs2 *restrict pat) {
+    return fs2_instr_posn(s, pat, 0, 1) >= 0;
+}
+// c-str wrap
+static inline bool
+fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
+    fs2 tmp = fs2_wrap(pat);
+    return fs2_contains(s, &tmp);
+}
+// count
+/**
+ * @return Number of non-overlapping occurrences of @p pat.
+ *         Returns 0 if @p pat is empty (unlike Python's len+1, which
+ *         has no practical use and would require special-casing).
+ */
+static inline size_t
+fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
+    invraise(s != NULL && pat != NULL, "Null pointers %p %p", s, pat);
+    if (fs2_is_empty(pat)) return 0;   /* no non-overlapping occurrences of "" */
+    
+    size_t    count = 0;
+    size_t    pos   = 0;
+    ptrdiff_t hit;
+    
+    while ((hit = fs2_instr_posn(s, pat, pos, 1)) >= 0) {
+        count++;
+        pos = (size_t)hit + pat->len;   /* non-overlapping */
+    }
+    return count;
+}
+// c-str wrap
+static inline size_t
+fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
+    fs2 tmp = fs2_wrap(pat);
+    return fs2_count(s, &tmp);
+}
 
 #endif /* !FS2_API_H */
