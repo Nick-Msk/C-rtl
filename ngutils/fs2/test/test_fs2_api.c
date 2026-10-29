@@ -9555,3 +9555,427 @@ Test(fs2_api, composite_count_keywords) {
     fs2_free(&text);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_repeat_new
+ * ========================================================================= */
+
+Test(fs2_api, repeat_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 r = fs2_repeat_new(&s, 3);
+
+    CHECK_STR_EQ("content", r.v, "ababab");
+    CHECK_EQ("len", r.len, 6);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_new_n_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 r = fs2_repeat_new(&s, 1);
+
+    CHECK_STR_EQ("content", r.v, "abc");
+    CHECK_EQ("len", r.len, 3);
+    CHECK_TRUE("independent buffer", r.v != s.v);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_new_n_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 r = fs2_repeat_new(&s, 0);
+
+    CHECK_EQ("len", r.len, 0);
+    CHECK_TRUE("is canonical empty", fs2_is_empty(&r));
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_new_empty_source) {
+    __fs2_checkreset();
+    fs2 s_lit   = FS2EMPTY;
+    fs2 s_canon = FS2();
+
+    fs2 r1 = fs2_repeat_new(&s_lit,   5);
+    fs2 r2 = fs2_repeat_new(&s_canon, 5);
+
+    CHECK_EQ("literal empty",   r1.len, 0);
+    CHECK_EQ("canonical empty", r2.len, 0);
+
+    fs2_free(&r1);
+    fs2_free(&r2);
+    fs2_free(&s_canon);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_new_long) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+
+    fs2 r = fs2_repeat_new(&s, 100);
+
+    CHECK_EQ("len", r.len, 100);
+    for (size_t i = 0; i < r.len; i++)
+        CHECK_EQ("all 'x'", r.v[i], 'x');
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_new_null_aborts, .signal = SIGABRT) {
+    fs2_repeat_new(NULL, 3);
+}
+
+/* =========================================================================
+ * fs2_repeat (in-place)
+ * ========================================================================= */
+
+Test(fs2_api, repeat_inplace_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2_repeat(&s, 3);
+
+    CHECK_STR_EQ("content", s.v, "ababab");
+    CHECK_EQ("len", s.len, 6);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_inplace_n_one_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    void *orig_v = s.v;
+    size_t orig_sz = s.sz;
+
+    fs2_repeat(&s, 1);
+
+    CHECK_STR_EQ("unchanged", s.v, "abc");
+    CHECK_EQ("len", s.len, 3);
+    CHECK_PTR_EQ("same buffer", s.v, orig_v);
+    CHECK_EQ("sz unchanged", s.sz, orig_sz);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_inplace_n_zero_clears) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_repeat(&s, 0);
+
+    CHECK_STR_EQ("cleared", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_inplace_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* canonical empty */
+
+    fs2_repeat(&s, 5);
+
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_inplace_triggers_realloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    size_t orig_sz = s.sz;
+
+    fs2_repeat(&s, 1000);
+
+    CHECK_TRUE("grew", s.sz > orig_sz);
+    CHECK_EQ("len", s.len, 1000);
+    for (size_t i = 0; i < s.len; i++)
+        CHECK_EQ("all 'x'", s.v[i], 'x');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_inplace_null_aborts, .signal = SIGABRT) {
+    fs2_repeat(NULL, 3);
+}
+
+Test(fs2_api, repeat_str_new_null) {
+    __fs2_checkreset();
+
+    /* fs2_wrap(NULL) → FS2EMPTY → repeat → empty */
+    fs2 r = fs2_repeat_str_new(NULL, 5);
+
+    CHECK_EQ("empty", r.len, 0);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_repeat — heap from fs2
+ * ========================================================================= */
+
+Test(fs2_api, heap_repeat_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 *r = fs2_heap_repeat(&s, 3);
+
+    CHECK_STR_EQ("content", r->v, "ababab");
+    CHECK_EQ("len", r->len, 6);
+    CHECK_TRUE("is alloc", fs2_is_alloc(r));
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&s);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_repeat_null_source) {
+    __fs2_checkreset();
+
+    fs2 r = FS2();
+    fs2 *h = fs2_heap_repeat(&r, 5);   /* empty source → empty result */
+
+    CHECK_EQ("len", h->len, 0);
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&r);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_repeat_null_aborts, .signal = SIGABRT) {
+    fs2_heap_repeat(NULL, 3);
+}
+
+/* =========================================================================
+ * fs2_repeat_str_new — stack from c-string
+ * ========================================================================= */
+
+Test(fs2_api, repeat_str_new_basic) {
+    __fs2_checkreset();
+
+    fs2 r = fs2_repeat_str_new("ab", 3);
+
+    CHECK_STR_EQ("content", r.v, "ababab");
+    CHECK_EQ("len", r.len, 6);
+    CHECK_FALSE("not bodyalloc", fs2_is_bodyalloc(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_str_new_null_source) {
+    __fs2_checkreset();
+
+    /* fs2_wrap(NULL) → FS2EMPTY → repeat → empty */
+    fs2 r = fs2_repeat_str_new(NULL, 5);
+
+    CHECK_EQ("len", r.len, 0);
+    CHECK_TRUE("is empty", fs2_is_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, repeat_str_new_empty_source) {
+    __fs2_checkreset();
+
+    fs2 r = fs2_repeat_str_new("", 5);
+
+    CHECK_EQ("len", r.len, 0);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_repeat_str — heap from c-string
+ * ========================================================================= */
+
+Test(fs2_api, heap_repeat_str_basic) {
+    __fs2_checkreset();
+
+    fs2 *r = fs2_heap_repeat_str("xy", 4);
+
+    CHECK_STR_EQ("content", r->v, "xyxyxyxy");
+    CHECK_EQ("len", r->len, 8);
+    CHECK_TRUE("is alloc", fs2_is_alloc(r));
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_repeat_str_null_source) {
+    __fs2_checkreset();
+
+    fs2 *r = fs2_heap_repeat_str(NULL, 5);
+
+    CHECK_EQ("len", r->len, 0);
+    CHECK_TRUE("is bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_repeat_str_empty_source) {
+    __fs2_checkreset();
+
+    fs2 *r = fs2_heap_repeat_str("", 5);
+
+    CHECK_EQ("len", r->len, 0);
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Equivalence matrix: all 4 constructors give the same content
+ * ========================================================================= */
+
+Test(fs2_api, repeat_all_constructors_equivalent) {
+    __fs2_checkreset();
+    fs2 src_fs2 = fs2_fromstr("ab");
+
+    /* Все 4 способа получить "ababab" */
+    fs2  v1 = fs2_repeat_new      (&src_fs2, 3);
+    fs2 *v2 = fs2_heap_repeat     (&src_fs2, 3);
+    fs2  v3 = fs2_repeat_str_new  ("ab",     3);
+    fs2 *v4 = fs2_heap_repeat_str ("ab",     3);
+
+    CHECK_STR_EQ("v1", v1.v, "ababab");
+    CHECK_STR_EQ("v2", v2->v, "ababab");
+    CHECK_STR_EQ("v3", v3.v, "ababab");
+    CHECK_STR_EQ("v4", v4->v, "ababab");
+    CHECK_FS2VALID(1, &v1);
+    CHECK_FS2VALID(2, v2);
+    CHECK_FS2VALID(3, &v3);
+    CHECK_FS2VALID(4, v4);
+
+    fs2_free(&src_fs2);
+    fs2_free(&v1);
+    fs2_free(v2);
+    fs2_free(&v3);
+    fs2_free(v4);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_self_alias_use_repeat) {
+    __fs2_checkreset();
+    
+    /* 
+     * ⚠ Не вызываем fs2_rpad(&s, 8, &s) — это UB из-за restrict.
+     * Правильный способ повторить строку N раз — fs2_repeat.
+     */
+    fs2 s1 = fs2_fromstr("ab");
+    fs2_repeat(&s1, 4);                  // "abababab"
+    
+    /* Эквивалентно rpad до той же длины, но БЕЗ UB */
+    fs2 s2 = fs2_fromstr("ab");
+    fs2 pattern = fs2_fromstr("ab");     // ← отдельный объект!
+    fs2_rpad(&s2, 8, &pattern);          // "abababab"
+    
+    CHECK_STR_EQ("repeat result",  s1.v, "abababab");
+    CHECK_STR_EQ("rpad result",    s2.v, "abababab");
+    CHECK_STR_EQ("same",           s1.v, s2.v);
+    
+    fs2_free(&s1);
+    fs2_free(&s2);
+    fs2_free(&pattern);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency: repeat_new(s, n) == n-fold cat
+ * ========================================================================= */
+
+Test(fs2_api, repeat_new_equivalent_to_cat_loop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* Эталон: n копий через cat */
+    fs2 expected = FS2();
+    for (size_t i = 0; i < 4; i++) fs2_cat(&expected, &s);
+
+    /* repeat_new */
+    fs2 actual = fs2_repeat_new(&s, 4);
+
+    CHECK_STR_EQ("same content", actual.v, expected.v);
+    CHECK_EQ("same len", actual.len, expected.len);
+    CHECK_FS2VALID(1, &actual);
+
+    fs2_free(&s);
+    fs2_free(&expected);
+    fs2_free(&actual);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: ASCII art
+ * ========================================================================= */
+
+Test(fs2_api, composite_repeat_border) {
+    __fs2_checkreset();
+    fs2 line = fs2_fromstr("-");
+
+    fs2_repeat(&line, 40);
+
+    CHECK_EQ("len 40", line.len, 40);
+    for (size_t i = 0; i < 40; i++)
+        CHECK_EQ("dash", line.v[i], '-');
+
+    fs2_free(&line);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_repeat_indent) {
+    __fs2_checkreset();
+    fs2 indent = fs2_fromstr("  ");   /* 2 spaces */
+
+    /* 4 уровня отступа = 8 spaces */
+    fs2_repeat(&indent, 4);
+
+    CHECK_EQ("len 8", indent.len, 8);
+    for (size_t i = 0; i < 8; i++)
+        CHECK_EQ("space", indent.v[i], ' ');
+    CHECK_FS2VALID(1, &indent);
+
+    fs2_free(&indent);
+    assert_balanced();
+}
