@@ -2035,5 +2035,53 @@ fs2_replace_cstr(fs2 *restrict s, const char *restrict pat, const char *restrict
     return fs2_replace_fromstr(s, &tmp, repl);
 }
 
+/**
+ * @brief Trim characters from the set @p pattern at the edges of @p s.
+ *
+ * @param left   trim from the start
+ * @param right  trim from the end
+ *
+ * Pattern is a character set (like strspn's accept), NOT a substring.
+ * `fs2_trim("  hello  ", " ")` → "hello". 
+ * `fs2_trim("xxxhello", "x")` → "hello".
+ *
+ * @return s (for chaining).
+ */
+extern fs2 *
+fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern, bool left, bool right);
+
+static inline fs2 *
+fs2_trim(fs2 *restrict s, const fs2 *restrict pattern) {
+    return fs2_trim_common(s, pattern, true, true);
+}
+
+static inline fs2 *
+fs2_ltrim(fs2 *restrict s, const fs2 *restrict pattern) {
+    return fs2_trim_common(s, pattern, true, false);
+}
+
+static inline fs2 *
+fs2_rtrim(fs2 *restrict s, const fs2 *restrict pattern) {
+    return fs2_trim_common(s, pattern, false, true);
+}
+
+/* c-string pattern wrappers */
+static inline fs2 *
+fs2_trim_str(fs2 *restrict s, const char *restrict pattern) {
+    fs2 tmp = fs2_wrap(pattern);
+    return fs2_trim(s, &tmp);
+}
+
+static inline fs2 *
+fs2_ltrim_str(fs2 *restrict s, const char *restrict pattern) {
+    fs2 tmp = fs2_wrap(pattern);
+    return fs2_ltrim(s, &tmp);
+}
+
+static inline fs2 *
+fs2_rtrim_str(fs2 *restrict s, const char *restrict pattern) {
+    fs2 tmp = fs2_wrap(pattern);
+    return fs2_rtrim(s, &tmp);
+}
 
 #endif /* !FS2_API_H */

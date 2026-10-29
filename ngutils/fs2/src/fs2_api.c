@@ -1000,3 +1000,38 @@ fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) 
     
     return s;
 }
+
+// base trim
+fs2 *
+fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
+                bool left, bool right) {
+    invraise(s != NULL && pattern != NULL, "Null pointers %p %p", s, pattern);
+    
+    if (fs2_is_empty(pattern) || s->len == 0) return s;
+    
+    size_t start = 0;
+    size_t end   = s->len;
+    
+    if (left) {
+        /* strspn: fast path, SIMD-accelerated in glibc. 
+         * pattern->v has no embedded NUL (fs2 invariant), safe. */
+        start = strspn(s->v, pattern->v);
+        if (start == end) { fs2_setlen(s, 0); return s; }
+    }
+    
+    if (right) {
+        /* No reverse-strspn in stdlib — scan back with memchr per byte. */
+        while (end > start) {
+            unsigned char c = (unsigned char)s->v[end - 1];
+            if (!memchr(pattern->v, c, pattern->len)) break;
+            end--;
+        }
+    }
+    
+    /* Shift kept content to front (no-op if start == 0). */
+    if (start > 0 && end > start) {
+        fs2_selfmove(s, 0, start, end - start);
+    }
+    fs2_setlen(s, end - start);
+    return s;
+}
