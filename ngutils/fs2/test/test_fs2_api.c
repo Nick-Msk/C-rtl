@@ -9979,3 +9979,336 @@ Test(fs2_api, composite_repeat_indent) {
     fs2_free(&indent);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_strip_prefix
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 pfx = FS2LITERAL("hello ");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("content", s.v, "world");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_no_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pfx = FS2LITERAL("world");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_whole_string) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pfx = FS2LITERAL("hello");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_empty_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pfx = FS2EMPTY;
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_longer_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hi");
+    fs2 pfx = FS2LITERAL("hello");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_canonical_empty_s) {
+    __fs2_checkreset();
+    fs2 s   = FS2();
+    fs2 pfx = FS2LITERAL("x");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pfx);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_strip_suffix
+ * ========================================================================= */
+
+Test(fs2_api, strip_suffix_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("main.c");
+    fs2 sfx = FS2LITERAL(".c");
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_STR_EQ("content", s.v, "main");
+    CHECK_EQ("len", s.len, 4);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_no_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("main.c");
+    fs2 sfx = FS2LITERAL(".h");
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "main.c");
+    CHECK_EQ("len", s.len, 6);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_whole_string) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 sfx = FS2LITERAL("hello");
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_empty_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 sfx = FS2EMPTY;
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_longer_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hi");
+    fs2 sfx = FS2LITERAL("hello");
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_STR_EQ("unchanged", s.v, "hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_canonical_empty_s) {
+    __fs2_checkreset();
+    fs2 s   = FS2();
+    fs2 sfx = FS2LITERAL("x");
+
+    fs2_strip_suffix(&s, &sfx);
+
+    CHECK_EQ("still empty", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&sfx);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * c-string wrappers
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("https://example.com");
+
+    fs2_strip_prefix_str(&s, "https://");
+
+    CHECK_STR_EQ("content", s.v, "example.com");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello\n");
+
+    fs2_strip_suffix_str(&s, "\n");
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_prefix_str_null_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → empty prefix → no-op */
+    fs2_strip_prefix_str(&s, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, strip_suffix_str_null_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_strip_suffix_str(&s, NULL);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL fs2 arguments abort
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_null_s_aborts, .signal = SIGABRT) {
+    fs2 pfx = FS2LITERAL("x");
+    fs2_strip_prefix(NULL, &pfx);
+}
+
+Test(fs2_api, strip_prefix_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_prefix(&s, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api, strip_suffix_null_s_aborts, .signal = SIGABRT) {
+    fs2 sfx = FS2LITERAL("x");
+    fs2_strip_suffix(NULL, &sfx);
+}
+
+Test(fs2_api, strip_suffix_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_suffix(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Non-ASCII — no corruption
+ * ========================================================================= */
+
+Test(fs2_api, strip_prefix_non_ascii) {
+    __fs2_checkreset();
+    /* UTF-8: "привет мир" = 12+7=19 байт, префикс "привет " = 13 байт */
+    fs2 s   = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82\x20\xD0\xBC\xD0\xB8\xD1\x80");
+    fs2 pfx = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82\x20");
+
+    fs2_strip_prefix(&s, &pfx);
+
+    CHECK_STR_EQ("content", s.v, "\xD0\xBC\xD0\xB8\xD1\x80");  /* "мир" */
+    CHECK_EQ("len", s.len, 6);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pfx);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: URL and file extension
+ * ========================================================================= */
+
+Test(fs2_api, composite_strip_url_prefix) {
+    __fs2_checkreset();
+    fs2 url = fs2_fromstr("https://api.example.com/v1/users");
+
+    fs2_strip_prefix_str(&url, "https://");
+    fs2_strip_prefix_str(&url, "api.");
+    CHECK_STR_EQ("stripped", url.v, "example.com/v1/users");
+    CHECK_FS2VALID(1, &url);
+
+    fs2_free(&url);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_strip_file_extension) {
+    __fs2_checkreset();
+    fs2 path = fs2_fromstr("archive.tar.gz");
+
+    fs2_strip_suffix_str(&path, ".gz");
+    CHECK_STR_EQ("after .gz", path.v, "archive.tar");
+
+    fs2_strip_suffix_str(&path, ".tar");
+    CHECK_STR_EQ("after .tar", path.v, "archive");
+    CHECK_FS2VALID(1, &path);
+
+    fs2_free(&path);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_strip_both_sides) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("<<hello>>");
+
+    fs2_strip_prefix_str(&s, "<<");
+    fs2_strip_suffix_str(&s, ">>");
+    CHECK_STR_EQ("stripped", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
