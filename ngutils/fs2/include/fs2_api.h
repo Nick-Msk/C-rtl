@@ -2010,7 +2010,30 @@ fs2_instr_str_ci(const fs2 *restrict str, const char *restrict pattern) {
  *
  * @return s (for chaining).
  */
-fs2 *
+extern fs2 *
 fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl);
+// wrapper, c-str ports
+// fs2 -> c-str
+static inline fs2 *
+fs2_replace_fromstr(fs2 *restrict s, const fs2 *restrict pat, const char *restrict repl) {
+    fs2 tmp = fs2_wrap(repl);
+    return fs2_replace(s, pat, &tmp);
+}
+// c-str -> c-str
+/**
+ * @brief Replace all occurrences of @p pat (c-string) with @p repl (c-string).
+ *
+ * Convenience wrapper for the most common case: both pattern and
+ * replacement are plain C-strings. For mixed fs2/c-string arguments
+ * use fs2_replace (fs2/fs2) or fs2_replace_fromstr (fs2/c-string).
+ *
+ * NULL pat → no-op. NULL/empty repl → delete.
+ */
+static inline fs2 *
+fs2_replace_cstr(fs2 *restrict s, const char *restrict pat, const char *restrict repl) {
+    fs2 tmp = fs2_wrap(pat);
+    return fs2_replace_fromstr(s, &tmp, repl);
+}
+
 
 #endif /* !FS2_API_H */
