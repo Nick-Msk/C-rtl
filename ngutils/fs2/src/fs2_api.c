@@ -963,14 +963,12 @@ fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
 ptrdiff_t
 fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth) {
-    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
     return fs2_instr_posn_common(str, pattern, pos, nth, strstr);
 }
 
 ptrdiff_t
 fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
                   size_t pos, size_t nth) {
-    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
     return fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
 }
 
