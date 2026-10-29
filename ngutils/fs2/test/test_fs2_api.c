@@ -8034,3 +8034,334 @@ Test(fs2_api, composite_find_all_ci) {
     fs2_free(&s);
     assert_balanced();
 }
+/* =========================================================================
+ * Wrappers — instr_str/_ci variants
+ * ========================================================================= */
+Test(fs2_api, instr_str_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → fs2_is_empty → -1.
+     * Никакого краша, никакого invraise. */
+    CHECK_EQ("null pattern → not found", fs2_instr_str(&s, NULL), -1);
+    CHECK_EQ("null pattern ci",          fs2_instr_str_ci(&s, NULL), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_str_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("empty pattern", fs2_instr_str(&s, ""), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_instr_posn_str / _ci — base _str functions
+ * ========================================================================= */
+
+Test(fs2_api, instr_posn_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_EQ("world at 6", fs2_instr_posn_str(&s, "world", 0, 1), 6);
+    CHECK_EQ("l 1st at 2", fs2_instr_posn_str(&s, "l", 0, 1), 2);
+    CHECK_EQ("l 3rd at 3", fs2_instr_posn_str(&s, "l", 0, 3), 9);
+    CHECK_EQ("l 4th",      fs2_instr_posn_str(&s, "l", 0, 4), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → fs2_is_empty → -1. Никакого краша. */
+    CHECK_EQ("null pattern", fs2_instr_posn_str(&s, NULL, 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("empty pattern", fs2_instr_posn_str(&s, "", 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_empty_haystack) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+
+    CHECK_EQ("empty haystack", fs2_instr_posn_str(&s, "x", 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_canonical_empty_haystack) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* v == NULL */
+
+    CHECK_EQ("canonical empty", fs2_instr_posn_str(&s, "x", 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_null_aborts, .signal = SIGABRT) {
+    fs2_instr_posn_str(NULL, "x", 0, 1);
+}
+
+Test(fs2_api, instr_posn_str_nth_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabc");
+
+    CHECK_EQ("nth=0", fs2_instr_posn_str(&s, "abc", 0, 0), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_pos_beyond) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_EQ("pos=len",   fs2_instr_posn_str(&s, "a", 3, 1), -1);
+    CHECK_EQ("pos>len",   fs2_instr_posn_str(&s, "a", 10, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_instr_posn_str_ci
+ * ========================================================================= */
+
+Test(fs2_api, instr_posn_str_ci_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World");
+
+    CHECK_EQ("world ci at 6", fs2_instr_posn_str_ci(&s, "world", 0, 1), 6);
+    CHECK_EQ("WORLD ci at 6", fs2_instr_posn_str_ci(&s, "WORLD", 0, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_ci_vs_sensitive) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World");
+
+    /* Регресс: sensitive miss, ci hit */
+    CHECK_EQ("sensitive miss", fs2_instr_posn_str(&s,    "world", 0, 1), -1);
+    CHECK_EQ("ci hit",         fs2_instr_posn_str_ci(&s, "world", 0, 1), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_ci_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("null pattern ci", fs2_instr_posn_str_ci(&s, NULL, 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_ci_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("empty pattern ci", fs2_instr_posn_str_ci(&s, "", 0, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_posn_str_ci_null_aborts, .signal = SIGABRT) {
+    fs2_instr_posn_str_ci(NULL, "x", 0, 1);
+}
+
+/* =========================================================================
+ * Sugar: fs2_instr_str / _from_str / _nth_str (sensitive)
+ * ========================================================================= */
+
+Test(fs2_api, instr_str_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabcabc");
+
+    /* fs2_instr_str = posn_str(s, pat, 0, 1) */
+    CHECK_EQ("instr_str == posn_str",
+             fs2_instr_str(&s, "abc"),
+             fs2_instr_posn_str(&s, "abc", 0, 1));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_from_str_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabcabc");
+
+    CHECK_EQ("from_str == posn_str",
+             fs2_instr_from_str(&s, "abc", 4),
+             fs2_instr_posn_str(&s, "abc", 4, 1));
+    CHECK_EQ("value", fs2_instr_from_str(&s, "abc", 4), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_nth_str_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabcabc");
+
+    CHECK_EQ("nth_str == posn_str",
+             fs2_instr_nth_str(&s, "abc", 3),
+             fs2_instr_posn_str(&s, "abc", 0, 3));
+    CHECK_EQ("value", fs2_instr_nth_str(&s, "abc", 3), 6);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_str_sugar_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("instr_str",       fs2_instr_str(&s, NULL), -1);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, NULL, 0), -1);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, NULL, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_str_sugar_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("instr_str",       fs2_instr_str(&s, ""), -1);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, "", 0), -1);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, "", 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Sugar: fs2_instr_str_ci / _from_str_ci / _nth_str_ci (insensitive)
+ * ========================================================================= */
+
+Test(fs2_api, instr_str_ci_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World");
+
+    CHECK_EQ("instr_str_ci == posn_str_ci",
+             fs2_instr_str_ci(&s, "world"),
+             fs2_instr_posn_str_ci(&s, "world", 0, 1));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_from_str_ci_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcABCabc");
+
+    CHECK_EQ("from_str_ci == posn_str_ci",
+             fs2_instr_from_str_ci(&s, "abc", 1),
+             fs2_instr_posn_str_ci(&s, "abc", 1, 1));
+    CHECK_EQ("value", fs2_instr_from_str_ci(&s, "abc", 1), 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_nth_str_ci_delegates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcABCabc");
+
+    CHECK_EQ("nth_str_ci == posn_str_ci",
+             fs2_instr_nth_str_ci(&s, "ABC", 2),
+             fs2_instr_posn_str_ci(&s, "ABC", 0, 2));
+    CHECK_EQ("value", fs2_instr_nth_str_ci(&s, "ABC", 2), 3);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_str_ci_sugar_null_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, NULL), -1);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, NULL, 0), -1);
+    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, NULL, 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_str_ci_sugar_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, ""), -1);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, "", 0), -1);
+    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, "", 1), -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Full matrix: все 8 _str функций на NULL-паттерне — без крашей
+ * ========================================================================= */
+
+Test(fs2_api, instr_all_str_variants_null_pattern_no_crash) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("some text");
+
+    /* Все должны вернуть -1, без segfault */
+    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, NULL, 0, 1), -1);
+    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, NULL, 0, 1), -1);
+    CHECK_EQ("instr_str",       fs2_instr_str            (&s, NULL),         -1);
+    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, NULL),         -1);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, NULL, 0),      -1);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, NULL, 0),      -1);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, NULL, 1),      -1);
+    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, NULL, 1),      -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, instr_all_str_variants_empty_pattern_no_crash) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("some text");
+
+    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, "", 0, 1), -1);
+    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, "", 0, 1), -1);
+    CHECK_EQ("instr_str",       fs2_instr_str            (&s, ""),         -1);
+    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, ""),         -1);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, "", 0),      -1);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, "", 0),      -1);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, "", 1),      -1);
+    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, "", 1),      -1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
