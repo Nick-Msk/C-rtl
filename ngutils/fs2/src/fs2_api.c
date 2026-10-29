@@ -923,7 +923,7 @@ typedef char *(*fs2_findfn_t)(const char *haystack,
                                     const char *needle);
 
 static inline ptrdiff_t
-_fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
                        size_t pos, size_t nth, fs2_findfn_t find) {
     if (fs2_is_empty(pattern))       return -1;
     if (nth == 0)                    return -1;
@@ -952,14 +952,14 @@ ptrdiff_t
 fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth) {
     invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
-    return _fs2_instr_posn_common(str, pattern, pos, nth, strstr);
+    return fs2_instr_posn_common(str, pattern, pos, nth, strstr);
 }
 
 ptrdiff_t
 fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
                   size_t pos, size_t nth) {
     invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
-    return _fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
+    return fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
 }
 
 // replace 
