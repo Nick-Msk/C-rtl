@@ -7679,7 +7679,7 @@ Test(fs2_api, instr_posn_empty_pattern_literal) {
     fs2 s   = fs2_fromstr("hello");
     fs2 pat = FS2EMPTY;                 /* STATIC v="", len=0 */
 
-    CHECK_EQ("empty pattern", fs2_instr_posn(&s, &pat, 0, 1), -1);
+    CHECK_EQ("empty pattern", fs2_instr_posn(&s, &pat, 0, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -7691,7 +7691,7 @@ Test(fs2_api, instr_posn_canonical_empty_pattern) {
     fs2 pat = FS2();                    /* canonical empty: v=NULL, len=0 */
 
     /* fs2_is_empty() catches this BEFORE strstr(NULL, ...) — otherwise Segfault */
-    CHECK_EQ("canonical empty pattern", fs2_instr_posn(&s, &pat, 0, 1), -1);
+    CHECK_EQ("canonical empty pattern", fs2_instr_posn(&s, &pat, 0, 1), 0);
 
     fs2_free(&s);
     fs2_free(&pat);
@@ -7934,8 +7934,8 @@ Test(fs2_api, instr_posn_ci_empty_pattern) {
     fs2 p_empty  = FS2EMPTY;
     fs2 p_canon  = FS2();   /* canonical empty */
 
-    CHECK_EQ("STATIC empty",    fs2_instr_posn_ci(&s, &p_empty, 0, 1), -1);
-    CHECK_EQ("canonical empty", fs2_instr_posn_ci(&s, &p_canon, 0, 1), -1);
+    CHECK_EQ("STATIC empty",    fs2_instr_posn_ci(&s, &p_empty, 0, 1), 0);
+    CHECK_EQ("canonical empty", fs2_instr_posn_ci(&s, &p_canon, 0, 1), 0);
 
     fs2_free(&s);
     fs2_free(&p_canon);
@@ -8043,8 +8043,8 @@ Test(fs2_api, instr_str_null_pattern) {
 
     /* fs2_wrap(NULL) → FS2EMPTY → fs2_is_empty → -1.
      * Никакого краша, никакого invraise. */
-    CHECK_EQ("null pattern → not found", fs2_instr_str(&s, NULL), -1);
-    CHECK_EQ("null pattern ci",          fs2_instr_str_ci(&s, NULL), -1);
+    CHECK_EQ("null pattern →  found",    fs2_instr_str(&s, NULL)    , 0);
+    CHECK_EQ("null pattern ci",          fs2_instr_str_ci(&s, NULL) , 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8054,7 +8054,7 @@ Test(fs2_api, instr_str_empty_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("empty pattern", fs2_instr_str(&s, ""), -1);
+    CHECK_EQ("empty pattern", fs2_instr_str(&s, ""), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8082,7 +8082,7 @@ Test(fs2_api, instr_posn_str_null_pattern) {
     fs2 s = fs2_fromstr("hello");
 
     /* fs2_wrap(NULL) → FS2EMPTY → fs2_is_empty → -1. Никакого краша. */
-    CHECK_EQ("null pattern", fs2_instr_posn_str(&s, NULL, 0, 1), -1);
+    CHECK_EQ("null pattern", fs2_instr_posn_str(&s, NULL, 0, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8092,7 +8092,7 @@ Test(fs2_api, instr_posn_str_empty_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("empty pattern", fs2_instr_posn_str(&s, "", 0, 1), -1);
+    CHECK_EQ("empty pattern", fs2_instr_posn_str(&s, "", 0, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8174,7 +8174,7 @@ Test(fs2_api, instr_posn_str_ci_null_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("null pattern ci", fs2_instr_posn_str_ci(&s, NULL, 0, 1), -1);
+    CHECK_EQ("null pattern ci", fs2_instr_posn_str_ci(&s, NULL, 0, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8184,7 +8184,7 @@ Test(fs2_api, instr_posn_str_ci_empty_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("empty pattern ci", fs2_instr_posn_str_ci(&s, "", 0, 1), -1);
+    CHECK_EQ("empty pattern ci", fs2_instr_posn_str_ci(&s, "", 0, 1), 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8241,9 +8241,9 @@ Test(fs2_api, instr_str_sugar_null_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("instr_str",       fs2_instr_str(&s, NULL), -1);
-    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, NULL, 0), -1);
-    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, NULL, 1), -1);
+    CHECK_EQ("instr_str",       fs2_instr_str(&s, NULL)         , 0);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, NULL, 0) , 0);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, NULL, 1)  , 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8253,9 +8253,9 @@ Test(fs2_api, instr_str_sugar_empty_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("instr_str",       fs2_instr_str(&s, ""), -1);
-    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, "", 0), -1);
-    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, "", 1), -1);
+    CHECK_EQ("instr_str",       fs2_instr_str(&s, "")           , 0);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str(&s, "", 0)   , 0);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str(&s, "", 1)    , 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8307,9 +8307,9 @@ Test(fs2_api, instr_str_ci_sugar_null_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, NULL), -1);
-    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, NULL, 0), -1);
-    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, NULL, 1), -1);
+    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, NULL)        , 0);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, NULL, 0), 0);
+    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, NULL, 1) , 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8319,9 +8319,9 @@ Test(fs2_api, instr_str_ci_sugar_empty_pattern) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, ""), -1);
-    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, "", 0), -1);
-    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, "", 1), -1);
+    CHECK_EQ("instr_str_ci",      fs2_instr_str_ci(&s, "")          , 0);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci(&s, "", 0)  , 0);
+    CHECK_EQ("instr_nth_str_ci",  fs2_instr_nth_str_ci(&s, "", 1)   , 0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8336,14 +8336,14 @@ Test(fs2_api, instr_all_str_variants_null_pattern_no_crash) {
     fs2 s = fs2_fromstr("some text");
 
     /* Все должны вернуть -1, без segfault */
-    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, NULL, 0, 1), -1);
-    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, NULL, 0, 1), -1);
-    CHECK_EQ("instr_str",       fs2_instr_str            (&s, NULL),         -1);
-    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, NULL),         -1);
-    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, NULL, 0),      -1);
-    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, NULL, 0),      -1);
-    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, NULL, 1),      -1);
-    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, NULL, 1),      -1);
+    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, NULL, 0, 1), 0);
+    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, NULL, 0, 1), 0);
+    CHECK_EQ("instr_str",       fs2_instr_str            (&s, NULL),       0);
+    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, NULL),       0);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, NULL, 0),    0);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, NULL, 0),    0);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, NULL, 1),    0);
+    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, NULL, 1),    0);
 
     fs2_free(&s);
     assert_balanced();
@@ -8353,14 +8353,14 @@ Test(fs2_api, instr_all_str_variants_empty_pattern_no_crash) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("some text");
 
-    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, "", 0, 1), -1);
-    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, "", 0, 1), -1);
-    CHECK_EQ("instr_str",       fs2_instr_str            (&s, ""),         -1);
-    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, ""),         -1);
-    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, "", 0),      -1);
-    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, "", 0),      -1);
-    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, "", 1),      -1);
-    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, "", 1),      -1);
+    CHECK_EQ("posn_str",        fs2_instr_posn_str       (&s, "", 0, 1), 0);
+    CHECK_EQ("posn_str_ci",     fs2_instr_posn_str_ci    (&s, "", 0, 1), 0);
+    CHECK_EQ("instr_str",       fs2_instr_str            (&s, ""),       0);
+    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci         (&s, ""),       0);
+    CHECK_EQ("instr_from_str",  fs2_instr_from_str       (&s, "", 0),    0);
+    CHECK_EQ("instr_from_str_ci", fs2_instr_from_str_ci  (&s, "", 0),    0);
+    CHECK_EQ("instr_nth_str",   fs2_instr_nth_str        (&s, "", 1),    0);
+    CHECK_EQ("instr_nth_str_ci", fs2_instr_nth_str_ci    (&s, "", 1),    0);
 
     fs2_free(&s);
     assert_balanced();
@@ -9313,8 +9313,8 @@ Test(fs2_api, starts_with_consistent_with_instr) {
     CHECK_TRUE("starts_with(hello, '') == true",  
                fs2_starts_with(&s, &empty));
     
-    CHECK_EQ("instr(hello, '') == -1",
-             fs2_instr(&s, &empty), -1);
+    CHECK_EQ("instr(hello, '') == 0",
+             fs2_instr(&s, &empty), 0);
     
     /* Инвариант, который должен держаться, но не держится: */
     CHECK_EQ("EQUIVALENCE BROKEN on empty pattern",
