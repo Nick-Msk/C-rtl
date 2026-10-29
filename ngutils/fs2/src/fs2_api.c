@@ -860,6 +860,17 @@ fs2_pos_parse_char(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse a short integer starting at @p pos (streaming).
+ *
+ * Delegates to `fs2_pos_parse_llong` then range-checks to `short`.
+ *
+ * @param s       Non-NULL fs2.
+ * @param pos     Start offset.
+ * @param newpos  Optional. Set to the position after the number.
+ * @param out     Optional. If NULL, the value is discarded.
+ * @return        true on success, false on invalid format, overflow, or range.
+ */
 bool 
 fs2_pos_parse_short(const fs2 *restrict s, size_t pos, 
                     size_t *restrict newpos, short *restrict out) {

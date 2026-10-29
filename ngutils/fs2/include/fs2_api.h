@@ -1033,12 +1033,53 @@ fs2_not_in_ci(const fs2 *restrict s, const char *restrict strs[]) {
     return fs2_anyof(s, strs, strcasecmp) < 0;
 }
 
+/**
+ * @brief Macro: case-sensitive "NOT IN" — is @p s absent from a list of C-strings?
+ *
+ * Expands to `fs2_not_in(s, (const char*[]){ __VA_ARGS__, NULL })`.
+ *
+ * @code
+ *   FS2_NOT_IN(name, "alice", "bob", "carol")
+ * @endcode
+ *
+ * @param s      Non-NULL fs2 to check.
+ * @param ...    One or more C-string literals (NULL terminator is appended).
+ * @return       true if @p s does NOT match any of the listed strings.
+ */
 #define                      FS2_NOT_IN(s, ...) \
     fs2_not_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
+
+/**
+ * @brief Macro: case-insensitive "NOT IN" — is @p s absent from a list of C-strings?
+ *
+ * @param s      Non-NULL fs2 to check.
+ * @param ...    One or more C-string literals.
+ * @return       true if @p s does NOT match any (using `strcasecmp`).
+ */
 #define                      FS2_NOT_IN_CI(s, ...) \
     fs2_not_in_ci( (s), (const char *[]) { __VA_ARGS__, NULL } )
+
+/**
+ * @brief Macro: case-sensitive "IN" — is @p s present in a list of C-strings?
+ *
+ * @code
+ *   FS2_IN(name, "alice", "bob")
+ * @endcode
+ *
+ * @param s      Non-NULL fs2 to check.
+ * @param ...    One or more C-string literals.
+ * @return       true if @p s matches one of the listed strings.
+ */
 #define                      FS2_IN(s, ...) \
     fs2_in ( (s), (const char *[]) { __VA_ARGS__, NULL } )
+
+/**
+ * @brief Macro: case-insensitive "IN" — is @p s present in a list of C-strings?
+ *
+ * @param s      Non-NULL fs2 to check.
+ * @param ...    One or more C-string literals.
+ * @return       true if @p s matches one of the listed strings (using `strcasecmp`).
+ */
 #define                      FS2_IN_CI(s, ...) \
     fs2_in_ci( (s), (const char *[]) { __VA_ARGS__, NULL } )
 
@@ -1676,7 +1717,12 @@ fs2_parse_ushort(const fs2 *restrict s) {
 
 // Format (primitive → string)
 
-// Select format string by type
+/**
+ * @brief Select the correct `printf` format specifier for a primitive type.
+ *
+ * Uses C11 `_Generic` to map the static type of @p v to its
+ * corresponding format string (`%d`, `%lu`, `%f`, …).
+ */
 #define FS2_FMT(v) _Generic((v),\
     char:               "%c",   \
     signed char:        "%hhd", \
@@ -1695,6 +1741,12 @@ fs2_parse_ushort(const fs2 *restrict s) {
     const void *:       "%p"    \
 )
 
+/**
+ * @brief Select a human-readable error message for a serialization failure.
+ *
+ * Maps the static type of @p v to a formatted string that includes
+ * the offending value (e.g. `"Failed to serialize int 42"`).
+ */
 #define FS2_SER_ERRMSG(v) _Generic((v),                                     \
     char:               "Failed to serialize char %c",                      \
     signed char:        "Failed to serialize signed char %hhd",             \
@@ -1828,36 +1880,77 @@ ptrdiff_t
 fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
                   size_t pos, size_t nth);               
 
-/* First occurrence from pos */
+/**
+ * @brief Case-sensitive: find the first occurrence of @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @param pos      Start position.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_from(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
     return fs2_instr_posn(str, pattern, pos, 1);
 }
 
-/* Nth occurrence from start */
+/**
+ * @brief Case-sensitive: find the nth occurrence of @p pattern from the start.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_nth(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) {
     return fs2_instr_posn(str, pattern, 0, nth);
 }
 
-/* First occurrence from start */
+/**
+ * @brief Case-sensitive: find the first occurrence of @p pattern.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr(const fs2 *restrict str, const fs2 *restrict pattern) {
     return fs2_instr_posn(str, pattern, 0, 1);
 }
 
-/*  First occurrence from pos, case-insensitive */
+/**
+ * @brief Case-insensitive: find the first occurrence of @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @param pos      Start position.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_from_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
     return fs2_instr_posn_ci(str, pattern, pos, 1);
 }
 
-/* Nth occurrence from start, case-insensitive */
+/**
+ * @brief Case-insensitive: find the nth occurrence of @p pattern from the start.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_nth_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) {
     return fs2_instr_posn_ci(str, pattern, 0, nth);
 }
-/* First occurrence from start, case-insensitive  */
+
+/**
+ * @brief Case-insensitive: find the first occurrence of @p pattern.
+ *
+ * @param str      Non-NULL fs2.
+ * @param pattern  Non-NULL fs2.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
     return fs2_instr_posn_ci(str, pattern, 0, 1);
