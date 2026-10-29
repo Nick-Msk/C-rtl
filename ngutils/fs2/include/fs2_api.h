@@ -1998,4 +1998,19 @@ fs2_instr_str_ci(const fs2 *restrict str, const char *restrict pattern) {
     return fs2_instr_posn_str_ci(str, pattern, 0, 1);
 }
 
+/**
+ * @brief Replace all non-overlapping occurrences of @p pat with @p repl.
+ *
+ * Non-overlapping like Python's str.replace: "aaa" with pat="aa", repl="b"
+ * gives "ba" (one replacement at position 0, next search starts after it).
+ *
+ * @pre  fs2_is_alloc(s)    (LOCAL/STATIC cannot grow)
+ * @pre  s, pat, repl are distinct objects (restrict)
+ * @pre  !fs2_is_empty(pat) OR no-op (empty pattern returns s unchanged)
+ *
+ * @return s (for chaining).
+ */
+fs2 *
+fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl);
+
 #endif /* !FS2_API_H */

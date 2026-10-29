@@ -962,3 +962,41 @@ fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
     return _fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
 }
 
+// replace 
+fs2 *
+fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) {
+    invraise(s != NULL && pat != NULL && repl != NULL, 
+             "Null pointers %p %p %p", s, pat, repl);
+    
+    if (fs2_is_empty(pat))  
+        return s;
+    if (pat->len > s->len)  
+        return s;
+    
+    size_t pos = 0;
+    while (pos < s->len) {
+        ptrdiff_t hit = fs2_instr_from(s, pat, pos);
+        if (hit < 0)
+            break;
+        
+        size_t p       = (size_t) hit;
+        size_t tail    = s->len - (p + pat->len);
+        size_t new_len = s->len - pat->len + repl->len;
+        
+        /* Shift suffix (tail + NUL) right or left — handles both grow 
+         * and shrink, and is no-op when pat->len == repl->len.
+         * fs2_selfmove reserves capacity and survives realloc. */
+        fs2_selfmove(s, p + repl->len, p + pat->len, tail + 1);
+        
+        /* Copy replacement. Skip if empty — memcpy(dst, NULL, 0) is UB
+         * (FS2EMPTY has v="", but FS2() has v=NULL). */
+        if (repl->len > 0) {
+            fs2_memcpy(s, p, repl, 0, repl->len);
+        }
+        
+        fs2_setlen(s, new_len);
+        pos = p + repl->len;   /* non-overlapping, Python-style */
+    }
+    
+    return s;
+}
