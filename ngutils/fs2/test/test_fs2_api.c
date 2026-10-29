@@ -9066,3 +9066,226 @@ Test(fs2_api, ltrim_rtrim_btrim_matrix) {
     fs2_free(&s_b);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_starts_with / fs2_ends_with
+ * ========================================================================= */
+
+Test(fs2_api, starts_with_basic) {
+    __fs2_checkreset();
+    fs2 s  = fs2_fromstr("hello world");
+    fs2 he = FS2LITERAL("he");
+    fs2 hl = FS2LITERAL("hello");
+    fs2 wo = FS2LITERAL("wo");
+    fs2 x  = FS2LITERAL("x");
+
+    CHECK_TRUE ("'he' is prefix",    fs2_starts_with(&s, &he));
+    CHECK_TRUE ("whole is prefix",   fs2_starts_with(&s, &hl));
+    CHECK_FALSE("'wo' not prefix",   fs2_starts_with(&s, &wo));
+    CHECK_FALSE("'x' not prefix",    fs2_starts_with(&s, &x));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, ends_with_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 ld  = FS2LITERAL("ld");
+    fs2 wld = FS2LITERAL("world");
+    fs2 lo  = FS2LITERAL("lo");
+    fs2 x   = FS2LITERAL("x");
+
+    CHECK_TRUE ("'ld' is suffix",    fs2_ends_with(&s, &ld));
+    CHECK_TRUE ("'world' is suffix", fs2_ends_with(&s, &wld));
+    CHECK_FALSE("'lo' not suffix",   fs2_ends_with(&s, &lo));
+    CHECK_FALSE("'x' not suffix",    fs2_ends_with(&s, &x));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, starts_ends_with_equal_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_TRUE("whole string is prefix", fs2_starts_with(&s, &s));
+    CHECK_TRUE("whole string is suffix", fs2_ends_with(&s, &s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, starts_ends_pattern_longer) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hi");
+    fs2 pat = FS2LITERAL("hello");
+
+    CHECK_FALSE("pattern longer, starts", fs2_starts_with(&s, &pat));
+    CHECK_FALSE("pattern longer, ends",   fs2_ends_with(&s, &pat));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевые: пустой паттерн → true, и NULL v не крашит */
+
+Test(fs2_api, starts_ends_empty_pattern) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("hello");
+    fs2 empty1 = FS2EMPTY;
+    fs2 empty2 = FS2();   /* canonical empty: v=NULL, len=0 */
+
+    /* Пустой префикс/суффикс — всегда true */
+    CHECK_TRUE("literal empty prefix", fs2_starts_with(&s, &empty1));
+    CHECK_TRUE("literal empty suffix", fs2_ends_with(&s, &empty1));
+    CHECK_TRUE("canonical empty prefix", fs2_starts_with(&s, &empty2));
+    CHECK_TRUE("canonical empty suffix", fs2_ends_with(&s, &empty2));
+
+    fs2_free(&s);
+    fs2_free(&empty2);
+    assert_balanced();
+}
+
+Test(fs2_api, starts_ends_canonical_empty_s) {
+    __fs2_checkreset();
+    fs2 s_empty = FS2();            /* v=NULL, len=0 */
+    fs2 s_lit   = FS2EMPTY;         /* v="", len=0 */
+    fs2 pat     = FS2LITERAL("x");
+    fs2 pat_e   = FS2();
+
+    /* Пустая строка + пустой паттерн → true */
+    CHECK_TRUE("canonical empty + empty",   fs2_starts_with(&s_empty, &pat_e));
+    CHECK_TRUE("literal empty + empty",     fs2_starts_with(&s_lit,   &pat_e));
+
+    /* Пустая строка + непустой паттерн → false (не доходит до memcmp) */
+    CHECK_FALSE("canonical empty + 'x'",    fs2_starts_with(&s_empty, &pat));
+    CHECK_FALSE("literal empty + 'x'",      fs2_starts_with(&s_lit,   &pat));
+    CHECK_FALSE("canonical empty ends 'x'", fs2_ends_with  (&s_empty, &pat));
+
+    fs2_free(&s_empty);
+    fs2_free(&pat_e);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * c-string wrappers
+ * ========================================================================= */
+
+Test(fs2_api, starts_with_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("'he'",  fs2_starts_with_str(&s, "he"));
+    CHECK_TRUE ("'hello'", fs2_starts_with_str(&s, "hello"));
+    CHECK_FALSE("'wo'",  fs2_starts_with_str(&s, "wo"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, ends_with_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("'ld'",    fs2_ends_with_str(&s, "ld"));
+    CHECK_TRUE ("'world'", fs2_ends_with_str(&s, "world"));
+    CHECK_FALSE("'lo'",    fs2_ends_with_str(&s, "lo"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, starts_ends_with_str_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* fs2_wrap(NULL) → FS2EMPTY → пустой префикс → true */
+    CHECK_TRUE("NULL prefix → true", fs2_starts_with_str(&s, NULL));
+    CHECK_TRUE("NULL suffix → true", fs2_ends_with_str(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, starts_ends_with_str_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_TRUE("empty prefix", fs2_starts_with_str(&s, ""));
+    CHECK_TRUE("empty suffix", fs2_ends_with_str(&s, ""));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL fs2 arguments abort
+ * ========================================================================= */
+
+Test(fs2_api, starts_with_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2_starts_with(NULL, &pat);
+}
+
+Test(fs2_api, starts_with_null_prefix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_starts_with(&s, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api, ends_with_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = FS2LITERAL("x");
+    fs2_ends_with(NULL, &pat);
+}
+
+Test(fs2_api, ends_with_null_suffix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_ends_with(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Non-ASCII — memcmp безопасен для любых байтов
+ * ========================================================================= */
+
+Test(fs2_api, starts_with_non_ascii) {
+    __fs2_checkreset();
+    /* UTF-8: "привет" = D0 BF D1 80 D0 B8 D0 B2 D0 B5 D1 82 */
+    fs2 s    = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
+    fs2 head = fs2_fromstr("\xD0\xBF\xD1\x80");  /* "пр" */
+
+    CHECK_TRUE("UTF-8 prefix", fs2_starts_with(&s, &head));
+    CHECK_TRUE("UTF-8 suffix", fs2_ends_with(&s, &(fs2){.v="\xD0\xB5\xD1\x82", .len=4, .sz=5, .flags=FS2_STATIC}));
+
+    fs2_free(&s);
+    fs2_free(&head);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: file extension check
+ * ========================================================================= */
+
+Test(fs2_api, composite_file_extension) {
+    __fs2_checkreset();
+    fs2 path = fs2_fromstr("main.c");
+
+    CHECK_TRUE ("starts with 'm'", fs2_starts_with_str(&path, "m"));
+    CHECK_TRUE ("ends with '.c'",   fs2_ends_with_str(&path, ".c"));
+    CHECK_FALSE("ends with '.h'",   fs2_ends_with_str(&path, ".h"));
+
+    fs2_free(&path);
+    assert_balanced();
+}
+
+Test(fs2_api, composite_http_status_check) {
+    __fs2_checkreset();
+    fs2 status_line = fs2_fromstr("HTTP/1.1 200 OK");
+
+    CHECK_TRUE("starts with HTTP/", fs2_starts_with_str(&status_line, "HTTP/"));
+    CHECK_TRUE("ends with OK",      fs2_ends_with_str(&status_line, "OK"));
+
+    fs2_free(&status_line);
+    assert_balanced();
+}
