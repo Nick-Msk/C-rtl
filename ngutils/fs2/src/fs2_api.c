@@ -21,11 +21,8 @@
  */
 fs2*             
 fs2_flip(fs2 *str) {
-    if (fs2_is_empty(str))
-        return str; // ignore empty at all! Evevn if static!
-
-    if (fs2_is_static(str))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot modify STATIC fs2 in-place");
+    if (fs2_can_mutate(str))
+        return str;
 
     if (str->len > 0UL) {
         size_t i = 0UL, j = str->len - 1;

@@ -212,6 +212,22 @@ fs2_is_null(const fs2 *s) {
 }
 
 /**
+ * @brief Skip-or-raise guard for in-place mutators.
+ *
+ * @return true  — empty (NULL or len==0), caller should return `s` untouched.
+ *         false — mutable, caller may proceed.
+ * @raise       — non-empty STATIC (caller tries to mutate .rodata).
+ */
+static inline bool
+fs2_can_mutate(const fs2 *s) {
+    if (fs2_is_empty(s))
+        return true;
+    if (fs2_is_static(s))
+        return userraise(0, ERR_UNSUPPORTED_TYPE, "STATIC fs2 violation!");
+    return false;
+}
+
+/**
  * @brief Declare a stack-allocated fixed-capacity fs2 (FS2LOCAL).
  *
  * Declares a `char` buffer of @p n bytes alongside a named `fs2` that
