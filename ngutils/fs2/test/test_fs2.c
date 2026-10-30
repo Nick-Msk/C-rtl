@@ -2188,6 +2188,23 @@ Test(fs2_api, setsize_canonical_empty) {
     assert_balanced();
 }
 
+Test(fs2_api, reserve_noop_when_alloc_has_enough_space) {
+    __fs2_checkreset();
+    
+    /* setsize даёт точный размер, не power-of-2 */
+    fs2 s = FS2();
+    fs2_setsize(&s, 100);       /* sz = 100 (не 128!) */
+    CHECK_EQ("initial sz", s.sz, 100);
+    
+    fs2_reserve(&s, 90);         /* 100 >= 90, не должно расти */
+    
+    CHECK_EQ("sz unchanged", s.sz, 100);    /* ← падало бы: 128 с багом && */
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
 Test(fs2_api, setsize_static_noop) {
     __fs2_checkreset();
     fs2 s = FS2LITERAL("hello");   /* STATIC, sz=6 */
