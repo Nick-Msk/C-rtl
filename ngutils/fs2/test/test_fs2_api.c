@@ -609,10 +609,122 @@ Test(fs2_api, partialsort_canonical_empty) {
     assert_balanced();
 }
 
-/* ── negatives ─────────────────────────────────────────────────────── */
+/* =========================================================================
+ * fs2_partialsort — cant_mutate guard
+ *
+ * New behavior: empty (any kind) → no-op silently.
+ *               non-empty STATIC → userraise.
+ * ========================================================================= */
 
-Test(fs2_api, partialsort_null_aborts, .signal = SIGABRT) {
-    fs2_partialsort(NULL, 0, 1, true);
+/* ⚠ Главный регресс: FS2EMPTY (v="", STATIC, len=0) не должна крашиться */
+Test(fs2_api, partialsort_fs2empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+
+    fs2_partialsort(&s, 0, 100, true);   /* раньше могло писать в .rodata */
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free — no-op для STATIC */
+}
+
+Test(fs2_api, partialsort_canonical_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* v=NULL */
+
+    fs2_partialsort(&s, 0, 100, true);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* fs2_fromstr("") возвращает FS2EMPTY — пользователь ждёт no-op, не SIGINT */
+Test(fs2_api, partialsort_fromstr_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");   /* FS2EMPTY, STATIC */
+
+    fs2_partialsort(&s, 0, 100, true);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC still", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* Cleared ALLOC: буфер жив, len=0 → skip (нечего сортировать) */
+Test(fs2_api, partialsort_cleared_alloc_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2_clear(&s);   /* len=0, ALLOC, writable */
+
+    fs2_partialsort(&s, 0, 10, true);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("is alloc", fs2_is_alloc(&s));   /* буфер не тронут */
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, partialsort_local_empty_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);   /* len=0 */
+
+    fs2_partialsort(&s, 0, 10, true);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* Empty literal — тоже no-op (skip даже при STATIC) */
+Test(fs2_api, partialsort_empty_literal_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("");   /* STATIC, len=0 */
+
+    fs2_partialsort(&s, 0, 10, true);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+/* ⚠ Non-empty STATIC — реальная ошибка, userraise → SIGINT */
+Test(fs2_api, partialsort_static_nonempty_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_partialsort(&s, 0, 5, true);   /* userraise */
+}
+
+/* Sanity: non-empty ALLOC работает как раньше */
+Test(fs2_api, partialsort_alloc_with_content_still_works) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_partialsort(&s, 0, 4, true);
+
+    CHECK_STR_EQ("sorted", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* LOCAL с контентом — тоже работает */
+Test(fs2_api, partialsort_local_with_content_still_works) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "dcba", 5);
+    s.len = 4;
+
+    fs2_partialsort(&s, 0, 4, true);
+
+    CHECK_STR_EQ("sorted", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
 }
 
 /* -------------------------------------------------------------------------
