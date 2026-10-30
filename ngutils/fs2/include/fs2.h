@@ -228,6 +228,25 @@ fs2_cant_mutate(const fs2 *s) {
 }
 
 /**
+ * @brief Guard for grow/write functions (cat, catstr, cpy, cpystr, ...).
+ *
+ * @return true — empty or mutable, caller may proceed (empty auto-promotes via reserve).
+ *         userraise — non-empty STATIC (cannot write into .rodata while preserving content).
+ */
+static inline bool
+fs2_cant_growth(fs2 *s) {
+    if (!s)
+        return userraise(0, ERR_NULL_INPUT, 
+                  "Cannot grouth for null destination!");
+    if (fs2_is_empty(s))
+        return false;               /* empty → OK, will grow as FSEMPTY */
+    if (fs2_is_static(s))
+        return userraise(0, ERR_UNSUPPORTED_TYPE, 
+                  "Cannot grouth of non-empty STATIC fs2");
+    return false;                                    /* ALLOC/LOCAL → proceed */
+}
+
+/**
  * @brief Declare a stack-allocated fixed-capacity fs2 (FS2LOCAL).
  *
  * Declares a `char` buffer of @p n bytes alongside a named `fs2` that
@@ -609,6 +628,10 @@ fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t src
 
     if (len == 0)
         return dst;
+    // TODO: make a guard to incapsulate that!!!
+    if (src->len > SIZE_MAX - dst->len - 1)
+        sysraise(ERR_OUT_OF_RANGE, 
+                 "fs2_cat: %zu + %zu overflows size_t", dst->len, src->len);
 
     fs2_reserve(dst, dstpos + len + 1);
 
@@ -640,6 +663,8 @@ fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) 
     if (src == NULL)
         src = dst;
     
+
+
     fs2_reserve(dst, dstpos + len + 1);
 
     memmove(dst->v + dstpos, src->v + srcpos, len);
