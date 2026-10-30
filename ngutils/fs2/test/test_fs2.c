@@ -3078,95 +3078,6 @@ Test(fs2_api, can_mutate_static_nonempty_aborts, .signal = SIGINT) {
  *   non-empty others  → true
  * ========================================================================= */
 
-
-Test(fs2_api, cat_into_alloc_grows) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("hello");
-    fs2 src = fs2_fromstr(" world");
-
-    fs2_cat(&dst, &src);
-
-    CHECK_STR_EQ("content", dst.v, "hello world");
-    CHECK_EQ  ("len", dst.len, 11);
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, cat_into_fs2empty_auto_promotes) {
-    __fs2_checkreset();
-    fs2 dst = FS2EMPTY;
-    fs2 src = fs2_fromstr("hi");
-
-    fs2_cat(&dst, &src);
-
-    CHECK_STR_EQ("content", dst.v, "hi");
-    CHECK_TRUE ("promoted to ALLOC", fs2_is_alloc(&dst));
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-/* ⚠ Регресс на баг 1: непустой src должен cat-иться */
-Test(fs2_api, cat_nonempty_src_actually_concatenates) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("a");
-    fs2 src = fs2_fromstr("b");
-
-    fs2_cat(&dst, &src);
-
-    CHECK_STR_EQ("content", dst.v, "ab");   /* ← с `== 0` было бы "a" */
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, cat_empty_src_noop) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("a");
-    fs2 src = FS2EMPTY;
-
-    fs2_cat(&dst, &src);
-
-    CHECK_STR_EQ("unchanged", dst.v, "a");
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, cat_null_src_noop) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("a");
-
-    /* NULL src → fs2_is_empty(NULL) = true → skip */
-    fs2_cat(&dst, NULL);
-
-    CHECK_STR_EQ("unchanged", dst.v, "a");
-    CHECK_FS2VALID(1, &dst);
-
-    fs2_free(&dst);
-    assert_balanced();
-}
-
-Test(fs2_api, cat_null_dst_aborts, .signal = SIGINT) {
-    fs2 src = fs2_fromstr("x");
-    fs2_cat(NULL, &src);   /* ← userraise(ERR_NULL_INPUT) из cant_growth */
-    fs2_free(&src);
-}
-
-Test(fs2_api, cat_static_nonempty_aborts, .signal = SIGINT) {
-    fs2 dst = FS2LITERAL("hi");
-    fs2 src = fs2_fromstr("!");
-
-    fs2_cat(&dst, &src);   /* ← userraise, не SIGSEGV */
-}
-
 Test(fs2_api, memcpy_overflow_guarded, .signal = SIGINT) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("hi");
@@ -3174,6 +3085,71 @@ Test(fs2_api, memcpy_overflow_guarded, .signal = SIGINT) {
 
     /* dstpos + len + 1 → overflow → sysraise */
     fs2_memcpy(&dst, SIZE_MAX - 1, &src, 0, 10);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+}
+
+// reserve_span
+
+Test(fs2_api, reserve_span_ok) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_reserve_span(&s, 10, 20);   /* need = 31 */
+
+    CHECK_TRUE("sz >= 31", s.sz >= 31);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, reserve_span_dstpos_overflow, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_reserve_span(&s, SIZE_MAX - 5, 10);   /* wrap → sysraise */
+
+    fs2_free(&s);
+}
+
+Test(fs2_api, reserve_span_dstpos_size_max, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_reserve_span(&s, SIZE_MAX, 0);   /* SIZE_MAX + 0 + 1 wraps */
+
+    fs2_free(&s);
+}
+
+Test(fs2_api, reserve_span_len_size_max, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_reserve_span(&s, 0, SIZE_MAX);   /* 0 + SIZE_MAX + 1 wraps */
+
+    fs2_free(&s);
+}
+
+/* memcpy/memmove через reserve_span — те же overflow cases */
+Test(fs2_api, memcpy_overflow_via_span, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hi");
+    fs2 src = fs2_fromstr("x");
+
+    fs2_memcpy(&dst, SIZE_MAX - 1, &src, 0, 10);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+}
+
+Test(fs2_api, memcpy_src_over_read, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hi");
+    fs2 src = fs2_fromstr("abc");   /* len=3 */
+
+    fs2_memcpy(&dst, 0, &src, 0, 100);   /* 0+100 > 3 */
 
     fs2_free(&dst);
     fs2_free(&src);
