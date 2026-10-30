@@ -301,6 +301,47 @@ Test(fs2_api, flip_basic) {
     assert_balanced();
 }
 
+
+/* =========================================================================
+ * Integration: fs2_flip использует fs2_can_mutate
+ * ========================================================================= */
+
+Test(fs2_api, flip_empty_noop_no_userraise) {
+    __fs2_checkreset();
+
+    /* Пустая STATIC — no-op, не SIGINT (это и был баг) */
+    fs2 e_static = FS2EMPTY;
+    fs2 e_alloc  = FS2();
+    fs2 e_from   = fs2_fromstr("");   /* FS2EMPTY через конструктор */
+
+    fs2_flip(&e_static);   /* no-op */
+    fs2_flip(&e_alloc);    /* no-op */
+    fs2_flip(&e_from);     /* no-op */
+
+    CHECK_EQ("e_static len", e_static.len, 0);
+    CHECK_EQ("e_alloc len",  e_alloc.len,  0);
+    CHECK_EQ("e_from len",   e_from.len,   0);
+    CHECK_FS2VALID(1, &e_static);
+    CHECK_FS2VALID(2, &e_alloc);
+    CHECK_FS2VALID(3, &e_from);
+
+    fs2_free(&e_alloc);
+    assert_balanced();
+}
+
+Test(fs2_api, flip_nonempty_alloc_works) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_flip(&s);
+
+    CHECK_STR_EQ("flipped", s.v, "cba");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, flip_static_rejected, .signal = SIGINT) {

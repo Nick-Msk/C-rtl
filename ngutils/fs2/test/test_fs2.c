@@ -2972,3 +2972,98 @@ Test(fs2_api, icmp_wrap_qsort_case_insensitive) {
     for (int i = 0; i < 4; i++) fs2_free(&arr[i]);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_can_mutate — mutate-permission guard
+ *
+ * Contract:
+ *   NULL              → false (no crash)
+ *   empty (any kind)  → false (nothing to mutate)
+ *   non-empty STATIC  → userraise (SIGINT)
+ *   non-empty others  → true
+ * ========================================================================= */
+
+Test(fs2_api, can_mutate_null) {
+    CHECK_TRUE("NULL → skip", fs2_can_mutate(NULL));
+}
+
+Test(fs2_api, can_mutate_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_TRUE("FS2() → skip", fs2_can_mutate(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_static_empty) {
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("FS2EMPTY → skip", fs2_can_mutate(&s));
+}
+
+Test(fs2_api, can_mutate_literal_empty) {
+    fs2 s = FS2LITERAL("");
+    CHECK_TRUE("empty literal → skip", fs2_can_mutate(&s));
+}
+
+Test(fs2_api, can_mutate_alloc_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);
+    CHECK_TRUE("ALLOC empty → skip", fs2_can_mutate(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_cleared_alloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2_clear(&s);   /* len=0, буфер жив */
+
+    CHECK_TRUE ("cleared ALLOC → skip", fs2_can_mutate(&s));
+    CHECK_TRUE ("still writable", fs2_is_alloc(&s));   /* buffer жив, но len=0 */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_local_empty) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    CHECK_TRUE("LOCAL empty → skip", fs2_can_mutate(&s));
+}
+
+Test(fs2_api, can_mutate_alloc_with_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FALSE("ALLOC content → proceed", fs2_can_mutate(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_local_with_content) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    s.len = 2;
+    CHECK_FALSE("LOCAL content → proceed", fs2_can_mutate(&s));
+}
+
+Test(fs2_api, can_mutate_bodyalloc_with_content) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+    CHECK_FALSE("heap content → proceed", fs2_can_mutate(h));
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_bodyalloc_empty) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();   /* v=NULL, len=0 */
+    CHECK_TRUE("heap canonical empty → skip", fs2_can_mutate(h));
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, can_mutate_static_nonempty_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_can_mutate(&s);
+}
