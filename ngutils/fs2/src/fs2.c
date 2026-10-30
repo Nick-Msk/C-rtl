@@ -523,7 +523,7 @@ void
 fs2_reserve(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (fs2_is_alloc(s))
+    if (fs2_is_alloc(s) && s->sz < need)
         increasesize(s, need, true);
 }
 
