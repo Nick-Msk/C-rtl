@@ -3236,65 +3236,6 @@ Test(fs2_api, toupper_empty) {
 }
 
 /* =========================================================================
- * fs2_toupper_new — value constructor
- * ========================================================================= */
-
-Test(fs2_api, toupper_new_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("Hello");
-    
-    fs2 res = fs2_toupper_new(&s);
-    
-    CHECK_STR_EQ("new uppercased", res.v, "HELLO");
-    CHECK_FS2VALID(1, &res);
-    
-    CHECK_STR_EQ("original intact", s.v, "Hello");
-    CHECK_FS2VALID(2, &s);
-    
-    fs2_free(&s);
-    fs2_free(&res);
-    assert_balanced();
-}
-
-Test(fs2_api, toupper_new_static_src) {
-    __fs2_checkreset();
-    fs2 src = FS2LITERAL("hello");
-    
-    /* Clones STATIC to ALLOC, then does upper. Original is untouched. */
-    fs2 res = fs2_toupper_new(&src);
-    
-    CHECK_STR_EQ("new uppercased from static", res.v, "HELLO");
-    CHECK_FS2VALID(1, &res);
-    CHECK_FS2VALID(2, &src);
-    CHECK_STR_EQ("static intact", src.v, "hello");
-    
-    fs2_free(&res); // src - STATIC, free no-op
-    assert_balanced();
-}
-
-/* =========================================================================
- * fs2_heap_toupper — heap constructor
- * ========================================================================= */
-
-Test(fs2_api, heap_toupper_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("Hello");
-    
-    fs2 *res = fs2_heap_toupper(&s);
-    
-    CHECK_STR_EQ("heap uppercased", res->v, "HELLO");
-    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(res));
-    CHECK_FS2VALID(1, res);
-    
-    CHECK_STR_EQ("original intact", s.v, "Hello");
-    CHECK_FS2VALID(2, &s);
-    
-    fs2_free(&s);
-    fs2_free(res);
-    assert_balanced();
-}
-
-/* =========================================================================
  * fs2_tolower — in-place lowercase
  * ========================================================================= */
 
@@ -3310,36 +3251,6 @@ Test(fs2_api, tolower_basic) {
     CHECK_FS2VALID(1, &s);
     
     fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, tolower_new_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("Hello");
-    
-    fs2 res = fs2_tolower_new(&s);
-    
-    CHECK_STR_EQ("new lowercased", res.v, "hello");
-    CHECK_FS2VALID(1, &res);
-    
-    CHECK_STR_EQ("original intact", s.v, "Hello");
-    
-    fs2_free(&s);
-    fs2_free(&res);
-    assert_balanced();
-}
-
-Test(fs2_api, heap_tolower_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("Hello");
-    
-    fs2 *res = fs2_heap_tolower(&s);
-    
-    CHECK_STR_EQ("heap lowercased", res->v, "hello");
-    CHECK_FS2VALID(1, res);
-    
-    fs2_free(&s);
-    fs2_free(res);
     assert_balanced();
 }
 

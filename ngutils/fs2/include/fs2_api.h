@@ -495,30 +495,6 @@ extern fs2 *
 fs2_toupper(fs2 *str);
 
 /**
- * @brief Return a stack-allocated copy with all bytes in upper case.
- *
- * @param str  Non-NULL fs2 (any flavor). Not modified.
- * @return     New stack fs2 (cloned, then upper-cased).
- */
-static inline fs2
-fs2_toupper_new(const fs2 *str) {
-    fs2 res = fs2_clone(str);
-    fs2_toupper(&res);
-    return res;
-}
-
-/**
- * @brief Return a heap-allocated copy with all bytes in upper case.
- *
- * @param str  Non-NULL fs2 (any flavor). Not modified.
- * @return     New heap fs2.
- */
-static inline fs2 *
-fs2_heap_toupper(const fs2 *str) {
-    return fs2_toupper(fs2_heap_clone(str));
-}
-
-/**
  * @brief Convert all bytes to lower case in place (byte-wise, NOT Unicode-aware).
  *
  * @pre    str is not FS2_STATIC.
@@ -528,30 +504,6 @@ fs2_heap_toupper(const fs2 *str) {
  */
 extern fs2 *
 fs2_tolower(fs2 *str);
-
-/**
- * @brief Return a stack-allocated copy with all bytes in lower case.
- *
- * @param str  Non-NULL fs2 (any flavor). Not modified.
- * @return     New stack fs2 (cloned, then lower-cased).
- */
-static inline fs2
-fs2_tolower_new(const fs2 *str) {
-    fs2 res = fs2_clone(str);
-    fs2_tolower(&res);
-    return res;
-}
-
-/**
- * @brief Return a heap-allocated copy with all bytes in lower case.
- *
- * @param str  Non-NULL fs2 (any flavor). Not modified.
- * @return     New heap fs2.
- */
-static inline  fs2 *
-fs2_heap_tolower(const fs2 *str) {
-    return fs2_tolower(fs2_heap_clone(str));
-}
 
 // ------------------------------------- Padding -------------------------------------------
 
