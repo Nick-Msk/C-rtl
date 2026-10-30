@@ -314,6 +314,23 @@ extern fs2 *
 fs2_reserve(fs2 *s, size_t need);
 
 /**
+ * @brief Ensure dst can hold @p len bytes at offset @p pos, plus NUL.
+ *
+ * Safe against pos + len + 1 overflow. Use this from memcpy/memmove
+ * wrappers and any API that writes at a known offset.
+ *
+ * @raise ERR_OUT_OF_RANGE if pos + len + 1 overflows size_t.
+ */
+static inline fs2 *
+fs2_reserve_span(fs2 *s, size_t pos, size_t len) {
+    if (len > SIZE_MAX - 1 || pos > SIZE_MAX - len - 1)
+        sysraise(ERR_OUT_OF_RANGE, 
+                 "fs2_reserve_span: pos=%zu + len=%zu + 1 overflows", 
+                 pos, len);
+    return fs2_reserve(s, pos + len + 1);
+}
+
+/**
  * @brief Set capacity to exactly @p need bytes (no rounding).
  *
  * Unlike fs2_reserve (which rounds up to the next power of two and
@@ -629,11 +646,14 @@ fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t src
     if (len == 0)
         return dst;
     // TODO: make a guard to incapsulate that!!!
-    if (src->len > SIZE_MAX - dst->len - 1)
+    /* Over-read guard: src[srcpos .. srcpos+len) must fit */
+    if (srcpos > src->len || len > src->len - srcpos)
         sysraise(ERR_OUT_OF_RANGE, 
-                 "fs2_cat: %zu + %zu overflows size_t", dst->len, src->len);
+                 "src[%zu..%zu] exceeds src->len=%zu",
+                    srcpos, srcpos + len, src->len);
 
-    fs2_reserve(dst, dstpos + len + 1);
+    fs2_reserve_span(dst, dstpos, len);
+    //fs2_reserve(dst, dstpos + len + 1);
 
     memcpy(dst->v + dstpos, src->v + srcpos, len);
     return dst;
@@ -663,9 +683,8 @@ fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) 
     if (src == NULL)
         src = dst;
     
-
-
-    fs2_reserve(dst, dstpos + len + 1);
+    fs2_reserve_span(dst, dstpos, len);
+    //fs2_reserve(dst, dstpos + len + 1);
 
     memmove(dst->v + dstpos, src->v + srcpos, len);
     return dst;
