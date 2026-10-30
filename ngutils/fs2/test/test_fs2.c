@@ -2116,6 +2116,141 @@ Test(fs2_api, shrink_local_noop) {
 Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
     fs_shrink(NULL);
 }
+
+/* =========================================================================
+ * fs2_setsize — exact capacity
+ * ========================================================================= */
+
+Test(fs2_api, setsize_grow_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");   /* sz=16 (min), len=5 */
+
+    fs2_setsize(&s, 100);
+
+    CHECK_EQ("sz exact", s.sz, 100);   /* не 128, не 16 */
+    CHECK_EQ("len unchanged", s.len, 5);
+    CHECK_STR_EQ("content preserved", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setsize_shrink_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(128);
+    /* Core-only fill: no fs2_cpystr dependency */
+    memcpy(s.v, "hello", 5);
+    fs2_setlen(&s, 5);           /* len=5, sz=128 */
+    
+    fs2_setsize(&s, 10);
+    
+    CHECK_EQ("sz shrunk", s.sz, 10);        /* не 16, не 128 */
+    CHECK_EQ("len unchanged", s.len, 5);
+    CHECK_STR_EQ("content preserved", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+    
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: setsize отличается от reserve */
+Test(fs2_api, setsize_differs_from_reserve) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_fromstr("hi");
+    fs2 b = fs2_fromstr("hi");
+
+    fs2_reserve(&a, 100);    /* rounds up to 128 */
+    fs2_setsize(&b, 100);    /* exactly 100 */
+
+    CHECK_EQ("reserve → 128", a.sz, 128);
+    CHECK_EQ("setsize → 100", b.sz, 100);
+    CHECK_TRUE("different", a.sz != b.sz);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_api, setsize_canonical_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* ALLOC, v=NULL, sz=0 */
+
+    fs2_setsize(&s, 32);
+
+    CHECK_EQ("sz", s.sz, 32);
+    CHECK_NOT_NULL("v allocated", s.v);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setsize_static_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");   /* STATIC, sz=6 */
+
+    fs2_setsize(&s, 100);
+
+    CHECK_EQ("sz unchanged", s.sz, 6);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op для STATIC */
+}
+
+Test(fs2_api, setsize_local_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 32);
+    memcpy(s.v, "hello", 6);
+    s.len = 5;
+
+    fs2_setsize(&s, 100);
+
+    CHECK_EQ("sz unchanged", s.sz, 32);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op для LOCAL */
+}
+
+Test(fs2_api, setsize_grow_then_shrink) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("start");
+
+    fs2_setsize(&s, 1000);
+    CHECK_EQ("grown", s.sz, 1000);
+
+    fs2_setsize(&s, 16);
+    CHECK_EQ("shrunk", s.sz, 16);
+    CHECK_STR_EQ("content preserved", s.v, "start");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setsize_min_size_for_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");   /* len=0, sz=16 */
+
+    fs2_setsize(&s, 1);        /* ровно 1 байт под NUL */
+
+    CHECK_EQ("sz=1", s.sz, 1);
+    CHECK_EQ("len=0", s.len, 0);
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setsize_null_aborts, .signal = SIGABRT) {
+    fs2_setsize(NULL, 100);
+}
+
 /* =========================================================================
  * fs2_memcpy — internal wrapper (non-overlapping fs2 to fs2)
  * ========================================================================= */
