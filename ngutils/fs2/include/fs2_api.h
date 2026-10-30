@@ -162,7 +162,7 @@ fs2_elem0(fs2 *s, size_t pos){
  * @return     @p str (for chaining).
  */
 extern fs2* 
-fs2_reverse(fs2 *str);
+fs2_flip(fs2 *str);
 
 /**
  * @brief Sort a sub-range [from, to) of the string in place.
@@ -2265,17 +2265,28 @@ fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
 static inline fs2
 fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
     invraise(src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
-    fs2 r = fs2_clone(src);
-    fs2_strip_prefix(&r, prefix);
-    return r;
+    
+    /* Нет префикса или пустой — возвращаем клон как есть */
+    if (fs2_is_empty(prefix))          
+        return fs2_clone(src);
+    if (!fs2_starts_with(src, prefix)) 
+        return fs2_clone(src);
+    
+    /* Префикс есть — аллоцируем ровно result_len+1 */
+    return fs2_substr_new(src, prefix->len, src->len - prefix->len);
 }
 
 static inline fs2
 fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
     invraise(src != NULL && suffix != NULL, "Null pointers %p %p", src, suffix);
-    fs2 r = fs2_clone(src);
-    fs2_strip_suffix(&r, suffix);
-    return r;
+    
+    if (fs2_is_empty(suffix))          
+        return fs2_clone(src);
+    if (!fs2_ends_with(src, suffix))   
+        return fs2_clone(src);
+    
+    /* Суффикс есть — аллоцируем ровно result_len+1 */
+    return fs2_substr_new(src, 0, src->len - suffix->len);
 }
 
 static inline fs2

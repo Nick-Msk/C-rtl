@@ -164,7 +164,7 @@ Test(fs2_api, elem_streaming_write) {
 }
 
 /* -------------------------------------------------------------------------
- * fs2_reverse — in-place string reversal
+ * fs2_flip — in-place string reversal
  * ------------------------------------------------------------------------- */
 
 Test(fs2_api, reverse_even_length) {
@@ -172,7 +172,7 @@ Test(fs2_api, reverse_even_length) {
     fs2 s = fs2_fromstr("abcd");
     CHECK_FS2VALID(1, &s);
 
-    fs2 *ret = fs2_reverse(&s);
+    fs2 *ret = fs2_flip(&s);
     
     CHECK_PTR_EQ("returns same pointer", ret, &s);
     CHECK_STR_EQ("reversed", s.v, "dcba");
@@ -188,7 +188,7 @@ Test(fs2_api, reverse_odd_length) {
     fs2 s = fs2_fromstr("abcde");
     CHECK_FS2VALID(1, &s);
 
-    fs2_reverse(&s);
+    fs2_flip(&s);
     
     CHECK_STR_EQ("reversed", s.v, "edcba");
     CHECK_EQ("len unchanged", s.len, 5);
@@ -203,7 +203,7 @@ Test(fs2_api, reverse_single_char) {
     fs2 s = fs2_fromstr("a");
     CHECK_FS2VALID(1, &s);
 
-    fs2_reverse(&s);
+    fs2_flip(&s);
     
     CHECK_STR_EQ("reversed", s.v, "a");
     CHECK_FS2VALID(2, &s);
@@ -217,7 +217,7 @@ Test(fs2_api, reverse_empty) {
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
 
-    fs2_reverse(&s);
+    fs2_flip(&s);
     
     CHECK_STR_EQ("reversed", s.v, "");
     CHECK_FS2VALID(2, &s);
@@ -233,7 +233,7 @@ Test(fs2_api, reverse_local) {
     s.len = 5;
     CHECK_FS2VALID(1, &s);
 
-    fs2_reverse(&s);
+    fs2_flip(&s);
     
     CHECK_STR_EQ("reversed", s.v, "olleh");
     CHECK_FS2VALID(2, &s);
@@ -244,12 +244,12 @@ Test(fs2_api, reverse_local) {
 /* ── negatives ─────────────────────────────────────────────────────── */
 
 Test(fs2_api, reverse_null_aborts, .signal = SIGABRT) {
-    fs2_reverse(NULL);
+    fs2_flip(NULL);
 }
 
 Test(fs2_api, reverse_static_rejected, .signal = SIGINT) {
     fs2 s = FS2LITERAL("static");
-    fs2_reverse(&s); /* userraise → SIGINT */
+    fs2_flip(&s); /* userraise → SIGINT */
 }
 
 
@@ -264,7 +264,7 @@ Test(fs2_api, reverse_double_invariant) {
     CHECK_FS2VALID(2, &original);
 
     /* Reverse 1st time */
-    fs2_reverse(&s);
+    fs2_flip(&s);
     CHECK_STR_EQ("first reverse", s.v, "racecar"); /* palindrome unchanged */
     
     /* Take a non-palindrome for a real check */
@@ -274,12 +274,12 @@ Test(fs2_api, reverse_double_invariant) {
     original = fs2_clone(&s);
 
     /* Reverse 1st time */
-    fs2_reverse(&s);
+    fs2_flip(&s);
     CHECK_STR_EQ("first reverse", s.v, "smhtirogla");
     CHECK_FS2VALID(3, &s);
 
     /* Reverse 2nd time (should return to original) */
-    fs2_reverse(&s);
+    fs2_flip(&s);
     
     /* Verify string is byte-for-byte identical to original */
     CHECK_STR_EQ("double reverse matches original", s.v, original.v);
@@ -296,15 +296,15 @@ Test(fs2_api, reverse_roundtrip_empty_and_single) {
     
     /* Empty string */
     fs2 empty = fs2_fromstr("");
-    fs2_reverse(&empty);
-    fs2_reverse(&empty);
+    fs2_flip(&empty);
+    fs2_flip(&empty);
     CHECK_STR_EQ("empty stays empty", empty.v, "");
     CHECK_EQ("empty len", empty.len, 0);
 
     /* Single character */
     fs2 single = fs2_fromstr("X");
-    fs2_reverse(&single);
-    fs2_reverse(&single);
+    fs2_flip(&single);
+    fs2_flip(&single);
     CHECK_STR_EQ("single stays single", single.v, "X");
     CHECK_EQ("single len", single.len, 1);
 
@@ -10379,7 +10379,7 @@ Test(fs2_api, strip_prefix_new_whole_string) {
 
     fs2 r = fs2_strip_prefix_new(&src, &pfx);
 
-    CHECK_STR_EQ("empty", r.v, "");
+    CHECK_TRUE("is empty", fs2_is_empty(&r));
     CHECK_EQ("len", r.len, 0);
     CHECK_FS2VALID(1, &r);
 

@@ -20,7 +20,7 @@
  * @return     @p str (for chaining).
  */
 fs2*             
-fs2_reverse(fs2 *str) {
+fs2_flip(fs2 *str) {
     invraise(str != NULL, "Null pointer");
 
     if (fs2_is_static(str))
