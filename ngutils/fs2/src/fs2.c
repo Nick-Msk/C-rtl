@@ -210,25 +210,6 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
  * Value constructors
  * ───────────────────────────────────────────────────────────────────────── */
 
- /**
- * @brief Create a growable fs2 with the given initial capacity.
- *
- * Allocates a heap buffer of at least @p sz bytes (minimum 16, power-of-2
- * rounding). Length is 0; buffer is zero-initialised.
- *
- * @param sz  Desired initial capacity (including NUL slot).
- * @return    fs2 value (ALLOC) with a fresh heap buffer.
- *
- * @warning   `sysraise` on OOM.
- */
-fs2
-fs2_init(size_t sz) {
-    fs2         res = FS2();     // FS2_ALLOC flag
-    fs2_reserve(&res, sz ? sz: 1);
-    fs2_clear(&res);
-    return res;
-}
-
 /**
  * @brief Create a growable fs2 as a deep copy of a C string.
  *
@@ -519,25 +500,39 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
  *
  * @warning     `invraise` if @p s is NULL.
  */
-void
+fs2 *
 fs2_reserve(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (fs2_is_alloc(s) && s->sz < need)
-        increasesize(s, need, true);
+    if (!fs2_is_alloc(s) || s->sz >= need)
+#ifdef FS2_TRACE
+        return logsimpleret(s, "Not alloc - %s or enough space %zu >= %zu", 
+                bool_str(fs2_is_alloc(s)), s->sz, need);
+#endif /* FS2_TRACE */
+    bool was_null = s->v == NULL;   // FS2()
+    increasesize(s, need, true);
+    /* Fresh alloc from canonical empty: NUL-terminate via public API. */
+    if (was_null && s->v != NULL)
+        fs2_clear(s);
+    return s;
 }
 
-void
+fs2 *
 fs2_setsize(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (!fs2_is_alloc(s))
-        return;
+    if (!fs2_is_alloc(s) || s->sz == need)
+#ifdef FS2_TRACE
+        return logsimpleret(s, "Not alloc - %s or no need to set space %zu == %zu", 
+                bool_str(fs2_is_alloc(s)), s->sz, need);
+#endif /* FS2_TRACE */    
+        
     bool was_null = s->v == NULL;   // FS2()
     increasesize(s, need, false);
     /* Fresh alloc from canonical empty: NUL-terminate via public API. */
     if (was_null && s->v != NULL)
         fs2_clear(s);
+    return s;
 }
 
 /**

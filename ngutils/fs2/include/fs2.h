@@ -275,7 +275,7 @@ fs2_is_null(const fs2 *s) {
  *
  * @warning     `invraise` if @p s is NULL.
  */
-extern void       
+extern fs2 *       
 fs2_reserve(fs2 *s, size_t need);
 
 /**
@@ -327,7 +327,7 @@ fs2_reserve(fs2 *s, size_t need);
  *
  * @see fs2_reserve
  */
-void 
+extern fs2 * 
 fs2_setsize(fs2 *s, size_t need);
 
 extern fs2 *      
@@ -390,7 +390,12 @@ fs2_wrap(const char *str) {
  * @return    fs2 value with a fresh heap buffer.
  * @warning   `sysraise` if allocation fails (OOM).
  */
-fs2         fs2_init(size_t sz);
+static inline fs2
+fs2_init(size_t sz) {
+    fs2         res = FS2();     // FS2_ALLOC flag
+    fs2_reserve(&res, sz ? sz: 1);
+    return res;
+}
 
 /**
  * @brief Create a growable fs2 as a deep copy of a C string.
