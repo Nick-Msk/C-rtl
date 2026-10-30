@@ -545,12 +545,15 @@ Test(fs2, fromstr_empty) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("");
 
-    CHECK_EQ("len", s.len, 0);
-    CHECK_GT("sz",  s.sz,  1);
-    CHECK_STR_EQ("v", s.v, "");
-    CHECK_TRUE("is_alloc", fs2_is_alloc(&s));
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+    CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&s));   /* ← вместо sz > 1 */
+    CHECK_FALSE("not alloc", fs2_is_alloc(&s));           /* ← вместо sz >= 16 */
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("readable as empty", s.v, "");
+    CHECK_FS2VALID(1, &s);
 
-    fs2_free(&s);
+    // fs2_free(&s); STATIC
     assert_balanced();
 }
 
@@ -588,6 +591,28 @@ Test(fs2, fromstr_source_is_independent) {
 
     fs2_free(&s);
     assert_balanced();
+}
+
+Test(fs2_api, fromstr_null_returns_empty) {
+    __fs2_checkreset();
+    /* Если убрали invraise — NULL → FS2EMPTY, не SIGABRT */
+    fs2 s = fs2_fromstr(NULL);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_TRUE("static", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op */
+}
+
+Test(fs2_api, fromstr_empty_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_TRUE("static", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op */
 }
 
 /* ── clone ──────────────────────────────────────────────────────────── */
@@ -637,13 +662,108 @@ Test(fs2, clone_empty_static) {
 Test(fs2, clone_empty_alloc) {
     __fs2_checkreset();
     fs2 a = FS2();
-    fs2 b = fs2_clone(&a);
+    fs2 r = fs2_clone(&a);
 
-    CHECK_EQ("len", b.len, (size_t) 0);
-    CHECK_NULL("v", b.v);
+    CHECK_EQ  ("len", r.len, 0);
+    CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&r));   /* ← было CHECK_NULL(r.v) */
+    CHECK_NOT_NULL("v readable", r.v);                    /* ← вместо CHECK_NULL */
+    CHECK_STR_EQ("readable as empty", r.v, "");
+    CHECK_FS2VALID(1, &r);
 
-    fs2_free(&b);
+    fs2_free(&r);
     assert_balanced();
+}
+
+Test(fs2_api, clone_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_clone(&src);
+
+    CHECK_STR_EQ("content", r.v, "hello");
+    CHECK_EQ("len", r.len, 5);
+    CHECK_TRUE("is alloc", fs2_is_alloc(&r));
+    CHECK_TRUE("different buffer", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, clone_empty_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 r = fs2_clone(&src);
+
+    /* Контракт: empty → FS2EMPTY, не ALLOC empty, не canonical empty */
+    CHECK_EQ("len", r.len, 0);
+    CHECK_TRUE("static", fs2_is_static(&r));
+    CHECK_NOT_NULL("v", r.v);
+    CHECK_STR_EQ("readable", r.v, "");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);   /* no-op для FS2EMPTY */
+    assert_balanced();
+}
+
+Test(fs2_api, clone_fs2empty_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2EMPTY;
+
+    fs2 r = fs2_clone(&src);
+
+    CHECK_EQ("len", r.len, 0);
+    CHECK_TRUE("static", fs2_is_static(&r));
+    CHECK_STR_EQ("readable", r.v, "");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);   /* no-op */
+    assert_balanced();
+}
+
+Test(fs2_api, clone_from_static_literal) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("literal");
+    CHECK_TRUE("src static", fs2_is_static(&src));
+
+    fs2 r = fs2_clone(&src);
+
+    CHECK_STR_EQ("content", r.v, "literal");
+    CHECK_TRUE("clone alloc", fs2_is_alloc(&r));
+    CHECK_FALSE("not static", fs2_is_static(&r));
+    CHECK_TRUE("different buffer", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, clone_from_alloc_independent) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    fs2 r = fs2_clone(&src);
+
+    /* Core-only mutation: перезаписываем src, не трогая r */
+    fs2_clear(&src);
+    fs2_reserve(&src, 8);                    /* reserve → влезет "changed" */
+    memcpy(src.v, "changed", 7);
+    fs2_setlen(&src, 7);
+
+    CHECK_STR_EQ("clone intact", r.v, "original");
+    CHECK_STR_EQ("src changed", src.v, "changed");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api, clone_null_aborts, .signal = SIGABRT) {
+    fs2_clone(NULL);
 }
 
 /* ── fromstrf ───────────────────────────────────────────────────────── */

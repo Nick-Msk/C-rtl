@@ -167,7 +167,7 @@ Test(fs2_api, elem_streaming_write) {
  * fs2_flip — in-place string reversal
  * ------------------------------------------------------------------------- */
 
-Test(fs2_api, reverse_even_length) {
+Test(fs2_api, flip_even_length) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abcd");
     CHECK_FS2VALID(1, &s);
@@ -183,7 +183,7 @@ Test(fs2_api, reverse_even_length) {
     assert_balanced();
 }
 
-Test(fs2_api, reverse_odd_length) {
+Test(fs2_api, flip_odd_length) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abcde");
     CHECK_FS2VALID(1, &s);
@@ -198,7 +198,7 @@ Test(fs2_api, reverse_odd_length) {
     assert_balanced();
 }
 
-Test(fs2_api, reverse_single_char) {
+Test(fs2_api, flip_single_char) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("a");
     CHECK_FS2VALID(1, &s);
@@ -212,7 +212,7 @@ Test(fs2_api, reverse_single_char) {
     assert_balanced();
 }
 
-Test(fs2_api, reverse_empty) {
+Test(fs2_api, flip_empty) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("");
     CHECK_FS2VALID(1, &s);
@@ -226,7 +226,7 @@ Test(fs2_api, reverse_empty) {
     assert_balanced();
 }
 
-Test(fs2_api, reverse_local) {
+Test(fs2_api, flip_local) {
     __fs2_checkreset();
     FS2LOCAL(s, 16);
     memcpy(s.v, "hello", 6);
@@ -241,13 +241,69 @@ Test(fs2_api, reverse_local) {
     fs2_free(&s);
 }
 
-/* ── negatives ─────────────────────────────────────────────────────── */
+/* =========================================================================
+ * fs2_flip — empty no-op before static check
+ * ========================================================================= */
 
-Test(fs2_api, reverse_null_aborts, .signal = SIGABRT) {
-    fs2_flip(NULL);
+Test(fs2_api, flip_fs2empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+
+    fs2_flip(&s);   /* ← no-op, не userraise */
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
 }
 
-Test(fs2_api, reverse_static_rejected, .signal = SIGINT) {
+Test(fs2_api, flip_fromstr_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");   /* FS2EMPTY через конструктор */
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+
+    fs2_flip(&s);   /* ← user ожидает no-op, а не SIGINT */
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, flip_canonical_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();   /* v=NULL */
+
+    fs2_flip(&s);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, flip_static_nonempty_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hello");   /* STATIC + len > 0 → ошибка */
+    fs2_flip(&s);
+}
+
+Test(fs2_api, flip_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_flip(&s);
+
+    CHECK_STR_EQ("reversed", s.v, "olleh");
+    CHECK_EQ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ── negatives ─────────────────────────────────────────────────────── */
+
+Test(fs2_api, flip_static_rejected, .signal = SIGINT) {
     fs2 s = FS2LITERAL("static");
     fs2_flip(&s); /* userraise → SIGINT */
 }

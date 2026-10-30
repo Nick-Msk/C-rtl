@@ -21,7 +21,8 @@
  */
 fs2*             
 fs2_flip(fs2 *str) {
-    invraise(str != NULL, "Null pointer");
+    if (fs2_is_empty(str))
+        return str; // ignore empty at all! Evevn if static!
 
     if (fs2_is_static(str))
         userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot modify STATIC fs2 in-place");

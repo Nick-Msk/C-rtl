@@ -400,9 +400,9 @@ fs2_init(size_t sz) {
 /**
  * @brief Create a growable fs2 as a deep copy of a C string.
  *
- * @param src  Non-NULL NUL-terminated source.
+ * @param src  NUL-terminated string, or NULL (treated as "" → FS2EMPTY).
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
- * @warning    `invraise` if @p src is NULL.
+ * @note NULL is not an error — consistent with fs2_wrap.
  */
 fs2         fs2_fromstr(const char *src);
 
@@ -412,7 +412,7 @@ fs2         fs2_fromstr(const char *src);
  * @param fmt  Format string (must not be NULL).
  * @param ...  Format arguments.
  * @return     fs2 value (ALLOC) containing the formatted result.
- * @warning    `userraise` on format error; `invraise` if @p fmt is NULL.
+ * 
  */
 fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
@@ -719,8 +719,8 @@ void        fs2_free(fs2 *s);
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
     invraise(s != NULL, "Null pointer");
 
-    if (s->v)
-        s->v[s->len = pos] = '\0';
+    if (s->v && !fs2_is_static(s))
+        s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
     else {
         if (pos > 0)
             userraise(NULL, ERR_ACTION_NOT_APPLICABLE, 

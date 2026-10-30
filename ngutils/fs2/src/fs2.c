@@ -122,26 +122,6 @@ increasesize(fs2 *s, size_t newsz, bool init) {
 }
 
 /**
- * @brief Deep-copy @p len bytes from @p src into a new ALLOC fs2 (internal).
- *
- * Allocates len+1 via fs2_init, memcpys len+1 bytes (including NUL),
- * and sets the logical length.
- *
- * @param src  Source buffer; must have at least @p len+1 bytes.
- * @param len  Number of significant bytes (excluding NUL).
- * @return     New ALLOC fs2 with a heap copy.
- *
- * @warning    `sysraise` on OOM.
- */
-static inline fs2 
-copymem(const char *src, size_t len) {
-    fs2         res = fs2_init(len + 1);
-    memcpy(res.v, src, len + 1);
-    res.len = len;       // NOT SURE: THINK:
-    return res;
-}
-
-/**
  * @brief printf-format into a new ALLOC fs2 from a va_list (internal).
  *
  * Two-pass: first measures via `vsnprintf(NULL,0)`, then allocates and
@@ -222,10 +202,8 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
  */
 fs2
 fs2_fromstr (const char *src) {
-    invraise(src != NULL, "Null pointer"); 
-
-    size_t      len = strlen(src);
-    return copymem(src, len);
+    fs2 tmp = fs2_wrap(src);
+    return fs2_clone(&tmp);
 }
 
 /**
@@ -243,11 +221,13 @@ fs2
 fs2_clone   (const fs2 *src) {
     invraise(src != NULL, "Null pointer"); 
 
-    size_t      len = src->len;
-    if (src->v)
-        return copymem(src->v, len);
-    else
-        return FS2();
+    if (fs2_is_empty(src))
+        return FS2EMPTY;                     /* contract: empty → FS2EMPTY */
+    
+    fs2  res = FS2();
+    fs2_memcpy(&res, 0, src, 0, src->len);
+    fs2_setlen(&res, src->len);
+    return res;
 }
 
 /**
@@ -490,6 +470,15 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
     return res;
 }
 
+// converter FSEMPTY => FS2
+static inline bool fs2_empty2fs2(fs2 *s) {
+    if ( (fs2_is_static(s) && !fs2_is_bodyalloc(s) ) && s->len == 0) { // FS2EMPTY => FS2 conversion
+        *s = FS2();
+        return true;
+    } else
+        return false;
+} 
+
 /**
  * @brief Ensure capacity for at least @p need bytes (including NUL).
  *
@@ -504,14 +493,14 @@ fs2 *
 fs2_reserve(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (!fs2_is_alloc(s) || s->sz >= need)
-#ifdef FS2_TRACE
-        return logsimpleret(s, "Not alloc - %s or enough space %zu >= %zu", 
-                bool_str(fs2_is_alloc(s)), s->sz, need);
-#endif /* FS2_TRACE */
-    bool was_null = s->v == NULL;   // FS2()
+
+    if (s->sz >= need)
+        return s;
+ 
+    fs2_empty2fs2(s);
+    bool was_null = (s->v == NULL);
+
     increasesize(s, need, true);
-    /* Fresh alloc from canonical empty: NUL-terminate via public API. */
     if (was_null && s->v != NULL)
         fs2_clear(s);
     return s;
@@ -521,15 +510,14 @@ fs2 *
 fs2_setsize(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (!fs2_is_alloc(s) || s->sz == need)
-#ifdef FS2_TRACE
-        return logsimpleret(s, "Not alloc - %s or no need to set space %zu == %zu", 
-                bool_str(fs2_is_alloc(s)), s->sz, need);
-#endif /* FS2_TRACE */    
+
+    if (s->sz == need)
+        return s; 
+
+    fs2_empty2fs2(s);
+    bool was_null = (s->v == NULL);
         
-    bool was_null = s->v == NULL;   // FS2()
     increasesize(s, need, false);
-    /* Fresh alloc from canonical empty: NUL-terminate via public API. */
     if (was_null && s->v != NULL)
         fs2_clear(s);
     return s;
