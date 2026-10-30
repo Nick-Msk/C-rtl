@@ -223,9 +223,9 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
  */
 fs2
 fs2_init(size_t sz) {
-    fs2         res = FS2();     // fsalloc flag
-    increasesize(&res, sz, true);   // init mode
-    fs2_clear(&res);    // THINK:
+    fs2         res = FS2();     // FS2_ALLOC flag
+    fs2_reserve(&res, sz ? sz: 1);
+    fs2_clear(&res);
     return res;
 }
 
@@ -531,8 +531,13 @@ void
 fs2_setsize(fs2 *s, size_t need)
 {
     invraise(s != NULL, "Null pointer");
-    if (fs2_is_alloc(s))
-        increasesize(s, need, false);
+    if (!fs2_is_alloc(s))
+        return;
+    bool was_null = s->v == NULL;   // FS2()
+    increasesize(s, need, false);
+    /* Fresh alloc from canonical empty: NUL-terminate via public API. */
+    if (was_null && s->v != NULL)
+        fs2_clear(s);
 }
 
 /**
