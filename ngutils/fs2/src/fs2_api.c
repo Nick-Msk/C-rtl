@@ -47,7 +47,8 @@ fs2_flip(fs2 *str) {
  */
 void             
 fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
-    invraise(str != NULL, "Null pointer");
+    if (fs2_cant_mutate(str))
+        return;
 
     if (to > str->len)
         to = str->len;
