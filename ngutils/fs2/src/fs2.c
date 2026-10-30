@@ -92,7 +92,6 @@ static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
  * @note    After a successful realloc, any previously obtained pointer into
  *          the buffer is invalidated.
  */
-
 static fs2 *
 increasesize(fs2 *s, size_t newsz, bool init) {
 #ifdef FS2_TRACE 
@@ -526,6 +525,14 @@ fs2_reserve(fs2 *s, size_t need)
     invraise(s != NULL, "Null pointer");
     if (fs2_is_alloc(s))
         increasesize(s, need, true);
+}
+
+void
+fs2_setsize(fs2 *s, size_t need)
+{
+    invraise(s != NULL, "Null pointer");
+    if (fs2_is_alloc(s))
+        increasesize(s, need, false);
 }
 
 /**

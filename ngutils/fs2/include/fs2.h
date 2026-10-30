@@ -266,11 +266,69 @@ fs2_is_null(const fs2 *s) {
     }
 
 /**
- * @brief Ensure capacity for at least `need` bytes (including NUL).
+ * @brief Ensure capacity for at least @p need bytes (including NUL).
+ *
  * No-op for STATIC/LOCAL (cannot grow external buffers).
+ *
+ * @param s     Non-NULL fs2.
+ * @param need  Desired minimum capacity.
+ *
+ * @warning     `invraise` if @p s is NULL.
  */
 extern void       
 fs2_reserve(fs2 *s, size_t need);
+
+/**
+ * @brief Set capacity to exactly @p need bytes (no rounding).
+ *
+ * Unlike fs2_reserve (which rounds up to the next power of two and
+ * floors at FS2_MIN_ALLOC = 16), fs2_setsize performs an exact
+ * realloc. Useful when the caller knows the final size and wants to
+ * avoid over-allocation, or wants to shrink a buffer after a temporary
+ * spike.
+ *
+ * ALLOC buffers are reallocated, including when shrinking. STATIC and
+ * LOCAL are no-ops (cannot resize external storage).
+ *
+ * @param s     Non-NULL fs2. Resize only happens when fs2_is_alloc(s).
+ * @param need  Exact target capacity in bytes.
+ *
+ * @pre  need >= s->len + 1
+ *       The string data must fit. Passing a smaller value truncates
+ *       the buffer while @c s->len stays unchanged — the next
+ *       @c strlen(s->v) or @c fs2_validate will read past the end
+ *       of the allocation (heap over-read). This is a hard caller
+ *       error, not checked here.
+ *
+ * @pre  need > 0
+ *       Implied by the above (len >= 0 ⇒ need >= 1). @c realloc(v, 0)
+ *       is implementation-defined and may free @c v, leaving
+ *       @c s->v == NULL with @c len > 0 (corrupt state).
+ *
+ * @note realloc() may internally allocate more than @p need for
+ *       alignment or allocator bookkeeping (typically up to the next
+ *       malloc bucket size). @c s->sz always reflects exactly
+ *       @p need — the allocator's extra bytes are not visible to
+ *       fs2 and are not usable by the caller.
+ *
+ * @note When @p need < s->sz, this is a shrink — the same allocation
+ *       is returned to the allocator, but the internal block may not
+ *       move (implementation-defined by realloc). Use it to release
+ *       memory after a large temporary spike.
+ *
+ * @note When @p need == s->sz, realloc is still called (see the
+ *       `!init || newsz > s->sz` condition in increasesize). Harmless
+ *       but wasteful; callers can skip the call themselves if
+ *       @c fs2_sz(s) == need.
+ *
+ * @warning No precondition checking. Truncation, `need == 0`, and
+ *          `need < s->len + 1` are UB / corrupt state. Use
+ *          pfs2_setsize (planned) for the guarded variant.
+ *
+ * @see fs2_reserve
+ */
+void 
+fs2_setsize(fs2 *s, size_t need);
 
 extern fs2 *      
 fs_shrink(fs2 *s);
