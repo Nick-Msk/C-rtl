@@ -3132,6 +3132,20 @@ Test(fs2_api, reserve_span_len_size_max, .signal = SIGINT) {
     fs2_free(&s);
 }
 
+Test(fs2_api, reserve_span_includes_nul_slot) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_reserve_span(&s, 10, 20);   /* нужно 31 (10+20+1), не 30 */
+
+    CHECK_TRUE("sz >= 31", s.sz >= 31);
+    /* Если бы было без +1: sz мог быть 30 или 32, но не факт что 31 влезет */
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
 /* memcpy/memmove через reserve_span — те же overflow cases */
 Test(fs2_api, memcpy_overflow_via_span, .signal = SIGINT) {
     __fs2_checkreset();
