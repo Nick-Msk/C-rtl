@@ -186,10 +186,8 @@ fs2_partialsort(fs2 *s, size_t from, size_t to, bool asc);
  * @param asc  true for ascending, false for descending.
  */
 static inline void 
-fs2_sort(fs2 *str, bool asc) {
-    invraise(str != NULL, "Null pointer");
-    
-    fs2_partialsort(str, 0, str->len, asc);
+fs2_sort(fs2 *str, bool asc) {    
+    fs2_partialsort(str, 0, str ? str->len: 0, asc);
 }
 
 // ------------------------------------ CAT/CPY/ETC -----------------------------------------

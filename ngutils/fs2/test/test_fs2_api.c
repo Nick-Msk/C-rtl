@@ -498,9 +498,7 @@ Test(fs2_api, sort_local) {
     fs2_free(&s);
 }
 
-/* ── negatives ─────────────────────────────────────────────────────── */
-
-Test(fs2_api, sort_null_aborts, .signal = SIGABRT) {
+Test(fs2_api, sort_null) {
     fs2_sort(NULL, true);
 }
 
