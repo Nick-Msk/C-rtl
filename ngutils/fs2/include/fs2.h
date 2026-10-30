@@ -247,6 +247,49 @@ fs2_cant_growth(fs2 *s) {
 }
 
 /**
+ * @brief Precondition guard for memcpy/memmove-style operations.
+ *
+ * Trivial case (len == 0): no src read, no dst write — returns true
+ * even for NULL dst/src or STATIC dst ("фиктивная операция").
+ *
+ * Non-trivial: dst and src must be non-NULL; src[srcpos..srcpos+len)
+ * must fit within src->len; dst must be writable (empty auto-promotes,
+ * non-empty STATIC raises).
+ *
+ * @return true  — caller should return dst unchanged (len == 0).
+ *         false — caller may proceed with the copy.
+ * @raise userraise — NULL dst/src, non-empty STATIC dst.
+ * @raise sysraise  — src over-read.
+ */
+static inline bool
+fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) {
+    (void) dstpos;
+    /* Trivial: nothing copied → no-op, no validation needed */
+    if (len == 0)
+        return true;
+    
+    /* NULL pointers — hard error for non-trivial copy */
+    if (!dst)
+        userraise(0, ERR_NULL_INPUT, "Null dst pointer");
+    if (!src)
+        userraise(0, ERR_NULL_INPUT, "Null src pointer");
+    
+    /* Over-read: src[srcpos .. srcpos+len) must fit within src */
+    if (srcpos > src->len || len > src->len - srcpos)
+        sysraise(ERR_OUT_OF_RANGE,
+                 "src[%zu..%zu] exceeds src->len=%zu",
+                 srcpos, srcpos + len, src->len);
+    
+    /* dst must be writable — empty auto-promotes via reserve,
+     * non-empty STATIC cannot (memcpy into .rodata) */
+    if (!fs2_is_empty(dst) && fs2_is_static(dst))
+        userraise(0, ERR_UNSUPPORTED_TYPE,
+                  "Cannot write into non-empty STATIC fs2");
+    
+    return false;
+}
+
+/**
  * @brief Declare a stack-allocated fixed-capacity fs2 (FS2LOCAL).
  *
  * Declares a `char` buffer of @p n bytes alongside a named `fs2` that
@@ -323,7 +366,7 @@ fs2_reserve(fs2 *s, size_t need);
  */
 static inline fs2 *
 fs2_reserve_span(fs2 *s, size_t pos, size_t len) {
-    if (len > SIZE_MAX - 1 || pos > SIZE_MAX - len - 1)
+    if (pos >= SIZE_MAX - len)
         sysraise(ERR_OUT_OF_RANGE, 
                  "fs2_reserve_span: pos=%zu + len=%zu + 1 overflows", 
                  pos, len);
@@ -641,19 +684,10 @@ fs2         *fs2_move(fs2 *to, fs2 *from);
 // TODO: generally all API have to use that instead of memcpy call
 static inline fs2 *
 fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t srcpos, size_t len) {
-    invraise(dst != 0 && src != 0, "Null pointers %p - %p", dst, src);
-
-    if (len == 0)
+    if (fs2_cant_copy(dst, dstpos, src, srcpos, len))
         return dst;
-    // TODO: make a guard to incapsulate that!!!
-    /* Over-read guard: src[srcpos .. srcpos+len) must fit */
-    if (srcpos > src->len || len > src->len - srcpos)
-        sysraise(ERR_OUT_OF_RANGE, 
-                 "src[%zu..%zu] exceeds src->len=%zu",
-                    srcpos, srcpos + len, src->len);
 
     fs2_reserve_span(dst, dstpos, len);
-    //fs2_reserve(dst, dstpos + len + 1);
 
     memcpy(dst->v + dstpos, src->v + srcpos, len);
     return dst;
@@ -663,8 +697,6 @@ fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t src
 // TODO: generally all API have to use that instead of memcpy call
 static inline fs2 *
 fs2_memcpy_str(fs2 *restrict dst, size_t dstpos, const char *restrict src, size_t len) {
-    invraise(dst != 0 && src != 0, "Null pointers %p - %p", dst, src);
-
     // NOTE: that can be fs2_wrap, but it launch strlen, we don't need that
     fs2 tmp = (fs2) { .v = (char *) src, .flags = FS2_STATIC, .len = len, .sz = len + 1 };
 
@@ -676,15 +708,14 @@ fs2_memcpy_str(fs2 *restrict dst, size_t dstpos, const char *restrict src, size_
 // TODO: generally all API have to use that instead of memmove call
 static inline fs2 *
 fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) {
-    invraise(dst != 0, "Null pointer %p", dst);
 
-    if (len == 0)
+    if (src == NULL) 
+        src = dst;   /* self-move: resolve before guard */
+    
+    if (fs2_cant_copy(dst, dstpos, src, srcpos, len))
         return dst;
-    if (src == NULL)
-        src = dst;
     
     fs2_reserve_span(dst, dstpos, len);
-    //fs2_reserve(dst, dstpos + len + 1);
 
     memmove(dst->v + dstpos, src->v + srcpos, len);
     return dst;
