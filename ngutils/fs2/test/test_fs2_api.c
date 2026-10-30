@@ -303,7 +303,7 @@ Test(fs2_api, flip_basic) {
 
 
 /* =========================================================================
- * Integration: fs2_flip использует fs2_can_mutate
+ * Integration: fs2_flip использует fs2_cant_mutate
  * ========================================================================= */
 
 Test(fs2_api, flip_empty_noop_no_userraise) {

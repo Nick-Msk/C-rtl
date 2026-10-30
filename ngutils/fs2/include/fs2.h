@@ -219,7 +219,7 @@ fs2_is_null(const fs2 *s) {
  * @raise       — non-empty STATIC (caller tries to mutate .rodata).
  */
 static inline bool
-fs2_can_mutate(const fs2 *s) {
+fs2_cant_mutate(const fs2 *s) {
     if (fs2_is_empty(s))
         return true;
     if (fs2_is_static(s))

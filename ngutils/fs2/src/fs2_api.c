@@ -21,7 +21,7 @@
  */
 fs2*             
 fs2_flip(fs2 *str) {
-    if (fs2_can_mutate(str))
+    if (fs2_cant_mutate(str))
         return str;
 
     if (str->len > 0UL) {
