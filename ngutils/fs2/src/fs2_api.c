@@ -284,9 +284,9 @@ fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim) {
  */
 fs2 *
 fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
-    invraise(dst != NULL && src != NULL, "Null pointers %p %p", dst, src);
-
-    if (src->len == 0) return dst;
+    // guargs
+    if(fs2_cant_growth(dst) || fs2_is_empty(src))
+        return dst;
 
     fs2_memcpy(dst, dst->len, src, 0, src->len);
     
