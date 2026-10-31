@@ -582,7 +582,8 @@ fs2_move(fs2 *dst, fs2 *src) {
 void
 fs2_exch(fs2 *a, fs2 *b)
 {
-    invraise(a != NULL && b != NULL, "Null pointer %p %p", a, b);
+    checkraise(ERR_NULL_INPUT,  != NULL && b != NULL, 
+        "Null pointer %p %p", a, b);
 
     if (a == b)
         return;
