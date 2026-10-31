@@ -1750,19 +1750,19 @@ Test(fs2_api, heap_free_balances_body_counter) {
     __fs2_checkreset();
     fs2 *h = fs2_heap();
 
-    /* Body counter incremented */
-    int a, f, ba, bf;
-    fs2_checkleak(&a, &f, &ba, &bf);
-    CHECK_EQ("body alloc", ba, 1);
-    CHECK_EQ("body freed", bf, 0);
+    /* Первая проверка: bodyalloc=1, bodyfreed=0 — mismatch, out-params пишутся */
+    {
+        int a = -1, f = -1, ba = -1, bf = -1;
+        fs2_checkleak(&a, &f, &ba, &bf);
+        CHECK_EQ("body alloc", ba, 1);
+        CHECK_EQ("body freed", bf, 0);
+    }
 
     fs2_free(h);
 
-    /* Body counter balanced */
-    fs2_checkleak(&a, &f, &ba, &bf);
-    CHECK_EQ("body alloc", ba, 1);
-    CHECK_EQ("body freed", bf, 1);
-
+    /* После free — всё balanced, fs2_checkleak вернёт true.
+     * Второй вызов не пишет out-params (нет mismatch), поэтому проверяем
+     * через assert_balanced (он сам вызывает fs2_checkleak и пишет log при leak). */
     assert_balanced();
 }
 
