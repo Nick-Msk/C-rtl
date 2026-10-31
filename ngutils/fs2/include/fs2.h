@@ -201,6 +201,16 @@ fs2_is_empty(const fs2 *s) {
     return s == NULL || s->len == 0;
 }
 
+static inline bool          
+fs2_eq_empty(const fs2 *s) {
+    return s->len == 0 && s->v && s->sz == 1 && fs2_is_static(s);
+}
+
+static inline bool          
+fs2_is_canon(const fs2 *s) {
+    return s->len == 0 && s->v == NULL && s->sz == 0 && fs2_is_alloc(s);
+}
+
 /**
  * @brief Null-check: either @p s itself is NULL or its buffer is NULL.
  *
@@ -245,16 +255,6 @@ fs2_cant_realloc(fs2 *s) {
                   "Cannot grouth of non-empty STATIC fs2");
     return false;                                    /* ALLOC/LOCAL → proceed */
 }
-
-// guard FSEMPTY => FS2
-static inline bool 
-fs2_promote_empty(fs2 *s) {
-    if ( s && (fs2_is_static(s) && !fs2_is_bodyalloc(s) ) && s->len == 0) { // FS2EMPTY => FS2 conversion
-        *s = FS2();
-        return true;
-    } else
-        return false;
-} 
 
 /**
  * @brief Prepare @p s for growth. Raises on NULL / non-empty STATIC.
