@@ -1390,3 +1390,141 @@ Test(fs2_api, clone_normalizes_but_movefrom_preserves) {
     /* cloned — FS2EMPTY, fs2_free no-op */
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_fromraw — direct construction
+ * ========================================================================= */
+
+Test(fs2_api, fromraw_static_literal) {
+    fs2 s = fs2_fromraw((char *)"hello", 5, FS2_STATIC);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_EQ  ("sz", s.sz, 6);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op */
+}
+
+Test(fs2_api, fromraw_alloc_adopts_heap) {
+    __fs2_checkreset();
+    char *buf = strdup("hello");
+    fs2 s = fs2_fromraw(buf, 5, FS2_ALLOC);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_EQ  ("sz", s.sz, 6);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_PTR_EQ("same buffer", s.v, buf);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);   /* frees buf */
+    assert_balanced();
+}
+
+Test(fs2_api, fromraw_empty_alloc) {
+    __fs2_checkreset();
+    char *buf = strdup("");
+    fs2 s = fs2_fromraw(buf, 0, FS2_ALLOC);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_EQ  ("sz", s.sz, 1);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromraw_nul_written_for_alloc) {
+    __fs2_checkreset();
+    char *buf = malloc(6);
+    memcpy(buf, "hello", 5);   /* без NUL */
+
+    fs2 s = fs2_fromraw(buf, 5, FS2_ALLOC);
+
+    CHECK_EQ("NUL written", s.v[5], '\0');
+    CHECK_STR_EQ("readable", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Защита от BODYALLOC */
+Test(fs2_api, fromraw_bodyalloc_rejected, .signal = SIGINT) {
+    char *buf = strdup("hi");
+    fs2_fromraw(buf, 2, FS2_BODYALLOC);
+    free(buf);   /* unreachable */
+}
+
+/* =========================================================================
+ * fs2_movefromstr
+ * ========================================================================= */
+
+Test(fs2_api, movefromstr_alloc) {
+    __fs2_checkreset();
+    char *heap = strdup("hello");
+    const char *p = heap;
+
+    fs2 s = fs2_movefromstr(&p, FS2_ALLOC);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_PTR_EQ("same buffer", s.v, heap);
+    CHECK_PTR_EQ("from reset", p, NULL);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);   /* frees heap */
+    assert_balanced();
+}
+
+Test(fs2_api, movefromstr_static) {
+    __fs2_checkreset();
+    const char *p = "literal";
+
+    fs2 s = fs2_movefromstr(&p, FS2_STATIC);
+
+    CHECK_STR_EQ("content", s.v, "literal");
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_PTR_EQ("from reset", p, NULL);
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op */
+}
+
+Test(fs2_api, movefromstr_null_from_aborts, .signal = SIGINT) {
+    fs2_movefromstr(NULL, FS2_ALLOC);
+}
+
+Test(fs2_api, movefromstr_null_pointer_aborts, .signal = SIGINT) {
+    const char *p = NULL;
+    fs2_movefromstr(&p, FS2_ALLOC);   /* *from == NULL */
+}
+
+Test(fs2_api, movefromstr_local_aborts, .signal = SIGINT) {
+    const char *p = "x";
+    fs2_movefromstr(&p, FS2_LOCAL);   /* LOCAL not allowed */
+}
+
+Test(fs2_api, movefromstr_bodyalloc_aborts, .signal = SIGINT) {
+    const char *p = "x";
+    fs2_movefromstr(&p, FS2_ALLOC | FS2_BODYALLOC);
+}
+
+/* =========================================================================
+ * fs2_fromraw
+ * ========================================================================= */
+
+Test(fs2_api, fromraw_alloc_bodyalloc_rejected, .signal = SIGINT) {
+    char *buf = strdup("hi");
+    fs2_fromraw(buf, 2, FS2_ALLOC | FS2_BODYALLOC);
+    free(buf);   /* unreachable */
+}
+
+Test(fs2_api, fromraw_local_rejected, .signal = SIGINT) {
+    char buf[8] = "hi";
+    fs2_fromraw(buf, 2, FS2_LOCAL);
+}
+
+Test(fs2_api, fromraw_null_buf_aborts, .signal = SIGINT) {
+    fs2_fromraw(NULL, 5, FS2_STATIC);
+}
