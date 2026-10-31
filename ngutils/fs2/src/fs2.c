@@ -135,18 +135,22 @@ increasesize(fs2 *s, size_t newsz, bool init) {
  * @warning    `userraise` if vsnprintf returns negative (format error).
  * @warning    `sysraise` on OOM.
  */
-static inline fs2
+static fs2
 fs2_fromstrf_va(const char *fmt, va_list ap) {
     va_list ap2;
-    va_copy(ap2, ap);
 
+    va_copy(ap2, ap);
     int         sz = vsnprintf(NULL, 0, fmt, ap2);
+    va_end(ap2);
+
     if (sz < 0)
         userraise(0, ERR_WRONG_INPUT_FORMAT, "fmt %.15s", fmt);        // SIGINT or siglongjmp
-    va_end(ap2);
+    if (sz == 0)
+        return FS2EMPTY;
 
     fs2         res = fs2_init( (size_t) sz + 1);
     vsnprintf(res.v, res.sz, fmt, ap);
+    
     fs2_setlen(&res, sz);
     return res;
 }
