@@ -89,12 +89,15 @@ typedef enum {
 static inline const char *
 fs2_flag_name(fs2_flags fl) {
     switch (fl) {
-        case FS2_STATIC:    return "FS2_STATIC";
-        case FS2_CONST:     return "FS2_CONST";
-        case FS2_LOCAL:     return "FS2_LOCAL";
-        case FS2_ALLOC:     return "FS2_ALLOC";
-        case FS2_BODYALLOC: return "FS2_BODYALLOC";
-        default:            return "UNKNOWN";
+        case FS2_STATIC:                    return "FS2_STATIC";
+        case FS2_CONST:                     return "FS2_CONST";
+        case FS2_LOCAL:                     return "FS2_LOCAL";
+        case FS2_ALLOC:                     return "FS2_ALLOC";
+        case FS2_BODYALLOC:                 return "FS2_BODYALLOC";
+        case FS2_ALLOC | FS2_BODYALLOC:     return "FS2_ALLOC|FS2_BODYALLOC";
+        case FS2_STATIC | FS2_BODYALLOC:    return "FS2_STATIC|FS2_BODYALLOC";
+        case FS2_LOCAL | FS2_BODYALLOC:     return "FS2_LOCAL|FS2_BODYALLOC";
+        default:                            return "UNKNOWN";
     }
 }
 
