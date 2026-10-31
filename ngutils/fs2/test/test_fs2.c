@@ -557,3 +557,24 @@ Test(fs2_api, clone_empty_returns_fs2empty) {
     fs2_free(&e_cleared);
     assert_balanced();
 }
+
+Test(fs2_api, clone_alloc_empty_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = fs2_init(16);   /* {v=malloc(16), sz=16, len=0, ALLOC} */
+    CHECK_TRUE ("not empty by eq_empty",  !fs2_eq_empty(&src));
+    CHECK_TRUE ("not canon",              !fs2_is_canon(&src));
+    CHECK_TRUE ("but is_empty",           fs2_is_empty(&src));
+
+    fs2 r = fs2_clone(&src);
+
+    /* ← регресс: со старым guard'ом тут был бы FS2() (canon), не FS2EMPTY */
+    CHECK_TRUE("STATIC result", fs2_is_static(&r));
+    CHECK_EQ  ("sz", r.sz, 1);
+    CHECK_STR_EQ("readable", r.v, "");
+    CHECK_FALSE("not canon", fs2_is_canon(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    /* r — FS2EMPTY, fs2_free no-op */
+    assert_balanced();
+}
