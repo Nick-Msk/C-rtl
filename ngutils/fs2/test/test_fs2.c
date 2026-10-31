@@ -578,3 +578,203 @@ Test(fs2_api, clone_alloc_empty_returns_fs2empty) {
     /* r — FS2EMPTY, fs2_free no-op */
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_fromstr — basic cases
+ * ========================================================================= */
+
+Test(fs2_api, fromstr_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_TRUE ("is alloc", fs2_is_alloc(&s));
+    CHECK_FALSE("not STATIC", fs2_is_static(&s));
+    CHECK_TRUE ("sz >= 16", s.sz >= 16);   /* FS2_MIN_ALLOC floor */
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstr_empty_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&s));
+    CHECK_EQ  ("sz == 1", s.sz, 1);
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("readable as empty", s.v, "");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op для STATIC */
+}
+
+Test(fs2_api, fromstr_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+
+    CHECK_STR_EQ("content", s.v, "x");
+    CHECK_EQ  ("len", s.len, 1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstr_long_string) {
+    __fs2_checkreset();
+    char big[1001];
+    memset(big, 'A', 1000);
+    big[1000] = '\0';
+
+    fs2 s = fs2_fromstr(big);
+
+    CHECK_EQ("len", s.len, 1000);
+    CHECK_EQ("first", s.v[0], 'A');
+    CHECK_EQ("last", s.v[999], 'A');
+    CHECK_EQ("NUL at [1000]", s.v[1000], '\0');
+    CHECK_TRUE("sz >= 1001", s.sz >= 1001);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstr_non_ascii) {
+    __fs2_checkreset();
+    /* UTF-8 "привет" = 12 байт */
+    fs2 s = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
+
+    CHECK_EQ("len", s.len, 12);
+    CHECK_EQ("first byte", (unsigned char)s.v[0], 0xD0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstr — ownership (independent from src)
+ * ========================================================================= */
+
+Test(fs2_api, fromstr_independent_from_source) {
+    __fs2_checkreset();
+    char src[] = "hello";
+    fs2 s = fs2_fromstr(src);
+
+    /* Изменение src не влияет на s */
+    src[0] = 'X';
+    CHECK_STR_EQ("s intact", s.v, "hello");
+    CHECK_TRUE ("different buffers", s.v != src);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstr — NULL handling (выбери A или B)
+ * ========================================================================= */
+
+#if defined(FS2_FROMSTR_STRICT)   /* Вариант B */
+Test(fs2_api, fromstr_null_aborts, .signal = SIGINT) {
+    fs2_fromstr(NULL);
+}
+#else                              /* Вариант A: silent */
+Test(fs2_api, fromstr_null_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(NULL);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_EQ  ("sz", s.sz, 1);
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+}
+#endif
+
+/* =========================================================================
+ * fromstr — round-trip через cstr
+ * ========================================================================= */
+
+Test(fs2_api, fromstr_roundtrip_cstr) {
+    __fs2_checkreset();
+    const char *inputs[] = { "hello", "x", "a b c", "", "0123456789" };
+    size_t n = sizeof(inputs) / sizeof(inputs[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 s = fs2_fromstr(inputs[i]);
+        CHECK_STR_EQ("round-trip", fs2_cstr(&s), inputs[i]);
+        CHECK_FS2VALID((int)i, &s);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstr — auto-promote (результат-пустышка остаётся usable)
+ * ========================================================================= */
+
+Test(fs2_api, fromstr_empty_auto_promotes_on_reserve) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("");   /* FS2EMPTY */
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+
+    /* Core-only promote: reserve аллоцирует, дальше memcpy + setlen */
+    fs2_reserve(&s, 3);        /* "hi\0" */
+    memcpy(s.v, "hi", 2);
+    fs2_setlen(&s, 2);
+
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE ("promoted to ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("no longer STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstr — consistency with wrap+clone
+ * ========================================================================= */
+
+Test(fs2_api, fromstr_matches_wrap_clone) {
+    __fs2_checkreset();
+    const char *inputs[] = { "hello", "", "long string with spaces" };
+    size_t n = sizeof(inputs) / sizeof(inputs[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 a = fs2_fromstr(inputs[i]);
+        
+        fs2 tmp = fs2_wrap(inputs[i]);
+        fs2 b = fs2_clone(&tmp);
+
+        CHECK_STR_EQ("same content", a.v, b.v);
+        CHECK_EQ  ("same len", a.len, b.len);
+        CHECK_EQ  ("same flags", a.flags, b.flags);
+        CHECK_FS2VALID((int)i, &a);
+        CHECK_FS2VALID((int)i, &b);
+
+        fs2_free(&a);
+        fs2_free(&b);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, clone_does_not_recurse_through_fromstr) {
+    __fs2_checkreset();
+    
+    /* Если кто-то случайно сделает clone → fromstr → wrap → clone,
+     * этот тест упадёт на stack overflow (SIGSEGV) вместо прохода. */
+    fs2 src = fs2_fromstr("hello");
+    fs2 r = fs2_clone(&src);   /* ← trigger potential recursion */
+    
+    CHECK_STR_EQ("content", r.v, "hello");
+    CHECK_FS2VALID(1, &r);
+    
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
