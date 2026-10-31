@@ -540,7 +540,7 @@ fs2_shrink(fs2 *s) {
  */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
-    checkraise(ERR_NULL_INPUT, src != NULL && src != NULL, 
+    checkraise(ERR_NULL_INPUT, src != NULL && dst != NULL, 
         "Null pointers %p %p", dst, src);
 
 
