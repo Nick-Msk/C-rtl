@@ -1970,3 +1970,250 @@ Test(fs2_api, heap_init_fill_and_free) {
     fs2_free(h);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_clone — basic non-empty
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_alloc_src) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *h = fs2_heap_clone(&src);
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_EQ  ("len", h->len, 5);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_TRUE ("independent buffer", h->v != src.v);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_clone_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 *h = fs2_heap_clone(&src);
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_TRUE ("independent buffer", h->v != src.v);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — empty source → FS2EMPTY + BODYALLOC
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2EMPTY;
+
+    fs2 *h = fs2_heap_clone(&src);
+
+    /* clone(empty) → FS2EMPTY (STATIC); move wraps with BODYALLOC */
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_STR_EQ("readable", h->v, "");
+    CHECK_FS2VALID(1, h);
+
+    /* fs2_free освободит ТОЛЬКО body (v — .rodata) */
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_clone_canonical) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 *h = fs2_heap_clone(&src);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));   /* cloned via FS2EMPTY path */
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — independence
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_independent_from_src) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    fs2 *h = fs2_heap_clone(&src);
+
+    /* Мутируем src */
+    fs2_clear(&src);
+    fs2_reserve(&src, 8);
+    memcpy(src.v, "changed", 7);
+    fs2_setlen(&src, 7);
+
+    CHECK_STR_EQ("clone intact", h->v, "original");
+    CHECK_STR_EQ("src changed", src.v, "changed");
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_clone_mutate_clone_src_intact) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    fs2 *h = fs2_heap_clone(&src);
+
+    /* Мутируем clone */
+    fs2_clear(h);
+    fs2_reserve(h, 8);
+    memcpy(h->v, "modified", 8);
+    fs2_setlen(h, 8);
+
+    CHECK_STR_EQ("src intact", src.v, "original");
+    CHECK_STR_EQ("clone modified", h->v, "modified");
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — counters / no leak
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_balances_counters) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *h = fs2_heap_clone(&src);
+    fs2_free(h);
+    fs2_free(&src);
+
+    /* Ловит bug в fs2_freestr(NULL) внутри move: было бы alloc=2, freed=1 */
+    assert_balanced();
+}
+
+Test(fs2_api, heap_clone_no_leak_loop) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("payload");
+
+    for (int i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap_clone(&src);
+        fs2_free(h);
+    }
+
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — growth after clone
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_grows_after_alloc) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hi");
+    fs2 *h = fs2_heap_clone(&src);
+    size_t orig_sz = h->sz;
+
+    fs2_reserve(h, 1000);
+
+    CHECK_TRUE("grew", h->sz > orig_sz);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_STR_EQ("content intact", h->v, "hi");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — NULL
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_null_aborts, .signal = SIGINT) {
+    fs2_heap_clone(NULL);
+}
+
+/* =========================================================================
+ * Composite: heap_clone + extend + free
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_extend_pipeline) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("prefix");
+
+    fs2 *h = fs2_heap_clone(&src);
+
+    /* Extend: reserve + memcpy + setlen (core-only, test in test_fs2.c) */
+    const char *suffix     = "_suffix";
+    size_t      suffix_len = strlen(suffix);
+    fs2_reserve(h, h->len + suffix_len + 1);
+    memcpy(h->v + h->len, suffix, suffix_len);
+    fs2_setlen(h, h->len + suffix_len);
+
+    CHECK_STR_EQ("extended", h->v, "prefix_suffix");
+    CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    /* src не тронут */
+    CHECK_STR_EQ("src intact", src.v, "prefix");
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * heap_clone — consistency with stack clone
+ * ========================================================================= */
+
+Test(fs2_api, heap_clone_matches_stack_clone_content) {
+    __fs2_checkreset();
+    const char *inputs[] = { "hello", "", "long string with spaces" };
+    size_t n = sizeof(inputs) / sizeof(inputs[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 src = fs2_fromstr(inputs[i]);
+        fs2 stack_clone = fs2_clone(&src);
+        fs2 *heap_clone = fs2_heap_clone(&src);
+
+        /* Content, len, string-axis flags — идентичны */
+        CHECK_EQ  ("len", stack_clone.len, heap_clone->len);
+        CHECK_STR_EQ("content", stack_clone.v, heap_clone->v);
+        CHECK_EQ  ("string-axis flags match",
+                   (stack_clone.flags & ~FS2_BODYALLOC),
+                   (heap_clone->flags  & ~FS2_BODYALLOC));
+        CHECK_TRUE("heap has BODYALLOC", fs2_is_bodyalloc(heap_clone));
+        CHECK_FALSE("stack no BODYALLOC", fs2_is_bodyalloc(&stack_clone));
+        CHECK_FS2VALID((int)i, &stack_clone);
+        CHECK_FS2VALID((int)i, heap_clone);
+
+        fs2_free(&src);
+        fs2_free(&stack_clone);
+        fs2_free(heap_clone);
+    }
+    assert_balanced();
+}
