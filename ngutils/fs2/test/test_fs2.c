@@ -1837,3 +1837,136 @@ Test(fs2_api, heap_twins_use_heap_base) {
     fs2_free(h);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_init — basic
+ * ========================================================================= */
+
+Test(fs2_api, heap_init_basic) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(100);
+
+    CHECK_NOT_NULL("struct", h);
+    CHECK_NOT_NULL("v allocated", h->v);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_FALSE("not LOCAL", fs2_is_local(h));
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_TRUE("sz >= 100", h->sz >= 100);
+    CHECK_EQ  ("v[0] NUL", h->v[0], '\0');
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_init_min_sz) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(0);
+
+    /* fs2_init(0) → reserve(1) → floor to FS2_MIN_ALLOC (16) */
+    CHECK_NOT_NULL("v allocated", h->v);
+    CHECK_TRUE ("sz >= 16 (min floor)", h->sz >= 16);
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_init_pow2_rounding) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(100);
+
+    /* reserve(100) → calcnewsize(POWER2, 100) = 128 */
+    CHECK_EQ("sz == 128", h->sz, 128);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: счётчики не дисбалансируются (freestr(NULL) корректно no-op) */
+Test(fs2_api, heap_init_balances_counters) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(100);
+
+    /* Если fs2_freestr(res) инкрементит g_free_cnt на NULL v — упадёт здесь */
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_init_independent) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap_init(10);
+    fs2 *b = fs2_heap_init(20);
+
+    CHECK_TRUE("different structs", a != b);
+    CHECK_TRUE("different buffers", a->v != b->v);
+
+    /* Мутация a не трогает b */
+    fs2_reserve(a, 100);
+    memcpy(a->v, "x", 2);
+    fs2_setlen(a, 1);
+
+    CHECK_STR_EQ("a content", a->v, "x");
+    CHECK_EQ  ("b still empty", b->len, 0);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_init — growth after construction
+ * ========================================================================= */
+
+Test(fs2_api, heap_init_grows_after_alloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(10);
+    size_t orig_sz = h->sz;
+
+    fs2_reserve(h, 1000);
+
+    CHECK_TRUE("grew", h->sz > orig_sz);
+    CHECK_TRUE("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_TRUE("ALLOC", fs2_is_alloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_init — no leak on repeated alloc/free
+ * ========================================================================= */
+
+Test(fs2_api, heap_init_no_leak_loop) {
+    __fs2_checkreset();
+
+    for (int i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap_init(64);
+        fs2_free(h);
+    }
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: heap_init + fill + free
+ * ========================================================================= */
+
+Test(fs2_api, heap_init_fill_and_free) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_init(16);
+
+    memcpy(h->v, "hello", 5);
+    fs2_setlen(h, 5);
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_EQ  ("len", h->len, 5);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
