@@ -152,6 +152,64 @@ Test(checker, inv2raise_str_mismatch_aborts, .signal = SIGABRT) {
 }
 
 /* -------------------------------------------------------------------------
+ * checkraise() — raise via userraise (SIGINT) or abort (ERR_GENERAL_ERROR)
+ * ------------------------------------------------------------------------- */
+
+Test(checker, checkraise_true_no_signal) {
+    /* expr is true → returns true, no raise */
+    cr_assert(checkraise(ERR_NULLABLE_PTR, 1 == 1, "should hold"));
+}
+
+Test(checker, checkraise_true_various_codes) {
+    cr_assert(checkraise(ERR_GENERAL_ERROR,  1, "ok"));
+    cr_assert(checkraise(ERR_OUT_OF_RANGE,   1, "ok"));
+    cr_assert(checkraise(ERR_NULL_INPUT,     1, "ok"));
+}
+
+Test(checker, checkraise_general_error_aborts, .signal = SIGABRT) {
+    /* ERR_GENERAL_ERROR → abort() path, identical to invraise */
+    checkraise(ERR_GENERAL_ERROR, 1 == 2, "must abort");
+}
+
+Test(checker, checkraise_null_ptr_sigint, .signal = SIGINT) {
+    /* non-GENERAL_ERROR + no TRY → userraise → SIGINT */
+    const char *p = NULL;
+    checkraise(ERR_NULL_INPUT, p != NULL, "p is NULL in test");
+}
+
+Test(checker, checkraise_out_of_range_sigint, .signal = SIGINT) {
+    checkraise(ERR_OUT_OF_RANGE, 0, "value out of range");
+}
+
+Test(checker, checkraise_printf_args_sigint, .signal = SIGINT) {
+    int x = 0;
+    checkraise(ERR_OUT_OF_RANGE, x > 0, "x=%d must be positive", x);
+}
+
+Test(checker, checkraise_catched_by_try) {
+    /* Active TRY() → err_raise longjmps back, no SIGINT */
+    int caught = 0;
+    TRY() {
+        checkraise(ERR_NULLABLE_PTR, 0, "should be caught");
+        cr_assert_not(1, "expected longjmp, not normal return");
+    } else {
+        caught = 1;
+    }
+    cr_assert(caught, "TRY else-branch was not reached");
+}
+
+Test(checker, checkraise_try_true_no_longjmp) {
+    /* true expr inside TRY → completes normally, no longjmp */
+    int caught = 0;
+    TRY() {
+        cr_assert(checkraise(ERR_NULLABLE_PTR, 1, "ok"));
+    } else {
+        caught = 1;
+    }
+    cr_assert_not(caught, "unexpected longjmp for true expr");
+}
+
+/* -------------------------------------------------------------------------
  * check_arg() — requires `argc` in scope; helper passes it explicitly
  * ------------------------------------------------------------------------- */
 

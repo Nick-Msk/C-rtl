@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "log.h"
+#include "error.h"
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -115,10 +116,8 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
 
 // ------------------ ETC. -------------------------
 
-#ifndef NOINVARIANT
-
 /** @internal Boolean invariant engine (inv / invraise). */
-#define _invraise(do_raise, expr, msg, ...)                           \
+#define _invraise(exception, do_raise, expr, msg, ...)                \
     ({  bool _INV_RES = (expr);                                       \
         if (!_INV_RES) {                                              \
             inv_fprintf_int(stderr, #expr, _INV_RES,                  \
@@ -126,13 +125,14 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
             if (do_raise) {                                           \
                 fflush(stderr);                                       \
                 fflush(stdout);                                       \
-                abort();                                              \
+                if ( (exception) == ERR_GENERAL_ERROR) abort();       \
+                else userraise(0, (exception), "%s", #exception);     \
             }                                                         \
         }                                                             \
         _INV_RES; })
 
 /** @internal Two-value invariant engine (inv2 / inv2raise). */
-#define _inv2raise(do_raise, a, b, msg, ...)                          \
+#define _inv2raise(exception, do_raise, a, b, msg, ...)               \
     ({  bool _INV_OK = inv_any_bool(stderr, (a), (b));                \
         if (!_INV_OK) {                                               \
             inv_fprintf_int(stderr, #a " == " #b, _INV_OK,            \
@@ -145,6 +145,8 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
         }                                                             \
         _INV_OK; })
 
+#ifndef NOINVARIANT
+
 /**
  * @brief Boolean check; on failure log and return false.
  *
@@ -153,12 +155,12 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
  *       return -1;
  * @endcode
  */
-#define inv(expr, msg, ...)      _invraise(false, (expr), (msg), ##__VA_ARGS__)
+#define inv(expr, msg, ...)      _invraise(ERR_GENERAL_ERROR, false, (expr), (msg), ##__VA_ARGS__)
 
 /**
  * @brief Boolean check; on failure log and raise (err_raise).
  */
-#define invraise(expr, msg, ...) _invraise(true, (expr), (msg), ##__VA_ARGS__)
+#define invraise(expr, msg, ...) _invraise(ERR_GENERAL_ERROR, true, (expr), (msg), ##__VA_ARGS__)
 
 /**
  * @brief Two-value check; on mismatch log and return false.
@@ -168,12 +170,12 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
  *       return -1;
  * @endcode
  */
-#define inv2(a, b, msg, ...)      _inv2raise(false, (a), (b), (msg), ##__VA_ARGS__)
+#define inv2(a, b, msg, ...)      _inv2raise(ERR_GENERAL_ERROR, false, (a), (b), (msg), ##__VA_ARGS__)
 
 /**
  * @brief Two-value check; on mismatch log and raise.
  */
-#define inv2raise(a, b, msg, ...) _inv2raise(true, (a), (b), (msg), ##__VA_ARGS__)
+#define inv2raise(a, b, msg, ...) _inv2raise(ERR_GENERAL_ERROR, true, (a), (b), (msg), ##__VA_ARGS__)
 
 
 #else /* NOINVARIANT */
@@ -198,5 +200,15 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
     ( (argc) < (min_argc)                                             \
         ? (fprintf(stderr, msg, ##__VA_ARGS__), 0)                    \
         : 1 )
+
+/**
+ * @brief Boolean check; on failure log and raise the given exception
+ *        via userraise() (not abort).
+ *
+ * Use for *expected* failure conditions (user error, bad state) as
+ * opposed to invraise which aborts on invariant violation.
+ * See error.h for details about exception.
+ */
+#define checkraise(exception, expr, msg, ...)      _invraise(exception, true, (expr), (msg), ##__VA_ARGS__)
 
 #endif /* !CHECKER_H */
