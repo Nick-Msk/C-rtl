@@ -381,6 +381,7 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
         .v     = _fs2_internal_buf_##name                                     \
     }
 
+// reserve and setsize
 extern fs2 * 
 fs2_sizehelper(fs2 *s, size_t need, bool useallocator);
 
@@ -855,7 +856,7 @@ void        fs2_free(fs2 *s);
  * @return     @p s for chaining.
  */
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
-    invraise(s != NULL, "Null pointer");
+    checkraise(ERR_NULL_INPUT, s != NULL, "Null pointer");
 
     if (s->v && !fs2_is_static(s))
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
@@ -886,69 +887,45 @@ static inline fs2 *fs2_clear(fs2 *s) {
  * Comparators
  * ───────────────────────────────────────────────────────────────────────── */
 
-// unlim, bare level
+// unlim, bare level, NOCHECK!
 static inline int            
 fs2_cmp(const fs2 *restrict str1, const fs2 *restrict str2) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strcmp(str1->v, str2->v);
 }
-// limited
+// limited, bare level, NOCHECK!
 static inline int            
 fs2_ncmp(const fs2 *restrict str1, const fs2 *restrict str2, size_t len) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strncmp(str1->v, str2->v, len);
 }
-// unlim, insensitive
+// unlim, insensitive, bare level, NOCHECK!
 static inline int            
 fs2_cmp_ci(const fs2* restrict str1, const fs2* restrict str2) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strcasecmp(str1->v, str2->v);
 }
-// limited, insensitive, limited
+// limited, insensitive, limited, bare level, NOCHECK!
 static inline int            
 fs2_ncmp_ci(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL && str2->v != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strncasecmp(str1->v, str2->v, len);
 }
 // c-str wrappers
-// unlim, c-str wrap
+// unlim, c-str wrap, bare level, NOCHECK!
 static inline int            
 fs2_cmpstr(const fs2 *restrict str1, const char *restrict str2) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strcmp(str1->v, str2);
 }
-// limited, c-str wrap
+// limited, c-str wrap, bare level, NOCHECK!
 static inline int            
 fs2_ncmpstr(const fs2 *restrict str1, const char *restrict str2, size_t len) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strncmp(str1->v, str2, len);
 }
-// unlim, insensitive, c-str wrap
+// unlim, insensitive, c-str wrap, bare level, NOCHECK!
 static inline int            
 fs2_cmp_ci_str(const fs2* restrict str1, const char *restrict str2) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strcasecmp(str1->v, str2);
 }
-// limited, insensitive, c-str wrap
+// limited, insensitive, c-str wrap, bare level, NOCHECK!
 static inline int            
 fs2_ncmp_ci_str(const fs2* restrict str1, const char *restrict str2, size_t len) {
-    invraise(str1 != NULL && str1->v != NULL && str2 != NULL, 
-        "Null pointers %p %p", str1, str2);
-
     return strncasecmp(str1->v, str2, len);
 }
 // ------------------ const void *, const void * wrappers -------------------
