@@ -81,6 +81,7 @@ enum { ERR_CYCLE_CNT = 128 };
  *  - 10001+     : domain-specific (fs, generators, interfaces)
  */
 typedef enum {
+    ERR_GENERAL_ERROR           = 1,    ///< unspecifier error
     // --- Core / Standard Errors ---
     ERR_NULLABLE_PTR            = 10,   ///< A pointer argument is NULL where non-NULL is required.
     ERR_OUT_OF_RANGE            = 11,   ///< A numeric value is outside the valid range.
