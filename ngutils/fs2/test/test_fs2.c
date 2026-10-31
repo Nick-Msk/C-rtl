@@ -3069,7 +3069,7 @@ Test(fs2_api, can_mutate_static_nonempty_aborts, .signal = SIGINT) {
 }
 
 /* =========================================================================
- * fs2_cant_growth — growth-permission guard
+ * fs2_cant_realloc — growth-permission guard
  *
  * Contract:
  *   NULL              → false (no crash)
@@ -3167,4 +3167,40 @@ Test(fs2_api, memcpy_src_over_read, .signal = SIGINT) {
 
     fs2_free(&dst);
     fs2_free(&src);
+}
+
+// fs2_reserve
+Test(fs2_api, reserve_noop_preserves_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;   /* sz=1, v="" */
+    void *orig_v = s.v;
+
+    fs2_reserve(&s, 1);   /* sz >= need → ранний return, без конвертации */
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_EQ  ("sz", s.sz, 1);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, setsize_noop_preserves_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_setsize(&s, 1);   /* sz == need → ранний return */
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, reserve_static_nonempty_small_need_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");   /* sz=6 */
+
+    fs2_reserve(&s, 5);   /* sz(6) >= need(5) → return, не raise */
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
 }
