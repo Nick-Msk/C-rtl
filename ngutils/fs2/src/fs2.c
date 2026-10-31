@@ -155,24 +155,7 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
     return res;
 }
 
-/**
- * @brief Low-level constructor: build an fs2 from a raw pointer (internal).
- *
- * The ONLY place where an fs2 is assembled by hand. All public
- * constructors (fs2_init, fs2_fromstr, fs2_adopt, ...) go through here
- * or through the FS2()/FS2LITERAL/FS2LOCAL macros.
- *
- * Counter bookkeeping (g_alloc_cnt) happens here and nowhere else.
- *
- * @param buf   Buffer. Must not be NULL. For non-STATIC flags, buf[len]
- *              is explicitly set to NUL.
- * @param len   Logical length (excluding NUL).
- * @param flag  Exactly one of FS2_STATIC / FS2LOCAL / FS2_ALLOC,
- *              optionally OR'd with FS2_BODYALLOC.
- * @return      Constructed fs2 value.
- * @warning     invraise if buf is NULL.
- */
-static inline fs2
+fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 {
     checkraise(ERR_NULL_INPUT, buf != NULL, "Buf is null");
