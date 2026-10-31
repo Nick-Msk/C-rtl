@@ -838,7 +838,7 @@ Test(fs2_api, fromstrf_negative_and_long) {
 /* ⚠ Главный регресс: пустой результат должен быть FS2EMPTY, не ALLOC empty */
 Test(fs2_api, fromstrf_empty_fmt_returns_fs2empty) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstrf("");
+    fs2 s = fs2_fromstrf("%s", "");
 
     CHECK_EQ  ("len", s.len, 0);
     CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&s));
@@ -870,7 +870,7 @@ Test(fs2_api, fromstrf_zero_width_returns_fs2empty) {
 
 Test(fs2_api, fromstrf_empty_matches_fromstr_empty) {
     __fs2_checkreset();
-    fs2 a = fs2_fromstrf("");
+    fs2 a = fs2_fromstrf("%s", "");
     fs2 b = fs2_fromstr("");
 
     /* Оба FS2EMPTY, идентичные флаги */
@@ -957,7 +957,7 @@ Test(fs2_api, fromstrf_then_extend_core) {
 
 Test(fs2_api, fromstrf_empty_auto_promotes_on_reserve) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstrf("");   /* FS2EMPTY (после фикса sz==0) */
+    fs2 s = fs2_fromstrf("%s", "");   /* FS2EMPTY (после фикса sz==0) */
     CHECK_TRUE("STATIC", fs2_is_static(&s));
 
     /* Core-only promote: reserve аллоцирует, дальше memcpy */
