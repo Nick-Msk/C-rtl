@@ -656,7 +656,12 @@ fs2_adoptn(char **str, size_t saved_len);
  * @param str  Pointer to the heap char* to adopt; set to NULL on success.
  * @return     fs2 value (ALLOC) wrapping the adopted buffer.
  */
-extern fs2         fs2_adopt(char **str);
+static inline fs2         
+fs2_adopt(char **str) {
+    checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
+               "Null pointer (char**)");
+    return fs2_adoptn(str, strlen(*str));
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — heap (BODYALLOC set)
