@@ -348,7 +348,7 @@ fs2_heap          (void) {
  */
 fs2 *
 fs2_heap_init     (size_t sz) {
-    fs2 *res = fs2_heap();  // BODYALLOC only, not a valid fs2 yet
+    fs2 *res = fs2_heap();
     // no checking here, excaption 'll occurs if OOM
     fs2 s = fs2_init(sz);   // ALLOC
     fs2_move(res, &s);
