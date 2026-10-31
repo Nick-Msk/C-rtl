@@ -175,7 +175,9 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
 static inline fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 {
-    checkraise(ERR_NULL_INPUT, buf != NULL, "Null pointer");  
+    checkraise(ERR_NULL_INPUT, buf != NULL, "Buf is null");
+    checkraise(ERR_UNSUPPORTED_TYPE, flag == FS2_STATIC || flag == FS2_ALLOC, 
+        "Type %d/%s is not supported", flag, fs2_flag_name(flag));
 
     fs2 s = (fs2){
         .len   = len,
@@ -183,10 +185,10 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
         .flags = flag,
         .v     = buf,
     };
-    if (flag != FS2_STATIC)
-        buf[len] = '\0';    
-    if (flag == FS2_ALLOC)
+    if (flag == FS2_ALLOC) {
+        buf[len] = '\0';
         atomic_fetch_add(&g_alloc_cnt, 1);
+    }
     return s;
 }
 
@@ -292,7 +294,7 @@ fs2_movefrom(fs2 *src) {
  */
 fs2
 fs2_movefromstr(const char **from, fs2_flags flag) {
-    invraise(from != NULL && *from != NULL, 
+    checkraise(ERR_NULL_INPUT, from != NULL && *from != NULL, 
         "Null pointer char **");
 
     if (flag != FS2_STATIC && flag != FS2_ALLOC)
@@ -582,7 +584,7 @@ fs2_move(fs2 *dst, fs2 *src) {
 void
 fs2_exch(fs2 *a, fs2 *b)
 {
-    checkraise(ERR_NULL_INPUT,  != NULL && b != NULL, 
+    checkraise(ERR_NULL_INPUT, a != NULL && b != NULL, 
         "Null pointer %p %p", a, b);
 
     if (a == b)
