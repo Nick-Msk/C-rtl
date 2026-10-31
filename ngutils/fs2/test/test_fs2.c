@@ -1673,3 +1673,167 @@ Test(fs2_api, adopt_null_pointer_aborts, .signal = SIGINT) {
     char *buf = NULL;
     fs2_adopt(&buf);
 }
+
+/* =========================================================================
+ * fs2_heap — basic
+ * ========================================================================= */
+
+Test(fs2_api, heap_returns_valid_empty) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    CHECK_NOT_NULL("non-NULL", h);
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 0);
+    CHECK_PTR_EQ("v NULL", h->v, NULL);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_flags_alloc_and_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_FALSE("not LOCAL", fs2_is_local(h));
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_is_canonical_empty) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    /* Canonical: v=NULL, sz=0, len=0, ALLOC bit set */
+    CHECK_TRUE("is_canon", fs2_is_canon(h));
+    CHECK_FALSE("not eq_empty", fs2_eq_empty(h));
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap — independence (each call returns unique struct)
+ * ========================================================================= */
+
+Test(fs2_api, heap_independent_instances) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap();
+    fs2 *b = fs2_heap();
+
+    CHECK_TRUE("different structs", a != b);
+
+    /* Мутация a не трогает b */
+    fs2_reserve(a, 10);
+    memcpy(a->v, "x", 2);
+    fs2_setlen(a, 1);
+
+    CHECK_STR_EQ("a content", a->v, "x");
+    CHECK_EQ  ("b still empty", b->len, 0);
+    CHECK_PTR_EQ("b v NULL", b->v, NULL);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap — free balances counters
+ * ========================================================================= */
+
+Test(fs2_api, heap_free_balances_body_counter) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    /* Body counter incremented */
+    int a, f, ba, bf;
+    fs2_checkleak(&a, &f, &ba, &bf);
+    CHECK_EQ("body alloc", ba, 1);
+    CHECK_EQ("body freed", bf, 0);
+
+    fs2_free(h);
+
+    /* Body counter balanced */
+    fs2_checkleak(&a, &f, &ba, &bf);
+    CHECK_EQ("body alloc", ba, 1);
+    CHECK_EQ("body freed", bf, 1);
+
+    assert_balanced();
+}
+
+Test(fs2_api, heap_no_leak_on_immediate_free) {
+    __fs2_checkreset();
+
+    for (int i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap();
+        fs2_free(h);
+    }
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap — grow after allocation
+ * ========================================================================= */
+
+Test(fs2_api, heap_grows_after_alloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    fs2_reserve(h, 100);
+
+    CHECK_TRUE ("still ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("still BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("sz grown", h->sz >= 100);
+    CHECK_NOT_NULL("v allocated", h->v);
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("v[0] NUL", h->v[0], '\0');   /* was_null → clear */
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap — composite: heap + fill + free
+ * ========================================================================= */
+
+Test(fs2_api, heap_fill_and_free) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();
+
+    fs2_reserve(h, 6);
+    memcpy(h->v, "hello", 6);
+    fs2_setlen(h, 5);
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_EQ  ("len", h->len, 5);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);   /* frees buffer AND struct */
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap — used by fs2_heap_* twins
+ * ========================================================================= */
+
+Test(fs2_api, heap_twins_use_heap_base) {
+    __fs2_checkreset();
+    
+    /* Все fs2_heap_* проходят через fs2_heap() — проверим один */
+    fs2 *h = fs2_heap_fromstr("hello");
+    
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_TRUE("ALLOC", fs2_is_alloc(h));
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_FS2VALID(1, h);
+    
+    fs2_free(h);
+    assert_balanced();
+}
