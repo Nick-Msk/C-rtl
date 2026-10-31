@@ -210,7 +210,7 @@ fs2_fromstr (const char *src) {
  * @brief Deep-copy any fs2 into a new growable one.
  *
  * The result is always FS2_ALLOC with a fresh heap buffer, regardless of
- * the source kind. If the source buffer is NULL (defunct), returns FS2().
+ * the source kind. If the source buffer (src->v) is NULL, returns FS2EMPTY.
  *
  * @param src  Non-NULL source fs2.
  * @return     fs2 value (ALLOC) with a heap copy of the source content.
@@ -219,12 +219,12 @@ fs2_fromstr (const char *src) {
  */
 fs2
 fs2_clone   (const fs2 *src) {
-    invraise(src != NULL, "Null pointer"); 
-
-    if (fs2_is_empty(src))
-        return FS2EMPTY;                     /* contract: empty → FS2EMPTY */
+    checkraise(ERR_NULL_INPUT, src != NULL, "Null pointer");                    
     
-    fs2  res = FS2();
+    if (fs2_eq_empty(src) || fs2_eq_fs2(src) )
+        return FS2EMPTY;  // contract: FS2(), empty → FS2EMPTY
+
+    fs2 res = FS2();
     fs2_memcpy(&res, 0, src, 0, src->len);
     fs2_setlen(&res, src->len);
     return res;
@@ -863,7 +863,7 @@ fs2_techcmp(const fs2 *s1, const fs2 *s2) {
 
     checkraise(ERR_NULL_INPUT, s1 != NULL && s2 != NULL,
         "Null pointers %p %p", s1, s2);
-        
+
     if (s1->len != s2->len || s1->flags != s2->flags)
         return false;
 
