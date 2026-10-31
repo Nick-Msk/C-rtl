@@ -16,4 +16,5 @@ debug/
 build/
 docs/
 *.log.gz
+*.bkp
 
