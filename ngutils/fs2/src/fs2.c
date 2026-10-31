@@ -243,7 +243,7 @@ fs2_clone   (const fs2 *src) {
  */
 fs2
 fs2_fromstrf(const char *fmt, ...) {
-    invraise(fmt != NULL, "Null format string"); 
+    checkraise(ERR_NULL_INPUT, fmt != NULL, "Null pointer"); 
 
     va_list ap;
     va_start(ap, fmt);
