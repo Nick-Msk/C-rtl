@@ -1597,21 +1597,6 @@ Test(fs2_api, adoptn_null_pointer_aborts, .signal = SIGINT) {
  * fs2_adopt — via strlen
  * ========================================================================= */
 
-Test(fs2_api, adopt_basic) {
-    __fs2_checkreset();
-    char *buf = strdup("hello");
-
-    fs2 s = fs2_adopt(&buf);
-
-    CHECK_STR_EQ("content", s.v, "hello");
-    CHECK_TRUE ("ALLOC", fs2_is_alloc(&s));
-    CHECK_PTR_EQ("from reset", buf, NULL);
-    CHECK_FS2VALID(1, &s);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
 Test(fs2_api, adopt_empty_preserves_alloc) {
     __fs2_checkreset();
     char *buf = strdup("");
@@ -1643,4 +1628,48 @@ Test(fs2_api, adoptn_sprintf_pattern) {
 
     fs2_free(&s);
     assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_adopt — strlen-based wrapper over adoptn
+ * ========================================================================= */
+
+Test(fs2_api, adopt_basic) {
+    __fs2_checkreset();
+    char *buf = strdup("hello");
+    const char *orig = buf;
+
+    fs2 s = fs2_adopt(&buf);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_EQ  ("sz", s.sz, 6);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_PTR_EQ("same buffer", s.v, orig);
+    CHECK_PTR_EQ("from reset", buf, NULL);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, adopt_roundtrip) {
+    __fs2_checkreset();
+    char *buf = strdup("id=42");
+    fs2 s = fs2_adopt(&buf);
+
+    CHECK_STR_EQ("roundtrip", fs2_cstr(&s), "id=42");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, adopt_null_str_aborts, .signal = SIGINT) {
+    fs2_adopt(NULL);
+}
+
+Test(fs2_api, adopt_null_pointer_aborts, .signal = SIGINT) {
+    char *buf = NULL;
+    fs2_adopt(&buf);
 }
