@@ -1528,3 +1528,119 @@ Test(fs2_api, fromraw_local_rejected, .signal = SIGINT) {
 Test(fs2_api, fromraw_null_buf_aborts, .signal = SIGINT) {
     fs2_fromraw(NULL, 5, FS2_STATIC);
 }
+
+/* =========================================================================
+ * fs2_adoptn — nominal
+ * ========================================================================= */
+
+Test(fs2_api, adoptn_alloc_adopts) {
+    __fs2_checkreset();
+    char *buf = strdup("hello");
+    const char *orig = buf;
+
+    fs2 s = fs2_adoptn(&buf, 5);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&s));
+    CHECK_PTR_EQ("same buffer", s.v, orig);
+    CHECK_PTR_EQ("from reset", buf, NULL);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);   /* frees orig */
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: empty → ALLOC empty, НЕ FS2EMPTY (preserve semantics) */
+Test(fs2_api, adoptn_empty_preserves_alloc) {
+    __fs2_checkreset();
+    char *buf = strdup("");
+    const char *orig = buf;
+
+    fs2 s = fs2_adoptn(&buf, 0);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_EQ  ("sz", s.sz, 1);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("not STATIC", fs2_is_static(&s));
+    CHECK_FALSE("not eq_empty", fs2_eq_empty(&s));
+    CHECK_PTR_EQ("same buffer", s.v, orig);
+    CHECK_PTR_EQ("from reset", buf, NULL);
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);   /* frees orig — must not leak, must not double-free */
+    assert_balanced();
+}
+
+/* ⚠ Регресс на double-free: free(*str) после fromraw = UB */
+Test(fs2_api, adoptn_no_double_free) {
+    __fs2_checkreset();
+    char *buf = strdup("hello");
+
+    fs2 s = fs2_adoptn(&buf, 5);
+
+    /* ASan ловит double-free если импл случайно free(*str) после adopt */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, adoptn_null_str_aborts, .signal = SIGINT) {
+    fs2_adoptn(NULL, 5);
+}
+
+Test(fs2_api, adoptn_null_pointer_aborts, .signal = SIGINT) {
+    char *buf = NULL;
+    fs2_adoptn(&buf, 5);
+}
+
+/* =========================================================================
+ * fs2_adopt — via strlen
+ * ========================================================================= */
+
+Test(fs2_api, adopt_basic) {
+    __fs2_checkreset();
+    char *buf = strdup("hello");
+
+    fs2 s = fs2_adopt(&buf);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&s));
+    CHECK_PTR_EQ("from reset", buf, NULL);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, adopt_empty_preserves_alloc) {
+    __fs2_checkreset();
+    char *buf = strdup("");
+
+    fs2 s = fs2_adopt(&buf);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("not STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: sprintf-into-buffer
+ * ========================================================================= */
+
+Test(fs2_api, adoptn_sprintf_pattern) {
+    __fs2_checkreset();
+    char *tmp = malloc(64);
+    int n = snprintf(tmp, 64, "id=%d", 42);
+    CHECK_TRUE("snprintf ok", n > 0);
+
+    fs2 s = fs2_adoptn(&tmp, (size_t)n);
+    CHECK_STR_EQ("content", s.v, "id=42");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
