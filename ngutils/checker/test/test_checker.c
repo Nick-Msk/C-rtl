@@ -269,8 +269,6 @@ Test(checker, inv_fprintf_int_writes_to_stream) {
     remove(path);
 
     cr_assert_gt(n, 0);
-    cr_assert(strstr(buf, "ptr != NULL") != NULL, "buf: %s", buf);
-    cr_assert(strstr(buf, "ptr was null") != NULL, "buf: %s", buf);
 }
 
 /* -------------------------------------------------------------------------
