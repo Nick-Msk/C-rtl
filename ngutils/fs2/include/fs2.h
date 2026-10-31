@@ -547,7 +547,7 @@ fs2_init(size_t sz) {
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
  * @note NULL is not an error — consistent with fs2_wrap.
  */
-fs2         fs2_fromstr(const char *src);
+extern fs2         fs2_fromstr(const char *src);
 
 /**
  * @brief Create a growable fs2 via printf-style formatting.
@@ -557,7 +557,7 @@ fs2         fs2_fromstr(const char *src);
  * @return     fs2 value (ALLOC) containing the formatted result.
  * 
  */
-fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+extern fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
  * @brief Deep-copy any fs2 into a new growable one.
@@ -569,7 +569,7 @@ fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 
  * @return     fs2 value (ALLOC) with a heap copy of the source content.
  * @warning    `invraise` if @p src is NULL.
  */
-fs2         fs2_clone   (const fs2 *src);
+extern fs2         fs2_clone   (const fs2 *src);
 
 /**
  * @brief Steal the buffer from @p src into a new stack fs2.
@@ -582,7 +582,27 @@ fs2         fs2_clone   (const fs2 *src);
  * @return     fs2 value that now owns the former src buffer.
  * @warning    `invraise` if @p src is NULL or FS2LOCAL.
  */
-fs2         fs2_movefrom(fs2 *src);
+extern fs2         fs2_movefrom(fs2 *src);
+
+/**
+ * @brief Low-level constructor: build an fs2 from a raw pointer (internal).
+ *
+ * The ONLY place where an fs2 is assembled by hand. All public
+ * constructors (fs2_init, fs2_fromstr, fs2_adopt, ...) go through here
+ * or through the FS2()/FS2LITERAL/FS2LOCAL macros.
+ *
+ * Counter bookkeeping (g_alloc_cnt) happens here and nowhere else.
+ *
+ * @param buf   Buffer. Must not be NULL. For non-STATIC flags, buf[len]
+ *              is explicitly set to NUL.
+ * @param len   Logical length (excluding NUL).
+ * @param flag  Exactly one of FS2_STATIC / FS2LOCAL / FS2_ALLOC,
+ *              optionally OR'd with FS2_BODYALLOC.
+ * @return      Constructed fs2 value.
+ * @warning     invraise if buf is NULL.
+ */
+extern fs2
+fs2_fromraw(char *buf, size_t len, fs2_flags flag);
 
 /**
  * @brief Steal a heap or static C string into an fs2.
@@ -597,7 +617,7 @@ fs2         fs2_movefrom(fs2 *src);
  * @return      fs2 value wrapping the stolen pointer.
  * @warning     `invraise` if pointers are NULL; `userraise` for unsupported flag.
  */
-fs2         fs2_movefromstr(const char **from, fs2_flags fl);
+extern fs2         fs2_movefromstr(const char **from, fs2_flags fl);
 
 /**
  * @brief Adopt a heap-allocated C string with a known length.
@@ -611,7 +631,7 @@ fs2         fs2_movefromstr(const char **from, fs2_flags fl);
  * @param saved_len Known logical length (avoids a strlen call).
  * @return          fs2 value (ALLOC) wrapping the adopted buffer.
  */
-fs2         fs2_adoptn(char **str, size_t saved_len);
+extern fs2         fs2_adoptn(char **str, size_t saved_len);
 
 /**
  * @brief Adopt a heap-allocated C string (length computed via strlen).
@@ -622,7 +642,7 @@ fs2         fs2_adoptn(char **str, size_t saved_len);
  * @param str  Pointer to the heap char* to adopt; set to NULL on success.
  * @return     fs2 value (ALLOC) wrapping the adopted buffer.
  */
-fs2         fs2_adopt(char **str);
+extern fs2         fs2_adopt(char **str);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Constructors — heap (BODYALLOC set)
@@ -639,7 +659,7 @@ fs2         fs2_adopt(char **str);
  *
  * @return  Heap-allocated fs2*, or raises on OOM.
  */
-fs2        *fs2_heap          (void);
+extern fs2        *fs2_heap          (void);
 
 /**
  * @brief Allocate a growable fs2 on the heap with given capacity.
@@ -649,7 +669,7 @@ fs2        *fs2_heap          (void);
  * @param sz  Initial buffer capacity (including NUL slot).
  * @return    Heap-allocated fs2* (BODYALLOC | ALLOC), or raises on OOM.
  */
-fs2        *fs2_heap_init     (size_t sz);
+extern fs2        *fs2_heap_init     (size_t sz);
 
 /**
  * @brief Heap-allocate an fs2 as a deep copy of a C string.
@@ -657,7 +677,7 @@ fs2        *fs2_heap_init     (size_t sz);
  * @param src  Non-NULL NUL-terminated source.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC) with a heap copy.
  */
-fs2        *fs2_heap_fromstr  (const char *src);
+extern fs2        *fs2_heap_fromstr  (const char *src);
 
 /**
  * @brief Heap-allocate an fs2 via printf-style formatting.
@@ -666,7 +686,7 @@ fs2        *fs2_heap_fromstr  (const char *src);
  * @param ...  Format arguments.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC).
  */
-fs2        *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+extern fs2        *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
  * @brief Heap-allocate an fs2 as a deep copy of another fs2.
@@ -676,7 +696,7 @@ fs2        *fs2_heap_fromstrf (const char *fmt, ...) __attribute__((format(print
  * @param src  Non-NULL source fs2.
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC) with a heap copy.
  */
-fs2        *fs2_heap_clone    (const fs2 *src);
+extern fs2        *fs2_heap_clone    (const fs2 *src);
 
 /**
  * @brief Deprecated: heap-allocate an fs2 by stealing from @p src.
@@ -686,7 +706,7 @@ fs2        *fs2_heap_clone    (const fs2 *src);
  * @param src  Source fs2 (unused).
  * @deprecated Use fs2_stacktoheap.
  */
-fs2        *fs2_heap_movefrom (fs2 *src);
+extern fs2        *fs2_heap_movefrom (fs2 *src);
 
 /**
  * @brief Heap-allocate an fs2 by stealing a C string pointer.
@@ -697,7 +717,7 @@ fs2        *fs2_heap_movefrom (fs2 *src);
  * @param fl    FS2_STATIC or FS2_ALLOC.
  * @return      Heap-allocated fs2* (BODYALLOC + given flag).
  */
-fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
+extern fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Move assignment (not a constructor)
@@ -726,7 +746,7 @@ fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  * @note        fs2_move(x, x) is a no-op that returns @p to.
  * @warning     `invraise` if either pointer is NULL or either side is FS2LOCAL.
  */
-fs2         *fs2_move(fs2 *to, fs2 *from);
+extern fs2         *fs2_move(fs2 *to, fs2 *from);
 
 // internal, memcpy wrapper
 // TODO: generally all API have to use that instead of memcpy call
