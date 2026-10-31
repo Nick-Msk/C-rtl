@@ -367,7 +367,7 @@ fs2_heap_init     (size_t sz) {
  */
 fs2 *
 fs2_heap_clone    (const fs2 *src) {
-    invraise(src != NULL, "Null pointer");
+    checkraise(ERR_NULL_INPUT, src != NULL, "Null pointer");
 
     fs2     *res = fs2_heap();      // BODYALLOC only, not a valid fs2 yet
     // no checking here, excaption 'll occurs if OOM
