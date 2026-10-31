@@ -221,7 +221,7 @@ fs2
 fs2_clone   (const fs2 *src) {
     checkraise(ERR_NULL_INPUT, src != NULL, "Null pointer");                    
     
-    if (fs2_eq_empty(src) || fs2_eq_fs2(src) )
+    if (fs2_is_empty(src))
         return FS2EMPTY;  // contract: FS2(), empty → FS2EMPTY
 
     fs2 res = FS2();
