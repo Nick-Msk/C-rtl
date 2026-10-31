@@ -150,7 +150,7 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
 
     fs2         res = fs2_init( (size_t) sz + 1);
     vsnprintf(res.v, res.sz, fmt, ap);
-    
+
     fs2_setlen(&res, sz);
     return res;
 }
@@ -175,7 +175,7 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
 static inline fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 {
-    invraise(buf != NULL, "Null pointer"); 
+    checkraise(ERR_NULL_INPUT, buf != NULL, "Null pointer");  
 
     fs2 s = (fs2){
         .len   = len,
@@ -540,7 +540,7 @@ fs2_shrink(fs2 *s) {
  */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
-    invraise(dst != NULL && src != NULL, 
+    checkraise(ERR_NULL_INPUT, src != NULL && src != NULL, 
         "Null pointers %p %p", dst, src);
 
 
