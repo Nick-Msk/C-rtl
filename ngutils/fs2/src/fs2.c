@@ -860,8 +860,10 @@ bool
 fs2_techcmp(const fs2 *s1, const fs2 *s2) {
     if (s1 == s2)
         return true;
-    invraise(s1 != NULL && s2 != NULL,
+
+    checkraise(ERR_NULL_INPUT, s1 != NULL && s2 != NULL,
         "Null pointers %p %p", s1, s2);
+        
     if (s1->len != s2->len || s1->flags != s2->flags)
         return false;
 
