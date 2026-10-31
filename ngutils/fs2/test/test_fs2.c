@@ -778,3 +778,198 @@ Test(fs2_api, clone_does_not_recurse_through_fromstr) {
     fs2_free(&r);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_fromstrf — basic formatting
+ * ========================================================================= */
+
+Test(fs2_api, fromstrf_plain) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("hello");
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_TRUE ("is alloc", fs2_is_alloc(&s));
+    CHECK_TRUE ("sz >= 6", s.sz >= 6);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstrf_int) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%d", 42);
+
+    CHECK_STR_EQ("content", s.v, "42");
+    CHECK_EQ  ("len", s.len, 2);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstrf_multiple_args) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%s=%d (%.2f)", "x", 7, 3.14);
+
+    CHECK_STR_EQ("content", s.v, "x=7 (3.14)");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstrf_negative_and_long) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%ld", -1234567890L);
+
+    CHECK_STR_EQ("content", s.v, "-1234567890");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstrf — empty result → FS2EMPTY (contract)
+ * ========================================================================= */
+
+/* ⚠ Главный регресс: пустой результат должен быть FS2EMPTY, не ALLOC empty */
+Test(fs2_api, fromstrf_empty_fmt_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("");
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&s));
+    CHECK_EQ  ("sz == 1", s.sz, 1);
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free no-op для STATIC */
+}
+
+Test(fs2_api, fromstrf_empty_arg_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%s", "");
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_EQ  ("sz == 1", s.sz, 1);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, fromstrf_zero_width_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("%.0s", "ignored");
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, fromstrf_empty_matches_fromstr_empty) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstrf("");
+    fs2 b = fs2_fromstr("");
+
+    /* Оба FS2EMPTY, идентичные флаги */
+    CHECK_EQ  ("same len",   a.len,   b.len);
+    CHECK_EQ  ("same sz",    a.sz,    b.sz);
+    CHECK_EQ  ("same flags", a.flags, b.flags);
+    CHECK_TRUE("both STATIC", fs2_is_static(&a) && fs2_is_static(&b));
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+}
+
+/* =========================================================================
+ * fromstrf — independence
+ * ========================================================================= */
+
+Test(fs2_api, fromstrf_independent_from_args) {
+    __fs2_checkreset();
+    char arg[] = "orig";
+    fs2 s = fs2_fromstrf("%s", arg);
+
+    /* Изменение arg не влияет на s */
+    arg[0] = 'X';
+    CHECK_STR_EQ("s intact", s.v, "orig");
+    CHECK_TRUE ("different buffer", s.v != arg);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstrf — long output (heap, multi-KB)
+ * ========================================================================= */
+
+Test(fs2_api, fromstrf_long_output) {
+    __fs2_checkreset();
+    char big[2001];
+    memset(big, 'A', 2000);
+    big[2000] = '\0';
+
+    fs2 s = fs2_fromstrf("%s", big);
+
+    CHECK_EQ("len", s.len, 2000);
+    CHECK_EQ("first", s.v[0], 'A');
+    CHECK_EQ("NUL at [2000]", s.v[2000], '\0');
+    CHECK_TRUE("sz > 2000", s.sz > 2000);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fromstrf — NULL fmt
+ * ========================================================================= */
+
+Test(fs2_api, fromstrf_null_aborts, .signal = SIGINT) {
+    fs2_fromstrf(NULL);
+}
+
+/* =========================================================================
+ * fromstrf — composite: build then mutate
+ * ========================================================================= */
+
+Test(fs2_api, fromstrf_then_extend_core) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("id=%d", 42);
+    CHECK_STR_EQ("built", s.v, "id=42");
+    CHECK_FS2VALID(1, &s);
+
+    /* Core extend: reserve + memcpy + setlen (без catstr) */
+    const char *suffix     = "&active=1";
+    size_t      suffix_len = strlen(suffix);
+    fs2_reserve(&s, s.len + suffix_len + 1);
+    memcpy(s.v + s.len, suffix, suffix_len);
+    fs2_setlen(&s, s.len + suffix_len);
+
+    CHECK_STR_EQ("extended", s.v, "id=42&active=1");
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, fromstrf_empty_auto_promotes_on_reserve) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstrf("");   /* FS2EMPTY (после фикса sz==0) */
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+
+    /* Core-only promote: reserve аллоцирует, дальше memcpy */
+    fs2_reserve(&s, 6);         /* "hello\0" */
+    memcpy(s.v, "hello", 5);
+    fs2_setlen(&s, 5);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE ("promoted to ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("no longer STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
