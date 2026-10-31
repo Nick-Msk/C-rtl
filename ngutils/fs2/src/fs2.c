@@ -470,54 +470,13 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
     return res;
 }
 
-// converter FSEMPTY => FS2
-static inline bool fs2_empty2fs2(fs2 *s) {
-    if ( (fs2_is_static(s) && !fs2_is_bodyalloc(s) ) && s->len == 0) { // FS2EMPTY => FS2 conversion
-        *s = FS2();
-        return true;
-    } else
-        return false;
-} 
-
-/**
- * @brief Ensure capacity for at least @p need bytes (including NUL).
- *
- * No-op for STATIC/LOCAL (cannot grow external buffers).
- *
- * @param s     Non-NULL fs2.
- * @param need  Desired minimum capacity.
- *
- * @warning     `invraise` if @p s is NULL.
- */
 fs2 *
-fs2_reserve(fs2 *s, size_t need)
-{
-    invraise(s != NULL, "Null pointer");
-
-    if (s->sz >= need)
+fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
+    if (!fs2_prepare_growth(s, need))
         return s;
- 
-    fs2_empty2fs2(s);
-    bool was_null = (s->v == NULL);
-
-    increasesize(s, need, true);
-    if (was_null && s->v != NULL)
-        fs2_clear(s);
-    return s;
-}
-
-fs2 *
-fs2_setsize(fs2 *s, size_t need)
-{
-    invraise(s != NULL, "Null pointer");
-
-    if (s->sz == need)
-        return s; 
-
-    fs2_empty2fs2(s);
-    bool was_null = (s->v == NULL);
-        
-    increasesize(s, need, false);
+    
+    bool was_null = (s->v == NULL);      /* после conversion — покрывает оба случая */
+    increasesize(s, need, useallocator);
     if (was_null && s->v != NULL)
         fs2_clear(s);
     return s;
@@ -534,11 +493,16 @@ fs2_setsize(fs2 *s, size_t need)
  *
  * @warning  `invraise` if @p s is NULL.
  */
-fs2 *      
-fs_shrink(fs2 *s) {
-    invraise(s != NULL, "Null pointer");
-    s = increasesize(s, s->len + 1, false);
-    return s;
+fs2 *
+fs2_shrink(fs2 *s) {
+    fs2_cant_realloc(s);     // checkup
+
+    if (!s->v)
+        return s;
+    size_t target = s->len + 1;
+    if (s->sz == target) 
+        return s;
+    return increasesize(s, target, false);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
