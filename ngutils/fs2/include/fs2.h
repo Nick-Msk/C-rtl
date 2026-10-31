@@ -620,21 +620,32 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag);
  * @return      fs2 value wrapping the stolen pointer.
  * @warning     `invraise` if pointers are NULL; `userraise` for unsupported flag.
  */
-extern fs2         fs2_movefromstr(const char **from, fs2_flags fl);
+extern fs2         
+fs2_movefromstr(const char **from, fs2_flags fl);
 
 /**
- * @brief Adopt a heap-allocated C string with a known length.
+ * @brief Adopt a heap-allocated C-string with a known length.
  *
- * 
- * 
- * After the call, `*str` is set to NULL. If `str` or `*str` is NULL,
- * returns FS2() (empty growable).
+ * Transfers ownership: caller must NOT free *str, fs2 owns the buffer.
+ * *str is set to NULL on success to prevent accidental double-free.
  *
- * @param str       Pointer to the heap char* to adopt; set to NULL.
- * @param saved_len Known logical length (avoids a strlen call).
- * @return          fs2 value (ALLOC) wrapping the adopted buffer.
+ * @param str        Non-NULL pointer to a non-NULL heap char*.
+ *                   Set to NULL on success.
+ * @param saved_len  Logical length (excluding NUL). Buffer must hold
+ *                   at least saved_len + 1 bytes.
+ *
+ * @return  fs2 with FS2_ALLOC owning *str. For saved_len == 0, returns
+ *          a valid ALLOC empty ({v=buf, sz=1, len=0}) — NOT FS2EMPTY.
+ *          This differs from fs2_fromstr/clone, which normalize empty
+ *          to FS2EMPTY; adopt is preserve-by-design (like fs2_movefrom).
+ *
+ * @pre *str allocated via malloc/realloc (or compatible), >= saved_len+1 bytes.
+ * @pre saved_len == strlen(*str). No verification performed.
+ *
+ * @raise ERR_NULL_INPUT if str == NULL or *str == NULL.
  */
-extern fs2         fs2_adoptn(char **str, size_t saved_len);
+extern fs2         
+fs2_adoptn(char **str, size_t saved_len);
 
 /**
  * @brief Adopt a heap-allocated C string (length computed via strlen).

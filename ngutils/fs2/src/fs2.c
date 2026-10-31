@@ -303,12 +303,9 @@ fs2_movefromstr(const char **from, fs2_flags flag) {
 fs2
 fs2_adoptn(char **str, size_t saved_len)
 {
-    if (!str || !*str) {
-#ifdef FS2_TRACE
-        logsimple("adoptn from NULL!");
-#endif /* FS2_TRACE */       
-        return FS2();
-    }
+    checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
+               "Null pointer (char**)");
+
     fs2 s = fs2_fromraw(*str, saved_len, FS2_ALLOC);
     *str = NULL;
     return s;
@@ -326,12 +323,8 @@ fs2_adoptn(char **str, size_t saved_len)
 fs2
 fs2_adopt(char **str)
 {
-    if (!str || !*str) {
-#ifdef FS2_TRACE
-        logsimple("adopt from NULL!");
-#endif /* FS2_TRACE */       
-        return FS2();
-    }
+    checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
+               "Null pointer (char**)");
     return fs2_adoptn(str, strlen(*str));
 }
 
