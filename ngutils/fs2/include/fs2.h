@@ -234,7 +234,7 @@ fs2_cant_mutate(const fs2 *s) {
  *         userraise — non-empty STATIC (cannot write into .rodata while preserving content).
  */
 static inline bool
-fs2_cant_growth(fs2 *s) {
+fs2_cant_realloc(fs2 *s) {
     if (!s)
         return userraise(0, ERR_NULL_INPUT, 
                   "Cannot grouth for null destination!");
@@ -244,6 +244,44 @@ fs2_cant_growth(fs2 *s) {
         return userraise(0, ERR_UNSUPPORTED_TYPE, 
                   "Cannot grouth of non-empty STATIC fs2");
     return false;                                    /* ALLOC/LOCAL → proceed */
+}
+
+// guard FSEMPTY => FS2
+static inline bool 
+fs2_promote_empty(fs2 *s) {
+    if ( s && (fs2_is_static(s) && !fs2_is_bodyalloc(s) ) && s->len == 0) { // FS2EMPTY => FS2 conversion
+        *s = FS2();
+        return true;
+    } else
+        return false;
+} 
+
+/**
+ * @brief Prepare @p s for growth. Raises on NULL / non-empty STATIC.
+ *        Converts FS2EMPTY → FS2() (auto-promote) if growth is needed.
+ *
+ * @return true  — caller should grow (need > sz)
+ *         false — already sufficient, no-op
+ */
+static inline bool
+fs2_prepare_growth(fs2 *restrict s, size_t need) {
+    if (!s)
+        return userraise(false, ERR_NULL_INPUT, "Cannot grow NULL fs2");
+    
+    if (s->sz >= need)
+        return false;                    /* already sufficient */
+    
+    if (fs2_is_empty(s)) {
+        if (fs2_is_static(s) && !fs2_is_bodyalloc(s))
+            *s = FS2();                  /* FS2EMPTY → FS2() */
+        return true;
+    }
+    
+    if (fs2_is_static(s))
+        userraise(false, ERR_UNSUPPORTED_TYPE, 
+                  "Cannot grow non-empty STATIC fs2");   /* non-empty STATIC */
+    
+    return true;
 }
 
 /**
@@ -343,6 +381,9 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
         .v     = _fs2_internal_buf_##name                                     \
     }
 
+extern fs2 * 
+fs2_sizehelper(fs2 *s, size_t need, bool useallocator);
+
 /**
  * @brief Ensure capacity for at least @p need bytes (including NUL).
  *
@@ -353,8 +394,11 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
  *
  * @warning     `invraise` if @p s is NULL.
  */
-extern fs2 *       
-fs2_reserve(fs2 *s, size_t need);
+static inline fs2 *
+fs2_reserve(fs2 *s, size_t need)
+{
+    return fs2_sizehelper(s, need, true);
+}
 
 /**
  * @brief Ensure dst can hold @p len bytes at offset @p pos, plus NUL.
@@ -368,7 +412,7 @@ static inline fs2 *
 fs2_reserve_span(fs2 *s, size_t pos, size_t len) {
     if (pos >= SIZE_MAX - len)
         sysraise(ERR_OUT_OF_RANGE, 
-                 "fs2_reserve_span: pos=%zu + len=%zu + 1 overflows", 
+                 "Out of range: pos=%zu + len=%zu + 1 overflows", 
                  pos, len);
     return fs2_reserve(s, pos + len + 1);
 }
@@ -422,8 +466,11 @@ fs2_reserve_span(fs2 *s, size_t pos, size_t len) {
  *
  * @see fs2_reserve
  */
-extern fs2 * 
-fs2_setsize(fs2 *s, size_t need);
+static inline fs2 *
+fs2_setsize(fs2 *s, size_t need)
+{
+    return fs2_sizehelper(s, need, false);
+}
 
 extern fs2 *      
 fs_shrink(fs2 *s);
