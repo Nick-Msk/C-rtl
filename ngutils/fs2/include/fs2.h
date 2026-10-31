@@ -88,7 +88,7 @@ typedef enum {
  */
 static inline const char *
 fs2_flag_name(fs2_flags fl) {
-    switch (fl) {
+    switch ( (int) fl) {
         case FS2_STATIC:                    return "FS2_STATIC";
         case FS2_CONST:                     return "FS2_CONST";
         case FS2_LOCAL:                     return "FS2_LOCAL";
