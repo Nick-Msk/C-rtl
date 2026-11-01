@@ -3244,3 +3244,307 @@ Test(fs2, promote_result_printf_safe) {
 
     /* fs2_free no-op для STATIC */
 }
+
+/* =========================================================================
+ * fs2_exch — basic exchange
+ * ========================================================================= */
+
+Test(fs2, exch_basic_alloc_alloc) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("AAA");
+    fs2 b = fs2_fromstr("BBBB");
+    void *a_v = a.v;
+    void *b_v = b.v;
+
+    fs2_exch(&a, &b);
+
+    /* Content swapped */
+    CHECK_STR_EQ("a has B's content", a.v, "BBBB");
+    CHECK_STR_EQ("b has A's content", b.v, "AAA");
+    CHECK_EQ("a len", a.len, 4);
+    CHECK_EQ("b len", b.len, 3);
+
+    /* Buffers swapped (не просто memcpy!) */
+    CHECK_PTR_EQ("a got b's buffer", a.v, b_v);
+    CHECK_PTR_EQ("b got a's buffer", b.v, a_v);
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* ⚠ Твой главный запрос: a <-> b <-> a */
+Test(fs2, exch_double_restores) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("AAA");
+    fs2 b = fs2_fromstr("BBBB");
+    void *a_v  = a.v;
+    void *b_v  = b.v;
+    size_t a_sz = a.sz;
+    size_t b_sz = b.sz;
+
+    fs2_exch(&a, &b);   /* a=B, b=A */
+    fs2_exch(&a, &b);   /* a=A, b=B — restored */
+
+    CHECK_STR_EQ("a original",  a.v, "AAA");
+    CHECK_STR_EQ("b original",  b.v, "BBBB");
+    CHECK_PTR_EQ("a v restored", a.v, a_v);
+    CHECK_PTR_EQ("b v restored", b.v, b_v);
+    CHECK_EQ("a sz restored", a.sz, a_sz);
+    CHECK_EQ("b sz restored", b.sz, b_sz);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, exch_triple_alternates) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("A");
+    fs2 b = fs2_fromstr("B");
+
+    fs2_exch(&a, &b);   /* a=B */
+    CHECK_STR_EQ("swap 1: a=B", a.v, "B");
+    CHECK_STR_EQ("swap 1: b=A", b.v, "A");
+
+    fs2_exch(&a, &b);   /* a=A */
+    CHECK_STR_EQ("swap 2: a=A", a.v, "A");
+    CHECK_STR_EQ("swap 2: b=B", b.v, "B");
+
+    fs2_exch(&a, &b);   /* a=B */
+    CHECK_STR_EQ("swap 3: a=B", a.v, "B");
+    CHECK_STR_EQ("swap 3: b=A", b.v, "A");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, exch_same_content_still_swaps_buffers) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("XYZ");
+    fs2 b = fs2_fromstr("XYZ");
+    void *a_v = a.v;
+    void *b_v = b.v;
+
+    fs2_exch(&a, &b);
+
+    /* Content "identical", но буферы должны реально поменяться */
+    CHECK_PTR_EQ("a got b's buffer", a.v, b_v);
+    CHECK_PTR_EQ("b got a's buffer", b.v, a_v);
+    CHECK_STR_EQ("a content", a.v, "XYZ");
+    CHECK_STR_EQ("b content", b.v, "XYZ");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_exch — self / NULL / LOCAL
+ * ========================================================================= */
+
+Test(fs2, exch_self_noop) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("hello");
+    void *orig_v = a.v;
+
+    fs2_exch(&a, &a);
+
+    CHECK_PTR_EQ("v unchanged", a.v, orig_v);
+    CHECK_STR_EQ("content unchanged", a.v, "hello");
+    CHECK_FS2VALID(1, &a);
+
+    fs2_free(&a);
+    assert_balanced();
+}
+
+Test(fs2, exch_null_a_aborts, .signal = SIGABRT) {
+    fs2 b = fs2_fromstr("x");
+    fs2_exch(NULL, &b);
+    fs2_free(&b);
+}
+
+Test(fs2, exch_null_b_aborts, .signal = SIGABRT) {
+    fs2 a = fs2_fromstr("x");
+    fs2_exch(&a, NULL);
+    fs2_free(&a);
+}
+
+Test(fs2, exch_local_a_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(a, 16);
+    fs2 b = fs2_fromstr("x");
+    fs2_exch(&a, &b);
+    fs2_free(&b);
+}
+
+Test(fs2, exch_local_b_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("x");
+    FS2LOCAL(b, 16);
+    fs2_exch(&a, &b);
+    fs2_free(&a);
+}
+
+/* =========================================================================
+ * fs2_exch — mixed kinds (STATIC <-> ALLOC)
+ * ========================================================================= */
+
+Test(fs2, exch_static_alloc) {
+    __fs2_checkreset();
+    fs2 a = FS2LITERAL("AAA");      /* STATIC */
+    fs2 b = fs2_fromstr("BBB");     /* ALLOC */
+    void *b_v = b.v;
+
+    fs2_exch(&a, &b);
+
+    /* a: content+flags from b */
+    CHECK_STR_EQ("a content", a.v, "BBB");
+    CHECK_TRUE ("a ALLOC (from b)", fs2_is_alloc(&a));
+    CHECK_FALSE("a not STATIC",    fs2_is_static(&a));
+    CHECK_PTR_EQ("a got b's buffer", a.v, b_v);
+
+    /* b: content+flags from a */
+    CHECK_STR_EQ("b content", b.v, "AAA");
+    CHECK_TRUE ("b STATIC (from a)", fs2_is_static(&b));
+    CHECK_FALSE("b not ALLOC",       fs2_is_alloc(&b));
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);   /* frees b's old buffer */
+    /* b is STATIC — no-op */
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_exch — BODYALLOC preservation per-side
+ * ========================================================================= */
+
+Test(fs2, exch_preserves_bodyalloc_per_side) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap_fromstr("AAA");   /* ALLOC|BODYALLOC */
+    fs2  b = fs2_fromstr("BBB");         /* ALLOC, stack */
+
+    fs2_exch(a, &b);
+
+    CHECK_STR_EQ("a content", a->v, "BBB");
+    CHECK_TRUE ("a BODYALLOC preserved", fs2_is_bodyalloc(a));
+    CHECK_STR_EQ("b content", b.v, "AAA");
+    CHECK_FALSE("b no bodyalloc", fs2_is_bodyalloc(&b));
+
+    CHECK_FS2VALID(1, a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(a);    /* frees b's old buffer + a's struct */
+    fs2_free(&b);   /* frees a's old buffer */
+
+    assert_balanced();
+}
+
+Test(fs2, exch_both_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap_fromstr("AAA");
+    fs2 *b = fs2_heap_fromstr("BBB");
+
+    fs2_exch(a, b);
+
+    CHECK_STR_EQ("a content", a->v, "BBB");
+    CHECK_TRUE ("a BODYALLOC", fs2_is_bodyalloc(a));
+    CHECK_STR_EQ("b content", b->v, "AAA");
+    CHECK_TRUE ("b BODYALLOC", fs2_is_bodyalloc(b));
+
+    CHECK_FS2VALID(1, a);
+    CHECK_FS2VALID(2, b);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_exch — empty cases
+ * ========================================================================= */
+
+Test(fs2, exch_fs2empty_fs2empty) {
+    fs2 a = FS2EMPTY;
+    fs2 b = FS2EMPTY;
+
+    fs2_exch(&a, &b);
+
+    CHECK_TRUE("a eq_empty", fs2_eq_empty(&a));
+    CHECK_TRUE("b eq_empty", fs2_eq_empty(&b));
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+}
+
+Test(fs2, exch_canonical_with_content) {
+    __fs2_checkreset();
+    fs2 a = FS2();              /* canonical: v=NULL, ALLOC */
+    fs2 b = fs2_fromstr("hello");
+
+    fs2_exch(&a, &b);
+
+    CHECK_STR_EQ("a has hello", a.v, "hello");
+    CHECK_TRUE ("a ALLOC",     fs2_is_alloc(&a));
+
+    CHECK_TRUE ("b empty",      fs2_is_empty(&b));
+    CHECK_EQ   ("b len",        b.len, 0);
+    /* Per "safe empty" protocol: v должен быть readable (not NULL).
+     * Если этот CHECK падает — нужно добавить fs2_promote_empty(dst)
+     * внутрь fs2_move. */
+    CHECK_NOT_NULL("b v readable (safe empty)", b.v);
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2, exch_empty_with_content) {
+    __fs2_checkreset();
+    fs2 a = FS2EMPTY;           /* STATIC-empty */
+    fs2 b = fs2_fromstr("hello");
+
+    fs2_exch(&a, &b);
+
+    CHECK_STR_EQ("a content", a.v, "hello");
+    CHECK_TRUE ("a ALLOC",   fs2_is_alloc(&a));
+    CHECK_TRUE ("b empty",   fs2_is_empty(&b));
+    CHECK_NOT_NULL("b v readable", b.v);
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_exch — no leak
+ * ========================================================================= */
+
+Test(fs2, exch_no_leak) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("AAA");
+    fs2 b = fs2_fromstr("BBBBBBBB");
+
+    fs2_exch(&a, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+
+    assert_balanced();
+}
