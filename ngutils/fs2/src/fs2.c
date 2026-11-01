@@ -186,7 +186,7 @@ fs2_fromstr (const char *src) {
  * @warning    `invraise` if @p src is NULL.
  */
 fs2
-fs2_clone   (const fs2 *src) {
+fs2_clone(const fs2 *src) {
     invfatal(ERR_NULL_INPUT, src != NULL, "Null pointer");                    
     
     if (fs2_is_empty(src))
@@ -482,23 +482,25 @@ fs2_move(fs2 *dst, fs2 *src) {
         "Null pointers %p %p", dst, src);
 
     if (dst == src)
-        return dst;    
+        return dst;
 
-    invfatal(ERR_UNSUPPORTED_TYPE, !(fs2_is_local(src) || fs2_is_local(dst) ),  
-                  "fs2_move does not support LOCAL (stack buffer)");
+    invfatal(ERR_UNSUPPORTED_TYPE, !(fs2_is_local(src) || fs2_is_local(dst)),
+             "fs2_move does not support LOCAL");
 
     fs2_flags dst_body = fs2_getbodyalloc(dst);
     fs2_flags src_body = fs2_getbodyalloc(src);
 
-    if (fs2_is_alloc(dst) )
-        fs2_freestr(dst);   // BODYALLOC remains the same
+    if (fs2_is_alloc(dst))
+        fs2_freestr(dst);
 
     *dst = *src;
     fs2_setbodyalloc(dst, dst_body);
-    *src = FS2();
-    fs2_setbodyalloc(src, src_body); 
+    fs2_promote_empty(dst);                          /* ← normalize dst */
 
-    return dst; 
+    *src = FS2EMPTY;
+    fs2_setbodyalloc(src, src_body);
+
+    return dst;
 }
 
 /**

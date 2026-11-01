@@ -345,6 +345,14 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
     return true;
 }
 
+static inline void
+fs2_promote_empty(fs2 *s) {
+    if (s->v) return;
+    fs2_flags body = fs2_getbodyalloc(s);
+    *s = FS2EMPTY;
+    fs2_setbodyalloc(s, body);
+}
+
 /**
  * @brief Precondition guard for memcpy/memmove-style operations.
  *
@@ -870,7 +878,12 @@ extern fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  * @return      @p to (for chaining).
  *
  * @note        fs2_move(x, x) is a no-op that returns @p to.
- * @warning     `invraise` if either pointer is NULL or either side is FS2LOCAL.
+ * @warning     `invfatal` if either pointer is NULL or either side is FS2LOCAL.
+ * 
+ * Both sides end up safe-empty if they were empty**: dst.v and src.v
+ * are guaranteed readable after move (v="" not NULL), even when the
+ * source was canonical FS2() (v=NULL). Canonical empty is normalized
+ * to FS2EMPTY shape, preserving BODYALLOC on each side.
  */
 extern fs2         *fs2_move(fs2 *to, fs2 *from);
 
