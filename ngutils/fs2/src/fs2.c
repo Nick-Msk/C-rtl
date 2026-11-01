@@ -364,7 +364,7 @@ fs2_heap_clone    (const fs2 *src) {
  * @warning    `invraise` if @p src is NULL.
  */
 fs2 *
-fs2_heap_fromstr  (const char *src) {
+fs2_heap_fromstr(const char *src) {
     fs2     *res = fs2_heap();
     fs2      s = fs2_fromstr(src);
 
@@ -382,8 +382,8 @@ fs2_heap_fromstr  (const char *src) {
  * @warning    `invraise` if @p fmt is NULL; `userraise` on format error.
  */
 fs2 *
-fs2_heap_fromstrf (const char *fmt, ...) {
-    invraise(fmt != NULL, "Null format");
+fs2_heap_fromstrf(const char *fmt, ...) {
+    checkraise(ERR_NULL_INPUT, fmt != NULL, "Null format");
 
     fs2     *res = fs2_heap();
     va_list ap;
@@ -482,7 +482,6 @@ fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
     checkraise(ERR_NULL_INPUT, src != NULL && dst != NULL, 
         "Null pointers %p %p", dst, src);
-
 
     if (dst == src)
         return dst;    

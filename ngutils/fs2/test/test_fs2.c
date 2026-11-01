@@ -2675,3 +2675,103 @@ Test(fs2_api, setlen_alloc_exceeds_sz_aborts, .signal = SIGINT) {
     fs2_setlen(&s, 100);   /* 100 >= sz=16 → raise */
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * fs2_heap_fromstrf — smoke tests (composition of already-tested pieces)
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstrf_basic) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstrf("id=%d", 42);
+
+    CHECK_STR_EQ("content", h->v, "id=42");
+    CHECK_EQ  ("len", h->len, 5);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* ⚠ Edge case: что возвращает fromstrf_va("")?
+ *   - ALLOC empty (текущая реализация) → heap_fromstrf = ALLOC|BODYALLOC
+ *   - FS2EMPTY (после fix sz==0)       → heap_fromstrf = STATIC|BODYALLOC
+ * Тест принимает оба варианта, фиксируя только «BODYALLOC preserved + empty». */
+Test(fs2_api, heap_fromstrf_empty_result) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstrf("%s", "");
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_TRUE("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_TRUE("readable", h->v != NULL);
+    CHECK_STR_EQ("readable as empty", h->v, "");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);   /* освободит только body если STATIC, body+buf если ALLOC */
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstrf_null_fmt_aborts, .signal = SIGINT) {
+    fs2_heap_fromstrf(NULL);
+}
+
+Test(fs2_api, heap_fromstrf_balances_counters) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstrf("%s", "hello");
+
+    /* Ловит counter-bug в fs2_freestr(NULL) внутри move */
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstrf_grows_after_alloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstrf("%d", 42);
+    size_t orig_sz = h->sz;
+
+    fs2_reserve(h, 1000);
+
+    CHECK_TRUE("grew", h->sz > orig_sz);
+    CHECK_TRUE("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_STR_EQ("content intact", h->v, "42");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstrf_independent_instances) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap_fromstrf("%d", 1);
+    fs2 *b = fs2_heap_fromstrf("%d", 2);
+
+    CHECK_TRUE("different structs", a != b);
+    CHECK_TRUE("different buffers", a->v != b->v);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* Contract: heap_fromstrf == heap_fromstr + same content */
+Test(fs2_api, heap_fromstrf_matches_heap_fromstr) {
+    __fs2_checkreset();
+
+    fs2 *a = fs2_heap_fromstrf("%s", "hello");   /* formatting path */
+    fs2 *b = fs2_heap_fromstr("hello");          /* direct path */
+
+    CHECK_STR_EQ("same content", a->v, b->v);
+    CHECK_EQ  ("same len", a->len, b->len);
+    CHECK_EQ  ("same string-axis flags",
+               a->flags & ~FS2_BODYALLOC, b->flags & ~FS2_BODYALLOC);
+    CHECK_TRUE("both BODYALLOC",
+               fs2_is_bodyalloc(a) && fs2_is_bodyalloc(b));
+    CHECK_FS2VALID(1, a);
+    CHECK_FS2VALID(2, b);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
