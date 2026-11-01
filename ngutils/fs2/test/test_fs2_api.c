@@ -624,3 +624,254 @@ Test(fs2, flip_even_odd) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_partialsort — basic
+ * ========================================================================= */
+
+Test(fs2, partialsort_full_range) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_partialsort(&s, 0, 4, true);
+
+    CHECK_STR_EQ("sorted", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_middle_slice) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XdcbaY");   /* len=6 */
+
+    fs2_partialsort(&s, 1, 5, true);   /* sort "dcba" → "abcd" */
+
+    CHECK_STR_EQ("sliced sorted", s.v, "XabcdY");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_desc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XabcdY");
+
+    fs2_partialsort(&s, 1, 5, false);
+
+    CHECK_STR_EQ("sliced desc", s.v, "XdcbaY");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_partialsort — clamping
+ * ========================================================================= */
+
+Test(fs2, partialsort_to_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_partialsort(&s, 0, 100, true);   /* to=100 → clamp 4 */
+
+    CHECK_STR_EQ("whole range", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_from_at_len_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcd");
+
+    fs2_partialsort(&s, 4, 100, true);   /* to clamp 4, from(4) < to(4) false */
+
+    CHECK_STR_EQ("unchanged", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_from_beyond_len_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcd");
+
+    fs2_partialsort(&s, 10, 100, true);   /* both clamp, no-op */
+
+    CHECK_STR_EQ("unchanged", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_from_gt_to_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_partialsort(&s, 3, 1, true);   /* inverted range → no-op */
+
+    CHECK_STR_EQ("unchanged", s.v, "dcba");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_empty_range_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_partialsort(&s, 2, 2, true);   /* empty range */
+
+    CHECK_STR_EQ("unchanged", s.v, "dcba");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_partialsort — cant_mutate semantics
+ * ========================================================================= */
+
+Test(fs2, partialsort_null_aborts, .signal = SIGABRT) {
+    fs2_partialsort(NULL, 0, 5, true);
+}
+
+Test(fs2, partialsort_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("dcba");
+    fs2_partialsort(&s, 0, 4, true);   /* write .rodata → invfatal */
+}
+
+Test(fs2, partialsort_fs2empty_noop) {
+    fs2 s = FS2EMPTY;   /* cant_mutate: empty → skip */
+    fs2_partialsort(&s, 0, 100, true);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, partialsort_canonical_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_partialsort(&s, 0, 100, true);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, partialsort_local_with_content) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "dcba", 5);
+    fs2_setlen(&s, 4);
+
+    fs2_partialsort(&s, 0, 4, true);
+
+    CHECK_STR_EQ("local sorted", s.v, "abcd");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_partialsort — stability across two slices
+ * ========================================================================= */
+
+Test(fs2, partialsort_two_disjoint_slices) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcbaXYhgfe");   /* len=10 */
+
+    fs2_partialsort(&s, 0, 4, true);    /* dcba → abcd */
+    fs2_partialsort(&s, 6, 10, true);   /* hgfe → efgh */
+
+    CHECK_STR_EQ("both sorted", s.v, "abcdXYefgh");
+    CHECK_EQ("middle slice intact",
+             memcmp(s.v + 4, "XY", 2), 0);   /* ← было CHECK_STR_EQ */
+    CHECK_EQ("v[4] X", s.v[4], 'X');
+    CHECK_EQ("v[5] Y", s.v[5], 'Y');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_sort — thin wrapper over fs2_partialsort(0, len)
+ * ========================================================================= */
+
+Test(fs2, sort_asc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("dcba");
+
+    fs2_sort(&s, true);
+
+    CHECK_STR_EQ("sorted asc", s.v, "abcd");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, sort_desc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcd");
+
+    fs2_sort(&s, false);
+
+    CHECK_STR_EQ("sorted desc", s.v, "dcba");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, sort_empty_noop) {
+    fs2 s = FS2EMPTY;
+    fs2_sort(&s, true);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, sort_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_sort(&s, true);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, sort_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    fs2_sort(&s, true);
+    CHECK_STR_EQ("x", s.v, "x");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, sort_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "dcba", 5);
+    fs2_setlen(&s, 4);
+
+    fs2_sort(&s, true);
+
+    CHECK_STR_EQ("local sorted", s.v, "abcd");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_sort — guards (delegated to fs2_partialsort / fs2_cant_mutate)
+ * ========================================================================= */
+
+Test(fs2, sort_null_aborts, .signal = SIGABRT) {
+    /* Ternary: NULL → len=0 → cant_mutate(NULL) → invfatal SIGABRT.
+     * Без ternary был бы SIGSEGV на str->len. */
+    fs2_sort(NULL, true);
+}
+
+Test(fs2, sort_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("dcba");
+    fs2_sort(&s, true);
+}

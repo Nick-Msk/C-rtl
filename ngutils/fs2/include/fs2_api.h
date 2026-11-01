@@ -159,8 +159,6 @@ fs2_elem0(fs2 *s, size_t pos){
 // only several fs2 macroses allowed to break it!
 #define elem0(s, pos) *fs2_elem0((&s), (pos))
 
-// ------------------------------------ FS Comparators --------------------------------------
-
 // ----------------------------------- EXCNAHGERS -------------------------------------------
 
 /**
