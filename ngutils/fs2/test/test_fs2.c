@@ -3548,3 +3548,183 @@ Test(fs2, exch_no_leak) {
 
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heaptostack — basic
+ * ========================================================================= */
+
+Test(fs2, heaptostack_with_content) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+    CHECK_TRUE("heap has BODYALLOC", fs2_is_bodyalloc(h));
+
+    fs2 s = fs2_heaptostack(&h);
+
+    /* Caller's pointer is now NULL */
+    CHECK_PTR_EQ("h NULL", h, NULL);
+
+    /* Content preserved */
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ   ("len", s.len, 5);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("no BODYALLOC", fs2_is_bodyalloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, heaptostack_empty) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();   /* canonical: v=NULL, ALLOC|BODYALLOC */
+
+    fs2 s = fs2_heaptostack(&h);
+
+    CHECK_PTR_EQ("h NULL", h, NULL);
+    CHECK_EQ   ("len", s.len, 0);
+    CHECK_FALSE("no BODYALLOC", fs2_is_bodyalloc(&s));
+
+    /* Per protocol: canonical → FS2EMPTY */
+    CHECK_TRUE ("eq_empty shape", fs2_eq_empty(&s));
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("v readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, heaptostack_static_bodyalloc) {
+    __fs2_checkreset();
+    /* heap-обёртка над STATIC: heap_movefromstr(&"hi", STATIC) */
+    const char *p = "hi";
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_STATIC);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC",   fs2_is_bodyalloc(h));
+
+    fs2 s = fs2_heaptostack(&h);
+
+    CHECK_PTR_EQ("h NULL", h, NULL);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE ("STATIC axis", fs2_is_static(&s));
+    CHECK_FALSE("no BODYALLOC", fs2_is_bodyalloc(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_heaptostack — guards
+ * ========================================================================= */
+
+Test(fs2, heaptostack_null_psrc_aborts, .signal = SIGABRT) {
+    fs2_heaptostack(NULL);
+}
+
+Test(fs2, heaptostack_null_inner_aborts, .signal = SIGABRT) {
+    fs2 *h = NULL;
+    fs2_heaptostack(&h);
+}
+
+/* ⚠ Non-BODYALLOC (stack fs2*) — только pointer на stack */
+Test(fs2, heaptostack_stack_fs2_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 *h = malloc(sizeof(fs2));   /* struct on heap, но без BODYALLOC flag */
+    CHECK_NOT_NULL("alloc", h);
+    *h = fs2_fromstr("hi");          /* ALLOC, no BODYALLOC bit */
+
+    fs2_heaptostack(&h);   /* ← invfatal BODYALLOC missing → abort */
+
+    /* unreachable */
+    fs2_free(h);
+    free(h);
+}
+
+/* ⚠ LOCAL|BODYALLOC (forged) — pass 1st guard, fail in fs2_move */
+Test(fs2, heaptostack_local_bodyalloc_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();          /* BODYALLOC */
+    /* forge LOCAL: replace ALLOC with LOCAL */
+    h->flags = (h->flags & ~FS2_ALLOC) | FS2_LOCAL;
+
+    fs2_heaptostack(&h);   /* ← fs2_move sees LOCAL → abort */
+
+    /* unreachable */
+}
+
+/* =========================================================================
+ * fs2_heaptostack — counter balance
+ * ========================================================================= */
+
+Test(fs2, heaptostack_balances_counters) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+
+    fs2 s = fs2_heaptostack(&h);
+
+    /* h struct freed, but buffer now owned by s (as stack fs2) */
+    fs2_free(&s);
+
+    assert_balanced();   /* ← ловит leak/double-free в move/freebody */
+}
+
+Test(fs2, heaptostack_caller_pointer_nullable) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("x");
+
+    fs2 s = fs2_heaptostack(&h);
+
+    /* fs2_free(NULL) должен быть no-op */
+    fs2_free(h);         /* h == NULL → safe */
+    fs2_free(&s);        /* frees content buffer */
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heaptostack — roundtrip via stacktoheap
+ * ========================================================================= */
+
+Test(fs2, heaptostack_roundtrip_stacktoheap) {
+    __fs2_checkreset();
+    fs2 *original = fs2_heap_fromstr("payload");
+
+    fs2 stack = fs2_heaptostack(&original);
+    CHECK_PTR_EQ("original NULL", original, NULL);
+
+    fs2 *again = fs2_stacktoheap(&stack);
+
+    CHECK_STR_EQ("roundtrip content", again->v, "payload");
+    CHECK_TRUE ("BODYALLOC restored", fs2_is_bodyalloc(again));
+    CHECK_TRUE ("ALLOC",              fs2_is_alloc(again));
+    CHECK_FS2VALID(1, again);
+
+    /* stack after stacktoheap: reset to FS2EMPTY */
+    CHECK_TRUE("stack empty", fs2_is_empty(&stack));
+    CHECK_NOT_NULL("stack v readable", stack.v);
+
+    fs2_free(again);
+    fs2_free(&stack);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heaptostack — independent from any subsequent heap ops
+ * ========================================================================= */
+
+Test(fs2, heaptostack_result_independent) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("original");
+
+    fs2 s = fs2_heaptostack(&h);
+
+    /* Результат — independent value */
+    fs2_clear(&s);
+    memcpy(s.v, "modified", 8);
+    fs2_setlen(&s, 8);
+
+    CHECK_STR_EQ("content", s.v, "modified");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
