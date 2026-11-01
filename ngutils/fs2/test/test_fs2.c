@@ -3892,3 +3892,91 @@ Test(fs2, stacktoheap_result_independent) {
     fs2_free(&src);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_free — exhaustive kind matrix
+ * ========================================================================= */
+
+Test(fs2, free_all_kinds_balance) {
+    __fs2_checkreset();
+    
+    fs2 a = FS2();                              /* canonical */
+    fs2 b = fs2_fromstr("hi");                  /* ALLOC */
+    fs2 c = fs2_init(16);                       /* ALLOC empty+buffer */
+    fs2 *d = fs2_heap();                        /* ALLOC|BODYALLOC */
+    fs2 *e = fs2_heap_fromstr("hi");            /* ALLOC|BODYALLOC */
+    
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    fs2_free(d);
+    fs2_free(e);
+    
+    /* STATIC/LOCAL — no-op, no counters */
+    fs2 f = FS2EMPTY;
+    fs2 g = FS2LITERAL("hi");
+    FS2LOCAL(h, 16);
+    fs2_free(&f);
+    fs2_free(&g);
+    fs2_free(&h);
+    
+    assert_balanced();
+}
+
+/* ⚠ Idempotent только для non-BODYALLOC */
+Test(fs2, free_idempotent_nonbodyalloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    
+    fs2_free(&s);   /* v freed */
+    CHECK_PTR_EQ("v NULL", s.v, NULL);
+    CHECK_EQ("sz", s.sz, 0);
+    CHECK_EQ("len", s.len, 0);
+    /* flags остаются ALLOC, но v=NULL → freestr no-op */
+    
+    fs2_free(&s);   /* второй раз — no-op */
+    assert_balanced();
+}
+
+/* STATIC non-empty — free no-op, content intact */
+Test(fs2, free_static_nonempty_preserves_content) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hi");
+    void *orig = s.v;
+    
+    fs2_free(&s);
+    
+    CHECK_PTR_EQ("v unchanged", s.v, orig);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* LOCAL — free no-op, buffer intact */
+Test(fs2, free_local_preserves_buffer) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    fs2_setlen(&s, 2);
+    void *orig = s.v;
+    
+    fs2_free(&s);
+    
+    CHECK_PTR_EQ("v unchanged", s.v, orig);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE("LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* ALLOC empty+buffer — buffer freed */
+Test(fs2, free_alloc_with_buffer) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);   /* ALLOC, buffer, len=0 */
+    
+    fs2_free(&s);
+    
+    CHECK_PTR_EQ("v NULL", s.v, NULL);
+    CHECK_EQ("sz", s.sz, 0);
+    assert_balanced();
+}
+
