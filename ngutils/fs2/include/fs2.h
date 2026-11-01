@@ -923,11 +923,14 @@ void        fs2_free(fs2 *s);
  * @return     @p s for chaining.
  */
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
-    checkraise(ERR_NULL_INPUT, s != NULL, "Null pointer");
+    checkraise(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
 
-    if (s->v && !fs2_is_static(s))
+    if (s->v && !fs2_is_static(s)) {
+        checkraise(ERR_OUT_OF_RANGE, pos < s->sz, 
+            "Trying to set length %zu exceed size %zu", pos, s->sz);
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
-    else {
+    } else {
         if (pos > 0)
             userraise(NULL, ERR_ACTION_NOT_APPLICABLE, 
                 "Trying to set %zu on non-initialized fs2", pos);
