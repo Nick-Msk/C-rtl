@@ -931,11 +931,11 @@ static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
             "Trying to set length %zu exceed size %zu", pos, s->sz);
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
     } else {
-        if (pos > 0)
+        /* Read-only or NULL: only no-op allowed */
+        if (pos != s->len)
             userraise(NULL, ERR_ACTION_NOT_APPLICABLE, 
-                "Trying to set %zu on non-initialized fs2", pos);
-        else
-            s->len = 0; // v == NULL, только pos == 0 допустим
+                      "Cannot set len %zu (current %zu) on non-writable fs2", 
+                      pos, s->len);
     }
     return s;
 }
