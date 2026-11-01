@@ -275,8 +275,17 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
         return false;                    /* already sufficient */
     
     if (fs2_is_empty(s)) {
-        if (fs2_is_static(s) && !fs2_is_bodyalloc(s))
-            *s = FS2();                  /* FS2EMPTY → FS2() */
+        // if (fs2_is_static(s) && !fs2_is_bodyalloc(s))
+        //     *s = FS2();                  /* FS2EMPTY → FS2() */
+        /* Convert ANY empty static → FS2(), preserving BODYALLOC.
+         * STATIC|BODYALLOC is valid (heap_fromstr(""), heap_clone(FS2EMPTY)):
+         * the buffer is .rodata, the struct is heap. We release the .rodata
+         * ref (nothing to free) and keep BODYALLOC for fs2_free. */
+        if (fs2_is_static(s)) {
+            fs2_flags body = s->flags & FS2_BODYALLOC;
+            *s = FS2();
+            s->flags |= body;
+        }
         return true;
     }
     
