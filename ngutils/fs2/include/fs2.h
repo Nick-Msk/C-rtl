@@ -281,10 +281,11 @@ fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
  */
 static inline bool
 fs2_cant_mutate(const fs2 *s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
     if (fs2_is_empty(s))
         return true;
-    if (fs2_is_static(s))
-        return userraise(0, ERR_UNSUPPORTED_TYPE, "STATIC fs2 violation!");
+    invfatal(ERR_UNSUPPORTED_TYPE, !fs2_is_static(s),
+             "Cannot mutate non-empty STATIC fs2");
     return false;
 }
 
