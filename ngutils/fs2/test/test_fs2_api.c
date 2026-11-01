@@ -27,8 +27,8 @@ Test(fs2_api, get_returns_pointer_at_nul) {
     fs2 s = fs2_fromstr("hello");
 
     /* v[len] — NUL terminator, valid read */
-    CHECK_EQ(*fs2_get(&s, s.len), '\0');
-    CHECK_PTR_EQ(fs2_get(&s, s.len), s.v + s.len);
+    CHECK_EQ("*fs2_get(&s, s.len)", *fs2_get(&s, s.len), '\0');
+    CHECK_PTR_EQ("fs2_get(&s, s.len)", fs2_get(&s, s.len), s.v + s.len);
 
     fs2_free(&s);
 }
@@ -60,19 +60,20 @@ Test(fs2_api, get_at_inside_capacity) {
 
 Test(fs2, elem_fs2empty_at_zero) {
     __fs2_checkreset();
-    fs2 s = FS2EMPTY;   /* sz=1, v="", STATIC */
+    fs2 s = FS2EMPTY;
 
     char *p = fs2_elem(&s, 0);
     *p = 'x';
 
     CHECK_TRUE ("now ALLOC",  fs2_is_alloc(&s));
     CHECK_FALSE("no STATIC",  fs2_is_static(&s));
-    CHECK_TRUE ("grew",       s.sz >= 2);   /* 'x' + NUL */
+    CHECK_TRUE ("grew",       s.sz >= 2);
     CHECK_EQ   ("v[0]",       s.v[0], 'x');
-    CHECK_EQ   ("v[1] NUL",   s.v[1], '\0');   /* set by fs2_clear in reserve */
     CHECK_EQ   ("len untouched (raw writer)", s.len, 0);
+    /* v[1] НЕ проверяем здесь — uninitialized heap. */
 
-    fs2_setlen(&s, 1);
+    fs2_setlen(&s, 1);          /* ← v[1]='\0' пишется здесь */
+    CHECK_EQ   ("v[1] NUL", s.v[1], '\0');
     CHECK_STR_EQ("content", s.v, "x");
     CHECK_FS2VALID(1, &s);
 
@@ -170,7 +171,6 @@ Test(fs2, elem_last_valid_byte_then_setlen) {
 
     fs2_setlen(&s, sz_before);   /* NUL at v[sz_before], needs sz >= sz_before+1 */
     CHECK_EQ("v[sz] NUL", s.v[sz_before], '\0');
-    CHECK_FS2VALID(1, &s);
 
     fs2_free(&s);
     assert_balanced();
@@ -181,6 +181,9 @@ Test(fs2, elem_penultimate_byte_no_grow) {
     __fs2_checkreset();
     fs2 s = fs2_init(16);
     size_t sz_before = s.sz;
+
+    for (size_t i = 0; i < sz_before; i++)
+        s.v[i] = '0';
 
     /* pos = sz-2: (sz-2)+2 = sz > sz = false → no reserve, fast path */
     char *p = fs2_elem(&s, sz_before - 2);
@@ -447,9 +450,9 @@ Test(fs2, elem0_local_within_sz) {
  * ========================================================================= */
 
 /* Non-empty STATIC, small pos: fs2_setlen rejects (pos != len) via userraise */
-Test(fs2, elem0_static_nonempty_small_pos_aborts, .signal = SIGINT) {
+Test(fs2, elem0_static_nonempty_small_pos_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hi");   /* sz=3, len=2 */
-    fs2_elem0(&s, 0);   /* setlen(1), pos(1) != len(2) → userraise */
+    fs2_elem0(&s, 0);   /* setlen(1), pos(1) != len(2) → abort() */
 }
 
 /* Non-empty STATIC, pos beyond sz: reserve → prepare_growth → invfatal */
@@ -483,7 +486,7 @@ Test(fs2, elem0_gap_from_canonical_invalid) {
     /* strlen stops at v[0], len=6 → mismatch → INVALID */
     CHECK_EQ ("strlen", strlen(s.v), 0);
     CHECK_EQ ("len", s.len, 6);
-    CHECK_NE ("strlen != len", strlen(s.v), s.len);
+    CHECK_NEQ("strlen != len", strlen(s.v), s.len);
 
     /* fs2_validate rejects */
     CHECK_FALSE("validate rejects gap", fs2_validate(NULL, &s));
@@ -503,7 +506,7 @@ Test(fs2, elem0_gap_from_existing_invalid) {
     CHECK_EQ("len jumped", s.len, 6);
     CHECK_EQ("v[5]", s.v[5], 'z');
     CHECK_EQ("strlen stops at v[2]", strlen(s.v), 2);
-    CHECK_NE("strlen != len", strlen(s.v), s.len);
+    CHECK_NEQ("strlen != len", strlen(s.v), s.len);
 
     CHECK_FALSE("validate rejects", fs2_validate(NULL, &s));
 
@@ -538,10 +541,86 @@ Test(fs2, elem0_macro_read) {
     elem0(s, 0) = 'a';
     elem0(s, 1) = 'b';
 
-    CHECK_EQ("elem0[0]", elem0(s, 0), 'a');   /* reading via macro still works */
-    CHECK_EQ("elem0[1]", elem0(s, 1), 'b');
+    CHECK_EQ("elem0[0]", elem(s, 0), 'a');   /* reading via macro still works */
+    CHECK_EQ("elem0[1]", elem(s, 1), 'b');
     CHECK_FS2VALID(1, &s);
 
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_flip
+ * ========================================================================= */
+
+Test(fs2, flip_null_aborts, .signal = SIGABRT) {
+    fs2_flip(NULL);
+}
+
+Test(fs2, flip_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_flip(&s);
+}
+
+Test(fs2, flip_fs2empty_noop) {
+    fs2 s = FS2EMPTY;
+    fs2_flip(&s);
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, flip_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_flip(&s);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, flip_alloc_with_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2_flip(&s);
+    CHECK_STR_EQ("flipped", s.v, "olleh");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, flip_local_with_content) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "ab", 3);
+    fs2_setlen(&s, 2);
+    fs2_flip(&s);
+    CHECK_STR_EQ("flipped", s.v, "ba");
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, flip_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("x");
+    fs2_flip(&s);
+    CHECK_STR_EQ("x", s.v, "x");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, flip_even_odd) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("abcd");
+    fs2 b = fs2_fromstr("abcde");
+    fs2_flip(&a);
+    fs2_flip(&b);
+    CHECK_STR_EQ("even", a.v, "dcba");
+    CHECK_STR_EQ("odd",  b.v, "edcba");
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
