@@ -555,8 +555,8 @@ fs2_heaptostack(fs2 **psrc) {
     invfatal(ERR_NULL_INPUT, psrc != NULL && *psrc != NULL, 
         "Null pointer %p or %p", psrc, psrc ? *psrc : NULL);
 
-    invfatal(fs2_is_bodyalloc(*psrc), 
-        ERR_UNSUPPORTED_TYPE, "Only BODY ALLOC supported");
+    invfatal(ERR_UNSUPPORTED_TYPE, fs2_is_bodyalloc(*psrc), 
+         "Only BODY ALLOC supported");
 
     fs2 res = FS2();
     fs2_move(&res, *psrc);
