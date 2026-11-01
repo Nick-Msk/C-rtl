@@ -3728,3 +3728,167 @@ Test(fs2, heaptostack_result_independent) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_stacktoheap — basic
+ * ========================================================================= */
+
+Test(fs2, stacktoheap_alloc) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    void *src_v = src.v;
+
+    fs2 *h = fs2_stacktoheap(&src);
+
+    /* heap has content + BODYALLOC */
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_TRUE ("ALLOC",     fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_PTR_EQ("same buffer", h->v, src_v);   /* no copy — move */
+    CHECK_FS2VALID(1, h);
+
+    /* src reset to FS2EMPTY (safe empty) */
+    CHECK_TRUE ("src empty", fs2_is_empty(&src));
+    CHECK_NOT_NULL("src v readable", src.v);
+    CHECK_FALSE("src no BODYALLOC", fs2_is_bodyalloc(&src));
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(h);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, stacktoheap_empty) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 *h = fs2_stacktoheap(&src);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    /* Per protocol: canonical → FS2EMPTY-shape */
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(h));
+    CHECK_NOT_NULL("v readable", h->v);
+    CHECK_FS2VALID(1, h);
+
+    CHECK_TRUE("src empty", fs2_is_empty(&src));
+
+    fs2_free(h);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, stacktoheap_static_axis) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hi");   /* STATIC */
+
+    fs2 *h = fs2_stacktoheap(&src);
+
+    /* h inherits STATIC axis from src + BODYALLOC */
+    CHECK_STR_EQ("content", h->v, "hi");
+    CHECK_TRUE ("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE ("BODYALLOC",   fs2_is_bodyalloc(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_FS2VALID(1, h);
+
+    /* src reset to FS2EMPTY */
+    CHECK_TRUE("src empty", fs2_is_empty(&src));
+
+    /* fs2_free освободит только body (v=.rodata) */
+    fs2_free(h);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_stacktoheap — guards
+ * ========================================================================= */
+
+Test(fs2, stacktoheap_null_aborts, .signal = SIGABRT) {
+    fs2_stacktoheap(NULL);
+}
+
+/* ⚠ Главный: BODYALLOC src → abort (иначе alias + double-free) */
+Test(fs2, stacktoheap_bodyalloc_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hi");   /* BODYALLOC */
+
+    fs2_stacktoheap(h);   /* ← abort: would alias */
+
+    /* unreachable */
+    fs2_free(h);
+}
+
+/* LOCAL src → abort (via fs2_move internal guard) */
+Test(fs2, stacktoheap_local_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(src, 16);
+    memcpy(src.v, "hi", 2);
+    fs2_setlen(&src, 2);
+
+    fs2_stacktoheap(&src);   /* ← abort in fs2_move */
+}
+
+/* =========================================================================
+ * fs2_stacktoheap — roundtrip
+ * ========================================================================= */
+
+Test(fs2, stacktoheap_heaptostack_roundtrip) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("payload");
+
+    fs2 *h = fs2_stacktoheap(&src);
+    CHECK_TRUE("src empty", fs2_is_empty(&src));
+
+    fs2 back = fs2_heaptostack(&h);
+    CHECK_PTR_EQ("h NULL after heaptostack", h, NULL);
+
+    CHECK_STR_EQ("roundtrip content", back.v, "payload");
+    CHECK_FALSE("back no BODYALLOC", fs2_is_bodyalloc(&back));
+    CHECK_TRUE ("back ALLOC",        fs2_is_alloc(&back));
+    CHECK_FS2VALID(1, &back);
+
+    fs2_free(&src);
+    fs2_free(&back);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_stacktoheap — counter balance
+ * ========================================================================= */
+
+Test(fs2, stacktoheap_balances_counters) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *h = fs2_stacktoheap(&src);
+    fs2_free(h);
+    fs2_free(&src);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_stacktoheap — independence after move
+ * ========================================================================= */
+
+Test(fs2, stacktoheap_result_independent) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+
+    fs2 *h = fs2_stacktoheap(&src);
+
+    /* Мутируем h — src уже пуст, не задет */
+    fs2_clear(h);
+    fs2_reserve(h, 16);
+    memcpy(h->v, "modified", 8);
+    fs2_setlen(h, 8);
+
+    CHECK_STR_EQ("h content", h->v, "modified");
+    CHECK_TRUE ("src still empty", fs2_is_empty(&src));
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(h);
+    fs2_free(&src);
+    assert_balanced();
+}
