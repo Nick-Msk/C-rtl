@@ -1026,8 +1026,8 @@ Test(fs2_api, movefrom_alloc_stack) {
 
     /* src is now canonical empty */
     CHECK_EQ  ("src len", src.len, 0);
-    CHECK_PTR_EQ("src v NULL", src.v, NULL);
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
+    CHECK_STR_EQ("src v ''", src.v, "");
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
     CHECK_FALSE("src no bodyalloc", fs2_is_bodyalloc(&src));
 
     fs2_free(&res);   /* frees buffer */
@@ -1048,8 +1048,8 @@ Test(fs2_api, movefrom_static) {
     CHECK_PTR_EQ("same literal buffer", res.v, orig_v);
     CHECK_FS2VALID(1, &res);
 
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
-    CHECK_PTR_EQ("src v NULL", src.v, NULL);
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
+    CHECK_STR_EQ("src v ''", src.v, "");
 
     /* fs2_free on STATIC — no-op; on src (canon) — no-op too */
     fs2_free(&src);
@@ -1064,12 +1064,12 @@ Test(fs2_api, movefrom_empty_canon) {
     fs2 res = fs2_movefrom(&src);
 
     /* res preserves src's state — still FS2() shape, not FS2EMPTY */
-    CHECK_TRUE("res canon", fs2_is_canon(&res));
+    CHECK_TRUE("res canon", fs2_eq_empty(&res));
     CHECK_EQ  ("len", res.len, 0);
-    CHECK_PTR_EQ("v NULL", res.v, NULL);
+    CHECK_STR_EQ("v ''", res.v, "");
     CHECK_FS2VALID(1, &res);
 
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
 
     fs2_free(&res);
     fs2_free(&src);
@@ -1088,7 +1088,7 @@ Test(fs2_api, movefrom_fs2empty_preserves_shape) {
     CHECK_FS2VALID(1, &res);
 
     /* src became canonical empty */
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
 }
 
 Test(fs2_api, movefrom_heap_preserves_bodyalloc_on_src) {
@@ -1107,7 +1107,7 @@ Test(fs2_api, movefrom_heap_preserves_bodyalloc_on_src) {
 
     /* h reset to canon, BODYALLOC preserved */
     CHECK_TRUE ("h still bodyalloc", fs2_is_bodyalloc(h));
-    CHECK_TRUE ("h canon", fs2_is_canon(h));
+    CHECK_TRUE ("h canon", fs2_eq_empty(h));
     CHECK_EQ   ("h len", h->len, 0);
 
     fs2_free(&res);   /* frees buffer */
@@ -1146,8 +1146,8 @@ Test(fs2_api, move_basic_alloc_to_alloc) {
     CHECK_PTR_EQ("same buffer", dst.v, src_v);
     CHECK_FS2VALID(1, &dst);
 
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
-    CHECK_PTR_EQ("src v NULL", src.v, NULL);
+    CHECK_TRUE("src canon empty", fs2_eq_empty(&src));
+    CHECK_STR_EQ("src v ''", src.v, "");
 
     fs2_free(&dst);
     fs2_free(&src);
@@ -1166,7 +1166,7 @@ Test(fs2_api, move_from_static_src) {
     CHECK_FALSE("dst not alloc", fs2_is_alloc(&dst));
     CHECK_FS2VALID(1, &dst);
 
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
 
     fs2_free(&dst);   /* no-op */
     fs2_free(&src);
@@ -1185,7 +1185,7 @@ Test(fs2_api, move_to_fs2empty_dst) {
     CHECK_FALSE("dst not STATIC", fs2_is_static(&dst));
     CHECK_FS2VALID(1, &dst);
 
-    CHECK_TRUE("src canon", fs2_is_canon(&src));
+    CHECK_TRUE("src canon", fs2_eq_empty(&src));
 
     fs2_free(&dst);
     fs2_free(&src);
@@ -1202,7 +1202,7 @@ Test(fs2_api, move_to_canon_dst) {
     CHECK_STR_EQ("dst content", dst.v, "hello");
     CHECK_TRUE ("dst ALLOC", fs2_is_alloc(&dst));
     CHECK_FS2VALID(1, &dst);
-    CHECK_TRUE ("src canon", fs2_is_canon(&src));
+    CHECK_TRUE ("src canon", fs2_eq_empty(&src));
 
     fs2_free(&dst);
     fs2_free(&src);
@@ -1241,7 +1241,7 @@ Test(fs2_api, move_preserves_dst_bodyalloc) {
     CHECK_STR_EQ("dst content", dst_heap->v, "new");
     CHECK_PTR_EQ("same buffer", dst_heap->v, src_v);
     CHECK_FS2VALID(1, dst_heap);
-    CHECK_TRUE ("src canon", fs2_is_canon(&src));
+    CHECK_TRUE ("src canon", fs2_eq_empty(&src));
 
     fs2_free(dst_heap);   /* frees buffer + struct */
     fs2_free(&src);
@@ -1259,7 +1259,7 @@ Test(fs2_api, move_preserves_src_bodyalloc_on_reset) {
     CHECK_FS2VALID(1, &dst);
 
     CHECK_TRUE ("src still BODYALLOC", fs2_is_bodyalloc(src_heap));
-    CHECK_TRUE ("src canon", fs2_is_canon(src_heap));
+    CHECK_TRUE ("src canon", fs2_eq_empty(src_heap));
     CHECK_EQ   ("src len", src_heap->len, 0);
 
     fs2_free(&dst);
@@ -1346,7 +1346,7 @@ Test(fs2_api, composite_move_chain) {
     CHECK_STR_EQ("a content", a.v, "B");
     CHECK_STR_EQ("b content", b.v, "C");
     CHECK_PTR_EQ("b has c's buffer", b.v, c_v);
-    CHECK_TRUE ("c canon", fs2_is_canon(&c));
+    CHECK_TRUE ("c canon", fs2_eq_empty(&c));
     CHECK_FS2VALID(1, &a);
     CHECK_FS2VALID(2, &b);
 
@@ -1362,14 +1362,12 @@ Test(fs2_api, movefrom_preserves_fs2_shape) {
 
     fs2 res = fs2_movefrom(&src);
 
-    /* Preservation: res — точная копия src, не нормализованный FS2EMPTY */
-    CHECK_TRUE ("res canon", fs2_is_canon(&res));
-    CHECK_FALSE("not eq_empty", fs2_eq_empty(&res));
-    CHECK_PTR_EQ("v NULL", res.v, NULL);
-    CHECK_EQ  ("sz", res.sz, 0);
+    CHECK_TRUE ("res empty", fs2_eq_empty(&res));
+    CHECK_STR_EQ("v ''", res.v, "");
+    CHECK_EQ  ("sz", res.sz, 1);
     CHECK_FS2VALID(1, &res);
 
-    CHECK_TRUE ("src canon (reset)", fs2_is_canon(&src));
+    CHECK_TRUE ("src empty (reset)", fs2_eq_empty(&src));
 
     fs2_free(&res);
     fs2_free(&src);
@@ -1387,7 +1385,7 @@ Test(fs2_api, movefrom_preserves_fs2empty_shape) {
     CHECK_STR_EQ("readable", res.v, "");
     CHECK_FS2VALID(1, &res);
 
-    CHECK_TRUE("src canon (reset)", fs2_is_canon(&src));
+    CHECK_TRUE("src canon (reset)", fs2_eq_empty(&src));
 }
 
 Test(fs2_api, movefrom_preserves_literal_empty_sz) {
@@ -1411,7 +1409,7 @@ Test(fs2_api, clone_normalizes_but_movefrom_preserves) {
     fs2 moved     = fs2_movefrom(&src2);   /* → FS2() (preserved) */
 
     CHECK_TRUE ("clone returns FS2EMPTY", fs2_eq_empty(&cloned));
-    CHECK_TRUE ("movefrom returns FS2()", fs2_is_canon(&moved));
+    CHECK_TRUE ("movefrom returns FS2()", fs2_eq_empty(&moved));
     CHECK_TRUE ("both empty", fs2_is_empty(&cloned) && fs2_is_empty(&moved));
 
     fs2_free(&src1);
@@ -2951,4 +2949,107 @@ Test(fs2_api, shrink_empty_noop) {
 
 Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
     fs2_shrink(NULL);
+}
+
+/* =========================================================================
+ * fs2_move
+ * ========================================================================= */
+
+Test(fs2_api, move_empty_src_dst_safe_readable) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old");
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* dst = safe empty, not canonical */
+    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(&dst));
+    CHECK_TRUE ("dst STATIC", fs2_is_static(&dst));
+    CHECK_EQ   ("dst sz", dst.sz, 1);
+    CHECK_NOT_NULL("dst v", dst.v);
+    CHECK_STR_EQ("dst v readable", dst.v, "");   /* ← не крашится */
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_src_dst_readable_via_printf) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old");
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* Регресс: если dst.v == NULL → segfault */
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%s", dst.v);
+    CHECK_STR_EQ("printf ok", buf, "");
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_src_preserves_dst_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *dst = fs2_heap_fromstr("old");   /* ALLOC|BODYALLOC */
+    fs2  src = FS2();
+
+    fs2_move(dst, &src);
+
+    /* dst = FS2EMPTY | BODYALLOC */
+    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(dst));
+    CHECK_TRUE ("dst BODYALLOC", fs2_is_bodyalloc(dst));
+    CHECK_EQ   ("dst sz", dst->sz, 1);
+    CHECK_NOT_NULL("dst v", dst->v);
+    CHECK_STR_EQ("dst v", dst->v, "");
+    CHECK_FS2VALID(1, dst);
+
+    fs2_free(dst);   /* frees body only, v="" .rodata safe */
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_with_buffer_preserves_buffer) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = fs2_init(16);   /* ALLOC, buffer, len=0 */
+
+    fs2_move(&dst, &src);
+
+    /* dst takes the buffer (fs2_init empty but has buffer) */
+    CHECK_TRUE ("dst ALLOC", fs2_is_alloc(&dst));
+    CHECK_TRUE ("dst has buffer", dst.v != NULL);
+    CHECK_GE   ("dst sz", dst.sz, 16);
+    CHECK_EQ   ("dst len", dst.len, 0);
+    CHECK_STR_EQ("dst v readable", dst.v, "");
+    CHECK_FS2VALID(1, &dst);
+
+    /* src reset to FS2EMPTY */
+    CHECK_TRUE("src eq_empty", fs2_eq_empty(&src));
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_symmetric_safe_after) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* Обе стороны readable — не крашится */
+    CHECK_STR_EQ("dst.v", dst.v, "");
+    CHECK_STR_EQ("src.v", src.v, "");
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
 }
