@@ -2473,7 +2473,7 @@ Test(fs2_api, reserve_local_within_capacity_noop) {
     __fs2_checkreset();
     FS2LOCAL(s, 16);
     memcpy(s.v, "hi", 2);
-    s.len = 2;
+    fs2_setlen(&s, 2); 
 
     fs2_reserve(&s, 10);   /* 16 >= 10 → early return, no raise */
 
