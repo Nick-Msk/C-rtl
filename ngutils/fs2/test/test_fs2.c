@@ -2217,3 +2217,223 @@ Test(fs2_api, heap_clone_matches_stack_clone_content) {
     }
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_fromstr — basic non-empty
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_basic) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_EQ  ("len", h->len, 5);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not STATIC", fs2_is_static(h));
+    CHECK_TRUE ("sz >= 6", h->sz >= 6);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstr_long) {
+    __fs2_checkreset();
+    char big[2001];
+    memset(big, 'A', 2000);
+    big[2000] = '\0';
+
+    fs2 *h = fs2_heap_fromstr(big);
+
+    CHECK_EQ("len", h->len, 2000);
+    CHECK_EQ("first", h->v[0], 'A');
+    CHECK_EQ("last", h->v[1999], 'A');
+    CHECK_EQ("NUL", h->v[2000], '\0');
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstr_utf8) {
+    __fs2_checkreset();
+    /* "привет" = 12 байт UTF-8 */
+    fs2 *h = fs2_heap_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
+
+    CHECK_EQ("len", h->len, 12);
+    CHECK_EQ("first byte", (unsigned char)h->v[0], 0xD0);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * ⚠ Edge case: empty → STATIC|BODYALLOC, не ALLOC|BODYALLOC
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_empty_is_static_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("");
+
+    /* fromstr("") → FS2EMPTY (STATIC); move wraps into BODYALLOC */
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_STR_EQ("readable", h->v, "");
+    CHECK_FS2VALID(1, h);
+
+    /* fs2_free освободит только body, v — .rodata */
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstr_empty_auto_promotes_on_grow) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("");   /* STATIC | BODYALLOC */
+
+    fs2_reserve(h, 100);              /* auto-promote FS2EMPTY → ALLOC */
+
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_FALSE("no longer STATIC", fs2_is_static(h));
+    CHECK_TRUE ("sz grown", h->sz >= 100);
+    CHECK_EQ   ("len", h->len, 0);
+    CHECK_EQ   ("v[0] NUL", h->v[0], '\0');
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL (если fromstr(NULL) silent → FS2EMPTY, иначе checkraise)
+ * ========================================================================= */
+
+#if !defined(FS2_FROMSTR_STRICT)   /* fromstr NULL silent */
+Test(fs2_api, heap_fromstr_null_returns_empty) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr(NULL);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+#else
+Test(fs2_api, heap_fromstr_null_aborts, .signal = SIGINT) {
+    fs2_heap_fromstr(NULL);
+}
+#endif
+
+/* =========================================================================
+ * Independence from source
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_independent_from_src) {
+    __fs2_checkreset();
+    char src[] = "hello";
+    fs2 *h = fs2_heap_fromstr(src);
+
+    src[0] = 'X';
+
+    CHECK_STR_EQ("content intact", h->v, "hello");
+    CHECK_TRUE ("different buffer", h->v != src);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstr_independent_instances) {
+    __fs2_checkreset();
+    fs2 *a = fs2_heap_fromstr("hello");
+    fs2 *b = fs2_heap_fromstr("world");
+
+    CHECK_TRUE("different structs", a != b);
+    CHECK_TRUE("different buffers", a->v != b->v);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Counters / no leak
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_balances_counters) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("hello");
+
+    /* Ловит bug в fs2_freestr(NULL) внутри move */
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_fromstr_no_leak_loop) {
+    __fs2_checkreset();
+
+    for (int i = 0; i < 100; i++) {
+        fs2 *h = fs2_heap_fromstr("payload");
+        fs2_free(h);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: heap_fromstr + extend + free
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_extend_pipeline) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("prefix");
+
+    const char *suffix     = "_suffix";
+    size_t      suffix_len = strlen(suffix);
+    fs2_reserve(h, h->len + suffix_len + 1);
+    memcpy(h->v + h->len, suffix, suffix_len);
+    fs2_setlen(h, h->len + suffix_len);
+
+    CHECK_STR_EQ("extended", h->v, "prefix_suffix");
+    CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency with stack fromstr
+ * ========================================================================= */
+
+Test(fs2_api, heap_fromstr_matches_stack_fromstr_content) {
+    __fs2_checkreset();
+    const char *inputs[] = { "hello", "", "long string with spaces" };
+    size_t n = sizeof(inputs) / sizeof(inputs[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 stack_s = fs2_fromstr(inputs[i]);
+        fs2 *heap_s = fs2_heap_fromstr(inputs[i]);
+
+        CHECK_EQ  ("len", stack_s.len, heap_s->len);
+        CHECK_STR_EQ("content", stack_s.v, heap_s->v);
+        CHECK_EQ  ("string-axis flags match",
+                   (stack_s.flags & ~FS2_BODYALLOC),
+                   (heap_s->flags & ~FS2_BODYALLOC));
+        CHECK_TRUE ("heap BODYALLOC", fs2_is_bodyalloc(heap_s));
+        CHECK_FALSE("stack no BODYALLOC", fs2_is_bodyalloc(&stack_s));
+        CHECK_FS2VALID((int)i, &stack_s);
+        CHECK_FS2VALID((int)i, heap_s);
+
+        fs2_free(&stack_s);
+        fs2_free(heap_s);
+    }
+    assert_balanced();
+}
