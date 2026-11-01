@@ -39,6 +39,33 @@ Test(fs2, versions_terminated_by_null) {
     CHECK_NULL("versions[n]", v[n]);
 }
 
+/**
+ * @brief Test surrogate for fs2_catstr — appends src to dst using core primitives.
+ *
+ * fs2_catstr lives in fs2_api.h; this helper provides equivalent behavior
+ * for core-level tests (test_fs2.c) that only include fs2.h.
+ *
+ * Uses fs2_reserve (core) which routes through prepare_growth → raises on
+ * LOCAL overflow, non-empty STATIC, NULL. Same guards as the real fs2_catstr.
+ *
+ * Simplified: no overflow guard on dst->len + len + 1 (tests use small values).
+ * NULL/empty src → no-op, consistent with fs2_catstr.
+ */
+static inline void
+test_catstr(fs2 *dst, const char *src) {
+    if (!src) return;
+    size_t len = strlen(src);
+    if (len == 0) return;
+    fs2_reserve(dst, dst->len + len + 1);
+    memcpy(dst->v + dst->len, src, len);
+    fs2_setlen(dst, dst->len + len);
+}
+// static inline void
+// test_cpystr(fs2 *dst, const char *src) {
+//     fs2_setlen(dst, 0);
+//     test_catstr(dst, src);
+// }
+
 /* -------------------------------------------------------------------------
  * Value macros — flags, len, sz, v
  * ------------------------------------------------------------------------- */
@@ -2435,5 +2462,158 @@ Test(fs2_api, heap_fromstr_matches_stack_fromstr_content) {
         fs2_free(&stack_s);
         fs2_free(heap_s);
     }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * prepare_growth — LOCAL rejection
+ * ========================================================================= */
+
+Test(fs2_api, reserve_local_within_capacity_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    s.len = 2;
+
+    fs2_reserve(&s, 10);   /* 16 >= 10 → early return, no raise */
+
+    CHECK_EQ("sz unchanged", s.sz, 16);
+    CHECK_EQ("len unchanged", s.len, 2);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* ⚠ Главный: LOCAL growth → raise, не silent no-op */
+Test(fs2_api, reserve_local_overflow_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 8);
+
+    fs2_reserve(&s, 100);   /* LOCAL cannot grow → raise */
+}
+
+Test(fs2_api, reserve_local_empty_overflow_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 8);   /* len=0, sz=8 */
+
+    fs2_reserve(&s, 100);   /* even empty LOCAL cannot grow */
+}
+
+/* =========================================================================
+ * prepare_growth — STATIC (unchanged semantics)
+ * ========================================================================= */
+
+Test(fs2_api, reserve_static_nonempty_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_reserve(&s, 100);
+}
+
+Test(fs2_api, reserve_fs2empty_grows) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_reserve(&s, 100);
+
+    CHECK_TRUE("promoted", fs2_is_alloc(&s));
+    CHECK_TRUE("sz grown", s.sz >= 100);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, reserve_heap_empty_grows) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap_fromstr("");   /* STATIC|BODYALLOC */
+
+    fs2_reserve(h, 100);
+
+    CHECK_TRUE ("now ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_TRUE ("sz grown", h->sz >= 100);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * prepare_growth — ALLOC (unchanged)
+ * ========================================================================= */
+
+Test(fs2_api, reserve_alloc_grows) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+
+    fs2_reserve(&s, 1000);
+
+    CHECK_TRUE("sz grown", s.sz >= 1000);
+    CHECK_STR_EQ("content intact", s.v, "hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, reserve_alloc_empty_preserves_buffer) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);
+    fs2_clear(&s);
+    void *orig_v = s.v;
+
+    fs2_reserve(&s, 10);   /* 16 >= 10, early return */
+
+    CHECK_PTR_EQ("buffer preserved", s.v, orig_v);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Composite: catstr в LOCAL — capacity vs overflow
+ * ========================================================================= */
+
+Test(fs2_api, local_cat_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    s.len = 2;
+
+    test_catstr(&s, "there");   /* "hithere\0" — 8 ≤ 16 */
+
+    CHECK_STR_EQ("content", s.v, "hithere");
+    CHECK_EQ("len", s.len, 7);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, local_cat_overflow_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 8);
+    memcpy(s.v, "hi", 2);
+    s.len = 2;
+
+    test_catstr(&s, "and a long overflow string that exceeds capacity");
+    /* → fs2_reserve_span → prepare_growth → raise (LOCAL cannot grow) */
+}
+
+Test(fs2_api, static_nonempty_cat_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hi");
+
+    test_catstr(&s, "!");   /* → prepare_growth → raise (non-empty STATIC) */
+}
+
+Test(fs2_api, fs2empty_cat_promotes) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    test_catstr(&s, "hello");   /* FS2EMPTY → auto-promote → ALLOC */
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE ("promoted", fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
     assert_balanced();
 }
