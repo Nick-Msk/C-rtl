@@ -159,7 +159,7 @@ Test(fs2, init_large_power_of_two) {
 #if TEST_NOT_SANITIZED
 Test(fs2, init_large_fails_with_sigint, .signal = SIGINT) {
     /* 2^62 rounds up to 2^63 — malloc will fail on any realistic host */
-    (void)fs2_init((size_t)1 << 62);
+    (void) fs2_init((size_t)1 << 62);
 }
 #endif
 
@@ -261,7 +261,7 @@ Test(fs2, setlen_to_zero) {
     fs2_free(&s);
 }
 
-Test(fs2_api, setlen_nonzero_on_empty_aborts, .signal = SIGINT) {
+Test(fs2_api, setlen_nonzero_on_empty_aborts, .signal = SIGABRT) {
     fs2 s = FS2();
     fs2_setlen(&s, 5); // should fail
 }
@@ -706,7 +706,7 @@ Test(fs2_api, fromstr_independent_from_source) {
  * ========================================================================= */
 
 #if defined(FS2_FROMSTR_STRICT)   /* Вариант B */
-Test(fs2_api, fromstr_null_aborts, .signal = SIGINT) {
+Test(fs2_api, fromstr_null_aborts, .signal = SIGABRT) {
     fs2_fromstr(NULL);
 }
 #else                              /* Вариант A: silent */
@@ -954,7 +954,7 @@ Test(fs2_api, fromstrf_long_output) {
  * fromstrf — NULL fmt
  * ========================================================================= */
 
-Test(fs2_api, fromstrf_null_aborts, .signal = SIGINT) {
+Test(fs2_api, fromstrf_null_aborts, .signal = SIGABRT) {
     fs2_fromstrf(NULL);
 }
 
@@ -1112,11 +1112,11 @@ Test(fs2_api, movefrom_heap_preserves_bodyalloc_on_src) {
     assert_balanced();
 }
 
-Test(fs2_api, movefrom_null_aborts, .signal = SIGINT) {
+Test(fs2_api, movefrom_null_aborts, .signal = SIGABRT) {
     fs2_movefrom(NULL);
 }
 
-Test(fs2_api, movefrom_local_aborts, .signal = SIGINT) {
+Test(fs2_api, movefrom_local_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(s, 16);
     memcpy(s.v, "hi", 2);
@@ -1268,19 +1268,19 @@ Test(fs2_api, move_preserves_src_bodyalloc_on_reset) {
  * fs2_move — NULL/LOCAL
  * ========================================================================= */
 
-Test(fs2_api, move_null_dst_aborts, .signal = SIGINT) {
+Test(fs2_api, move_null_dst_aborts, .signal = SIGABRT) {
     fs2 src = fs2_fromstr("x");
     fs2_move(NULL, &src);
     fs2_free(&src);
 }
 
-Test(fs2_api, move_null_src_aborts, .signal = SIGINT) {
+Test(fs2_api, move_null_src_aborts, .signal = SIGABRT) {
     fs2 dst = fs2_fromstr("x");
     fs2_move(&dst, NULL);
     fs2_free(&dst);
 }
 
-Test(fs2_api, move_local_dst_aborts, .signal = SIGINT) {
+Test(fs2_api, move_local_dst_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(dst, 16);
     fs2 src = fs2_fromstr("x");
@@ -1288,7 +1288,7 @@ Test(fs2_api, move_local_dst_aborts, .signal = SIGINT) {
     fs2_free(&src);
 }
 
-Test(fs2_api, move_local_src_aborts, .signal = SIGINT) {
+Test(fs2_api, move_local_src_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("x");
     FS2LOCAL(src, 16);
@@ -1478,7 +1478,7 @@ Test(fs2_api, fromraw_nul_written_for_alloc) {
 }
 
 /* ⚠ Защита от BODYALLOC */
-Test(fs2_api, fromraw_bodyalloc_rejected, .signal = SIGINT) {
+Test(fs2_api, fromraw_bodyalloc_rejected, .signal = SIGABRT) {
     char *buf = strdup("hi");
     fs2_fromraw(buf, 2, FS2_BODYALLOC);
     free(buf);   /* unreachable */
@@ -1518,21 +1518,21 @@ Test(fs2_api, movefromstr_static) {
     /* fs2_free no-op */
 }
 
-Test(fs2_api, movefromstr_null_from_aborts, .signal = SIGINT) {
+Test(fs2_api, movefromstr_null_from_aborts, .signal = SIGABRT) {
     fs2_movefromstr(NULL, FS2_ALLOC);
 }
 
-Test(fs2_api, movefromstr_null_pointer_aborts, .signal = SIGINT) {
+Test(fs2_api, movefromstr_null_pointer_aborts, .signal = SIGABRT) {
     const char *p = NULL;
     fs2_movefromstr(&p, FS2_ALLOC);   /* *from == NULL */
 }
 
-Test(fs2_api, movefromstr_local_aborts, .signal = SIGINT) {
+Test(fs2_api, movefromstr_local_aborts, .signal = SIGABRT) {
     const char *p = "x";
     fs2_movefromstr(&p, FS2_LOCAL);   /* LOCAL not allowed */
 }
 
-Test(fs2_api, movefromstr_bodyalloc_aborts, .signal = SIGINT) {
+Test(fs2_api, movefromstr_bodyalloc_aborts, .signal = SIGABRT) {
     const char *p = "x";
     fs2_movefromstr(&p, FS2_ALLOC | FS2_BODYALLOC);
 }
@@ -1541,18 +1541,18 @@ Test(fs2_api, movefromstr_bodyalloc_aborts, .signal = SIGINT) {
  * fs2_fromraw
  * ========================================================================= */
 
-Test(fs2_api, fromraw_alloc_bodyalloc_rejected, .signal = SIGINT) {
+Test(fs2_api, fromraw_alloc_bodyalloc_rejected, .signal = SIGABRT) {
     char *buf = strdup("hi");
     fs2_fromraw(buf, 2, FS2_ALLOC | FS2_BODYALLOC);
     free(buf);   /* unreachable */
 }
 
-Test(fs2_api, fromraw_local_rejected, .signal = SIGINT) {
+Test(fs2_api, fromraw_local_rejected, .signal = SIGABRT) {
     char buf[8] = "hi";
     fs2_fromraw(buf, 2, FS2_LOCAL);
 }
 
-Test(fs2_api, fromraw_null_buf_aborts, .signal = SIGINT) {
+Test(fs2_api, fromraw_null_buf_aborts, .signal = SIGABRT) {
     fs2_fromraw(NULL, 5, FS2_STATIC);
 }
 
@@ -1611,11 +1611,11 @@ Test(fs2_api, adoptn_no_double_free) {
     assert_balanced();
 }
 
-Test(fs2_api, adoptn_null_str_aborts, .signal = SIGINT) {
+Test(fs2_api, adoptn_null_str_aborts, .signal = SIGABRT) {
     fs2_adoptn(NULL, 5);
 }
 
-Test(fs2_api, adoptn_null_pointer_aborts, .signal = SIGINT) {
+Test(fs2_api, adoptn_null_pointer_aborts, .signal = SIGABRT) {
     char *buf = NULL;
     fs2_adoptn(&buf, 5);
 }
@@ -1692,11 +1692,11 @@ Test(fs2_api, adopt_roundtrip) {
     assert_balanced();
 }
 
-Test(fs2_api, adopt_null_str_aborts, .signal = SIGINT) {
+Test(fs2_api, adopt_null_str_aborts, .signal = SIGABRT) {
     fs2_adopt(NULL);
 }
 
-Test(fs2_api, adopt_null_pointer_aborts, .signal = SIGINT) {
+Test(fs2_api, adopt_null_pointer_aborts, .signal = SIGABRT) {
     char *buf = NULL;
     fs2_adopt(&buf);
 }
@@ -2180,7 +2180,7 @@ Test(fs2_api, heap_clone_grows_after_alloc) {
  * heap_clone — NULL
  * ========================================================================= */
 
-Test(fs2_api, heap_clone_null_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_clone_null_aborts, .signal = SIGABRT) {
     fs2_heap_clone(NULL);
 }
 
@@ -2354,7 +2354,7 @@ Test(fs2_api, heap_fromstr_null_returns_empty) {
     assert_balanced();
 }
 #else
-Test(fs2_api, heap_fromstr_null_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_fromstr_null_aborts, .signal = SIGABRT) {
     fs2_heap_fromstr(NULL);
 }
 #endif
@@ -2485,14 +2485,14 @@ Test(fs2_api, reserve_local_within_capacity_noop) {
 }
 
 /* ⚠ Главный: LOCAL growth → raise, не silent no-op */
-Test(fs2_api, reserve_local_overflow_aborts, .signal = SIGINT) {
+Test(fs2_api, reserve_local_overflow_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(s, 8);
 
     fs2_reserve(&s, 100);   /* LOCAL cannot grow → raise */
 }
 
-Test(fs2_api, reserve_local_empty_overflow_aborts, .signal = SIGINT) {
+Test(fs2_api, reserve_local_empty_overflow_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(s, 8);   /* len=0, sz=8 */
 
@@ -2503,7 +2503,7 @@ Test(fs2_api, reserve_local_empty_overflow_aborts, .signal = SIGINT) {
  * prepare_growth — STATIC (unchanged semantics)
  * ========================================================================= */
 
-Test(fs2_api, reserve_static_nonempty_aborts, .signal = SIGINT) {
+Test(fs2_api, reserve_static_nonempty_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hello");
     fs2_reserve(&s, 100);
 }
@@ -2588,7 +2588,7 @@ Test(fs2_api, local_cat_within_capacity) {
     CHECK_FS2VALID(1, &s);
 }
 
-Test(fs2_api, local_cat_overflow_aborts, .signal = SIGINT) {
+Test(fs2_api, local_cat_overflow_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(s, 8);
     memcpy(s.v, "hi", 2);
@@ -2598,7 +2598,7 @@ Test(fs2_api, local_cat_overflow_aborts, .signal = SIGINT) {
     /* → fs2_reserve_span → prepare_growth → raise (LOCAL cannot grow) */
 }
 
-Test(fs2_api, static_nonempty_cat_aborts, .signal = SIGINT) {
+Test(fs2_api, static_nonempty_cat_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hi");
 
     test_catstr(&s, "!");   /* → prepare_growth → raise (non-empty STATIC) */
@@ -2639,7 +2639,7 @@ Test(fs2_api, setlen_zero_on_fs2empty_ok) {
     CHECK_FS2VALID(1, &s);
 }
 
-Test(fs2_api, setlen_zero_on_literal_nonempty_aborts, .signal = SIGINT) {
+Test(fs2_api, setlen_zero_on_literal_nonempty_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hi");   /* len=2, STATIC */
     fs2_setlen(&s, 0);           /* нельзя отрезать .rodata → raise */
 }
@@ -2651,7 +2651,7 @@ Test(fs2_api, setlen_same_len_on_literal_noop) {
     CHECK_FS2VALID(1, &s);
 }
 
-Test(fs2_api, setlen_nonzero_on_canonical_aborts, .signal = SIGINT) {
+Test(fs2_api, setlen_nonzero_on_canonical_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 s = FS2();
     fs2_setlen(&s, 5);
@@ -2669,7 +2669,7 @@ Test(fs2_api, setlen_alloc_valid_pos) {
     assert_balanced();
 }
 
-Test(fs2_api, setlen_alloc_exceeds_sz_aborts, .signal = SIGINT) {
+Test(fs2_api, setlen_alloc_exceeds_sz_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 s = fs2_init(16);
     fs2_setlen(&s, 100);   /* 100 >= sz=16 → raise */
@@ -2713,7 +2713,7 @@ Test(fs2_api, heap_fromstrf_empty_result) {
     assert_balanced();
 }
 
-Test(fs2_api, heap_fromstrf_null_fmt_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_fromstrf_null_fmt_aborts, .signal = SIGABRT) {
     fs2_heap_fromstrf(NULL);
 }
 
@@ -2832,16 +2832,16 @@ Test(fs2_api, heap_movefromstr_static_empty) {
     assert_balanced();
 }
 
-Test(fs2_api, heap_movefromstr_null_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_movefromstr_null_aborts, .signal = SIGABRT) {
     fs2_heap_movefromstr(NULL, FS2_ALLOC);
 }
 
-Test(fs2_api, heap_movefromstr_null_pointer_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_movefromstr_null_pointer_aborts, .signal = SIGABRT) {
     const char *p = NULL;
     fs2_heap_movefromstr(&p, FS2_ALLOC);
 }
 
-Test(fs2_api, heap_movefromstr_local_aborts, .signal = SIGINT) {
+Test(fs2_api, heap_movefromstr_local_aborts, .signal = SIGABRT) {
     const char *p = "x";
     fs2_heap_movefromstr(&p, FS2_LOCAL);
 }

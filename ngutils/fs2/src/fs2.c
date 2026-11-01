@@ -166,7 +166,7 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
  * @param src  Non-NULL NUL-terminated source.
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
  *
- * @warning    `invraise` if @p src is NULL.
+ * @warning    `invfatal` if @p src is NULL.
  */
 fs2
 fs2_fromstr (const char *src) {
@@ -259,8 +259,7 @@ fs2_movefromstr(const char **from, fs2_flags flag) {
     invfatal(ERR_NULL_INPUT, from != NULL && *from != NULL, 
         "Null pointer char **");
 
-    if (flag != FS2_STATIC && flag != FS2_ALLOC)
-        userraise(0, ERR_UNSUPPORTED_TYPE, 
+    invfatal(ERR_UNSUPPORTED_TYPE, flag == FS2_STATIC || flag == FS2_ALLOC,
             "%d/%s no supported for %s", flag, fs2_flag_name(flag), __func__);
 
     size_t  len = strlen(*from);
@@ -306,7 +305,7 @@ fs2_adoptn(char **str, size_t saved_len)
  * @return  Heap-allocated fs2*, or raises on OOM.
  */
 fs2 *
-fs2_heap          (void) {
+fs2_heap(void) {
     fs2 *res = malloc(sizeof(fs2));
     if (!res)
         return userraise(NULL, ERR_UNABLE_ALLOCATE, "Unable allocate fs2");
@@ -486,8 +485,7 @@ fs2_move(fs2 *dst, fs2 *src) {
     if (dst == src)
         return dst;    
 
-    if (fs2_is_local(src) || fs2_is_local(dst))
-        return userraise(NULL, ERR_UNSUPPORTED_TYPE,
+    invfatal(ERR_UNSUPPORTED_TYPE, !(fs2_is_local(src) || fs2_is_local(dst) ),  
                   "fs2_move does not support LOCAL (stack buffer)");
 
     fs2_flags dst_body = fs2_getbodyalloc(dst);
@@ -527,8 +525,8 @@ fs2_exch(fs2 *a, fs2 *b)
     if (a == b)
         return;
 
-    if (fs2_is_local(a) || fs2_is_local(b))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "fs2_exch does not support LOCAL");
+    invfatal(!(fs2_is_local(a) || fs2_is_local(b) ), 
+        ERR_UNSUPPORTED_TYPE, "fs2_exch does not support LOCAL");
 
     fs2 tmp = FS2();
     fs2_move(&tmp, a);
@@ -553,11 +551,11 @@ fs2_exch(fs2 *a, fs2 *b)
  */
 fs2   
 fs2_heaptostack(fs2 **psrc) {
-    invraise(psrc != NULL && *psrc != NULL, 
+    invfatal(ERR_NULL_INPUT, psrc != NULL && *psrc != NULL, 
         "Null pointer %p or %p", psrc, psrc ? *psrc : NULL);
 
-    if (!fs2_is_bodyalloc(*psrc))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "Only BODY ALLOC supported");
+    invfatal(fs2_is_bodyalloc(*psrc), 
+        ERR_UNSUPPORTED_TYPE, "Only BODY ALLOC supported");
     fs2 res = FS2();
     fs2_move(&res, *psrc);
     fs2_freebody(*psrc);
@@ -578,12 +576,12 @@ fs2_heaptostack(fs2 **psrc) {
  */
 fs2 *
 fs2_stacktoheap(fs2 *src) {
-    invraise(src != NULL,  "Null pointer %p", src);
+    invfatal(ERR_NULL_INPUT, src != NULL,  "Null pointer %p", src);
 
-    if (fs2_is_bodyalloc(src))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "Only NOT BODY ALLOC supported");
-    if (fs2_is_local(src))
-        userraise(0, ERR_UNSUPPORTED_TYPE, "Cannot move LOCAL fs2 to heap");
+    invfatal(!fs2_is_bodyalloc(src), ERR_UNSUPPORTED_TYPE, 
+        "Only NOT BODY ALLOC supported");
+    invfatal(!fs2_is_local(src), ERR_UNSUPPORTED_TYPE, 
+        "Cannot move LOCAL fs2 to heap");
 
     fs2 *res = fs2_heap();
     fs2_move(res, src);  // FS2_BODYALLOC is already set, src is cleared

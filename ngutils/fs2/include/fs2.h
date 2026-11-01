@@ -320,15 +320,13 @@ fs2_cant_realloc(fs2 *s) {
  */
 static inline bool
 fs2_prepare_growth(fs2 *restrict s, size_t need) {
-    if (!s)
-        return userraise(false, ERR_NULL_INPUT, "Cannot grow NULL fs2");
+    invfatal(ERR_NULL_INPUT, s != NULL, "Cannot grow NULL fs2");
     
     if (s->sz >= need)
         return false;                    /* already sufficient */
     
     if (fs2_is_static(s)) {
-        if (!fs2_is_empty(s))
-            userraise(false, ERR_UNSUPPORTED_TYPE, 
+        invfatal(ERR_UNSUPPORTED_TYPE, fs2_is_empty(s),
                       "Cannot grow non-empty STATIC fs2");
         
         /* Empty STATIC (FS2EMPTY, literal-empty, heap-wrapped-empty)
@@ -339,8 +337,7 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
         return true;
     }
     
-    if (!fs2_is_alloc(s))
-        userraise(false, ERR_UNSUPPORTED_TYPE, 
+    invfatal(ERR_UNSUPPORTED_TYPE, fs2_is_alloc(s),  
                   "Cannot grow non-ALLOC fs2 (LOCAL has fixed capacity)");
     
     return true;
@@ -1053,8 +1050,7 @@ static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
     } else {
         /* Read-only or NULL: only no-op allowed */
-        if (pos != s->len)
-            userraise(NULL, ERR_ACTION_NOT_APPLICABLE, 
+        invfatal(ERR_ACTION_NOT_APPLICABLE, pos == s->len,
                       "Cannot set len %zu (current %zu) on non-writable fs2", 
                       pos, s->len);
     }
