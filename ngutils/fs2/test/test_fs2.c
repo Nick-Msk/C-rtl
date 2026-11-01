@@ -2775,3 +2775,105 @@ Test(fs2_api, heap_fromstrf_matches_heap_fromstr) {
     fs2_free(b);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_movefromstr
+ * ========================================================================= */
+
+Test(fs2_api, heap_movefromstr_alloc_nonempty) {
+    __fs2_checkreset();
+    const char *p = strdup("hello");
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_ALLOC);
+
+    CHECK_STR_EQ("content", h->v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_PTR_EQ("from reset", p, NULL);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);   /* frees v + struct */
+    assert_balanced();
+}
+
+Test(fs2_api, heap_movefromstr_alloc_empty) {
+    __fs2_checkreset();
+    const char *p = strdup("");
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_ALLOC);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_PTR_EQ("from reset", p, NULL);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_movefromstr_static_empty) {
+    __fs2_checkreset();
+    const char *p = "";
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_STATIC);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_TRUE("matches eq_empty shape", fs2_eq_empty(h));
+    CHECK_PTR_EQ("from reset", p, NULL);
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);   /* frees только body */
+    assert_balanced();
+}
+
+Test(fs2_api, heap_movefromstr_null_aborts, .signal = SIGINT) {
+    fs2_heap_movefromstr(NULL, FS2_ALLOC);
+}
+
+Test(fs2_api, heap_movefromstr_null_pointer_aborts, .signal = SIGINT) {
+    const char *p = NULL;
+    fs2_heap_movefromstr(&p, FS2_ALLOC);
+}
+
+Test(fs2_api, heap_movefromstr_local_aborts, .signal = SIGINT) {
+    const char *p = "x";
+    fs2_heap_movefromstr(&p, FS2_LOCAL);
+}
+
+Test(fs2_api, heap_movefromstr_balances_counters) {
+    __fs2_checkreset();
+    const char *p = strdup("payload");
+
+    fs2 *h = fs2_heap_movefromstr(&p, FS2_ALLOC);
+    fs2_free(h);
+    assert_balanced();   /* ловит counter-bug в fs2_freestr(NULL) + утечки */
+}
+
+Test(fs2_api, heap_movefromstr_matches_stack_content) {
+    __fs2_checkreset();
+
+    const char *p1 = strdup("hello");
+    const char *p2 = strdup("hello");
+
+    fs2 *h = fs2_heap_movefromstr(&p1, FS2_ALLOC);
+    fs2  s = fs2_movefromstr(&p2, FS2_ALLOC);
+
+    CHECK_STR_EQ("same content", h->v, s.v);
+    CHECK_EQ  ("same len", h->len, s.len);
+    CHECK_EQ  ("same string-axis flags",
+               h->flags & ~FS2_BODYALLOC, s.flags & ~FS2_BODYALLOC);
+    CHECK_TRUE("heap has BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FALSE("stack no BODYALLOC", fs2_is_bodyalloc(&s));
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(h);
+    fs2_free(&s);
+    assert_balanced();
+}
