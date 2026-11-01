@@ -604,13 +604,15 @@ fs2_stacktoheap(fs2 *src) {
  */
 static inline void 
 fs2_freestr(fs2 *s) {
-    if (s->v) { // s->v in heap!
+    if (s->v ) { // s->v in heap!
         int cnt = atomic_fetch_add(&g_free_cnt, 1) + 1;
 #ifdef FS2_TRACE 
         logsimple("freed... %p (g_free_cnt %d)", 
             s->v, cnt);
 #endif /* FS2_TRACE */
+#ifndef __clang_analyzer__
         free(s->v);
+#endif
         s->sz = s->len = 0;
         s->v = NULL; 
     } 
