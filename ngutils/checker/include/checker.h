@@ -125,8 +125,7 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
             if (do_raise) {                                           \
                 fflush(stderr);                                       \
                 fflush(stdout);                                       \
-                if ( (exception) == ERR_GENERAL_ERROR) abort();       \
-                else userraise(0, (exception), "%s", #exception);     \
+                abort();                                              \
             }                                                         \
         }                                                             \
         _INV_RES; })

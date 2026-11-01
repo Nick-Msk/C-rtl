@@ -171,23 +171,23 @@ Test(checker, checkraise_general_error_aborts, .signal = SIGABRT) {
     checkraise(ERR_GENERAL_ERROR, 1 == 2, "must abort");
 }
 
-Test(checker, checkraise_null_ptr_sigint, .signal = SIGINT) {
+Test(checker, checkraise_null_ptr_sigint, .signal = SIGABRT) {
     /* non-GENERAL_ERROR + no TRY → userraise → SIGINT */
     const char *p = NULL;
     checkraise(ERR_NULL_INPUT, p != NULL, "p is NULL in test");
 }
 
-Test(checker, checkraise_out_of_range_sigint, .signal = SIGINT) {
+Test(checker, checkraise_out_of_range_sigint, .signal = SIGABRT) {
     checkraise(ERR_OUT_OF_RANGE, 0, "value out of range");
 }
 
-Test(checker, checkraise_printf_args_sigint, .signal = SIGINT) {
+Test(checker, checkraise_printf_args_sigint, .signal = SIGABRT) {
     int x = 0;
     checkraise(ERR_OUT_OF_RANGE, x > 0, "x=%d must be positive", x);
 }
 
-Test(checker, checkraise_catched_by_try) {
-    /* Active TRY() → err_raise longjmps back, no SIGINT */
+Test(checker, checkraise_catched_by_try, .signal = SIGABRT) {
+    /* Active TRY() →  SIGABRT */
     int caught = 0;
     TRY() {
         checkraise(ERR_NULLABLE_PTR, 0, "should be caught");
