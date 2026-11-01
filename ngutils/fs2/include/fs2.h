@@ -255,7 +255,8 @@ fs2_is_null(const fs2 *s) {
  * @param s  Non-NULL fs2.
  * @return   FS2_BODYALLOC or 0.
  */
-static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
+static inline fs2_flags     
+fs2_getbodyalloc(const fs2 *s) {
     return s->flags & FS2_BODYALLOC;
 }
 
@@ -265,7 +266,8 @@ static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
  * @param s            Non-NULL fs2.
  * @param bodyallocflag  Pass FS2_BODYALLOC to set, 0 to clear.
  */
-static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
+static inline void          
+fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
     bodyallocflag &= FS2_BODYALLOC;
     s->flags = ( (s->flags & ~FS2_BODYALLOC) | bodyallocflag);
 }
@@ -553,16 +555,23 @@ fs2_setsize(fs2 *s, size_t need)
 /**
  * @brief Shrink the heap buffer to fit the current content exactly.
  *
- * Reallocates to len + 1 bytes (minimum FS_MIN_ALLOC = 16).
- * No-op for STATIC / LOCAL / NULL-buffer fs2.
+ * Reallocates to exactly len+1 bytes (no FS_MIN_ALLOC floor — that
+ * applies only to growth via init=true). No-op for STATIC/LOCAL.
+ *
+ * Note: if len+1 < FS_MIN_ALLOC, a subsequent growth reallocates
+ * again to at least FS_MIN_ALLOC. This is the price of exact-fit
+ * shrinking — `shrink` is a hint, not a guarantee against regrowth.
+ *
+ * For ALLOC: reallocs to exact fit if current sz > len+1.
+ * For empty: no-op.
  *
  * @param s  Non-NULL fs2.
- * @return   @p s for chaining.
+ * @return   @p s (for chaining).
  *
- * @warning  `userraise` if @p s is NULL or non-empty STATIC.
+ * @warning `invfatal` (abort) if @p s is NULL.
  */
-extern fs2 *      
-fs_shrink(fs2 *s);
+fs2 *
+fs2_shrink(fs2 *s);
 
 /**
  * @brief Clamp @p from / @p len into the valid range of @p s (internal).

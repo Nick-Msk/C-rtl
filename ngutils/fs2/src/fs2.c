@@ -434,17 +434,16 @@ fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
  * @param s  Non-NULL fs2.
  * @return   @p s for chaining.
  *
- * @warning  `invraise` if @p s is NULL.
+ * @warning  `invfatal` if @p s is NULL.
  */
 fs2 *
 fs2_shrink(fs2 *s) {
-    fs2_cant_realloc(s);     // checkup
-
-    if (!s->v)
-        return s;
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
+    
     size_t target = s->len + 1;
-    if (s->sz == target) 
-        return s;
+    if (s->sz <= target)
+        return s;   /* already minimal (or below — invalid fs2, defensive) */
+    
     return increasesize(s, target, false);
 }
 
