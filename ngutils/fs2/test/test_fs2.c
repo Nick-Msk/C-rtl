@@ -2617,3 +2617,61 @@ Test(fs2_api, fs2empty_cat_promotes) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_setlen
+ * ========================================================================= */
+
+Test(fs2_api, setlen_zero_on_canonical_ok) {
+    __fs2_checkreset();
+    fs2 s = FS2();          /* v=NULL, sz=0, len=0 */
+    fs2_setlen(&s, 0);      /* no-op, не raise */
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setlen_zero_on_fs2empty_ok) {
+    fs2 s = FS2EMPTY;       /* v="", sz=1, len=0, STATIC */
+    fs2_setlen(&s, 0);      /* no-op */
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, setlen_zero_on_literal_nonempty_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hi");   /* len=2, STATIC */
+    fs2_setlen(&s, 0);           /* нельзя отрезать .rodata → raise */
+}
+
+Test(fs2_api, setlen_same_len_on_literal_noop) {
+    fs2 s = FS2LITERAL("hi");   /* len=2 */
+    fs2_setlen(&s, 2);           /* pos == len → no-op */
+    CHECK_EQ("len", s.len, 2);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, setlen_nonzero_on_canonical_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_setlen(&s, 5);
+    fs2_free(&s);
+}
+
+Test(fs2_api, setlen_alloc_valid_pos) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);
+    memcpy(s.v, "hello", 5);
+    fs2_setlen(&s, 5);
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, setlen_alloc_exceeds_sz_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);
+    fs2_setlen(&s, 100);   /* 100 >= sz=16 → raise */
+    fs2_free(&s);
+}
