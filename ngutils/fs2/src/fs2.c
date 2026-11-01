@@ -419,7 +419,7 @@ fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
     if (!fs2_prepare_growth(s, need))
         return s;
     
-    bool was_null = (s->v == NULL);      /* после conversion — покрывает оба случая */
+    bool was_null = (s->v == NULL);      /* after conversion — covers both cases */
     increasesize(s, need, useallocator);
     if (was_null && s->v != NULL)
         fs2_clear(s);

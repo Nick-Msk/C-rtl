@@ -319,7 +319,7 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
  * @brief Precondition guard for memcpy/memmove-style operations.
  *
  * Trivial case (len == 0): no src read, no dst write — returns true
- * even for NULL dst/src or STATIC dst ("фиктивная операция").
+ * even for NULL dst/src or STATIC dst ("no-op").
  *
  * Non-trivial: dst and src must be non-NULL; src[srcpos..srcpos+len)
  * must fit within src->len; dst must be writable (empty auto-promotes,
@@ -510,14 +510,14 @@ fs_shrink(fs2 *s);
 // internal, clamps from/len to valid range
 static inline void 
 fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len) {
-    // Если буфер не выделен или начало за пределами строки — возвращаем пустоту
+    // If the buffer is not allocated or the start is beyond the string end — return empty
     if (!s->v || *from >= s->len) {
         *from = s->len;
         if (len)
             *len  = 0;
         return;
     }
-    // Защита от underflow: *len не может быть больше, чем осталось до конца
+    // Underflow guard: *len cannot exceed the remaining bytes to the end
     if (len && *len > s->len - *from)
         *len = s->len - *from;
 }
