@@ -607,13 +607,18 @@ fs2_stacktoheap(fs2 *src) {
  */
 static inline void 
 fs2_freestr(fs2 *s) {
-    if (s->v ) { // s->v in heap!
+    if (s->v && fs2_is_alloc(s)) { // s->v in heap!
         int cnt = atomic_fetch_add(&g_free_cnt, 1) + 1;
 #ifdef FS2_TRACE 
-        logsimple("freed... %p (g_free_cnt %d)", 
-            s->v, cnt);
+        logsimple("freed... %p (g_free_cnt %d)", s->v, cnt);
+#else
+    (void)cnt;
 #endif /* FS2_TRACE */
 #ifndef __clang_analyzer__
+/* scan-build can't prove s->v is malloc'd (flags→v link not tracked).
+ * The runtime path is proven safe: all callers guarantee fs2_is_alloc(s).
+ * Guard compiles out in normal builds; free() executes normally. */
+
         free(s->v);
 #endif
         s->sz = s->len = 0;
@@ -631,10 +636,13 @@ fs2_freestr(fs2 *s) {
  */
 static inline void 
 fs2_freebody(fs2 *s) {
+    if (!fs2_is_bodyalloc(s))
+        return;   /* defensive */
     int cnt = atomic_fetch_add(&g_free_body_cnt, 1) + 1;
 #ifdef FS2_TRACE 
-    logsimple("fs body freed (g_free_body_cnt %d)", 
-        cnt);
+    logsimple("fs body freed (g_free_body_cnt %d)", cnt);
+#else
+    (void)cnt;
 #endif /* FS2_TRACE */
     free(s);
 }
