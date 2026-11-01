@@ -1328,6 +1328,109 @@ Test(fs2_api, movefrom_does_not_leak_original) {
 }
 
 /* =========================================================================
+ * fs2_move
+ * ========================================================================= */
+
+Test(fs2_api, move_empty_src_dst_safe_readable) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old");
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* dst = safe empty, not canonical */
+    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(&dst));
+    CHECK_TRUE ("dst STATIC", fs2_is_static(&dst));
+    CHECK_EQ   ("dst sz", dst.sz, 1);
+    CHECK_NOT_NULL("dst v", dst.v);
+    CHECK_STR_EQ("dst v readable", dst.v, "");   /* ← не крашится */
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_src_dst_readable_via_printf) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old");
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* Регресс: если dst.v == NULL → segfault */
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%s", dst.v);
+    CHECK_STR_EQ("printf ok", buf, "");
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_src_preserves_dst_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *dst = fs2_heap_fromstr("old");   /* ALLOC|BODYALLOC */
+    fs2  src = FS2();
+
+    fs2_move(dst, &src);
+
+    /* dst = FS2EMPTY | BODYALLOC */
+    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(dst));
+    CHECK_TRUE ("dst BODYALLOC", fs2_is_bodyalloc(dst));
+    CHECK_EQ   ("dst sz", dst->sz, 1);
+    CHECK_NOT_NULL("dst v", dst->v);
+    CHECK_STR_EQ("dst v", dst->v, "");
+    CHECK_FS2VALID(1, dst);
+
+    fs2_free(dst);   /* frees body only, v="" .rodata safe */
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_empty_with_buffer_preserves_buffer) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = fs2_init(16);   /* ALLOC, buffer, len=0 */
+
+    fs2_move(&dst, &src);
+
+    /* dst takes the buffer (fs2_init empty but has buffer) */
+    CHECK_TRUE ("dst ALLOC", fs2_is_alloc(&dst));
+    CHECK_TRUE ("dst has buffer", dst.v != NULL);
+    CHECK_GE   ("dst sz", dst.sz, 16);
+    CHECK_EQ   ("dst len", dst.len, 0);
+    CHECK_STR_EQ("dst v readable", dst.v, "");
+    CHECK_FS2VALID(1, &dst);
+
+    /* src reset to FS2EMPTY */
+    CHECK_TRUE("src eq_empty", fs2_eq_empty(&src));
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api, move_symmetric_safe_after) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = FS2();
+
+    fs2_move(&dst, &src);
+
+    /* Обе стороны readable — не крашится */
+    CHECK_STR_EQ("dst.v", dst.v, "");
+    CHECK_STR_EQ("src.v", src.v, "");
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* =========================================================================
  * Composite: pipeline через move/movefrom
  * ========================================================================= */
 
@@ -2951,105 +3054,3 @@ Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
     fs2_shrink(NULL);
 }
 
-/* =========================================================================
- * fs2_move
- * ========================================================================= */
-
-Test(fs2_api, move_empty_src_dst_safe_readable) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("old");
-    fs2 src = FS2();
-
-    fs2_move(&dst, &src);
-
-    /* dst = safe empty, not canonical */
-    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(&dst));
-    CHECK_TRUE ("dst STATIC", fs2_is_static(&dst));
-    CHECK_EQ   ("dst sz", dst.sz, 1);
-    CHECK_NOT_NULL("dst v", dst.v);
-    CHECK_STR_EQ("dst v readable", dst.v, "");   /* ← не крашится */
-    CHECK_FS2VALID(1, &dst);
-    CHECK_FS2VALID(2, &src);
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, move_empty_src_dst_readable_via_printf) {
-    __fs2_checkreset();
-    fs2 dst = fs2_fromstr("old");
-    fs2 src = FS2();
-
-    fs2_move(&dst, &src);
-
-    /* Регресс: если dst.v == NULL → segfault */
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%s", dst.v);
-    CHECK_STR_EQ("printf ok", buf, "");
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, move_empty_src_preserves_dst_bodyalloc) {
-    __fs2_checkreset();
-    fs2 *dst = fs2_heap_fromstr("old");   /* ALLOC|BODYALLOC */
-    fs2  src = FS2();
-
-    fs2_move(dst, &src);
-
-    /* dst = FS2EMPTY | BODYALLOC */
-    CHECK_TRUE ("dst eq_empty", fs2_eq_empty(dst));
-    CHECK_TRUE ("dst BODYALLOC", fs2_is_bodyalloc(dst));
-    CHECK_EQ   ("dst sz", dst->sz, 1);
-    CHECK_NOT_NULL("dst v", dst->v);
-    CHECK_STR_EQ("dst v", dst->v, "");
-    CHECK_FS2VALID(1, dst);
-
-    fs2_free(dst);   /* frees body only, v="" .rodata safe */
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, move_empty_with_buffer_preserves_buffer) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-    fs2 src = fs2_init(16);   /* ALLOC, buffer, len=0 */
-
-    fs2_move(&dst, &src);
-
-    /* dst takes the buffer (fs2_init empty but has buffer) */
-    CHECK_TRUE ("dst ALLOC", fs2_is_alloc(&dst));
-    CHECK_TRUE ("dst has buffer", dst.v != NULL);
-    CHECK_GE   ("dst sz", dst.sz, 16);
-    CHECK_EQ   ("dst len", dst.len, 0);
-    CHECK_STR_EQ("dst v readable", dst.v, "");
-    CHECK_FS2VALID(1, &dst);
-
-    /* src reset to FS2EMPTY */
-    CHECK_TRUE("src eq_empty", fs2_eq_empty(&src));
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
-
-Test(fs2_api, move_symmetric_safe_after) {
-    __fs2_checkreset();
-    fs2 dst = FS2();
-    fs2 src = FS2();
-
-    fs2_move(&dst, &src);
-
-    /* Обе стороны readable — не крашится */
-    CHECK_STR_EQ("dst.v", dst.v, "");
-    CHECK_STR_EQ("src.v", src.v, "");
-    CHECK_FS2VALID(1, &dst);
-    CHECK_FS2VALID(2, &src);
-
-    fs2_free(&dst);
-    fs2_free(&src);
-    assert_balanced();
-}
