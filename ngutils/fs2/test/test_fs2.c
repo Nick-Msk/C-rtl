@@ -2877,3 +2877,75 @@ Test(fs2_api, heap_movefromstr_matches_stack_content) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_shrink — smoke tests (composition of already-tested pieces)
+ * ========================================================================= */
+
+Test(fs2_api, shrink_static_nonempty_noop) {
+    fs2 s = FS2LITERAL("hello");   /* STATIC, sz=6, len=5 */
+    void *orig = s.v;
+
+    fs2_shrink(&s);   /* sz(6) <= target(6) → return, no realloc */
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig);
+    CHECK_EQ  ("sz", s.sz, 6);
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2_api, shrink_local_nonempty_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    fs2_setlen(&s, 2);
+    void *orig = s.v;
+
+    fs2_shrink(&s);   /* sz(16) > target(3) → increasesize no-op (LOCAL) */
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig);
+    CHECK_EQ  ("sz", s.sz, 16);
+    CHECK_EQ  ("len", s.len, 2);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* ALLOC — фактически shrinks (unchanged) */
+Test(fs2_api, shrink_alloc_grows_down) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(100);
+    memcpy(s.v, "hello", 5);
+    fs2_setlen(&s, 5);
+    CHECK_TRUE("pre sz > 6", s.sz > 6);
+
+    fs2_shrink(&s);
+
+    CHECK_EQ("sz == 16 (floor)", s.sz, 6);
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, shrink_empty_noop) {
+    __fs2_checkreset();
+    fs2 canon = FS2();          /* sz=0, target=1 */
+    fs2 empty = FS2EMPTY;       /* sz=1, target=1 */
+
+    fs2_shrink(&canon);
+    fs2_shrink(&empty);
+
+    CHECK_EQ("canonical", canon.sz, 0);
+    CHECK_EQ("fs2empty",  empty.sz, 1);
+    CHECK_FS2VALID(1, &canon);
+    CHECK_FS2VALID(2, &empty);
+
+    fs2_free(&canon);
+}
+
+Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
+    fs2_shrink(NULL);
+}
