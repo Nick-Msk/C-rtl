@@ -3977,3 +3977,69 @@ Test(fs2, free_alloc_with_buffer) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_cant_mutate — invariant guard
+ *
+ * Contract:
+ *   NULL              → SIGABRT (contract violation)
+ *   empty (any kind)  → true (skip, nothing to mutate)
+ *   non-empty STATIC  → SIGABRT (cannot write .rodata)
+ *   non-empty ALLOC   → false (proceed)
+ *   non-empty LOCAL   → false (proceed)
+ * ========================================================================= */
+
+Test(fs2, cant_mutate_null_aborts, .signal = SIGABRT) {
+    fs2_cant_mutate(NULL);
+}
+
+Test(fs2, cant_mutate_canonical_empty_skips) {
+    fs2 s = FS2();   /* v=NULL, len=0, ALLOC */
+    CHECK_TRUE("skip", fs2_cant_mutate(&s));
+}
+
+Test(fs2, cant_mutate_fs2empty_skips) {
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("skip", fs2_cant_mutate(&s));
+}
+
+Test(fs2, cant_mutate_alloc_empty_skips) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);   /* v=malloc, len=0, ALLOC */
+    CHECK_TRUE("skip", fs2_cant_mutate(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, cant_mutate_local_empty_skips) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    CHECK_TRUE("skip", fs2_cant_mutate(&s));
+}
+
+Test(fs2, cant_mutate_literal_empty_skips) {
+    fs2 s = FS2LITERAL("");
+    CHECK_TRUE("skip", fs2_cant_mutate(&s));
+}
+
+/* Non-empty STATIC → abort */
+Test(fs2, cant_mutate_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_cant_mutate(&s);
+}
+
+/* Non-empty ALLOC/LOCAL → false (proceed) */
+Test(fs2, cant_mutate_alloc_with_content_proceeds) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FALSE("proceed", fs2_cant_mutate(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, cant_mutate_local_with_content_proceeds) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    fs2_setlen(&s, 2);
+    CHECK_FALSE("proceed", fs2_cant_mutate(&s));
+}
