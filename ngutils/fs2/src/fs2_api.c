@@ -24,11 +24,9 @@ fs2_flip(fs2 *str) {
     if (fs2_cant_mutate(str))
         return str;
 
-    if (str->len > 0UL) {
-        size_t i = 0UL, j = str->len - 1;
-        while (i < j)
-            char_exch(str->v + i++, str->v + j--);
-    }
+    size_t i = 0UL, j = str->len - 1;
+    while (i < j)
+        char_exch(str->v + i++, str->v + j--);
     return str;
 }
 
