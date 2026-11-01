@@ -94,13 +94,15 @@ __fs2_rchr_raw_ci(const unsigned char *p, size_t avail, int c) {
 // --------------------------------------- API ---------------------------------------
 
 /**
- * @brief Direct byte access without modifying len or sz.
+ * @brief Pointer to byte at @p pos. No bounds check.
  *
- * @pre    @p pos < s->sz. No bounds check (unprotected layer).
+ * @pre s != NULL
+ * @pre s->v != NULL  (canonical FS2() has no buffer — UB)
+ * @pre pos <= s->sz   (pos == sz returns one-past-end, valid)
  *
- * @param s    Non-NULL fs2.
- * @param pos  0-based position within the buffer.
- * @return     Pointer to the byte at @p pos.
+ * @return s->v + pos. Dereference only when pos < s->len (content),
+ *         or pos == s->len (NUL). pos > s->len returns a pointer to
+ *         uninitialized capacity — do not read.
  */
 static inline char *
 fs2_get(const fs2 *s, size_t pos){
