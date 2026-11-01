@@ -239,7 +239,7 @@ Test(fs2, free_alloc_is_idempotent) {
 Test(fs2, setlen_truncates) {
     fs2 s = fs2_init(16);
     memcpy(s.v, "hello world", 12);
-    s.len = 11;
+    fs2_setlen(&s, 11);
 
     fs2_setlen(&s, 5);
 
@@ -252,7 +252,7 @@ Test(fs2, setlen_truncates) {
 Test(fs2, setlen_to_zero) {
     fs2 s = fs2_init(16);
     memcpy(s.v, "abc", 4);
-    s.len = 3;
+    fs2_setlen(&s, 3);
 
     fs2_setlen(&s, 0);
 
@@ -332,13 +332,13 @@ Test(fs2, validate_null_buffer) {
 
 Test(fs2, validate_len_ge_sz) {
     fs2 s = FS2LITERAL("abc");
-    s.len = s.sz;   /* len >= sz — forged invariant violation */
+    s.len = s.sz;   /* len >= sz — forged invariant violation, direct assignment, can't use fs2_setlen here */
     CHECK_FALSE("validate with len >= sz", fs2_validate(NULL, &s));
 }
 
 Test(fs2, validate_len_gt_strlen) {
     fs2 s = FS2LITERAL("abc");
-    s.len = 100;
+    s.len = 100;   // direct assignment, can't use fs2_setlen here */
     CHECK_FALSE("validate with len=100", fs2_validate(NULL, &s));
 }
 
@@ -1120,7 +1120,7 @@ Test(fs2_api, movefrom_local_aborts, .signal = SIGINT) {
     __fs2_checkreset();
     FS2LOCAL(s, 16);
     memcpy(s.v, "hi", 2);
-    s.len = 2;
+    fs2_setlen(&s, 2);
 
     fs2_movefrom(&s);   /* LOCAL forbidden */
 }
@@ -2578,7 +2578,7 @@ Test(fs2_api, local_cat_within_capacity) {
     __fs2_checkreset();
     FS2LOCAL(s, 16);
     memcpy(s.v, "hi", 2);
-    s.len = 2;
+    fs2_setlen(&s, 2);
 
     test_catstr(&s, "there");   /* "hithere\0" — 8 ≤ 16 */
 
@@ -2592,7 +2592,7 @@ Test(fs2_api, local_cat_overflow_aborts, .signal = SIGINT) {
     __fs2_checkreset();
     FS2LOCAL(s, 8);
     memcpy(s.v, "hi", 2);
-    s.len = 2;
+    fs2_setlen(&s, 2);
 
     test_catstr(&s, "and a long overflow string that exceeds capacity");
     /* → fs2_reserve_span → prepare_growth → raise (LOCAL cannot grow) */
