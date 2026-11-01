@@ -225,6 +225,27 @@ fs2_is_null(const fs2 *s) {
 }
 
 /**
+ * @brief Extract the BODYALLOC bit from a flag set (internal).
+ *
+ * @param s  Non-NULL fs2.
+ * @return   FS2_BODYALLOC or 0.
+ */
+static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
+    return s->flags & FS2_BODYALLOC;
+}
+
+/**
+ * @brief Set or clear the BODYALLOC bit, leaving other bits untouched (internal).
+ *
+ * @param s            Non-NULL fs2.
+ * @param bodyallocflag  Pass FS2_BODYALLOC to set, 0 to clear.
+ */
+static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
+    bodyallocflag &= FS2_BODYALLOC;
+    s->flags = ( (s->flags & ~FS2_BODYALLOC) | bodyallocflag);
+}
+
+/**
  * @brief Skip-or-raise guard for in-place mutators.
  *
  * @return true  — empty (NULL or len==0), caller should return `s` untouched.
@@ -274,24 +295,22 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
     if (s->sz >= need)
         return false;                    /* already sufficient */
     
-    if (fs2_is_empty(s)) {
-        // if (fs2_is_static(s) && !fs2_is_bodyalloc(s))
-        //     *s = FS2();                  /* FS2EMPTY → FS2() */
-        /* Convert ANY empty static → FS2(), preserving BODYALLOC.
-         * STATIC|BODYALLOC is valid (heap_fromstr(""), heap_clone(FS2EMPTY)):
-         * the buffer is .rodata, the struct is heap. We release the .rodata
-         * ref (nothing to free) and keep BODYALLOC for fs2_free. */
-        if (fs2_is_static(s)) {
-            fs2_flags body = s->flags & FS2_BODYALLOC;
-            *s = FS2();
-            s->flags |= body;
-        }
+    if (fs2_is_static(s)) {
+        if (!fs2_is_empty(s))
+            userraise(false, ERR_UNSUPPORTED_TYPE, 
+                      "Cannot grow non-empty STATIC fs2");
+        
+        /* Empty STATIC (FS2EMPTY, literal-empty, heap-wrapped-empty)
+         * → FS2(), preserve BODYALLOC (struct may be on heap). */
+        fs2_flags body = fs2_getbodyalloc(s);
+        *s = FS2();
+        fs2_setbodyalloc(s, body);
         return true;
     }
     
-    if (fs2_is_static(s))
+    if (!fs2_is_alloc(s))
         userraise(false, ERR_UNSUPPORTED_TYPE, 
-                  "Cannot grow non-empty STATIC fs2");   /* non-empty STATIC */
+                  "Cannot grow non-ALLOC fs2 (LOCAL has fixed capacity)");
     
     return true;
 }

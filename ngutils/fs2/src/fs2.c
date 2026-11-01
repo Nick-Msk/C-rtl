@@ -51,27 +51,6 @@ static inline void fs2_freestr(fs2 *s);
 static inline void fs2_freebody(fs2 *s);
 
 /**
- * @brief Extract the BODYALLOC bit from a flag set (internal).
- *
- * @param s  Non-NULL fs2.
- * @return   FS2_BODYALLOC or 0.
- */
-static inline fs2_flags     fs2_getbodyalloc(const fs2 *s) {
-    return s->flags & FS2_BODYALLOC;
-}
-
-/**
- * @brief Set or clear the BODYALLOC bit, leaving other bits untouched (internal).
- *
- * @param s            Non-NULL fs2.
- * @param bodyallocflag  Pass FS2_BODYALLOC to set, 0 to clear.
- */
-static inline void          fs2_setbodyalloc(fs2 *s, fs2_flags bodyallocflag) {
-    bodyallocflag &= FS2_BODYALLOC;
-    s->flags = ( (s->flags & ~FS2_BODYALLOC) | bodyallocflag);
-}
-
-/**
  * @brief Grow (or shrink) the heap buffer of an fs2 to a new capacity (internal).
  *
  * Only operates on FS2_ALLOC buffers; STATIC/LOCAL are silently skipped.
