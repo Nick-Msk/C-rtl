@@ -88,7 +88,7 @@ TEST_BIN      = $(DEBUG)/test_$(PROJNAME)
 DEPFILES      = $(OBJ_LIST:.o=.d) $(TEST_OBJ_LIST:.o=.d) $(REL_OBJ_LIST:.o=.d)
 
 .PHONY: all lib librelease test check analyze analyze-lib analyze-test \
-        asan_check asan_leak clean list arch-logs clean-log-archive \
+        asan_check asan_leak clean list arch-logs \
         clean-logs-$(PROJNAME) FORCE
 
 # ── Default Target ──────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ merge-logs-$(PROJNAME):
 	    -delete 2>/dev/null || true
 	@echo "Merged: logs/result/all.log"
 
-clean-logs-$(PROJNAME): arch-logs
+clean-logs-$(PROJNAME):
 	@find logs -maxdepth 1 -name 'test_$(PROJNAME)_*.log' \
 	    -delete 2>/dev/null || true
 	@rm -rf logs/result
@@ -164,6 +164,9 @@ test: clean-logs-$(PROJNAME) $(TEST_BIN)
 	@$(SAN_RUN) $(TEST_BIN); status=$$?; \
 	 if [ "$(TEST_LOG)" = "1" ]; then \
 	    $(MAKE) --no-print-directory merge-logs-$(PROJNAME); \
+	    if [ $$status -eq 0 ]; then \
+	        $(MAKE) --no-print-directory arch-logs; \
+	    fi; \
 	 fi; \
 	 exit $$status
 
@@ -190,10 +193,6 @@ arch-logs:
 	    gzip -c logs/result/all.log > $(LOG_ARCHIVE_FILE); \
 	    echo "Archived: $(LOG_ARCHIVE_FILE)"; \
 	fi
-
-clean-log-archive:
-	@rm -rf $(LOG_ARCHIVE_DIR)
-	@echo "Removed: $(LOG_ARCHIVE_DIR)"
 
 # ── Analysis ────────────────────────────────────────────────────────────────
 check:

@@ -12,6 +12,9 @@
 
 TestSuite(fs2, .init = test_setup, .fini = test_teardown);
 
+// temporary
+TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
+
 /* -------------------------------------------------------------------------
  * Version
  * ------------------------------------------------------------------------- */
