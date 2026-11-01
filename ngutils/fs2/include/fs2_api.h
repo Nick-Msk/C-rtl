@@ -148,13 +148,16 @@ fs2_elem(fs2 *s, size_t pos){
  */
 static inline char *
 fs2_elem0(fs2 *s, size_t pos){
-    if (pos + 1 >= s->sz){
+    if (pos + 2 > s->sz){
         fs2_reserve(s, pos + 2);   // len remains the same here! sz is changed
     }
-    if (s->len <= pos)   // check
-        fs2_setlen(s, pos + 1);
+    fs2_setlen(s, pos + 1);
     return fs2_get(s, pos);
 }
+
+// note: that is convention break - no fs2_ before, and lowercase
+// only several fs2 macroses allowed to break it!
+#define elem0(s, pos) *fs2_elem0((&s), (pos))
 
 // ------------------------------------ FS Comparators --------------------------------------
 
