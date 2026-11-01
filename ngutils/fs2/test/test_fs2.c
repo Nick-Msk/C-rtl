@@ -3054,3 +3054,193 @@ Test(fs2_api, shrink_null_aborts, .signal = SIGABRT) {
     fs2_shrink(NULL);
 }
 
+/* =========================================================================
+ * fs2_promote_empty — canonical (v==NULL) → FS2EMPTY shape
+ * ========================================================================= */
+
+Test(fs2, promote_canonical_becomes_fs2empty) {
+    fs2 s = FS2();   /* v=NULL, sz=0, len=0, ALLOC */
+
+    fs2_promote_empty(&s);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_EQ  ("sz", s.sz, 1);
+    CHECK_TRUE("STATIC (FS2EMPTY)", fs2_is_static(&s));
+    CHECK_FALSE("not ALLOC anymore", fs2_is_alloc(&s));
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("v empty string", s.v, "");
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, promote_canonical_with_bodyalloc) {
+    __fs2_checkreset();
+    fs2 *h = fs2_heap();   /* v=NULL, ALLOC|BODYALLOC */
+
+    fs2_promote_empty(h);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz", h->sz, 1);
+    CHECK_TRUE("STATIC", fs2_is_static(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
+    CHECK_STR_EQ("v readable", h->v, "");
+    CHECK_FS2VALID(1, h);
+
+    /* fs2_free освободит только body (v="" .rodata) */
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_promote_empty — no-op when v != NULL
+ * ========================================================================= */
+
+Test(fs2, promote_fs2empty_noop) {
+    fs2 s = FS2EMPTY;   /* already FS2EMPTY shape */
+    void *orig_v = s.v;
+    size_t orig_sz = s.sz;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_EQ   ("sz unchanged", s.sz, orig_sz);
+    CHECK_TRUE ("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, promote_literal_nonempty_noop) {
+    fs2 s = FS2LITERAL("hello");   /* v="hello" */
+    void *orig_v = s.v;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_EQ   ("len unchanged", s.len, 5);
+    CHECK_TRUE ("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, promote_alloc_with_content_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig_v = s.v;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ   ("len", s.len, 5);
+    CHECK_TRUE ("ALLOC preserved", fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Ключевой: empty (len=0) но с buffer — no-op, buffer preserved */
+Test(fs2, promote_alloc_empty_with_buffer_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);   /* v=malloc(16), sz=16, len=0, ALLOC */
+    void *orig_v = s.v;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("buffer preserved", s.v, orig_v);
+    CHECK_GE   ("sz unchanged", s.sz, 16);
+    CHECK_EQ   ("len unchanged", s.len, 0);
+    CHECK_TRUE ("ALLOC preserved", fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, promote_local_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    void *orig_v = s.v;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_EQ   ("sz unchanged", s.sz, 16);
+    CHECK_TRUE ("LOCAL preserved", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, promote_local_with_content_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 2);
+    fs2_setlen(&s, 2);
+    void *orig_v = s.v;
+
+    fs2_promote_empty(&s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("content", s.v, "hi");
+    CHECK_TRUE ("LOCAL preserved", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_promote_empty — idempotency
+ * ========================================================================= */
+
+Test(fs2, promote_idempotent) {
+    fs2 s = FS2();
+
+    fs2_promote_empty(&s);
+    void *v_after_first = s.v;
+    size_t sz_after_first = s.sz;
+    fs2_flags flags_after_first = s.flags;
+
+    fs2_promote_empty(&s);   /* second call */
+
+    CHECK_PTR_EQ("v unchanged by 2nd", s.v, v_after_first);
+    CHECK_EQ   ("sz unchanged by 2nd", s.sz, sz_after_first);
+    CHECK_EQ   ("flags unchanged by 2nd", s.flags, flags_after_first);
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_promote_empty — result is writable (via reserve auto-promote)
+ * ========================================================================= */
+
+Test(fs2, promote_result_grows_on_reserve) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_promote_empty(&s);
+    CHECK_TRUE("now STATIC empty", fs2_is_static(&s));
+
+    /* Reserve auto-promotes back to ALLOC */
+    fs2_reserve(&s, 100);
+
+    CHECK_TRUE ("now ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("no longer STATIC", fs2_is_static(&s));
+    CHECK_TRUE ("sz grown", s.sz >= 100);
+    CHECK_EQ   ("len", s.len, 0);
+    CHECK_NOT_NULL("v allocated", s.v);
+    CHECK_EQ   ("v[0] NUL", s.v[0], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, promote_result_printf_safe) {
+    fs2 s = FS2();
+    fs2_promote_empty(&s);
+
+    /* Регресс: printf/strcmp на v не крашится (v="" not NULL) */
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%s", s.v);
+    CHECK_STR_EQ("printf", buf, "");
+    CHECK_EQ("strlen", strlen(s.v), 0);
+    CHECK_EQ("strcmp empty", strcmp(s.v, ""), 0);
+
+    /* fs2_free no-op для STATIC */
+}
