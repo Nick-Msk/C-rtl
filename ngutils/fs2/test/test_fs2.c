@@ -2337,7 +2337,7 @@ Test(fs2_api, heap_fromstr_empty_auto_promotes_on_grow) {
 }
 
 /* =========================================================================
- * NULL (если fromstr(NULL) silent → FS2EMPTY, иначе checkraise)
+ * NULL (если fromstr(NULL) silent → FS2EMPTY, иначе invfatal)
  * ========================================================================= */
 
 #if !defined(FS2_FROMSTR_STRICT)   /* fromstr NULL silent */

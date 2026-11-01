@@ -759,7 +759,7 @@ fs2_adoptn(char **str, size_t saved_len);
  */
 static inline fs2         
 fs2_adopt(char **str) {
-    checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
+    invfatal(ERR_NULL_INPUT, str != NULL && *str != NULL, 
                "Null pointer (char**)");
     return fs2_adoptn(str, strlen(*str));
 }
@@ -1044,11 +1044,11 @@ void        fs2_free(fs2 *s);
  * @return     @p s for chaining.
  */
 static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
-    checkraise(ERR_NULL_INPUT, s != NULL, 
+    invfatal(ERR_NULL_INPUT, s != NULL, 
         "Null pointer");
 
     if (s->v && !fs2_is_static(s)) {
-        checkraise(ERR_OUT_OF_RANGE, pos < s->sz, 
+        invfatal(ERR_OUT_OF_RANGE, pos < s->sz, 
             "Trying to set length %zu exceed size %zu", pos, s->sz);
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
     } else {

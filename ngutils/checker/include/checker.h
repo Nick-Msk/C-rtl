@@ -208,6 +208,6 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
  * opposed to invraise which aborts on invariant violation.
  * See error.h for details about exception.
  */
-#define checkraise(exception, expr, msg, ...)      _invraise(exception, true, (expr), (msg), ##__VA_ARGS__)
+#define invfatal(exception, expr, msg, ...)      _invraise(exception, true, (expr), (msg), ##__VA_ARGS__)
 
 #endif /* !CHECKER_H */

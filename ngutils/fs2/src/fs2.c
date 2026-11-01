@@ -137,8 +137,8 @@ fs2_fromstrf_va(const char *fmt, va_list ap) {
 fs2
 fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 {
-    checkraise(ERR_NULL_INPUT, buf != NULL, "Buf is null");
-    checkraise(ERR_UNSUPPORTED_TYPE, flag == FS2_STATIC || flag == FS2_ALLOC, 
+    invfatal(ERR_NULL_INPUT, buf != NULL, "Buf is null");
+    invfatal(ERR_UNSUPPORTED_TYPE, flag == FS2_STATIC || flag == FS2_ALLOC, 
         "Type %d/%s is not supported", flag, fs2_flag_name(flag));
 
     fs2 s = (fs2){
@@ -187,7 +187,7 @@ fs2_fromstr (const char *src) {
  */
 fs2
 fs2_clone   (const fs2 *src) {
-    checkraise(ERR_NULL_INPUT, src != NULL, "Null pointer");                    
+    invfatal(ERR_NULL_INPUT, src != NULL, "Null pointer");                    
     
     if (fs2_is_empty(src))
         return FS2EMPTY;  // contract: FS2(), empty → FS2EMPTY
@@ -211,7 +211,7 @@ fs2_clone   (const fs2 *src) {
  */
 fs2
 fs2_fromstrf(const char *fmt, ...) {
-    checkraise(ERR_NULL_INPUT, fmt != NULL, "Null pointer"); 
+    invfatal(ERR_NULL_INPUT, fmt != NULL, "Null pointer"); 
 
     va_list ap;
     va_start(ap, fmt);
@@ -256,7 +256,7 @@ fs2_movefrom(fs2 *src) {
  */
 fs2
 fs2_movefromstr(const char **from, fs2_flags flag) {
-    checkraise(ERR_NULL_INPUT, from != NULL && *from != NULL, 
+    invfatal(ERR_NULL_INPUT, from != NULL && *from != NULL, 
         "Null pointer char **");
 
     if (flag != FS2_STATIC && flag != FS2_ALLOC)
@@ -282,7 +282,7 @@ fs2_movefromstr(const char **from, fs2_flags flag) {
 fs2
 fs2_adoptn(char **str, size_t saved_len)
 {
-    checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
+    invfatal(ERR_NULL_INPUT, str != NULL && *str != NULL, 
                "Null pointer (char**)");
     
     fs2 s = fs2_fromraw(*str, saved_len, FS2_ALLOC);
@@ -346,7 +346,7 @@ fs2_heap_init     (size_t sz) {
  */
 fs2 *
 fs2_heap_clone    (const fs2 *src) {
-    checkraise(ERR_NULL_INPUT, src != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, src != NULL, "Null pointer");
 
     fs2     *res = fs2_heap();      // BODYALLOC only, not a valid fs2 yet
     // no checking here, excaption 'll occurs if OOM
@@ -383,7 +383,7 @@ fs2_heap_fromstr(const char *src) {
  */
 fs2 *
 fs2_heap_fromstrf(const char *fmt, ...) {
-    checkraise(ERR_NULL_INPUT, fmt != NULL, "Null format");
+    invfatal(ERR_NULL_INPUT, fmt != NULL, "Null format");
 
     fs2     *res = fs2_heap();
     va_list ap;
@@ -480,7 +480,7 @@ fs2_shrink(fs2 *s) {
  */
 fs2 *
 fs2_move(fs2 *dst, fs2 *src) {
-    checkraise(ERR_NULL_INPUT, src != NULL && dst != NULL, 
+    invfatal(ERR_NULL_INPUT, src != NULL && dst != NULL, 
         "Null pointers %p %p", dst, src);
 
     if (dst == src)
@@ -521,7 +521,7 @@ fs2_move(fs2 *dst, fs2 *src) {
 void
 fs2_exch(fs2 *a, fs2 *b)
 {
-    checkraise(ERR_NULL_INPUT, a != NULL && b != NULL, 
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL, 
         "Null pointer %p %p", a, b);
 
     if (a == b)
@@ -805,7 +805,7 @@ fs2_techcmp(const fs2 *s1, const fs2 *s2) {
     if (s1 == s2)
         return true;
 
-    checkraise(ERR_NULL_INPUT, s1 != NULL && s2 != NULL,
+    invfatal(ERR_NULL_INPUT, s1 != NULL && s2 != NULL,
         "Null pointers %p %p", s1, s2);
 
     if (s1->len != s2->len || s1->flags != s2->flags)
