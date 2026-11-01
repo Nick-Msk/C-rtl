@@ -311,3 +311,237 @@ Test(fs2, elem_macro_grow_and_write) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_elem0 — sequential append
+ * ========================================================================= */
+
+Test(fs2, elem0_sequential_from_fs2) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    const char *word = "hello";
+    for (size_t i = 0; i < 5; i++) {
+        char *p = fs2_elem0(&s, i);
+        CHECK_EQ("len after elem0", s.len, i + 1);
+        *p = word[i];
+    }
+
+    CHECK_STR_EQ("built", s.v, "hello");
+    CHECK_EQ   ("len", s.len, 5);
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_sequential_from_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    char *p0 = fs2_elem0(&s, 0);
+    *p0 = 'h';
+    CHECK_TRUE("promoted to ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("no STATIC", fs2_is_static(&s));
+    CHECK_EQ  ("len after 0", s.len, 1);
+
+    char *p1 = fs2_elem0(&s, 1);
+    *p1 = 'i';
+    CHECK_EQ("len after 1", s.len, 2);
+
+    CHECK_STR_EQ("built", s.v, "hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_append_to_existing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    char *p = fs2_elem0(&s, 3);
+    *p = 'd';
+
+    CHECK_STR_EQ("appended", s.v, "abcd");
+    CHECK_EQ   ("len", s.len, 4);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_pointer_equals_v_plus_pos) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    for (size_t i = 0; i < 5; i++) {
+        char *p = fs2_elem0(&s, i);
+        CHECK_PTR_EQ("returns v+pos", p, s.v + i);
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_len_grows_to_pos_plus_one) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    for (size_t i = 0; i < 10; i++) {
+        char *p = fs2_elem0(&s, i);
+        *p = 'a' + (char)i;
+        CHECK_EQ("len == pos+1", s.len, i + 1);
+    }
+    CHECK_EQ("final len", s.len, 10);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * ⚠ Регресс на +2: pos = sz-1 требует grow (setlen(pos+1) иначе abort)
+ * ========================================================================= */
+
+Test(fs2, elem0_last_byte_of_capacity) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);   /* sz = 32 (calcnewsize bumps exact pow2) */
+    size_t sz_before = s.sz;
+
+    /* Sequential fill to sz-1 */
+    for (size_t i = 0; i < sz_before; i++) {
+        char *p = fs2_elem0(&s, i);
+        *p = 'x';
+    }
+    CHECK_EQ("len", s.len, sz_before);
+    CHECK_STR_EQ("all x", s.v, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");   /* 32 */
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_elem0 — LOCAL
+ * ========================================================================= */
+
+Test(fs2, elem0_local_within_sz) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+
+    char *p0 = fs2_elem0(&s, 0);
+    *p0 = 'a';
+    char *p1 = fs2_elem0(&s, 1);
+    *p1 = 'b';
+
+    CHECK_STR_EQ("local built", s.v, "ab");
+    CHECK_EQ   ("len", s.len, 2);
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_elem0 — guards
+ * ========================================================================= */
+
+/* Non-empty STATIC, small pos: fs2_setlen rejects (pos != len) via userraise */
+Test(fs2, elem0_static_nonempty_small_pos_aborts, .signal = SIGINT) {
+    fs2 s = FS2LITERAL("hi");   /* sz=3, len=2 */
+    fs2_elem0(&s, 0);   /* setlen(1), pos(1) != len(2) → userraise */
+}
+
+/* Non-empty STATIC, pos beyond sz: reserve → prepare_growth → invfatal */
+Test(fs2, elem0_static_nonempty_beyond_sz_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_elem0(&s, 10);   /* 12 > 3 → reserve → invfatal */
+}
+
+Test(fs2, elem0_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 8);
+    fs2_elem0(&s, 100);   /* 102 > 8 → reserve → prepare_growth → invfatal */
+}
+
+/* =========================================================================
+ * ⚠ fs2_elem0 — gap hazard (documented via [[not-valid-fs2]])
+ * ========================================================================= */
+
+Test(fs2, elem0_gap_from_canonical_invalid) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* pos=5 > len=0: creates gap at v[1..4] (uninitialized) */
+    char *p = fs2_elem0(&s, 5);
+    *p = 'z';
+
+    CHECK_EQ("len jumped", s.len, 6);
+    CHECK_EQ("v[5]", s.v[5], 'z');
+    CHECK_EQ("v[0] NUL (from reserve)", s.v[0], '\0');
+
+    /* strlen stops at v[0], len=6 → mismatch → INVALID */
+    CHECK_EQ ("strlen", strlen(s.v), 0);
+    CHECK_EQ ("len", s.len, 6);
+    CHECK_NE ("strlen != len", strlen(s.v), s.len);
+
+    /* fs2_validate rejects */
+    CHECK_FALSE("validate rejects gap", fs2_validate(NULL, &s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_gap_from_existing_invalid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");   /* len=2, v="ab\0" */
+
+    /* pos=5 > len=2: gap at v[2..4]. v[2] was NUL from original content */
+    char *p = fs2_elem0(&s, 5);
+    *p = 'z';
+
+    CHECK_EQ("len jumped", s.len, 6);
+    CHECK_EQ("v[5]", s.v[5], 'z');
+    CHECK_EQ("strlen stops at v[2]", strlen(s.v), 2);
+    CHECK_NE("strlen != len", strlen(s.v), s.len);
+
+    CHECK_FALSE("validate rejects", fs2_validate(NULL, &s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * elem0() macro — deref sugar
+ * ========================================================================= */
+
+Test(fs2, elem0_macro_build) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    const char *word = "hi!";
+    for (size_t i = 0; i < 3; i++)
+        elem0(s, i) = word[i];
+
+    CHECK_STR_EQ("built", s.v, "hi!");
+    CHECK_EQ   ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, elem0_macro_read) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    elem0(s, 0) = 'a';
+    elem0(s, 1) = 'b';
+
+    CHECK_EQ("elem0[0]", elem0(s, 0), 'a');   /* reading via macro still works */
+    CHECK_EQ("elem0[1]", elem0(s, 1), 'b');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
