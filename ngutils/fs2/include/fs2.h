@@ -115,6 +115,13 @@ typedef struct fs2 {
 /* ─────────────────────────────────────────────────────────────────────────
  * Comparators
  * ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * @brief Comparator function pointer for two C-strings.
+ *
+ * Returns < 0, 0, or > 0 (strcmp convention). Used by
+ * qsort/bsearch wrappers.
+ */
 typedef int (*fs2_cmp_t)(const char *a, const char *b);
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -204,11 +211,29 @@ fs2_is_empty(const fs2 *s) {
     return s == NULL || s->len == 0;
 }
 
+/**
+ * @brief Check if the value is exactly the FS2EMPTY constant.
+ *
+ * Matches: len == 0, v != NULL, sz == 1, FS2_STATIC.
+ *
+ * @param s  Non-NULL pointer to an fs2.
+ * @return   true if the value is the canonical empty literal.
+ */
 static inline bool          
 fs2_eq_empty(const fs2 *s) {
     return s->len == 0 && s->v && s->sz == 1 && fs2_is_static(s);
 }
 
+/**
+ * @brief Check if the value is in canonical empty state (FS2()).
+ *
+ * Matches: len == 0, v == NULL, sz == 0, FS2_ALLOC.
+ * This is the state of a freshly default-constructed ALLOC fs2
+ * before any buffer has been allocated.
+ *
+ * @param s  Non-NULL pointer to an fs2.
+ * @return   true if the value is a canonical empty ALLOC (no buffer).
+ */
 static inline bool          
 fs2_is_canon(const fs2 *s) {
     return s->len == 0 && s->v == NULL && s->sz == 0 && fs2_is_alloc(s);
@@ -264,19 +289,25 @@ fs2_cant_mutate(const fs2 *s) {
 /**
  * @brief Guard for grow/write functions (cat, catstr, cpy, cpystr, ...).
  *
- * @return true — empty or mutable, caller may proceed (empty auto-promotes via reserve).
- *         userraise — non-empty STATIC (cannot write into .rodata while preserving content).
+ * Returns false (proceed) for empty or mutable (ALLOC/LOCAL) fs2.
+ * Returns true (skip) — never in practice; the function either returns
+ * false or raises.
+ *
+ * @param s  Destination fs2.
+ * @return   false — caller may proceed with growth.
+ * @raise    userraise if @p s is NULL.
+ * @raise    userraise if @p s is non-empty STATIC (cannot grow .rodata).
  */
 static inline bool
 fs2_cant_realloc(fs2 *s) {
     if (!s)
-        return userraise(0, ERR_NULL_INPUT, 
-                  "Cannot grouth for null destination!");
+        return userraise(false, ERR_NULL_INPUT, 
+                  "Cannot grow for null destination!");
     if (fs2_is_empty(s))
-        return false;               /* empty → OK, will grow as FSEMPTY */
+        return false;               /* empty → OK, will grow via reserve */
     if (fs2_is_static(s))
-        return userraise(0, ERR_UNSUPPORTED_TYPE, 
-                  "Cannot grouth of non-empty STATIC fs2");
+        return userraise(false, ERR_UNSUPPORTED_TYPE, 
+                  "Cannot grow non-empty STATIC fs2");
     return false;                                    /* ALLOC/LOCAL → proceed */
 }
 
@@ -412,7 +443,25 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
         .v     = _fs2_internal_buf_##name                                     \
     }
 
-// reserve and setsize
+/**
+ * @brief Ensure capacity for at least @p need bytes (internal helper).
+ *
+ * Shared implementation behind fs2_reserve and fs2_setsize.
+ *
+ * - Prepares the fs2 for growth via fs2_prepare_growth (handles
+ *   FS2EMPTY to FS2() auto-promote, raises on NULL / non-ALLOC).
+ * - If the buffer was NULL before growth (canonical empty or freshly
+ *   promoted), NUL-terminates it after the realloc via fs2_clear.
+ *
+ * @param s             Non-NULL fs2.
+ * @param need          Desired minimum capacity in bytes (including NUL).
+ * @param useallocator  true  -- round up to next power of two (amortised).
+ *                      false -- exact resize to @p need.
+ * @return              @p s for chaining.
+ *
+ * @warning            `userraise` if @p s is NULL or non-growable.
+ * @warning            `sysraise` (OOM) if realloc fails.
+ */
 extern fs2 * 
 fs2_sizehelper(fs2 *s, size_t need, bool useallocator);
 
@@ -504,20 +553,41 @@ fs2_setsize(fs2 *s, size_t need)
     return fs2_sizehelper(s, need, false);
 }
 
+/**
+ * @brief Shrink the heap buffer to fit the current content exactly.
+ *
+ * Reallocates to len + 1 bytes (minimum FS_MIN_ALLOC = 16).
+ * No-op for STATIC / LOCAL / NULL-buffer fs2.
+ *
+ * @param s  Non-NULL fs2.
+ * @return   @p s for chaining.
+ *
+ * @warning  `userraise` if @p s is NULL or non-empty STATIC.
+ */
 extern fs2 *      
 fs_shrink(fs2 *s);
 
-// internal, clamps from/len to valid range
+/**
+ * @brief Clamp @p from / @p len into the valid range of @p s (internal).
+ *
+ * Used by fs2_substr / fs2_substrn before slicing. If the buffer is
+ * NULL or @p *from is at or beyond the end, both are set to represent
+ * an empty result. If @p *len would exceed the remaining bytes, it is
+ * clamped to what is left.
+ *
+ * @param s      Source fs2 (non-NULL).
+ * @param from   In/out: start offset; clamped to [0, s->len].
+ * @param len    In/out: requested length; clamped to s->len - *from.
+ *               May be NULL (only *from is adjusted).
+ */
 static inline void 
 fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len) {
-    // If the buffer is not allocated or the start is beyond the string end — return empty
     if (!s->v || *from >= s->len) {
         *from = s->len;
         if (len)
             *len  = 0;
         return;
     }
-    // Underflow guard: *len cannot exceed the remaining bytes to the end
     if (len && *len > s->len - *from)
         *len = s->len - *from;
 }
@@ -679,10 +749,13 @@ fs2_adoptn(char **str, size_t saved_len);
  * @brief Adopt a heap-allocated C string (length computed via strlen).
  *
  * Convenience wrapper around fs2_adoptn. If `str` or `*str` is NULL,
- * returns FS2().
+ * raises ERR_NULL_INPUT.
  *
  * @param str  Pointer to the heap char* to adopt; set to NULL on success.
+ *             Must be non-NULL and *str must be non-NULL.
  * @return     fs2 value (ALLOC) wrapping the adopted buffer.
+ *
+ * @warning    `invraise` if `str` or `*str` is NULL.
  */
 static inline fs2         
 fs2_adopt(char **str) {
@@ -795,8 +868,20 @@ extern fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  */
 extern fs2         *fs2_move(fs2 *to, fs2 *from);
 
-// internal, memcpy wrapper
-// TODO: generally all API have to use that instead of memcpy call
+/**
+ * @brief Copy @p len bytes from @p src at @p srcpos into @p dst at @p dstpos (internal).
+ *
+ * Validates via fs2_cant_copy, grows dst via fs2_reserve_span, then
+ * calls memcpy. Overlapping regions within the same fs2 are NOT
+ * supported — use fs2_memmove for that.
+ *
+ * @param dst     Destination (non-NULL for non-trivial copy).
+ * @param dstpos  Offset in dst to write at.
+ * @param src     Source (non-NULL for non-trivial copy).
+ * @param srcpos  Offset in src to read from.
+ * @param len     Number of bytes to copy (0 = no-op).
+ * @return        @p dst for chaining.
+ */
 static inline fs2 *
 fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t srcpos, size_t len) {
     if (fs2_cant_copy(dst, dstpos, src, srcpos, len))
@@ -808,19 +893,40 @@ fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t src
     return dst;
 }
 
-// internal, memcpy wrapper
-// TODO: generally all API have to use that instead of memcpy call
+/**
+ * @brief Copy @p len bytes from a raw C-string into @p dst at @p dstpos (internal).
+ *
+ * Avoids the strlen call that fs2_wrap would incur by constructing
+ * a temporary STATIC fs2 with a known length, then delegates to
+ * fs2_memcpy.
+ *
+ * @param dst     Destination (non-NULL for non-trivial copy).
+ * @param dstpos  Offset in dst to write at.
+ * @param src     Source C-string (must hold at least @p len bytes).
+ * @param len     Number of bytes to copy (0 = no-op).
+ * @return        @p dst for chaining.
+ */
 static inline fs2 *
 fs2_memcpy_str(fs2 *restrict dst, size_t dstpos, const char *restrict src, size_t len) {
-    // NOTE: that can be fs2_wrap, but it launch strlen, we don't need that
     fs2 tmp = (fs2) { .v = (char *) src, .flags = FS2_STATIC, .len = len, .sz = len + 1 };
 
     return fs2_memcpy(dst, dstpos, &tmp, 0, len);
 }
 
 
-// internal, memmove wrapper
-// TODO: generally all API have to use that instead of memmove call
+/**
+ * @brief Move @p len bytes from @p src at @p srcpos into @p dst at @p dstpos (internal).
+ *
+ * Like fs2_memcpy but uses memmove, so overlapping regions are safe.
+ * If @p src is NULL, it is treated as @p dst (self-move).
+ *
+ * @param dst     Destination (non-NULL for non-trivial move).
+ * @param dstpos  Offset in dst to write at.
+ * @param src     Source; NULL means self-move (dst == src).
+ * @param srcpos  Offset in src to read from.
+ * @param len     Number of bytes to move (0 = no-op).
+ * @return        @p dst for chaining.
+ */
 static inline fs2 *
 fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) {
 
@@ -836,6 +942,18 @@ fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) 
     return dst;
 }
 
+/**
+ * @brief Move @p len bytes within the same fs2 from offset @p from to @p to (internal).
+ *
+ * Convenience wrapper around fs2_memmove with src == dst (self-move).
+ * Safe for overlapping regions.
+ *
+ * @param dst    Non-NULL fs2 (both source and destination).
+ * @param to     Destination offset.
+ * @param from   Source offset.
+ * @param len    Number of bytes to move.
+ * @return       @p dst for chaining.
+ */
 static inline fs2 *
 fs2_selfmove(fs2 *dst, size_t to, size_t from, size_t len) {
     return fs2_memmove(dst, to, NULL, from, len);
@@ -844,17 +962,19 @@ fs2_selfmove(fs2 *dst, size_t to, size_t from, size_t len) {
 /**
  * @brief Exchange the string values of two fs2 objects.
  *
- * Both sides must be FS2_ALLOC — exchanging with STATIC or LOCAL would
- * leave the ALLOC side pointing at a buffer it does not own (and the
- * STATIC/LOCAL side pointing at a buffer fs2_free would skip, leaking
- * it). The BODYALLOC flag of each side is preserved; it describes
- * where the struct lives, not the value being swapped.
+ * Implements a three-way swap via fs2_move (ALLOC temp). Flags
+ * (STATIC / ALLOC) travel with the value, so the resulting kinds on
+ * each side swap too. The BODYALLOC flag of each side is preserved;
+ * it describes where the struct lives, not the value being swapped.
  *
- * @param a  First fs2. Must not be NULL, must be FS2_ALLOC.
+ * **LOCAL is forbidden** on either side — a caller-owned buffer cannot
+ * be transferred through a temp without leaking or aliasing it.
+ *
+ * @param a  First fs2. Must not be NULL, must not be FS2LOCAL.
  * @param b  Second fs2. Same constraints.
  *
- * @note fs2_exch(a, a) is a no-op.
- * @warning userraise(SIGINT) if either side is not FS2_ALLOC.
+ * @note     fs2_exch(a, a) is a no-op.
+ * @warning  `userraise` if either pointer is NULL or either side is FS2LOCAL.
  */
 void        fs2_exch(fs2 *a, fs2 *b);
 
@@ -868,8 +988,8 @@ void        fs2_exch(fs2 *a, fs2 *b);
  *              Set to NULL on success.
  * @return      Stack fs2 value with the former heap value's content.
  *
- * @warning     `invraise` if pointers are NULL; `userraise` if not BODYALLOC
- *              or if the source is FS2LOCAL.
+ * @warning     `invraise` if @p psrc or `*psrc` is NULL.
+ * @warning     `userraise` if the source is not BODYALLOC.
  */
 fs2         fs2_heaptostack(fs2 **psrc);
 
@@ -882,7 +1002,8 @@ fs2         fs2_heaptostack(fs2 **psrc);
  * @param src  Stack fs2 (non-NULL, not BODYALLOC, not LOCAL).
  * @return     New heap fs2* owning the value.
  *
- * @warning    `invraise` if NULL or BODYALLOC; `userraise` if LOCAL.
+ * @warning    `invraise` if @p src is NULL.
+ * @warning    `userraise` if @p src is BODYALLOC or FS2LOCAL.
  */
 fs2        *fs2_stacktoheap(fs2 *src);
 
@@ -957,54 +1078,144 @@ static inline fs2 *fs2_clear(fs2 *s) {
  * Comparators
  * ───────────────────────────────────────────────────────────────────────── */
 
-// unlim, bare level, NOCHECK!
+/**
+ * @brief Case-sensitive comparison of two fs2 strings (unlimited, NOCHECK).
+ *
+ * @param str1  First fs2 (non-NULL).
+ * @param str2  Second fs2 (non-NULL).
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_cmp(const fs2 *restrict str1, const fs2 *restrict str2) {
     return strcmp(str1->v, str2->v);
 }
-// limited, bare level, NOCHECK!
+/**
+ * @brief Case-sensitive comparison of two fs2 strings, limited to @p len bytes (NOCHECK).
+ *
+ * @param str1  First fs2 (non-NULL).
+ * @param str2  Second fs2 (non-NULL).
+ * @param len   Maximum number of bytes to compare.
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_ncmp(const fs2 *restrict str1, const fs2 *restrict str2, size_t len) {
     return strncmp(str1->v, str2->v, len);
 }
-// unlim, insensitive, bare level, NOCHECK!
+/**
+ * @brief Case-insensitive comparison of two fs2 strings (unlimited, NOCHECK).
+ *
+ * @param str1  First fs2 (non-NULL).
+ * @param str2  Second fs2 (non-NULL).
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_cmp_ci(const fs2* restrict str1, const fs2* restrict str2) {
     return strcasecmp(str1->v, str2->v);
 }
-// limited, insensitive, limited, bare level, NOCHECK!
+/**
+ * @brief Case-insensitive comparison of two fs2 strings, limited to @p len bytes (NOCHECK).
+ *
+ * @param str1  First fs2 (non-NULL).
+ * @param str2  Second fs2 (non-NULL).
+ * @param len   Maximum number of bytes to compare.
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_ncmp_ci(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
     return strncasecmp(str1->v, str2->v, len);
 }
 // c-str wrappers
-// unlim, c-str wrap, bare level, NOCHECK!
+
+/**
+ * @brief Case-sensitive comparison of an fs2 against a C-string (unlimited, NOCHECK).
+ *
+ * @param str1  fs2 (non-NULL).
+ * @param str2  C-string (non-NULL).
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_cmpstr(const fs2 *restrict str1, const char *restrict str2) {
     return strcmp(str1->v, str2);
 }
-// limited, c-str wrap, bare level, NOCHECK!
+
+/**
+ * @brief Case-sensitive comparison of an fs2 against a C-string, limited to @p len bytes (NOCHECK).
+ *
+ * @param str1  fs2 (non-NULL).
+ * @param str2  C-string (non-NULL).
+ * @param len   Maximum number of bytes to compare.
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_ncmpstr(const fs2 *restrict str1, const char *restrict str2, size_t len) {
     return strncmp(str1->v, str2, len);
 }
-// unlim, insensitive, c-str wrap, bare level, NOCHECK!
+/**
+ * @brief Case-insensitive comparison of an fs2 against a C-string (unlimited, NOCHECK).
+ *
+ * @param str1  fs2 (non-NULL).
+ * @param str2  C-string (non-NULL).
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_cmp_ci_str(const fs2* restrict str1, const char *restrict str2) {
     return strcasecmp(str1->v, str2);
 }
-// limited, insensitive, c-str wrap, bare level, NOCHECK!
+
+/**
+ * @brief Case-insensitive comparison of an fs2 against a C-string, limited to @p len bytes (NOCHECK).
+ *
+ * @param str1  fs2 (non-NULL).
+ * @param str2  C-string (non-NULL).
+ * @param len   Maximum number of bytes to compare.
+ * @return      < 0, 0, or > 0.
+ */
 static inline int            
 fs2_ncmp_ci_str(const fs2* restrict str1, const char *restrict str2, size_t len) {
     return strncasecmp(str1->v, str2, len);
 }
-// ------------------ const void *, const void * wrappers -------------------
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-sensitive).
+ *
+ * Casts the `const void*` arguments to `const fs2*` and delegates to fs2_cmp.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int                  fs2_cmp_wrap(const void *str1, const void *str2);
 
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-insensitive).
+ *
+ * Casts the `const void*` arguments to `const fs2*` and delegates to fs2_cmp_ci.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int                  fs2_cmp_wrap_ci(const void *str1, const void *str2);
 
+/**
+ * @brief qsort/bsearch-compatible comparator: fs2 vs C-string (case-sensitive).
+ *
+ * Expects `str1` as `const fs2*` and `str2` as `const char*`.
+ *
+ * @param str1  Pointer to fs2 (as `const void*`).
+ * @param str2  Pointer to C-string (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int                  fs2_cmpstr_wrap(const void *str1, const void *str2);
 
+/**
+ * @brief qsort/bsearch-compatible comparator: fs2 vs C-string (case-insensitive).
+ *
+ * Expects `str1` as `const fs2*` and `str2` as `const char*`.
+ *
+ * @param str1  Pointer to fs2 (as `const void*`).
+ * @param str2  Pointer to C-string (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str2);
 
 /* ─────────────────────────────────────────────────────────────────────────

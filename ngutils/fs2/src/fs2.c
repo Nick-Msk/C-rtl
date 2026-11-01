@@ -284,7 +284,7 @@ fs2_adoptn(char **str, size_t saved_len)
 {
     checkraise(ERR_NULL_INPUT, str != NULL && *str != NULL, 
                "Null pointer (char**)");
-
+    
     fs2 s = fs2_fromraw(*str, saved_len, FS2_ALLOC);
     *str = NULL;
     return s;
