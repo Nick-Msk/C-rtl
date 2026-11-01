@@ -557,13 +557,15 @@ fs2_heaptostack(fs2 **psrc) {
 
     invfatal(fs2_is_bodyalloc(*psrc), 
         ERR_UNSUPPORTED_TYPE, "Only BODY ALLOC supported");
+
     fs2 res = FS2();
     fs2_move(&res, *psrc);
     fs2_freebody(*psrc);
+
     *psrc = NULL;       // remove origin??? fs2 *s = ...; fs2 stacked = fs2_heaptostack(&s);
-    res.flags &= ~FS2_BODYALLOC;  // probably no need, check
     return res;
 }
+
 /**
  * @brief Convert a stack fs2 to a heap-allocated fs2.
  *
