@@ -581,10 +581,11 @@ fs2 *
 fs2_stacktoheap(fs2 *src) {
     invfatal(ERR_NULL_INPUT, src != NULL,  "Null pointer %p", src);
 
-    invfatal(!fs2_is_bodyalloc(src), ERR_UNSUPPORTED_TYPE, 
-        "Only NOT BODY ALLOC supported");
-    invfatal(!fs2_is_local(src), ERR_UNSUPPORTED_TYPE, 
-        "Cannot move LOCAL fs2 to heap");
+    /* BODYALLOC src would alias: after move both src and dst would
+     * own the same buffer → double-free. Reject.
+     * LOCAL is rejected by fs2_move internally (no duplication needed). */
+    invfatal(ERR_UNSUPPORTED_TYPE, !fs2_is_bodyalloc(src),
+             "fs2_stacktoheap: src already BODYALLOC (would alias)");
 
     fs2 *res = fs2_heap();
     fs2_move(res, src);  // FS2_BODYALLOC is already set, src is cleared
