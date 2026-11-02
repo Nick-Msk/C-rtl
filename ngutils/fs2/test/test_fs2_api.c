@@ -3013,3 +3013,144 @@ Test(fs2, left_new_and_heap_left_match) {
     fs2_free(&src);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_right — nominal
+ * ========================================================================= */
+
+Test(fs2, right_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    fs2 *ret = fs2_right(&s, 3);
+
+    CHECK_PTR_EQ("returns s", ret, &s);
+    CHECK_STR_EQ("def", s.v, "def");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, right_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_right(&s, 1);
+
+    CHECK_STR_EQ("o", s.v, "o");
+    CHECK_EQ  ("len", s.len, 1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, right_len_zero_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    /* len=0 → from=5, substr(5, 0) → empty */
+    fs2_right(&s, 0);
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Underflow-safe: len > s->len → from=0, substr clamps len → whole string */
+Test(fs2, right_len_beyond_clamps_no_underflow) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_right(&s, 100);
+
+    CHECK_STR_EQ("whole (clamped)", s.v, "abc");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, right_huge_len_size_max) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_right(&s, SIZE_MAX);   /* from=0, substr clamps SIZE_MAX → len */
+
+    CHECK_STR_EQ("whole", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, right_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "abcdef", 7);
+    fs2_setlen(&s, 6);
+
+    fs2_right(&s, 2);
+
+    CHECK_STR_EQ("ef", s.v, "ef");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_right — guards (consistent с fs2_left: abort via cant_mutate)
+ * ========================================================================= */
+
+Test(fs2, right_null_aborts, .signal = SIGABRT) {
+    /* ← было silent return NULL, стало SIGABRT */
+    fs2_right(NULL, 3);
+}
+
+Test(fs2, right_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_right(&s, 3);   /* ← было silent return s (для len>s->len), теперь abort */
+}
+
+/* ⚠ Главное: даже clamp-кейс (len>=s->len) abort'ит на non-empty STATIC —
+ * консистентно с fs2_left, который тоже abort'ит через cant_mutate. */
+Test(fs2, right_static_nonempty_clamp_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_right(&s, 100);   /* было silent return s, теперь abort */
+}
+
+Test(fs2, right_fs2empty_noop) {
+    fs2 s = FS2EMPTY;
+    fs2_right(&s, 5);
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, right_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_right(&s, 5);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, right_len_eq_slen_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig_v = s.v;
+
+    fs2_right(&s, 5);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
