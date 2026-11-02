@@ -470,7 +470,7 @@ fs2 *
 fs2_toupper(fs2 *str) {
     if (fs2_cant_mutate(str))
         return str;
-        
+
     for (size_t i = 0; i < str->len; i++)
         str->v[i] = toupper( (unsigned char) str->v[i]);
     return str;
@@ -486,8 +486,9 @@ fs2_toupper(fs2 *str) {
  */
 fs2 *
 fs2_tolower(fs2 *str) {
-    if (!str)
+    if (fs2_cant_mutate(str))
         return str;
+        
     for (size_t i = 0; i < str->len; i++)
         str->v[i] = tolower( (unsigned char) str->v[i]);
     return str;
