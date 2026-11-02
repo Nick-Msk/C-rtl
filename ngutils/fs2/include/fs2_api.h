@@ -263,13 +263,20 @@ fs2_cpy(fs2 *dst, const fs2 *src) {
 /**
  * @brief Copy a C-string @p src into @p dst, replacing all content.
  *
- * @param dst  Non-NULL fs2 (ALLOC or LOCAL).
- * @param src  NUL-terminated string (may be NULL → clears dst).
+ * Clears @p dst first, then copies @p src (equivalent to
+ * `fs2_clear(dst); fs2_catstr(dst, src);`).
+ *
+ * @param dst  Non-NULL fs2 (ALLOC or LOCAL). Content replaced.
+ * @param src  Non-NULL NUL-terminated string.
  * @return     @p dst.
+ *
+ * @warning `invfatal` (SIGABRT) if @p dst or @p src is NULL,
+ *          or if @p dst is non-empty STATIC.
+ *          Empty @p src (but not NULL) clears @p dst.
  */
 static inline fs2* 
 fs2_cpystr(fs2 *restrict dst, const char *restrict src){
-    fs2 l = _fs2_wrap(src);
+    fs2 l = _fs2_wrap_notnull(src);
     return fs2_cpy(dst, &l);
 }
 
