@@ -1408,3 +1408,222 @@ Test(fs2, rev_catstr_fs2empty_promotes) {
     fs2_free(&dst);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_cpy — nominal
+ * ========================================================================= */
+
+Test(fs2, cpy_alloc_overwrites) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr("world");
+
+    fs2 *ret = fs2_cpy(&dst, &src);
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "world");
+    CHECK_EQ  ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cpy_shorter_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("longer string");
+    fs2 src = fs2_fromstr("short");
+    size_t orig_sz = dst.sz;
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("shorter", dst.v, "short");
+    CHECK_EQ  ("sz unchanged", dst.sz, orig_sz);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cpy_longer_src_grows) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("short");
+    fs2 src = fs2_fromstr("much much longer string");
+    size_t orig_sz = dst.sz;
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("longer", dst.v, "much much longer string");
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* cpy semantics: empty src CLEARS dst (unlike cat = no-op) */
+Test(fs2, cpy_empty_src_clears_dst) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = FS2EMPTY;
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ  ("len", dst.len, 0);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cpy — promote variants
+ * ========================================================================= */
+
+Test(fs2, cpy_into_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+    fs2 src = fs2_fromstr("hi");
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("promoted", dst.v, "hi");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cpy_into_canonical_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = fs2_fromstr("hi");
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("promoted", dst.v, "hi");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cpy — self-copy
+ * ========================================================================= */
+
+Test(fs2, cpy_self_alloc_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig_v = s.v;
+
+    fs2_cpy(&s, &s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("content unchanged", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, cpy_self_local_noop) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "hi", 3);
+    fs2_setlen(&s, 2);
+    void *orig_v = s.v;
+
+    fs2_cpy(&s, &s);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("content unchanged", s.v, "hi");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, cpy_self_fs2empty_noop) {
+    fs2 s = FS2EMPTY;
+
+    fs2_cpy(&s, &s);   /* cant_realloc: empty → false, then dst == src → no-op */
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, cpy_self_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_cpy(&s, &s);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ⚠ Self-copy на non-empty STATIC → abort (design decision) */
+Test(fs2, cpy_self_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_cpy(&s, &s);   /* cant_realloc → abort, even though logically no-op */
+}
+
+/* =========================================================================
+ * fs2_cpy — guards
+ * ========================================================================= */
+
+Test(fs2, cpy_null_dst_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("x");
+    fs2_cpy(NULL, &src);
+    fs2_free(&src);
+}
+
+Test(fs2, cpy_null_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2_cpy(&dst, NULL);   /* dst cleared, then cat aborts — process dies, no matter */
+    fs2_free(&dst);
+}
+
+Test(fs2, cpy_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2 src = fs2_fromstr("!");
+    fs2_cpy(&dst, &src);
+    fs2_free(&src);
+}
+
+Test(fs2, cpy_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 16);
+    memcpy(dst.v, "old", 4);
+    fs2_setlen(&dst, 3);
+    fs2 src = fs2_fromstr("new");
+
+    fs2_cpy(&dst, &src);
+
+    CHECK_STR_EQ("content", dst.v, "new");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&src);
+}
+
+Test(fs2, cpy_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);
+    fs2 src = fs2_fromstr("hello world");
+    fs2_cpy(&dst, &src);
+    fs2_free(&src);
+}
