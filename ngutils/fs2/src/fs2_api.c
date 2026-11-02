@@ -373,6 +373,26 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     return res;
 }
 
+long           
+fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
+    invfatal(ERR_NULL_INPUT,fmt != 0, 
+        "Null fmt string %p", fmt);
+    if (fs2_cant_realloc(s))
+        return -1L; // never here!
+
+    va_list ap; 
+    va_start(ap, fmt);
+    long res = _fs2_vsprintf_position(s, s->len, fmt, ap);
+    va_end(ap);
+
+    if (res < 0)
+        return logsimpleerr(res, "_fs2_vsprintf_position failed");
+
+    fs2_setlen(s, s->len + res); // fix the length!!! No need but just in case
+
+    return res;
+}
+
 /**
  * @brief Replace content of @p s with the substring [from, from+len).
  *

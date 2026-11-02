@@ -297,7 +297,7 @@ fs2_cpystr(fs2 *restrict dst, const char *restrict src){
  *          internal realloc may invalidate them before vsnprintf reads them.
  *          Clone the source first: fs2 tmp = fs2_clone(&s);
  */
-long           
+extern long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
     __attribute__ (( format (printf, 2, 3) ) );
 
@@ -316,26 +316,9 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...)
  *          internal realloc may invalidate them before vsnprintf reads them.
  *          Clone the source first: fs2 tmp = fs2_clone(&s);
  */
-static inline long           
+extern long           
 fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
     __attribute__ (( format (printf, 2, 3) ) );
-
-static inline long           
-fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
-    invraise(s != 0 && fmt != 0, "Null pointers %p - %p", s, fmt);
-
-    va_list ap; 
-    va_start(ap, fmt);
-    long res = _fs2_vsprintf_position(s, s->len, fmt, ap);
-    va_end(ap);
-
-    if (res < 0)
-        return logsimpleerr(res, "_fs2_vsprintf_position failed");
-
-    fs2_setlen(s, s->len + res); // fix the length!!!
-
-    return res;
-}
 
 /**
  * @brief Replace content of @p s with the substring [from, from+len).
