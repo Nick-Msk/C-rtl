@@ -408,7 +408,7 @@ static inline fs2 *
 fs2_right(fs2 *s, size_t len) {
     if (fs2_cant_mutate(s))
         return s;        // NULL / non-empty STATIC → abort; empty → skip 
-        
+
     if (len >= s->len)   // whole string already — no-op
         return s;
 
@@ -424,10 +424,10 @@ fs2_right(fs2 *s, size_t len) {
  */
 static inline fs2
 fs2_right_new(const fs2 *s, size_t len) {
-    if (!s)
-        return FS2();
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
+
     if (len >= s->len)
-        return fs2_clone(s);
+        return fs2_clone(s);    // clone normalizes empty → FS2EMPTY 
 
     return fs2_substr_new(s, s->len - len, len);
 }
