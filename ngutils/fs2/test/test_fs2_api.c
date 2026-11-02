@@ -3631,3 +3631,223 @@ Test(fs2_api, heap_right_multiple_calls_balance) {
     fs2_free(&src);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_toupper — nominal
+ * ========================================================================= */
+
+Test(fs2_api, toupper_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2 *r = fs2_toupper(&s);
+
+    CHECK_STR_EQ("content", s.v, "HELLO");
+    CHECK_EQ  ("len",     s.len, 5);
+    CHECK_PTR_EQ("chaining: returns same", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, toupper_mixed_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Hello World 123!xyz");
+
+    fs2_toupper(&s);
+
+    CHECK_STR_EQ("only letters upper", s.v, "HELLO WORLD 123!XYZ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, toupper_already_upper_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO123");
+
+    fs2_toupper(&s);
+
+    CHECK_STR_EQ("unchanged", s.v, "HELLO123");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, toupper_in_place_no_realloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *before = s.v;
+
+    fs2_toupper(&s);
+
+    CHECK_PTR_EQ("buffer not reallocated", s.v, before);
+    CHECK_STR_EQ("mutated in place",       s.v, "HELLO");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_toupper — LOCAL (writable, но не ALLOC)
+ * ========================================================================= */
+
+Test(fs2_api, toupper_local_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello", 5);
+    fs2_setlen(&buf, 5);
+    CHECK_FS2VALID(1, &buf);
+
+    fs2 *r = fs2_toupper(&buf);
+
+    CHECK_STR_EQ("content", buf.v, "HELLO");
+    CHECK_PTR_EQ("chaining", r, &buf);
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    /* LOCAL не аллоцируется, ничего free-ить не нужно */
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_toupper — пустые входы: ВАЛИДНЫ, no-op, форма сохраняется
+ * ========================================================================= */
+
+/* Ключевой тест: FS2() остаётся каноническим — toupper НЕ promote'ит
+ * FS2() → FS2EMPTY (не вызывает reserve, не аллоцирует буфер). */
+Test(fs2_api, toupper_fs2_canon_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_TRUE("starts canon", fs2_is_canon(&s));
+
+    fs2 *r = fs2_toupper(&s);
+
+    CHECK_PTR_EQ("returns same",       r, &s);
+    CHECK_TRUE ("still canon",         fs2_is_canon(&s));
+    CHECK_TRUE ("still empty",         fs2_is_empty(&s));
+    CHECK_PTR_EQ("v still NULL",       s.v, NULL);
+    CHECK_EQ   ("sz still 0",          s.sz, 0);
+    CHECK_EQ   ("len still 0",         s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* FS2EMPTY (STATIC, v="") — no-op, не пытается писать в .rodata */
+Test(fs2_api, toupper_fs2empty_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("starts eq_empty", fs2_eq_empty(&s));
+
+    fs2 *r = fs2_toupper(&s);
+
+    CHECK_PTR_EQ("returns same",         r, &s);
+    CHECK_TRUE ("still eq_empty",        fs2_eq_empty(&s));
+    CHECK_TRUE ("still STATIC",          fs2_is_static(&s));
+    CHECK_FALSE("no ALLOC flag added",   fs2_is_alloc(&s));
+    CHECK_EQ   ("v still points to \"\"", s.v[0], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    /* src STATIC — нечего free-ить */
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_toupper — guards
+ * ========================================================================= */
+
+/* Непустой STATIC — попытка записи в .rodata запрещена */
+Test(fs2_api, toupper_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_toupper(&s);
+}
+
+Test(fs2_api, toupper_null_aborts, .signal = SIGABRT) {
+    fs2_toupper(NULL);
+}
+
+/* =========================================================================
+ * fs2_toupper — (unsigned char) cast: байт с установленным старшим битом
+ *   toupper(int c) требует EOF или unsigned char.
+ *   Без cast на платформах с signed char получаем UB.
+ *   Здесь проверяем, что не падает и не портит данные (locale-agnostic).
+ * ========================================================================= */
+
+Test(fs2_api, toupper_high_byte_no_ub) {
+    __fs2_checkreset();
+
+    /* "A\xE9" — 'A' + байт 0xE9 (é в Latin-1) */
+    char *raw = strdup("A\xE9");
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+    CHECK_EQ("precondition len", s.len, 2);
+
+    fs2_toupper(&s);   /* must NOT crash */
+
+    CHECK_EQ("'A' stays 'A'",      s.v[0], 'A');
+    CHECK_EQ("len preserved",       s.len, 2);
+    CHECK_EQ("high byte non-zero", (unsigned char)s.v[1] != 0, true);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — симметрия (сжатый набор; полный см. toupper)
+ * ========================================================================= */
+
+Test(fs2_api, tolower_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo WoRLD");
+
+    fs2_tolower(&s);
+
+    CHECK_STR_EQ("content", s.v, "hello world");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_fs2_canon_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_tolower(&s);
+
+    CHECK_TRUE("still canon", fs2_is_canon(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_fs2empty_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_tolower(&s);
+
+    CHECK_TRUE("still eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("HELLO");
+    fs2_tolower(&s);
+}
+
+Test(fs2_api, tolower_null_aborts, .signal = SIGABRT) {
+    fs2_tolower(NULL);
+}
