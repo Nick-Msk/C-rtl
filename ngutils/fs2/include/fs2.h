@@ -371,11 +371,8 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
     if (len == 0)
         return true;
     
-    /* NULL pointers — hard error for non-trivial copy */
-    if (!dst)
-        userraise(0, ERR_NULL_INPUT, "Null dst pointer");
-    if (!src)
-        userraise(0, ERR_NULL_INPUT, "Null src pointer");
+    invfatal(ERR_NULL_INPUT, dst != NULL && src != NULL,
+             "Null pointers %p %p", dst, src);
     
     /* Over-read: src[srcpos .. srcpos+len) must fit within src */
     if (srcpos > src->len || len > src->len - srcpos)
@@ -385,9 +382,8 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
     
     /* dst must be writable — empty auto-promotes via reserve,
      * non-empty STATIC cannot (memcpy into .rodata) */
-    if (!fs2_is_empty(dst) && fs2_is_static(dst))
-        userraise(0, ERR_UNSUPPORTED_TYPE,
-                  "Cannot write into non-empty STATIC fs2");
+    invfatal(ERR_UNSUPPORTED_TYPE, fs2_is_empty(dst) || !fs2_is_static(dst),
+             "Cannot write to non-empty STATIC fs2");
     
     return false;
 }
