@@ -252,11 +252,11 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner);
  * @return     @p dst.
  */
 static inline fs2 *
-fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
-    invraise(dst != NULL, "Null pointer");
+fs2_cpy(fs2 *dst, const fs2 *src) {
+    invfatal(ERR_NULL_INPUT, dst != NULL, "Null pointer");
 
     if (dst == src)
-        return dst; // self-copy is a no-op
+        return dst; // self-copy is a no-op, probably useless because of restrict
     fs2_clear(dst);
     return fs2_cat(dst, src);
 }
@@ -271,7 +271,7 @@ fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
 static inline fs2* 
 fs2_cpystr(fs2 *restrict dst, const char *restrict src){
     fs2 l = _fs2_wrap(src);
-    return fs2_cpy(dst, &l); 
+    return fs2_cpy(dst, &l);
 }
 
 // ------------------------------------------------------------------------------------------
