@@ -406,7 +406,10 @@ fs2_heap_left(const fs2 *s, size_t len) {
  */
 static inline fs2 *
 fs2_right(fs2 *s, size_t len) {
-    if (!s || len >= s->len)
+    if (fs2_cant_mutate(s))
+        return s;        // NULL / non-empty STATIC → abort; empty → skip 
+        
+    if (len >= s->len)   // whole string already — no-op
         return s;
 
     return fs2_substr(s, s->len - len, len);
