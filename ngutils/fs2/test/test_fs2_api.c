@@ -921,3 +921,105 @@ Test(fs2, cant_realloc_static_nonempty_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hi");
     fs2_cant_realloc(&s);   /* ← было SIGINT, теперь SIGABRT */
 }
+
+/* =========================================================================
+ * fs2_cat
+ * ========================================================================= */
+
+
+Test(fs2, cat_null_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2_cat(&dst, NULL);
+    fs2_free(&dst);
+}
+
+Test(fs2, cat_null_dst_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("x");
+    fs2_cat(NULL, &src);
+    fs2_free(&src);
+}
+
+Test(fs2, cat_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2 src = fs2_fromstr("!");
+    fs2_cat(&dst, &src);
+    fs2_free(&src);
+}
+
+Test(fs2, cat_empty_src_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2 src = FS2EMPTY;
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("unchanged", dst.v, "a");
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, cat_fs2empty_dst_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+    fs2 src = fs2_fromstr("hi");
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("promoted", dst.v, "hi");
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cat_canonical_dst_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 src = fs2_fromstr("hi");
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("promoted", dst.v, "hi");
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cat_alloc_with_content) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2 src = fs2_fromstr(" world");
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("hello world", dst.v, "hello world");
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, cat_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 16);
+    memcpy(dst.v, "hi", 3);
+    fs2_setlen(&dst, 2);
+    fs2 src = fs2_fromstr("!");
+    fs2_cat(&dst, &src);
+    CHECK_STR_EQ("hi!", dst.v, "hi!");
+    CHECK_TRUE("LOCAL", fs2_is_local(&dst));
+    fs2_free(&src);
+}
+
+Test(fs2, cat_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);
+    fs2 src = fs2_fromstr("hello world");
+    fs2_cat(&dst, &src);   /* reserve → prepare_growth: non-ALLOC → abort */
+    fs2_free(&src);
+}
+
+/* FS2EMPTY */
+Test(fs2, cat_via_nvl_null_src_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2_cat(&dst, &FS2EMPTY);
+    CHECK_STR_EQ("unchanged", dst.v, "a");
+    fs2_free(&dst);
+    assert_balanced();
+}
