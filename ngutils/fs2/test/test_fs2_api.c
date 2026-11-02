@@ -3801,56 +3801,6 @@ Test(fs2_api, toupper_high_byte_no_ub) {
     assert_balanced();
 }
 
-/* =========================================================================
- * fs2_tolower — симметрия (сжатый набор; полный см. toupper)
- * ========================================================================= */
-
-Test(fs2_api, tolower_basic) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("HeLLo WoRLD");
-
-    fs2_tolower(&s);
-
-    CHECK_STR_EQ("content", s.v, "hello world");
-    CHECK_FS2VALID(1, &s);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, tolower_fs2_canon_unchanged) {
-    __fs2_checkreset();
-    fs2 s = FS2();
-
-    fs2_tolower(&s);
-
-    CHECK_TRUE("still canon", fs2_is_canon(&s));
-    CHECK_FS2VALID(1, &s);
-
-    fs2_free(&s);
-    assert_balanced();
-}
-
-Test(fs2_api, tolower_fs2empty_unchanged) {
-    __fs2_checkreset();
-    fs2 s = FS2EMPTY;
-
-    fs2_tolower(&s);
-
-    CHECK_TRUE("still eq_empty", fs2_eq_empty(&s));
-    CHECK_FS2VALID(1, &s);
-
-    assert_balanced();
-}
-
-Test(fs2_api, tolower_static_nonempty_aborts, .signal = SIGABRT) {
-    fs2 s = FS2LITERAL("HELLO");
-    fs2_tolower(&s);
-}
-
-Test(fs2_api, tolower_null_aborts, .signal = SIGABRT) {
-    fs2_tolower(NULL);
-}
 Test(fs2_api, mutators_empty_inputs_are_noops) {
     __fs2_checkreset();
 
@@ -3870,5 +3820,182 @@ Test(fs2_api, mutators_empty_inputs_are_noops) {
         CHECK_FS2VALID(1, &s);
         fs2_free(&s);
     }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — nominal
+ * ========================================================================= */
+
+Test(fs2_api, tolower_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_FS2VALID(1, &s);
+
+    fs2 *r = fs2_tolower(&s);
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len",     s.len, 5);
+    CHECK_PTR_EQ("chaining: returns same", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_mixed_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo WoRLD 123!XYZ");
+
+    fs2_tolower(&s);
+
+    CHECK_STR_EQ("only letters lower", s.v, "hello world 123!xyz");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_already_lower_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello123");
+
+    fs2_tolower(&s);
+
+    CHECK_STR_EQ("unchanged", s.v, "hello123");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_in_place_no_realloc) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    void *before = s.v;
+
+    fs2_tolower(&s);
+
+    CHECK_PTR_EQ("buffer not reallocated", s.v, before);
+    CHECK_STR_EQ("mutated in place",       s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* round-trip: toupper ∘ tolower == identity на ASCII-буквах */
+Test(fs2_api, tolower_toupper_roundtrip) {
+    __fs2_checkreset();
+    fs2 orig = fs2_fromstr("MiXeD CaSe 42");
+    fs2 s    = fs2_clone(&orig);
+
+    fs2_toupper(&s);
+    fs2_tolower(&s);
+
+    CHECK_STR_EQ("round-trip on letters", s.v, "mixed case 42");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&orig);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, tolower_local_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "HELLO", 5);
+    fs2_setlen(&buf, 5);
+    CHECK_FS2VALID(1, &buf);
+
+    fs2 *r = fs2_tolower(&buf);
+
+    CHECK_STR_EQ("content", buf.v, "hello");
+    CHECK_PTR_EQ("chaining", r, &buf);
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — пустые входы: ВАЛИДНЫ, no-op, форма сохраняется
+ * ========================================================================= */
+
+Test(fs2_api, tolower_fs2_canon_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_TRUE("starts canon", fs2_is_canon(&s));
+
+    fs2 *r = fs2_tolower(&s);
+
+    CHECK_PTR_EQ("returns same", r, &s);
+    CHECK_TRUE ("still canon",   fs2_is_canon(&s));
+    CHECK_TRUE ("still empty",   fs2_is_empty(&s));
+    CHECK_PTR_EQ("v still NULL", s.v, NULL);
+    CHECK_EQ   ("sz still 0",    s.sz, 0);
+    CHECK_EQ   ("len still 0",   s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, tolower_fs2empty_unchanged) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_TRUE("starts eq_empty", fs2_eq_empty(&s));
+
+    fs2 *r = fs2_tolower(&s);
+
+    CHECK_PTR_EQ("returns same",          r, &s);
+    CHECK_TRUE ("still eq_empty",         fs2_eq_empty(&s));
+    CHECK_TRUE ("still STATIC",           fs2_is_static(&s));
+    CHECK_FALSE("no ALLOC flag added",    fs2_is_alloc(&s));
+    CHECK_EQ   ("v still points to \"\"", s.v[0], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_tolower — guards
+ * ========================================================================= */
+
+Test(fs2_api, tolower_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("HELLO");
+    fs2_tolower(&s);
+}
+
+Test(fs2_api, tolower_null_aborts, .signal = SIGABRT) {
+    fs2_tolower(NULL);
+}
+
+/* =========================================================================
+ * fs2_tolower — (unsigned char) cast: не падает на байте с MSB
+ * ========================================================================= */
+
+Test(fs2_api, tolower_high_byte_no_ub) {
+    __fs2_checkreset();
+
+    /* "A\xE9" — 'A' + байт 0xE9 (é в Latin-1) */
+    char *raw = strdup("A\xE9");
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+    CHECK_EQ("precondition len", s.len, 2);
+
+    fs2_tolower(&s);   /* must NOT crash */
+
+    CHECK_EQ("'A' → 'a'",          s.v[0], 'a');
+    CHECK_EQ("len preserved",      s.len, 2);
+    CHECK_EQ("high byte non-zero", (unsigned char)s.v[1] != 0, true);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
     assert_balanced();
 }
