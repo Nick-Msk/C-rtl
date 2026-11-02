@@ -1023,3 +1023,203 @@ Test(fs2, cat_via_nvl_null_src_noop) {
     fs2_free(&dst);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_catstr — nominal
+ * ========================================================================= */
+
+Test(fs2, catstr_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2 *ret = fs2_catstr(&dst, " world");
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "hello world");
+    CHECK_EQ  ("len", dst.len, 11);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_empty_str_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2_catstr(&dst, "");
+
+    CHECK_STR_EQ("unchanged", dst.v, "hello");
+    CHECK_EQ  ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_into_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    fs2_catstr(&dst, "hello");
+
+    CHECK_STR_EQ("promoted", dst.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FALSE("no longer STATIC", fs2_is_static(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_into_canonical_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_catstr(&dst, "hello");
+
+    CHECK_STR_EQ("promoted", dst.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_multiple_appends) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_catstr(&dst, "one");
+    fs2_catstr(&dst, " ");
+    fs2_catstr(&dst, "two");
+
+    CHECK_STR_EQ("content", dst.v, "one two");
+    CHECK_EQ  ("len", dst.len, 7);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_triggers_realloc) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    size_t orig_sz = dst.sz;
+
+    char big[1024];
+    memset(big, 'A', 1023);
+    big[1023] = '\0';
+
+    fs2_catstr(&dst, big);
+
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_EQ  ("len", dst.len, 1024);
+    CHECK_EQ  ("first", dst.v[0], 'x');
+    CHECK_EQ  ("last",  dst.v[1023], 'A');
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, catstr_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 32);
+    memcpy(dst.v, "hi", 3);
+    fs2_setlen(&dst, 2);
+
+    fs2_catstr(&dst, " there");
+
+    CHECK_STR_EQ("content", dst.v, "hi there");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(1, &dst);
+}
+
+/* =========================================================================
+ * fs2_catstr — strict NULL src (SIGABRT)
+ * ========================================================================= */
+
+Test(fs2, catstr_null_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2_catstr(&dst, NULL);   /* ← было silent no-op через wrap(NULL), теперь SIGABRT */
+    fs2_free(&dst);
+}
+
+Test(fs2, catstr_null_dst_aborts, .signal = SIGABRT) {
+    fs2_catstr(NULL, "x");
+}
+
+Test(fs2, catstr_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_catstr(&dst, "!");
+}
+
+Test(fs2, catstr_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);   /* sz=4 */
+    fs2_catstr(&dst, "hello world");   /* 11 > 3 → reserve → abort */
+}
+
+/* =========================================================================
+ * wrap pattern — opt-in tolerance
+ * ========================================================================= */
+
+Test(fs2, catstr_via_nvlstr_maybe_null) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    const char *maybe = NULL;
+
+    fs2_catstr(&dst, str_orempty(maybe));
+
+    CHECK_STR_EQ("unchanged", dst.v, "a");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * ⚠ Documented hazard: catstr(&dst, dst.v) — restrict violation
+ * ========================================================================= */
+
+/* NOT tested — this is UB:
+ *
+ *   fs2_catstr(&dst, dst.v);
+ *
+ * 1. `restrict` on src / dst.v violated.
+ * 2. If `fs2_reserve` inside `fs2_memcpy` triggers realloc,
+ *    `s.v` (== old dst.v) becomes dangling.
+ * 3. memcpy reads from freed memory → use-after-free.
+ *
+ * Caller must clone before self-append:
+ *   fs2 clone = fs2_clone(&dst);
+ *   fs2_catstr(&dst, clone.v);
+ *   fs2_free(&clone);
+ *
+ * Or use fs2_repeat / fs2_cat(&dst, &dst) is also UB.
+ */
+
+/* =========================================================================
+ * Consistency: catstr == cat(wrap_notnull)
+ * ========================================================================= */
+
+Test(fs2, catstr_matches_cat_via_wrap) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("prefix_");
+    fs2 b = fs2_fromstr("prefix_");
+
+    fs2_catstr(&a, "suffix");
+
+    fs2 tmp = fs2_wrap_notnull("suffix");
+    fs2_cat(&b, &tmp);
+
+    CHECK_STR_EQ("a == b", a.v, b.v);
+    CHECK_EQ  ("same len", a.len, b.len);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
