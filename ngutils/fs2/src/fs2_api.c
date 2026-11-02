@@ -488,7 +488,7 @@ fs2 *
 fs2_tolower(fs2 *str) {
     if (fs2_cant_mutate(str))
         return str;
-        
+
     for (size_t i = 0; i < str->len; i++)
         str->v[i] = tolower( (unsigned char) str->v[i]);
     return str;
@@ -509,7 +509,8 @@ fs2_tolower(fs2 *str) {
  */
 fs2 *                    
 fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
+    fs2_cant_realloc(str);   // assert-style: NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to rpad");
 
     if (len < str->len)
         return fs2_left(str, len);
