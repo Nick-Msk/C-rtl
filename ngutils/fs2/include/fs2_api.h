@@ -684,7 +684,7 @@ fs2_heap_genrnd(size_t len, char type) {
  */
 static inline ptrdiff_t
 fs2_chr(const fs2 *str, int c) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     return __fs2_chr_raw((const unsigned char *) str->v, str->len, c);
 }
@@ -700,7 +700,7 @@ fs2_chr(const fs2 *str, int c) {
  */
 static inline ptrdiff_t
 fs2_chr_ci(const fs2 *str, int c) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     return __fs2_chr_raw_ci((const unsigned char *) str->v, str->len, c);
 }
