@@ -1627,3 +1627,157 @@ Test(fs2, cpy_local_overflow_aborts, .signal = SIGABRT) {
     fs2_cpy(&dst, &src);
     fs2_free(&src);
 }
+
+/* =========================================================================
+ * fs2_cpystr — nominal
+ * ========================================================================= */
+
+Test(fs2, cpystr_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2 *ret = fs2_cpystr(&dst, "world");
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "world");
+    CHECK_EQ  ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, cpystr_shorter) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("longer string");
+    size_t orig_sz = dst.sz;
+
+    fs2_cpystr(&dst, "short");
+
+    CHECK_STR_EQ("shorter", dst.v, "short");
+    CHECK_EQ  ("sz unchanged", dst.sz, orig_sz);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, cpystr_longer_grows) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("short");
+    size_t orig_sz = dst.sz;
+
+    fs2_cpystr(&dst, "much longer string");
+
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_STR_EQ("content", dst.v, "much longer string");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* Empty (non-NULL) src clears dst — not no-op like catstr */
+Test(fs2, cpystr_empty_src_clears) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2_cpystr(&dst, "");
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_EQ  ("len", dst.len, 0);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cpystr — promote variants
+ * ========================================================================= */
+
+Test(fs2, cpystr_into_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    fs2_cpystr(&dst, "hello");
+
+    CHECK_STR_EQ("promoted", dst.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, cpystr_into_canonical_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_cpystr(&dst, "hi");
+
+    CHECK_STR_EQ("content", dst.v, "hi");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, cpystr_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 16);
+    memcpy(dst.v, "old", 4);
+    fs2_setlen(&dst, 3);
+
+    fs2_cpystr(&dst, "new");
+
+    CHECK_STR_EQ("content", dst.v, "new");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(1, &dst);
+}
+
+/* =========================================================================
+ * fs2_cpystr — strict NULL src
+ * ========================================================================= */
+
+/* ⚠ Было: cpystr(&dst, NULL) clears dst. Стало: SIGABRT (strict). */
+Test(fs2, cpystr_null_src_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    fs2_cpystr(&dst, NULL);
+    fs2_free(&dst);
+}
+
+/* Use fs2_nvlstr for opt-in tolerance */
+Test(fs2, cpystr_via_nvlstr_null_clears) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2_cpystr(&dst, str_orempty(NULL));   /* NULL → "" → clear */
+
+    CHECK_STR_EQ("cleared", dst.v, "");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cpystr — delegated guards (via fs2_cpy)
+ * ========================================================================= */
+
+Test(fs2, cpystr_null_dst_aborts, .signal = SIGABRT) {
+    fs2_cpystr(NULL, "x");
+}
+
+Test(fs2, cpystr_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_cpystr(&dst, "x");
+}
+
+Test(fs2, cpystr_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);
+    fs2_cpystr(&dst, "hello world");
+}
