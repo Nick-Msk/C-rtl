@@ -283,9 +283,10 @@ fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim) {
 fs2 *
 fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
     // guargs
-    if(fs2_cant_realloc(dst) || fs2_is_empty(src))
+    invfatal(ERR_NULL_INPUT, src != NULL, "fs2_cat: NULL src");
+    if(fs2_cant_realloc(dst) || src->len == 0)  // was is_empty(src)
         return dst;
-
+            
     fs2_memcpy(dst, dst->len, src, 0, src->len);
     
     fs2_setlen(dst, dst->len + src->len);
