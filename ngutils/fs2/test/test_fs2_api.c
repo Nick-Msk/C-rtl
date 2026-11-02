@@ -6549,3 +6549,203 @@ Test(fs2_api, heap_genrnd_matches_stack_genrnd_form) {
     fs2_free(heap);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_chr — nominal
+ * ========================================================================= */
+
+Test(fs2_api, chr_found_at_start) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("h at 0", fs2_chr(&s, 'h'), 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_found_in_middle) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("l at 2", fs2_chr(&s, 'l'), 2);   /* первое из двух 'l' */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_found_at_end) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("o at 4", fs2_chr(&s, 'o'), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("z",  fs2_chr(&s, 'z'), -1);
+    CHECK_EQ("H",  fs2_chr(&s, 'H'), -1);   /* case-sensitive */
+    CHECK_EQ("L",  fs2_chr(&s, 'L'), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_chr — NUL и граничные байты
+ * ========================================================================= */
+
+/* len исключает завершающий NUL → '\0' внутри [0, len) отсутствует */
+Test(fs2_api, chr_nul_not_found_in_normal_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    CHECK_EQ("NUL excluded", fs2_chr(&s, '\0'), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_chr — пустые строки
+ * ========================================================================= */
+
+Test(fs2_api, chr_empty_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data",  fs2_chr(&s, 'a'), -1);
+    CHECK_EQ("even NUL", fs2_chr(&s, '\0'), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_canon_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_EQ("no data", fs2_chr(&s, 'a'), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_chr — STATIC source + guards
+ * ========================================================================= */
+
+Test(fs2_api, chr_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");
+    CHECK_EQ("l at 2", fs2_chr(&s, 'l'), 2);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_null_aborts, .signal = SIGABRT) {
+    fs2_chr(NULL, 'a');
+}
+
+/* =========================================================================
+ * fs2_chr_ci — nominal (case-insensitive)
+ * ========================================================================= */
+
+Test(fs2_api, chr_ci_lower_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("h matches H at 0", fs2_chr_ci(&s, 'h'), 0);
+    CHECK_EQ("e matches E at 1", fs2_chr_ci(&s, 'e'), 1);
+    CHECK_EQ("o matches O at 4", fs2_chr_ci(&s, 'o'), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_upper_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("H matches h at 0", fs2_chr_ci(&s, 'H'), 0);
+    CHECK_EQ("O matches o at 4", fs2_chr_ci(&s, 'O'), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_mixed_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo");
+    CHECK_EQ("L at 2", fs2_chr_ci(&s, 'l'), 2);
+    CHECK_EQ("L at 2", fs2_chr_ci(&s, 'L'), 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("z", fs2_chr_ci(&s, 'z'), -1);
+    CHECK_EQ("Z", fs2_chr_ci(&s, 'Z'), -1);
+    CHECK_EQ("0", fs2_chr_ci(&s, '0'), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Цифры/пунктуация — tolower их не трогает, ci == cs */
+Test(fs2_api, chr_ci_nonletters_same_as_cs) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a1b2!c");
+
+    CHECK_EQ("'1' ci == cs", fs2_chr_ci(&s, '1'), fs2_chr(&s, '1'));
+    CHECK_EQ("'2' ci == cs", fs2_chr_ci(&s, '2'), fs2_chr(&s, '2'));
+    CHECK_EQ("'!' ci == cs", fs2_chr_ci(&s, '!'), fs2_chr(&s, '!'));
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_chr_ci — высокий байт: не должно падать/UB из-за signed char
+ *   (внутри __fs2_chr_raw_ci используется tolower((unsigned char) c))
+ * ========================================================================= */
+
+Test(fs2_api, chr_ci_high_byte_no_ub) {
+    __fs2_checkreset();
+    char *raw = strdup("a\xE9Z");      /* 0xE9 — не ASCII, не трогается tolower */
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+
+    CHECK_EQ("'a' at 0", fs2_chr_ci(&s, 'A'), 0);
+    CHECK_EQ("'z' at 2", fs2_chr_ci(&s, 'z'), 2);
+    /* не ищем 0xE9 в ci — семантика depends on locale, но не должно падать */
+    (void) fs2_chr_ci(&s, (unsigned char)0xE9);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_chr_ci — пустые / STATIC / guards
+ * ========================================================================= */
+
+Test(fs2_api, chr_ci_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data", fs2_chr_ci(&s, 'a'), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("HELLO");
+    CHECK_EQ("l at 2", fs2_chr_ci(&s, 'l'), 2);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_null_aborts, .signal = SIGABRT) {
+    fs2_chr_ci(NULL, 'a');
+}
