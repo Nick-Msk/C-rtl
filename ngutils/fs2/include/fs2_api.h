@@ -548,8 +548,7 @@ fs2_rpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
  */
 static inline fs2
 fs2_rpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr) {
-    
-    fs2 tmp = _fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap_notnull(padstr);
     return fs2_rpad_new(str, len, &tmp);
 }
 
