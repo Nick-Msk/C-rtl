@@ -1781,3 +1781,163 @@ Test(fs2, cpystr_local_overflow_aborts, .signal = SIGABRT) {
     FS2LOCAL(dst, 4);
     fs2_cpystr(&dst, "hello world");
 }
+
+/* =========================================================================
+ * fs2_sprintf — empty format on FS2EMPTY (regression)
+ * ========================================================================= */
+
+/* ⚠ Без fix — SIGSEGV (write NUL to .rodata). С fix — promote + empty. */
+Test(fs2, sprintf_fs2empty_empty_format_no_crash) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    long res = fs2_sprintf(&dst, "");
+
+    CHECK_EQ("return", res, 0);
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_TRUE("promoted or empty", fs2_is_empty(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_canonical_empty_format) {
+    __fs2_checkreset();
+    fs2 dst = FS2();   /* v=NULL, sz=0 */
+
+    long res = fs2_sprintf(&dst, "");
+
+    CHECK_EQ("return", res, 0);
+    CHECK_EQ("len", dst.len, 0);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_sprintf — nominal
+ * ========================================================================= */
+
+Test(fs2, sprintf_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    long res = fs2_sprintf(&dst, "value=%d", 42);
+
+    CHECK_EQ  ("return", res, 8);
+    CHECK_STR_EQ("content", dst.v, "value=42");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_overwrites_existing) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old content");
+
+    long res = fs2_sprintf(&dst, "%d", 42);
+
+    CHECK_EQ  ("return", res, 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_EQ  ("len", dst.len, 2);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_grows) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    size_t orig_sz = dst.sz;
+
+    char big[1024];
+    memset(big, 'A', 1023);
+    big[1023] = '\0';
+
+    long res = fs2_sprintf(&dst, "%s", big);
+
+    CHECK_EQ  ("return", res, 1023);
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_EQ  ("len", dst.len, 1023);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_sprintf — guards
+ * ========================================================================= */
+
+Test(fs2, sprintf_null_fmt_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    fs2_sprintf(&dst, NULL);
+    fs2_free(&dst);
+}
+
+Test(fs2, sprintf_null_dst_aborts, .signal = SIGABRT) {
+    fs2_sprintf(NULL, "x");
+}
+
+Test(fs2, sprintf_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_sprintf(&dst, "%d", 1);   /* cant_realloc → invfatal */
+}
+
+Test(fs2, sprintf_fs2empty_empty_format) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+    long res = fs2_sprintf(&dst, "");
+    CHECK_EQ("return", res, 0);
+    CHECK_TRUE("promoted", fs2_is_alloc(&dst));
+    CHECK_NOT_NULL("v writable", dst.v);
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_fs2empty_zero_precision) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+    long res = fs2_sprintf(&dst, "%.0s", "x");
+    CHECK_EQ("return", res, 0);
+    CHECK_TRUE("promoted", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_fs2literal_empty_empty_format) {
+    __fs2_checkreset();
+    fs2 dst = FS2LITERAL("");
+    long res = fs2_sprintf(&dst, "");
+    CHECK_EQ("return", res, 0);
+    CHECK_TRUE("promoted", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_sprintf(&dst, "%d", 1);
+}
+
+Test(fs2, sprintf_alloc_fits_no_reserve) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("old");
+    size_t orig_sz = dst.sz;
+    long res = fs2_sprintf(&dst, "x");
+    CHECK_EQ("return", res, 1);
+    CHECK_EQ("sz unchanged (fast path)", dst.sz, orig_sz);
+    CHECK_STR_EQ("content", dst.v, "x");
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
