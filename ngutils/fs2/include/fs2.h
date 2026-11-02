@@ -140,6 +140,41 @@ typedef int (*fs2_cmp_t)(const char *a, const char *b);
 #define FS2LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
                                 .flags = FS2_STATIC, .v = (char *)(s) }                      
 
+extern const fs2 fs2_empty_const;
+
+/**
+ * @brief NVL: return @p s if non-NULL, else &fs2_empty_const.
+ *
+ *   fs2_orempty(NULL)        → &fs2_empty_const
+ *   fs2_orempty(&s)          → &s
+ *   fs2_orempty(fs2_ptr_var) → fs2_ptr_var (implicit convert)
+ *
+ * Never returns NULL. Pointer-stable (points to global const or to @p s).
+ */
+static inline const fs2 *
+fs2_orempty(const fs2 *s) {
+    return s ? s : &fs2_empty_const;
+}
+
+/**
+ * @brief NVL with explicit default: @p s if non-NULL, else @p def.
+ *
+ *   fs2_nvl(NULL, &fallback) → &fallback
+ *   fs2_nvl(&s, &fallback)   → &s
+ *
+ * Never returns NULL: @p def must be non-NULL.
+ *
+ * @param s    Nullable fs2 pointer.
+ * @param def  Non-NULL fallback (use fs2_orempty for implicit empty).
+ * @return     @p s if non-NULL, else @p def.
+ * @warning    `invfatal` (SIGABRT) if @p def is NULL.
+ */
+static inline const fs2 *
+fs2_nvl(const fs2 *s, const fs2 *def) {
+    invfatal(ERR_NULL_INPUT, def != NULL, "fs2_nvl: NULL default");
+    return s ? s : def;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Getters (all const-safe, no allocation)
  * ───────────────────────────────────────────────────────────────────────── */
