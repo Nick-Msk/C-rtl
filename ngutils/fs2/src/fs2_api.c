@@ -388,7 +388,7 @@ fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
     if (res < 0)
         return logsimpleerr(res, "_fs2_vsprintf_position failed");
 
-    fs2_setlen(s, s->len + res); // fix the length!!! No need but just in case
+    fs2_setlen(s, s->len + res); // required: _fs2_vsprintf_position never touches len 
 
     return res;
 }

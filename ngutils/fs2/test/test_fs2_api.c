@@ -1941,3 +1941,162 @@ Test(fs2, sprintf_alloc_fits_no_reserve) {
     fs2_free(&dst);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_sprintf_concat — nominal append
+ * ========================================================================= */
+
+Test(fs2, sprintf_concat_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    long res = fs2_sprintf_concat(&dst, ", %s!", "world");
+
+    CHECK_EQ("return", res, 8);   /* ", world!" = 8 */
+    CHECK_STR_EQ("content", dst.v, "hello, world!");
+    CHECK_EQ  ("len", dst.len, 13);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_empty_format_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("data");
+    size_t orig_sz = dst.sz;
+
+    long res = fs2_sprintf_concat(&dst, "%s", "");
+
+    CHECK_EQ("return", res, 0);
+    CHECK_STR_EQ("unchanged", dst.v, "data");
+    CHECK_EQ  ("len", dst.len, 4);
+    CHECK_EQ  ("sz unchanged", dst.sz, orig_sz);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_chain) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_sprintf_concat(&dst, "%d", 1);
+    fs2_sprintf_concat(&dst, ",%d", 2);
+    fs2_sprintf_concat(&dst, ",%d", 3);
+
+    CHECK_STR_EQ("content", dst.v, "1,2,3");
+    CHECK_EQ  ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_triggers_growth) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    size_t orig_sz = dst.sz;
+
+    char big[128];
+    memset(big, 'A', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+
+    fs2_sprintf_concat(&dst, "%s", big);
+
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_EQ  ("len", dst.len, 1 + 127);
+    CHECK_EQ  ("first char", dst.v[0], 'x');
+    for (size_t i = 1; i < 128; i++)
+        CHECK_EQ("expected 'A'", dst.v[i], 'A');
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* ⚠ Regression: fs2empty dst + empty format */
+Test(fs2, sprintf_concat_fs2empty_empty_format) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    long res = fs2_sprintf_concat(&dst, "%s", "");
+
+    CHECK_EQ("return", res, 0);
+    CHECK_TRUE("promoted", fs2_is_alloc(&dst));
+    CHECK_NOT_NULL("v writable", dst.v);
+    CHECK_STR_EQ("v empty", dst.v, "");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_fs2empty_append) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    long res = fs2_sprintf_concat(&dst, "hello");
+
+    CHECK_EQ("return", res, 5);
+    CHECK_STR_EQ("content", dst.v, "hello");
+    CHECK_TRUE ("promoted", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_canonical_append) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    long res = fs2_sprintf_concat(&dst, "%d", 42);
+
+    CHECK_EQ("return", res, 2);
+    CHECK_STR_EQ("content", dst.v, "42");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, sprintf_concat_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 64);
+    memcpy(dst.v, "start:", 7);
+    fs2_setlen(&dst, 6);
+
+    fs2_sprintf_concat(&dst, "%s=%d", "key", 42);
+
+    CHECK_STR_EQ("content", dst.v, "start:key=42");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(1, &dst);
+}
+
+/* =========================================================================
+ * fs2_sprintf_concat — guards
+ * ========================================================================= */
+
+Test(fs2, sprintf_concat_null_fmt_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    fs2_sprintf_concat(&dst, NULL);
+    fs2_free(&dst);
+}
+
+Test(fs2, sprintf_concat_null_dst_aborts, .signal = SIGABRT) {
+    fs2_sprintf_concat(NULL, "x");
+}
+
+Test(fs2, sprintf_concat_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_sprintf_concat(&dst, "%d", 1);   /* cant_realloc → invfatal */
+}
+
+Test(fs2, sprintf_concat_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);
+    fs2_sprintf_concat(&dst, "hello world");   /* > capacity → abort */
+}
