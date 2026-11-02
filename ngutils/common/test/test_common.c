@@ -651,3 +651,30 @@ Test(common, skip_spaces_single_tab) {
     cr_assert_eq(res, s + 1, "Should skip exactly 1 tab");
     cr_assert_str_eq(res, "x");
 }
+
+/* =========================================================================
+ * str_orempty — NVL for nullable C-strings
+ * ========================================================================= */
+
+Test(common, str_orempty_null_returns_empty) {
+    const char *r = str_orempty(NULL);
+    CHECK_NOT_NULL("non-NULL", r);
+    CHECK_STR_EQ("empty", r, "");
+    CHECK_EQ("strlen", strlen(r), 0);
+}
+
+Test(common, str_orempty_nonnull_identity) {
+    const char *s = "hello";
+    CHECK_PTR_EQ("identity", str_orempty(s), s);
+}
+
+Test(common, str_orempty_empty_string_identity) {
+    const char *s = "";
+    CHECK_PTR_EQ("identity for \"\"", str_orempty(s), s);
+}
+
+Test(common, str_orempty_strcmp_usage) {
+    /* Typical usage — comparison via strcmp, no pointer equality */
+    CHECK_EQ("strcmp result", strcmp(str_orempty(NULL), ""), 0);
+    CHECK_EQ("with content", strcmp(str_orempty("hi"), "hi"), 0);
+}
