@@ -297,7 +297,7 @@ fs2_cpystr(fs2 *restrict dst, const char *restrict src){
  *          internal realloc may invalidate them before vsnprintf reads them.
  *          Clone the source first: fs2 tmp = fs2_clone(&s);
  */
-static inline long           
+long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) 
     __attribute__ (( format (printf, 2, 3) ) );
 
@@ -320,48 +320,17 @@ static inline long
 fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...)
     __attribute__ (( format (printf, 2, 3) ) );
 
-/**
- * @brief Internal: format into @p s starting at @p pos using a va_list.
- *
- * Grows the buffer if needed. Does NOT update `s->len` — the caller
- * is responsible for calling `fs2_setlen` with the result.
- *
- * @param s    Non-NULL fs2 (ALLOC).
- * @param pos  0-based offset to start writing.
- * @param fmt  Format string (non-NULL).
- * @param ap   Pre-initialized argument list.
- * @return     Number of characters written (excluding NUL), or -1 on error.
- */
-extern long                  
-fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap);
-
-static inline long           
-fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
-    invraise(s != 0 && fmt != 0, "Null pointers %p - %p", s, fmt);
-
-    va_list ap; 
-    va_start(ap, fmt);
-    long res = fs2_vsprintf_position(s, 0, fmt, ap);
-    va_end(ap);
-
-    if (res < 0)
-        return logsimpleerr(res, "fs2_vsprintf_position failed");
-    
-    fs2_setlen(s, res); // fix the length!!!
-    return res;
-}
-
 static inline long           
 fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
     invraise(s != 0 && fmt != 0, "Null pointers %p - %p", s, fmt);
 
     va_list ap; 
     va_start(ap, fmt);
-    long res = fs2_vsprintf_position(s, s->len, fmt, ap);
+    long res = _fs2_vsprintf_position(s, s->len, fmt, ap);
     va_end(ap);
 
     if (res < 0)
-        return logsimpleerr(res, "fs2_vsprintf_position failed");
+        return logsimpleerr(res, "_fs2_vsprintf_position failed");
 
     fs2_setlen(s, s->len + res); // fix the length!!!
 

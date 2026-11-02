@@ -335,24 +335,42 @@ fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
  * @return     Number of characters written (excluding NUL), or -1 on error.
  */
 long                  
-fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap) {
-    invraise(s != NULL && fmt != NULL, "Null pointers %p %p", s, fmt);
-
+_fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap) {
+    // no checking, internal
     va_list ap2; 
     va_copy(ap2, ap); 
     long    needed = vsnprintf(NULL, 0, fmt, ap2);
     va_end(ap2);
 
     if (needed < 0)
-        return logsimpleerr(-1L, "vsnprintf length failed");
+        return logsimpleerr(-1L, "vsnprintf length verify failed");
     
     size_t  lastpos = pos + 1 + needed;
-    if (lastpos > s->sz) // not sure, probaly > sz
-        fs2_reserve(s, lastpos);
+    if (lastpos > s->sz || fs2_is_static(s))
+        fs2_reserve(s, lastpos > 1 ? lastpos : 2);
 
     long     cnt = vsnprintf(s->v + pos, needed + 1, fmt, ap);
 
     return cnt;    
+}
+
+long           
+fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
+    invfatal(ERR_NULL_INPUT,fmt != 0, 
+        "Null fmt string %p", fmt);
+    if (fs2_cant_realloc(s))
+        return -1L; // never here!
+
+    va_list ap;
+    va_start(ap, fmt);
+    long res = _fs2_vsprintf_position(s, 0, fmt, ap);
+    va_end(ap);
+
+    if (res < 0)
+        return logsimpleerr(res, "_fs2_vsprintf_position failed");  // just a log, no userraise
+    
+    fs2_setlen(s, res); // fix the length!!!
+    return res;
 }
 
 /**
