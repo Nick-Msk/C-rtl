@@ -52,4 +52,19 @@ _fs2_wrap_notnull(const char *str) {
     return res;
 }
 
+/**
+ * @brief Internal: format into @p s starting at @p pos using a va_list.
+ *
+ * Grows the buffer if needed. Does NOT update `s->len` — the caller
+ * is responsible for calling `fs2_setlen` with the result.
+ *
+ * @param s    Non-NULL fs2 (ALLOC).
+ * @param pos  0-based offset to start writing.
+ * @param fmt  Format string (non-NULL).
+ * @param ap   Pre-initialized argument list.
+ * @return     Number of characters written (excluding NUL), or -1 on error.
+ */
+extern long                  
+_fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va_list ap);
+
 #endif /* __FS2_WRAP_INTERNAL_H */
