@@ -428,15 +428,14 @@ fs2_substr(fs2 *s, size_t from, size_t len) {
  */
 fs2 
 fs2_substr_new(const fs2 *s, size_t from, size_t len) {
-    invraise(s != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
 
-    // s CAN be even STATIC
-    fs2  res = FS2();
     fs2_substr_bounds(s, &from, &len);        
     
     if (len == 0)
-        return res;
+        return FS2EMPTY;   /* constructor contract: empty → FS2EMPTY */
 
+    fs2 res = FS2();
     fs2_memcpy(&res, 0, s, from, len);
     fs2_setlen(&res, len);
     return res;
@@ -452,8 +451,6 @@ fs2_substr_new(const fs2 *s, size_t from, size_t len) {
  */
 fs2 *
 fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
-    invraise(s != NULL, "Null pointer");
-
     fs2 *res = fs2_heap();
     *res = fs2_substr_new(s, from, len);
     res->flags |= FS2_BODYALLOC;
