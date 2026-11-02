@@ -406,13 +406,10 @@ fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
  */
 fs2 *
 fs2_substr(fs2 *s, size_t from, size_t len) {
-    invraise(s != NULL, "Null pointer");
-
-    if (!s->v)     // not allocated
+    if (fs2_cant_mutate(s))
         return s;
 
-    // normalization
-    fs2_substr_bounds(s, &from, &len);
+    fs2_substr_bounds(s, &from, &len);      // normalization
 
     fs2_selfmove(s, 0, from, len);
     fs2_setlen(s, len);
