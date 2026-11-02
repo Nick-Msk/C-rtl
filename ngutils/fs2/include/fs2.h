@@ -290,26 +290,21 @@ fs2_cant_mutate(const fs2 *s) {
 }
 
 /**
- * @brief Guard for grow/write functions (cat, catstr, cpy, cpystr, ...).
+ * @brief Assert that @p s can be grown (assert-style, always returns false).
  *
- * Returns false (proceed) for empty or mutable (ALLOC/LOCAL) fs2.
- * Returns true (skip) — never in practice; the function either returns
- * false or raises.
+ * Aborts on NULL or non-empty STATIC (writing .rodata is a bug).
+ * Empty (FS2, FS2EMPTY) returns false — grow path auto-promotes via fs2_reserve.
+ * LOCAL returns false — reserve aborts if capacity insufficient.
  *
- * @param s  Destination fs2.
- * @return   false — caller may proceed with growth.
- * @raise    userraise if @p s is NULL.
- * @raise    userraise if @p s is non-empty STATIC (cannot grow .rodata).
+ * @return false always (assert-style; return value for use as expression).
  */
 static inline bool
 fs2_cant_realloc(fs2 *s) {
-    if (!s)
-        return userraise(false, ERR_NULL_INPUT, 
+    invfatal(ERR_NULL_INPUT, s,
                   "Cannot grow for null destination!");
     if (fs2_is_empty(s))
         return false;               /* empty → OK, will grow via reserve */
-    if (fs2_is_static(s))
-        return userraise(false, ERR_UNSUPPORTED_TYPE, 
+    invfatal(ERR_UNSUPPORTED_TYPE, !fs2_is_static(s),
                   "Cannot grow non-empty STATIC fs2");
     return false;                                    /* ALLOC/LOCAL → proceed */
 }
