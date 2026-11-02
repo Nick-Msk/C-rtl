@@ -647,7 +647,7 @@ fs2_wrap(const char *str) {
 static inline fs2 
 fs2_wrap_notnull(const char *str) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null src");
-    
+
     size_t  len = strlen(str), sz = len + 1;
     fs2 res = (fs2) {.len = len, .sz = sz, .v = (char *) str, .flags = FS2_STATIC};
     return res;
@@ -1268,16 +1268,16 @@ extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
  */
-long                fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+extern long                fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
-#define  FSTECHFPRINT(out, s) \
-        fs_techfprint( (out), (s), #s)
+#define  FS2TECHFPRINT(out, s) \
+        fs2_techfprint( (out), (s), #s)
 
-#define  FSTECHPRINT(s) \
-        fs_techfprint(stdout, (s), #s)        
+#define  FS2TECHPRINT(s) \
+        fs2_techfprint(stdout, (s), #s)        
 
-#define  FSTECHLOG(s) \
-        fs_techfprint(logfile, (s), #s)        
+#define  FS2TECHLOG(s) \
+        fs2_techfprint(logfile, (s), #s)        
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Validator

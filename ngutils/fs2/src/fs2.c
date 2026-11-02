@@ -710,7 +710,7 @@ fs2_cmp_wrap_ci(const void *str1, const void *str2) {
  * @return      Number of characters written (0 if @p out is NULL).
  */
 long                                    
-fs_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name) {
+fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name) {
     // technical print, statis attributes for now
     long     cnt = 0;
     if (out){

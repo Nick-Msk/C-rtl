@@ -235,7 +235,7 @@ Supported types: `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `llong`, `ul
 - `fs2_setlen(s, pos)` — set logical length, write NUL at `pos`.
 - `fs2_clear(s)` — shorthand for `fs2_setlen(s, 0)`.
 - `fs2_validate(out, s)` — check all invariants.
-- `fs_techfprint(out, s, name)` — one-line technical dump.
+- `fs2_techfprint(out, s, name)` — one-line technical dump.
 
 ## Internal helpers
 Used by the API to prevent raw `memcpy`/`memmove` footguns.

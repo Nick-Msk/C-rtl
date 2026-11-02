@@ -371,7 +371,7 @@ Test(fs2, validate_writes_to_stream) {
 }
 
 /* -------------------------------------------------------------------------
- * fs_techfprint
+ * fs2_techfprint
  * ------------------------------------------------------------------------- */
 
 Test(fs2, techfprint_literal) {
@@ -382,7 +382,7 @@ Test(fs2, techfprint_literal) {
     CHECK_NOT_NULL("fopen write", f);
 
     fs2  s = FS2LITERAL("payload");
-    long n = fs_techfprint(f, &s, "s");
+    long n = fs2_techfprint(f, &s, "s");
     fclose(f);
 
     CHECK_TRUE("positive write count", n > 0);
@@ -403,7 +403,7 @@ Test(fs2, techfprint_null_s) {
     FILE *f = fopen(path, "w");
     CHECK_NOT_NULL("fopen write", f);
 
-    long n = fs_techfprint(f, NULL, "s");
+    long n = fs2_techfprint(f, NULL, "s");
     fclose(f);
 
     CHECK_TRUE("positive write count", n > 0);
@@ -418,7 +418,7 @@ Test(fs2, techfprint_null_s) {
 
 Test(fs2, techfprint_null_out_returns_zero) {
     fs2 s = FS2LITERAL("x");
-    CHECK_EQ("fs_techfprint(NULL, ...)", fs_techfprint(NULL, &s, "s"), 0);
+    CHECK_EQ("fs2_techfprint(NULL, ...)", fs2_techfprint(NULL, &s, "s"), 0);
 }
 
 /* -------------------------------------------------------------------------
