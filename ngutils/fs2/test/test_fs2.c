@@ -39,6 +39,12 @@ Test(fs2, versions_terminated_by_null) {
     CHECK_NULL("versions[n]", v[n]);
 }
 
+static inline void
+test_cat(fs2 *dst, const fs2 *src) {
+    fs2_reserve(dst, dst->len + src->len + 1);
+    memcpy(dst->v + dst->len, src->v, src->len);
+    fs2_setlen(dst, dst->len + src->len);
+}
 /**
  * @brief Test surrogate for fs2_catstr — appends src to dst using core primitives.
  *
@@ -53,7 +59,8 @@ Test(fs2, versions_terminated_by_null) {
  */
 static inline void
 test_catstr(fs2 *dst, const char *src) {
-    if (!src) return;
+    if (!src)
+        return;
     size_t len = strlen(src);
     if (len == 0) return;
     fs2_reserve(dst, dst->len + len + 1);
@@ -4043,3 +4050,173 @@ Test(fs2, cant_mutate_local_with_content_proceeds) {
     fs2_setlen(&s, 2);
     CHECK_FALSE("proceed", fs2_cant_mutate(&s));
 }
+
+/* =========================================================================
+ * fs2_wrap — tolerant NVL-style wrap
+ * ========================================================================= */
+
+Test(fs2, wrap_basic) {
+    fs2 s = fs2_wrap("hello");
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_EQ  ("sz",  s.sz, 6);
+    CHECK_TRUE ("STATIC", fs2_is_static(&s));
+    CHECK_FALSE("not ALLOC", fs2_is_alloc(&s));
+    CHECK_FALSE("not LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+    /* fs2_free — no-op для STATIC */
+}
+
+Test(fs2, wrap_aliases_input) {
+    /* v must point INTO the input, not a copy */
+    const char *src = "hello";
+    fs2 s = fs2_wrap(src);
+    CHECK_PTR_EQ("aliases src", s.v, src);
+}
+
+Test(fs2, wrap_empty_string) {
+    fs2 s = fs2_wrap("");
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_EQ  ("sz",  s.sz, 1);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, wrap_null_returns_empty_const_shape) {
+    fs2 s = fs2_wrap(NULL);
+
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_EQ  ("sz",  s.sz, 1);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FALSE("not ALLOC", fs2_is_alloc(&s));
+    CHECK_NOT_NULL("v readable", s.v);
+    CHECK_STR_EQ("v empty", s.v, "");
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, wrap_no_allocations) {
+    __fs2_checkreset();
+    fs2 s = fs2_wrap("hello");   /* must NOT touch counters */
+    fs2_free(&s);
+    assert_balanced();           /* 0 alloc, 0 free */
+}
+
+Test(fs2, wrap_long_string) {
+    char big[1001];
+    memset(big, 'A', 1000);
+    big[1000] = '\0';
+
+    fs2 s = fs2_wrap(big);
+    CHECK_EQ("len", s.len, 1000);
+    CHECK_EQ("sz",  s.sz, 1001);
+    CHECK_EQ("first", s.v[0], 'A');
+    CHECK_PTR_EQ("aliases buf", s.v, big);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, wrap_non_ascii) {
+    /* UTF-8 "привет" = 12 bytes */
+    const char *src = "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82";
+    fs2 s = fs2_wrap(src);
+    CHECK_EQ("len", s.len, 12);
+    CHECK_EQ("first byte", (unsigned char)s.v[0], 0xD0);
+    CHECK_PTR_EQ("aliases", s.v, src);
+    CHECK_FS2VALID(1, &s);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * fs2_wrap_notnull — strict variant, NULL → SIGABRT
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+Test(fs2, wrap_notnull_basic) {
+    fs2 s = fs2_wrap_notnull("hello");
+
+    CHECK_STR_EQ("content", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_EQ  ("sz",  s.sz, 6);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, wrap_notnull_aliases_input) {
+    const char *src = "hello";
+    fs2 s = fs2_wrap_notnull(src);
+    CHECK_PTR_EQ("aliases src", s.v, src);
+}
+
+Test(fs2, wrap_notnull_empty_string) {
+    /* "" is valid (non-NULL), just empty */
+    fs2 s = fs2_wrap_notnull("");
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_EQ("sz",  s.sz, 1);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_STR_EQ("readable", s.v, "");
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, wrap_notnull_null_aborts, .signal = SIGABRT) {
+    fs2_wrap_notnull(NULL);
+}
+
+Test(fs2, wrap_notnull_no_allocations) {
+    __fs2_checkreset();
+    fs2 s = fs2_wrap_notnull("x");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Consistency: wrap vs wrap_notnull (same shape for non-NULL)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+Test(fs2, wrap_vs_notnull_same_for_nonnull) {
+    const char *inputs[] = { "hello", "", "long string here", "x" };
+    size_t n = sizeof(inputs) / sizeof(inputs[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2 a = fs2_wrap(inputs[i]);
+        fs2 b = fs2_wrap_notnull(inputs[i]);
+        CHECK_EQ("len",   a.len,   b.len);
+        CHECK_EQ("sz",    a.sz,    b.sz);
+        CHECK_EQ("flags", a.flags, b.flags);
+        CHECK_PTR_EQ("v", a.v,     b.v);
+        CHECK_FS2VALID((int)i, &a);
+        CHECK_FS2VALID((int)i, &b);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * fs2_wrap + fs2_cat (usage pattern)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+Test(fs2, wrap_as_cat_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("prefix_");
+
+    fs2 tmp = fs2_wrap("suffix");
+    test_cat(&dst, &tmp);
+
+    CHECK_STR_EQ("prefixed+suffix", dst.v, "prefix_suffix");
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, wrap_notnull_as_cat_src) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+
+    fs2 tmp = fs2_wrap_notnull("bc");
+    test_cat(&dst, &tmp);
+
+    CHECK_STR_EQ("abc", dst.v, "abc");
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
