@@ -3851,3 +3851,24 @@ Test(fs2_api, tolower_static_nonempty_aborts, .signal = SIGABRT) {
 Test(fs2_api, tolower_null_aborts, .signal = SIGABRT) {
     fs2_tolower(NULL);
 }
+Test(fs2_api, mutators_empty_inputs_are_noops) {
+    __fs2_checkreset();
+
+    /* обе пустые формы — валидные входы для всех in-place мутаторов */
+    for (int form = 0; form < 2; form++) {
+        fs2 s = (form == 0) ? FS2() : FS2EMPTY;
+
+        fs2_toupper(&s);
+        fs2_tolower(&s);
+        /* fs2_flip, fs2_trim_str(&s, " "), fs2_strip_prefix_str(&s, "x") — тоже сюда */
+
+        if (form == 0) {
+            CHECK_TRUE("FS2() remains canon", fs2_is_canon(&s));
+        } else {
+            CHECK_TRUE("FS2EMPTY remains empty", fs2_eq_empty(&s));
+        }
+        CHECK_FS2VALID(1, &s);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
