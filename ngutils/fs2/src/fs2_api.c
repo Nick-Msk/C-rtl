@@ -546,13 +546,15 @@ fs2 *
 fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
     if (fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
         return str;
-    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to rpad");
+    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to lpad");
 
     if (len < str->len)
         return fs2_left(str, len);
 
     if (pad->len == 0 || len == str->len)  // empty - nothing to PAD
         return str;
+
+    fs2_reserve(str, len + 1);  // make sure mem is allocated
 
     size_t pad_len = len - str->len;
     fs2_selfmove(str, pad_len, 0, str->len);
