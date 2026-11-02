@@ -524,17 +524,16 @@ fs2_rpadstr(fs2 *restrict str, size_t len, const char *restrict padstr) {
  *
  * @param str  Non-NULL fs2 (any flavor). Not modified.
  * @param len  Target total length.
- * @param pad  Non-NULL non-empty fs2 pad (NULL → unmodified clone).
- * @return     New stack fs2.
+ * @param pad  Non-NULL non-empty fs2 pad.
+ * @return     New stack fs2 (ALLOC body).
+ * @warning    `invfatal` (SIGABRT) if @p str or @p pad is NULL.
  */
 static inline fs2
 fs2_rpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad not allowed"); 
 
     fs2 res = fs2_clone(str);  
-    if (!pad)
-        return res;
-     
+
     fs2_rpad(&res, len, pad);
     return res;
 }
