@@ -609,24 +609,17 @@ fs2 *
 fs2_shrink(fs2 *s);
 
 /**
- * @brief Clamp @p from / @p len into the valid range of @p s (internal).
+ * @brief Clamp [from, len) to valid range of @p s.
  *
- * Used by fs2_substr / fs2_substrn before slicing. If the buffer is
- * NULL or @p *from is at or beyond the end, both are set to represent
- * an empty result. If @p *len would exceed the remaining bytes, it is
- * clamped to what is left.
- *
- * @param s      Source fs2 (non-NULL).
- * @param from   In/out: start offset; clamped to [0, s->len].
- * @param len    In/out: requested length; clamped to s->len - *from.
- *               May be NULL (only *from is adjusted).
+ * For valid fs2 (s->len==0 covers canonical empty since from >= 0),
+ * this always reduces to (from=0, len=0) when string is empty.
+ * No NULL check — caller guarantees @p s non-NULL (see fs2_substr_*).
  */
 static inline void 
 fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len) {
-    if (!s->v || *from >= s->len) {
+    if (*from >= s->len) {
         *from = s->len;
-        if (len)
-            *len  = 0;
+        *len  = 0;
         return;
     }
     if (len && *len > s->len - *from)
