@@ -6133,3 +6133,69 @@ Test(fs2_api, lpad_new_rpad_new_symmetric) {
     fs2_free(&right);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_lpadstr_new — только padstr-специфика
+ * (str/len/promote/truncate/LOCAL/immutability — покрыты в lpad_new-тестах)
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("ab");
+
+    fs2 r = fs2_lpadstr_new(&src, 6, "xy");
+
+    CHECK_STR_EQ("xyxyab", r.v, "xyxyab");
+    CHECK_EQ  ("len",      r.len, 6);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* "" padstr — валидный вход, no-op (clone of src) */
+Test(fs2_api, lpadstr_new_empty_padstr_noop) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_lpadstr_new(&src, 10, "");
+
+    CHECK_STR_EQ("hello",   r.v, "hello");
+    CHECK_EQ  ("len",       r.len, 5);
+    CHECK_TRUE("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* NULL padstr — SIGABRT через _fs2_wrap_notnull */
+Test(fs2_api, lpadstr_new_null_padstr_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("ab");
+    fs2_lpadstr_new(&src, 5, NULL);
+    fs2_free(&src);
+}
+
+/* Согласованность с lpad_new через wrap */
+Test(fs2_api, lpadstr_new_matches_lpad_new_with_wrapped_pad) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2 via_pad  = fs2_lpad_new(&src, 8, &pad);
+    fs2 via_str  = fs2_lpadstr_new(&src, 8, "xy");
+
+    CHECK_STR_EQ("same content", via_pad.v,   via_str.v);
+    CHECK_EQ  ("same len",       via_pad.len, via_str.len);
+    CHECK_FS2VALID(1, &via_pad);
+    CHECK_FS2VALID(2, &via_str);
+
+    fs2_free(&src);
+    fs2_free(&pad);
+    fs2_free(&via_pad);
+    fs2_free(&via_str);
+    assert_balanced();
+}
