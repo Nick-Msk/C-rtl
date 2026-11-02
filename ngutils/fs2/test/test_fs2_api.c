@@ -3154,3 +3154,198 @@ Test(fs2, right_len_eq_slen_noop) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_right_new — nominal
+ * ========================================================================= */
+
+Test(fs2, right_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2 r = fs2_right_new(&src, 3);
+
+    CHECK_STR_EQ("def", r.v, "def");
+    CHECK_EQ  ("len", r.len, 3);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&r));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);   /* src untouched */
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, right_new_single_char) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_right_new(&src, 1);
+
+    CHECK_STR_EQ("o", r.v, "o");
+    CHECK_EQ  ("len", r.len, 1);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* len == s->len → clone (whole string) */
+Test(fs2, right_new_len_eq_slen_clones_whole) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_right_new(&src, 5);
+
+    CHECK_STR_EQ("whole", r.v, "hello");
+    CHECK_EQ  ("len", r.len, 5);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&r));
+    CHECK_TRUE("independent buffer", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, right_new_len_beyond_clamps_to_whole) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+
+    fs2 r = fs2_right_new(&src, 100);
+
+    CHECK_STR_EQ("whole (clamped)", r.v, "abc");
+    CHECK_EQ  ("len", r.len, 3);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* ⚠ len == 0: substring empty → FS2EMPTY */
+Test(fs2, right_new_len_zero_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_right_new(&src, 0);
+
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&r));
+    CHECK_FALSE("not canon", fs2_is_canon(&r));
+    CHECK_NOT_NULL("v readable", r.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, right_new_from_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 r = fs2_right_new(&src, 3);
+
+    CHECK_STR_EQ("llo", r.v, "llo");
+    CHECK_TRUE("ALLOC copy (not aliased)", fs2_is_alloc(&r));
+    CHECK_FALSE("not STATIC", fs2_is_static(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+}
+
+Test(fs2, right_new_from_static_src_clamp) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hi");
+
+    fs2 r = fs2_right_new(&src, 100);
+
+    /* clone path — ALLOC copy of literal */
+    CHECK_STR_EQ("whole", r.v, "hi");
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+}
+
+/* =========================================================================
+ * fs2_right_new — empty src
+ * ========================================================================= */
+
+Test(fs2, right_new_fs2empty_returns_fs2empty) {
+    fs2 src = FS2EMPTY;
+
+    fs2 r = fs2_right_new(&src, 5);
+
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+}
+
+Test(fs2, right_new_canonical_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 r = fs2_right_new(&src, 5);
+
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_right_new — guards
+ * ========================================================================= */
+
+Test(fs2, right_new_null_aborts, .signal = SIGABRT) {
+    /* ← было silent FS2(), стало SIGABRT */
+    fs2_right_new(NULL, 5);
+}
+
+/* =========================================================================
+ * src immutability
+ * ========================================================================= */
+
+Test(fs2, right_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    void *orig_v = src.v;
+
+    fs2 r = fs2_right_new(&src, 4);
+
+    CHECK_PTR_EQ("src v unchanged", src.v, orig_v);
+    CHECK_STR_EQ("src content unchanged", src.v, "original");
+    CHECK_STR_EQ("result is copy", r.v, "inal");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency: right_new == left_new(s, len) на reversed
+ * ========================================================================= */
+
+Test(fs2, right_new_len_eq_zero_matches_empty) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("world");
+
+    fs2 r1 = fs2_right_new(&a, 0);
+    fs2 r2 = fs2_right_new(&b, 0);
+
+    /* Both empty, same shape */
+    CHECK_TRUE("r1 empty", fs2_is_empty(&r1));
+    CHECK_TRUE("r2 empty", fs2_is_empty(&r2));
+    CHECK_EQ  ("same flags", r1.flags, r2.flags);
+    CHECK_EQ  ("same sz",    r1.sz,    r2.sz);
+    CHECK_FS2VALID(1, &r1);
+    CHECK_FS2VALID(2, &r2);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
