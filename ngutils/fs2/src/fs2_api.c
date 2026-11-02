@@ -585,7 +585,8 @@ fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
  */
 fs2 *           
 fs2_genrnd(fs2 *s, size_t len, char type) {
-    invraise(s != NULL, "Null pointer");
+    if(fs2_cant_realloc(s))
+        return s;
 
     fs2_reserve(s, len + 1);
 
