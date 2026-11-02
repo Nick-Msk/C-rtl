@@ -397,5 +397,17 @@ extern int                      pcstr_cmp(const void *restrict s1, const void *r
 // insensitive
 extern int                      pcstr_icmp(const void *restrict s1, const void *restrict s2);
 
+/**
+ * @brief NVL for nullable C-string: returns "" instead of NULL.
+ *
+ *   str_orempty(NULL)  →  ""
+ *   str_orempty("hi")  → "hi" (identity)
+ *
+ * @param c  Nullable C-string.
+ * @return   Never NULL. Points to cstr_empty_const on NULL input.
+ */
+static inline const char *str_orempty(const char *c) {
+    return c ? c : "";
+}
 
 #endif /* !COMMON_H */
