@@ -33,12 +33,13 @@ _fs2_wrap(const char *str) {
 }
 
 /**
- * @brief Wrap a not null C-string as an fs2 view (STATIC, zero-copy).
+ * 
+ * @brief Wrap a not-null C-string as an fs2 view (STATIC, zero-copy).
  *
- * @param str  NUL-terminated string, or NULL.
- *             NULL is treated as the empty string.
+ * @param str  NUL-terminated string (non-NULL).
  * @return     fs2 view aliasing @p str.
- *             @p str must outlive every use of the result.
+ * @warning    `invfatal` (SIGABRT) if @p str is NULL.
+
  * @note       No allocation. `fs2_free` on the result is a no-op.
  *             Do not pass the result as both `dst` and `src` to fs2_cat
  *             (restrict violation).
