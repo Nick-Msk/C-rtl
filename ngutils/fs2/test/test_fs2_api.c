@@ -1791,7 +1791,7 @@ Test(fs2, sprintf_fs2empty_empty_format_no_crash) {
     __fs2_checkreset();
     fs2 dst = FS2EMPTY;
 
-    long res = fs2_sprintf(&dst, "");
+    long res = fs2_sprintf(&dst, "%s", "");
 
     CHECK_EQ("return", res, 0);
     CHECK_EQ("len", dst.len, 0);
@@ -1806,7 +1806,7 @@ Test(fs2, sprintf_canonical_empty_format) {
     __fs2_checkreset();
     fs2 dst = FS2();   /* v=NULL, sz=0 */
 
-    long res = fs2_sprintf(&dst, "");
+    long res = fs2_sprintf(&dst, "%s", "");
 
     CHECK_EQ("return", res, 0);
     CHECK_EQ("len", dst.len, 0);
@@ -1893,7 +1893,7 @@ Test(fs2, sprintf_static_nonempty_dst_aborts, .signal = SIGABRT) {
 Test(fs2, sprintf_fs2empty_empty_format) {
     __fs2_checkreset();
     fs2 dst = FS2EMPTY;
-    long res = fs2_sprintf(&dst, "");
+    long res = fs2_sprintf(&dst, "%s", "");
     CHECK_EQ("return", res, 0);
     CHECK_TRUE("promoted", fs2_is_alloc(&dst));
     CHECK_NOT_NULL("v writable", dst.v);
@@ -1916,7 +1916,7 @@ Test(fs2, sprintf_fs2empty_zero_precision) {
 Test(fs2, sprintf_fs2literal_empty_empty_format) {
     __fs2_checkreset();
     fs2 dst = FS2LITERAL("");
-    long res = fs2_sprintf(&dst, "");
+    long res = fs2_sprintf(&dst, "%s", "");
     CHECK_EQ("return", res, 0);
     CHECK_TRUE("promoted", fs2_is_alloc(&dst));
     CHECK_FS2VALID(1, &dst);
