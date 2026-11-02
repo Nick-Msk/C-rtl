@@ -4311,3 +4311,148 @@ Test(fs2_api, repeat_new_works_via_rpad) {
     fs2_free(&r);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_rpadstr — nominal
+ * ========================================================================= */
+
+Test(fs2_api, rpadstr_basic) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+
+    fs2 *r = fs2_rpadstr(&str, 6, "xy");
+
+    CHECK_STR_EQ("abxyxy", str.v, "abxyxy");
+    CHECK_EQ  ("len",      str.len, 6);
+    CHECK_PTR_EQ("chaining", r, &str);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_single_char_pad) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+
+    fs2_rpadstr(&str, 5, "x");
+
+    CHECK_STR_EQ("abxxx", str.v, "abxxx");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_truncate_when_len_smaller) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+
+    fs2_rpadstr(&str, 3, "xy");
+
+    CHECK_STR_EQ("hel", str.v, "hel");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_same_len_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    void *before = str.v;
+
+    fs2_rpadstr(&str, 5, "xy");
+
+    CHECK_PTR_EQ("buffer unchanged", str.v, before);
+    CHECK_STR_EQ("hello",            str.v, "hello");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_empty_string_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    void *before = str.v;
+
+    fs2_rpadstr(&str, 10, "");
+
+    CHECK_PTR_EQ("buffer unchanged", str.v, before);
+    CHECK_STR_EQ("ab",               str.v, "ab");
+    CHECK_EQ  ("len",                str.len, 2);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_empty_str_promotes) {
+    __fs2_checkreset();
+    fs2 str = FS2();
+
+    fs2_rpadstr(&str, 5, "ab");
+
+    CHECK_STR_EQ("ababa",         str.v, "ababa");
+    CHECK_FALSE("no longer canon", fs2_is_canon(&str));
+    CHECK_TRUE ("now ALLOC",       fs2_is_alloc(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_fs2empty_str_promotes) {
+    __fs2_checkreset();
+    fs2 str = FS2EMPTY;
+
+    fs2_rpadstr(&str, 5, "ab");
+
+    CHECK_STR_EQ("ababa",            str.v, "ababa");
+    CHECK_FALSE("not STATIC anymore", fs2_is_static(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* guards */
+Test(fs2_api, rpadstr_null_str_aborts, .signal = SIGABRT) {
+    fs2_rpadstr(NULL, 10, "xy");
+}
+
+Test(fs2_api, rpadstr_null_padstr_aborts, .signal = SIGABRT) {
+    fs2 str = fs2_fromstr("ab");
+    fs2_rpadstr(&str, 10, NULL);
+    fs2_free(&str);
+}
+
+Test(fs2_api, rpadstr_static_nonempty_str_aborts, .signal = SIGABRT) {
+    fs2 str = FS2LITERAL("hello");
+    fs2_rpadstr(&str, 10, "xy");
+}
+
+/* LOCAL */
+Test(fs2_api, rpadstr_local_sufficient_capacity_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "ab", 2);
+    fs2_setlen(&buf, 2);
+
+    fs2_rpadstr(&buf, 8, "xy");
+
+    CHECK_STR_EQ("abxyxyxy",  buf.v, "abxyxyxy");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+Test(fs2_api, rpadstr_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    FS2LOCAL(buf, 4);
+    fs2_memcpy_str(&buf, 0, "abc", 3);
+    fs2_setlen(&buf, 3);
+    fs2_rpadstr(&buf, 10, "x");
+}
+
