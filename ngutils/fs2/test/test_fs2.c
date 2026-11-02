@@ -4220,3 +4220,120 @@ Test(fs2, wrap_notnull_as_cat_src) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_orempty
+ * ========================================================================= */
+
+Test(fs2, orempty_null_returns_empty_const) {
+    const fs2 *r = fs2_orempty(NULL);
+    CHECK_PTR_EQ("&fs2_empty_const", r, &fs2_empty_const);
+    CHECK_TRUE ("STATIC", fs2_is_static(r));
+    CHECK_STR_EQ("v readable", r->v, "");
+    CHECK_FS2VALID(1, r);
+}
+
+Test(fs2, orempty_nonnull_identity) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    CHECK_PTR_EQ("identity", fs2_orempty(&s), &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, orempty_fs2ptr_implicit_convert) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    fs2 *p = &s;
+    CHECK_PTR_EQ("fs2* works", fs2_orempty(p), p);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, orempty_pointer_stable) {
+    CHECK_PTR_EQ("stable across calls",
+                 fs2_orempty(NULL), fs2_orempty(NULL));
+}
+
+/* =========================================================================
+ * fs2_nvl
+ * ========================================================================= */
+
+Test(fs2, nvl_s_nonnull_returns_s) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    fs2 def = fs2_fromstr("default");
+
+    CHECK_PTR_EQ("s wins", fs2_nvl(&s, &def), &s);
+
+    fs2_free(&s);
+    fs2_free(&def);
+    assert_balanced();
+}
+
+Test(fs2, nvl_s_null_returns_def) {
+    __fs2_checkreset();
+    fs2 def = fs2_fromstr("default");
+
+    CHECK_PTR_EQ("def returned", fs2_nvl(NULL, &def), &def);
+
+    fs2_free(&def);
+    assert_balanced();
+}
+
+Test(fs2, nvl_def_null_aborts, .signal = SIGABRT) {
+    fs2_nvl(NULL, NULL);
+}
+
+Test(fs2, nvl_s_null_def_static) {
+    fs2 def = FS2LITERAL("fallback");
+    CHECK_PTR_EQ("static def works", fs2_nvl(NULL, &def), &def);
+}
+
+/* =========================================================================
+ * Usage — NVL + fs2_cat
+ * ========================================================================= */
+
+Test(fs2, orempty_cat_null_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+
+    test_cat(&dst, fs2_orempty(NULL));   /* → empty_const → no-op */
+
+    CHECK_STR_EQ("unchanged", dst.v, "a");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, nvl_cat_uses_default) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2 def = fs2_fromstr(" (default)");
+
+    test_cat(&dst, fs2_nvl(NULL, &def));
+
+    CHECK_STR_EQ("appended default", dst.v, "a (default)");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&def);
+    assert_balanced();
+}
+
+Test(fs2, nvl_cat_s_wins) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2 s   = fs2_fromstr(" from-s");
+    fs2 def = fs2_fromstr(" from-def");
+
+    test_cat(&dst, fs2_nvl(&s, &def));
+
+    CHECK_STR_EQ("s wins", dst.v, "a from-s");
+
+    fs2_free(&dst);
+    fs2_free(&s);
+    fs2_free(&def);
+    assert_balanced();
+}
+
