@@ -2100,3 +2100,222 @@ Test(fs2, sprintf_concat_local_overflow_aborts, .signal = SIGABRT) {
     FS2LOCAL(dst, 4);
     fs2_sprintf_concat(&dst, "hello world");   /* > capacity → abort */
 }
+
+/* =========================================================================
+ * fs2_substr — nominal
+ * ========================================================================= */
+
+Test(fs2, substr_middle) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+    CHECK_FS2VALID(1, &s);
+
+    fs2 *ret = fs2_substr(&s, 2, 3);
+
+    CHECK_PTR_EQ("returns s", ret, &s);
+    CHECK_STR_EQ("cde", s.v, "cde");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_from_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2_substr(&s, 0, 5);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_whole_string_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig_v = s.v;
+
+    fs2_substr(&s, 0, 5);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_to_end) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    fs2_substr(&s, 3, 100);   /* clamp to len-from = 3 */
+
+    CHECK_STR_EQ("def", s.v, "def");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_substr — clamping edge cases
+ * ========================================================================= */
+
+Test(fs2, substr_from_beyond_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 10, 5);   /* from > len → clamps to empty */
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_from_at_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 3, 5);   /* from == len → empty */
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_len_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 1, 0);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_substr — LOCAL
+ * ========================================================================= */
+
+Test(fs2, substr_local_within) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "abcdef", 7);
+    fs2_setlen(&s, 6);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_substr(&s, 2, 3);
+
+    CHECK_STR_EQ("cde", s.v, "cde");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(2, &s);
+}
+
+/* =========================================================================
+ * fs2_substr — empty variants (skip, no abort)
+ * ========================================================================= */
+
+Test(fs2, substr_fs2empty_noop) {
+    fs2 s = FS2EMPTY;
+
+    fs2_substr(&s, 0, 5);
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&s));
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, substr_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_substr(&s, 0, 5);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_PTR_EQ("v NULL", s.v, NULL);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_empty_literal_noop) {
+    fs2 s = FS2LITERAL("");
+
+    fs2_substr(&s, 0, 5);
+
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_substr — guards
+ * ========================================================================= */
+
+Test(fs2, substr_null_aborts, .signal = SIGABRT) {
+    fs2_substr(NULL, 0, 5);
+}
+
+Test(fs2, substr_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_substr(&s, 1, 3);   /* write .rodata → abort */
+}
+
+/* identity: from==0, len==s->len — still aborts (mutator on readonly) */
+Test(fs2, substr_static_nonempty_identity_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_substr(&s, 0, 5);   /* logically no-op, but cant_mutate aborts */
+}
+
+/* =========================================================================
+ * fs2_substr — overflow / huge values
+ * ========================================================================= */
+
+Test(fs2, substr_huge_len_clamps) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_substr(&s, 0, SIZE_MAX);
+
+    CHECK_STR_EQ("whole string (clamped)", s.v, "abc");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, substr_from_len_overflow_safe) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    /* from near SIZE_MAX, len huge → from clamps first, then len → 0 */
+    fs2_substr(&s, SIZE_MAX, SIZE_MAX);
+
+    CHECK_EQ("len", s.len, 0);
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
