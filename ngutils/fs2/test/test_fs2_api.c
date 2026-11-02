@@ -6415,3 +6415,75 @@ Test(fs2_api, genrnd_local_insufficient_capacity_aborts, .signal = SIGABRT) {
     FS2LOCAL(buf, 4);
     fs2_genrnd(&buf, 10, 'a');   /* need=11 > sz=4 */
 }
+
+/* =========================================================================
+ * fs2_genrnd_new — только обёртка-специфика
+ * (charset-семантика покрыта в genrnd-тестах)
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_genrnd_new(10, 'a');
+
+    CHECK_EQ  ("len",             s.len, 10);
+    CHECK_TRUE("ALLOC",           fs2_is_alloc(&s));
+    CHECK_FALSE("not bodyalloc",  fs2_is_bodyalloc(&s));
+    CHECK_FALSE("not STATIC",     fs2_is_static(&s));
+    CHECK_EQ  ("NUL at len",      s.v[s.len], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    for (size_t i = 0; i < s.len; i++)
+        CHECK_TRUE("a-z", s.v[i] >= 'a' && s.v[i] <= 'z');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_new_unknown_type) {
+    __fs2_checkreset();
+    fs2 s = fs2_genrnd_new(5, 'x');
+
+    CHECK_EQ("len", 5, s.len);
+    for (size_t i = 0; i < s.len; i++)
+        CHECK_EQ("'?'", s.v[i], '?');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_new_len_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_genrnd_new(0, 'a');
+
+    /* fs2_init(1) → ALLOC, v≠NULL, len=0 — не FS2EMPTY и не canon */
+    CHECK_EQ  ("len",          s.len, 0);
+    CHECK_TRUE("empty",        fs2_is_empty(&s));
+    CHECK_TRUE("ALLOC",        fs2_is_alloc(&s));
+    CHECK_NOT_NULL("v allocated", s.v);
+    CHECK_EQ  ("v[0] == NUL",  s.v[0], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Согласованность: genrnd_new(l, t) == genrnd(FS2(), l, t) */
+Test(fs2_api, genrnd_new_matches_manual_init) {
+    __fs2_checkreset();
+    fs2 manual = FS2();
+    fs2_genrnd(&manual, 20, '0');
+
+    fs2 via = fs2_genrnd_new(20, '0');
+
+    CHECK_EQ("same len",   manual.len, via.len);
+    /* содержимое случайное — сравниваем только форму/валидность */
+    CHECK_TRUE("manual 0-9", manual.v[0] >= '0' && manual.v[0] <= '9');
+    CHECK_TRUE("via 0-9",    via.v[0]    >= '0' && via.v[0]    <= '9');
+    CHECK_FS2VALID(1, &manual);
+    CHECK_FS2VALID(2, &via);
+
+    fs2_free(&manual);
+    fs2_free(&via);
+    assert_balanced();
+}
