@@ -5460,3 +5460,268 @@ Test(fs2_api, lpad_equals_reverse_rpad_of_reverse) {
     fs2_free(&pad);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_lpadstr — nominal
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_basic) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+
+    fs2 *r = fs2_lpadstr(&str, 8, "xy");
+
+    CHECK_STR_EQ("xyxyxyab", str.v, "xyxyxyab");
+    CHECK_EQ  ("len",        str.len, 8);
+    CHECK_PTR_EQ("chaining", r, &str);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_single_char_pad) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+
+    fs2_lpadstr(&str, 5, "x");
+
+    CHECK_STR_EQ("xxxab", str.v, "xxxab");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_gap_not_multiple_of_pad) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("a");
+
+    fs2_lpadstr(&str, 8, "xyz");   /* gap = 7 → "xyzxyzx" */
+
+    CHECK_STR_EQ("xyzxyzxa", str.v, "xyzxyzxa");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_pad_longer_than_gap) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+
+    fs2_lpadstr(&str, 4, "xyz");   /* gap = 2 → "xy" */
+
+    CHECK_STR_EQ("xyab", str.v, "xyab");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_lpadstr — truncate / no-op / len == 0
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_truncate_when_len_smaller) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+
+    fs2_lpadstr(&str, 3, "xy");
+
+    CHECK_STR_EQ("hel", str.v, "hel");
+    CHECK_EQ  ("len",   str.len, 3);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_same_len_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    void *before = str.v;
+
+    fs2_lpadstr(&str, 5, "xy");
+
+    CHECK_PTR_EQ("buffer unchanged", str.v, before);
+    CHECK_STR_EQ("hello",            str.v, "hello");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_len_zero_truncates_to_empty) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+
+    fs2_lpadstr(&str, 0, "xy");
+
+    CHECK_EQ  ("len",   str.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_lpadstr — empty padstr (""): no-op (ключевое отличие от NULL)
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_empty_string_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    void *before = str.v;
+
+    fs2 *r = fs2_lpadstr(&str, 10, "");
+
+    CHECK_PTR_EQ("chaining",         r, &str);
+    CHECK_PTR_EQ("buffer unchanged", str.v, before);
+    CHECK_STR_EQ("ab",               str.v, "ab");
+    CHECK_EQ  ("len",                str.len, 2);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_lpadstr — empty str → promote
+ *   (зависит от фикса fs2_lpad: fs2_reserve_span до selfmove;
+ *    без фикса — SEGV)
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_canon_str_promotes) {
+    __fs2_checkreset();
+    fs2 str = FS2();
+
+    fs2_lpadstr(&str, 5, "ab");
+
+    CHECK_STR_EQ("ababa",           str.v, "ababa");
+    CHECK_EQ  ("len",               str.len, 5);
+    CHECK_FALSE("no longer canon",  fs2_is_canon(&str));
+    CHECK_TRUE ("now ALLOC",        fs2_is_alloc(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_fs2empty_str_promotes) {
+    __fs2_checkreset();
+    fs2 str = FS2EMPTY;
+
+    fs2_lpadstr(&str, 5, "ab");
+
+    CHECK_STR_EQ("ababa",              str.v, "ababa");
+    CHECK_FALSE("not STATIC anymore",   fs2_is_static(&str));
+    CHECK_TRUE ("now ALLOC",            fs2_is_alloc(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_empty_str_empty_padstr_stays_empty) {
+    __fs2_checkreset();
+    fs2 str = FS2();
+
+    fs2_lpadstr(&str, 5, "");
+
+    CHECK_TRUE("still canon", fs2_is_canon(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_lpadstr — guards
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_null_str_aborts, .signal = SIGABRT) {
+    fs2_lpadstr(NULL, 10, "xy");
+}
+
+Test(fs2_api, lpadstr_null_padstr_aborts, .signal = SIGABRT) {
+    fs2 str = fs2_fromstr("ab");
+    fs2_lpadstr(&str, 10, NULL);
+    fs2_free(&str);
+}
+
+Test(fs2_api, lpadstr_static_nonempty_str_aborts, .signal = SIGABRT) {
+    fs2 str = FS2LITERAL("hello");
+    fs2_lpadstr(&str, 10, "xy");
+}
+
+/* =========================================================================
+ * fs2_lpadstr — LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, lpadstr_local_sufficient_capacity_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "ab", 2);
+    fs2_setlen(&buf, 2);
+
+    fs2_lpadstr(&buf, 8, "xy");
+
+    CHECK_STR_EQ("xyxyxyab",  buf.v, "xyxyxyab");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_TRUE ("not ALLOC",  !fs2_is_alloc(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+Test(fs2_api, lpadstr_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    FS2LOCAL(buf, 4);
+    fs2_memcpy_str(&buf, 0, "abc", 3);
+    fs2_setlen(&buf, 3);
+    fs2_lpadstr(&buf, 10, "x");
+}
+
+/* =========================================================================
+ * Consistency: lpadstr(s, n, p) == lpad(s, n, wrap(p))
+ * ========================================================================= */
+
+Test(fs2_api, lpad_and_lpadstr_agree) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("ab");
+    fs2 b = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2_lpad(&a, 6, &pad);
+    fs2_lpadstr(&b, 6, "xy");
+
+    CHECK_STR_EQ("same content", a.v, b.v);
+    CHECK_EQ  ("same len",       a.len, b.len);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Симметрия: rpadstr / lpadstr на разных сторонах дают ожидаемое
+ * ========================================================================= */
+
+Test(fs2_api, rpadstr_lpadstr_combined) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("X");
+
+    fs2_rpadstr(&str, 3, "R");   /* "XRR" */
+    fs2_lpadstr(&str, 5, "L");   /* "LLXRR" */
+
+    CHECK_STR_EQ("LLXRR", str.v, "LLXRR");
+    CHECK_EQ  ("len",     str.len, 5);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
