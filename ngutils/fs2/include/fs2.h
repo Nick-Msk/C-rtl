@@ -634,6 +634,26 @@ fs2_wrap(const char *str) {
 }
 
 /**
+ * @brief Wrap a not null C-string as an fs2 view (STATIC, zero-copy).
+ *
+ * @param str  NUL-terminated string, or NULL.
+ *             NULL is treated as the empty string.
+ * @return     fs2 view aliasing @p str.
+ *             @p str must outlive every use of the result.
+ * @note       No allocation. `fs2_free` on the result is a no-op.
+ *             Do not pass the result as both `dst` and `src` to fs2_cat
+ *             (restrict violation).
+ */
+static inline fs2 
+fs2_wrap_notnull(const char *str) {
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null src");
+    
+    size_t  len = strlen(str), sz = len + 1;
+    fs2 res = (fs2) {.len = len, .sz = sz, .v = (char *) str, .flags = FS2_STATIC};
+    return res;
+}
+
+/**
  * @brief Create a growable fs2 with the given initial capacity.
  *
  * Returns a stack-body fs2 (no BODYALLOC) with FS2_ALLOC set. The buffer
