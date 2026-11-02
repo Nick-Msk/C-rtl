@@ -4001,6 +4001,208 @@ Test(fs2_api, tolower_high_byte_no_ub) {
 }
 
 /* =========================================================================
+ * fs2_rpad — nominal
+ * ========================================================================= */
+
+Test(fs2_api, rpad_basic) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2 *r = fs2_rpad(&str, 8, &pad);
+
+    CHECK_STR_EQ("abxyxyxy", str.v, "abxyxyxy");
+    CHECK_EQ  ("len", str.len, 8);
+    CHECK_PTR_EQ("chaining: same ptr", r, &str);
+    CHECK_FS2VALID(1, &str);
+    CHECK_FS2VALID(2, &pad);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_single_char_pad) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("x");
+
+    fs2_rpad(&str, 5, &pad);
+
+    CHECK_STR_EQ("abxxx", str.v, "abxxx");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_pad_longer_than_gap) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("xyz");
+
+    fs2_rpad(&str, 4, &pad);    /* gap = 2, pad "xyz" → "xy" */
+
+    CHECK_STR_EQ("abxy", str.v, "abxy");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpad — truncate / no-op
+ * ========================================================================= */
+
+Test(fs2_api, rpad_truncate_when_len_smaller) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2_rpad(&str, 3, &pad);
+
+    CHECK_STR_EQ("hel", str.v, "hel");
+    CHECK_EQ  ("len", str.len, 3);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_same_len_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("xy");
+    void *before = str.v;
+
+    fs2_rpad(&str, 5, &pad);
+
+    CHECK_PTR_EQ("buffer unchanged", str.v, before);
+    CHECK_STR_EQ("hello",            str.v, "hello");
+    CHECK_EQ  ("len",                str.len, 5);
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpad — empty pad: no-op (твоя семантика)
+ * ========================================================================= */
+
+Test(fs2_api, rpad_empty_canon_pad_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    fs2 pad = FS2();
+
+    fs2 *r = fs2_rpad(&str, 10, &pad);
+
+    CHECK_PTR_EQ("chaining", r, &str);
+    CHECK_STR_EQ("unchanged", str.v, "hello");
+    CHECK_EQ  ("len unchanged", str.len, 5);
+    CHECK_FS2VALID(1, &str);
+    CHECK_FS2VALID(2, &pad);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_fs2empty_pad_noop) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    fs2 pad = FS2EMPTY;
+
+    fs2_rpad(&str, 10, &pad);
+
+    CHECK_STR_EQ("unchanged", str.v, "hello");
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_empty_str_empty_pad_stays_empty) {
+    __fs2_checkreset();
+    fs2 str = FS2();
+    fs2 pad = FS2EMPTY;
+
+    fs2_rpad(&str, 10, &pad);
+
+    CHECK_TRUE("still canon", fs2_is_canon(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpad — guards
+ * ========================================================================= */
+
+Test(fs2_api, rpad_null_str_aborts, .signal = SIGABRT) {
+    fs2 pad = fs2_fromstr("xy");
+    fs2_rpad(NULL, 10, &pad);
+    fs2_free(&pad);
+}
+
+Test(fs2_api, rpad_null_pad_aborts, .signal = SIGABRT) {
+    fs2 str = fs2_fromstr("ab");
+    fs2_rpad(&str, 10, NULL);
+    fs2_free(&str);
+}
+
+Test(fs2_api, rpad_static_nonempty_str_aborts, .signal = SIGABRT) {
+    fs2 str = FS2LITERAL("hello");
+    fs2 pad = fs2_fromstr("xy");
+    fs2_rpad(&str, 10, &pad);
+    fs2_free(&pad);
+}
+
+/* =========================================================================
+ * fs2_rpad — LOCAL & pad immutability
+ * ========================================================================= */
+
+Test(fs2_api, rpad_local_str_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "ab", 2);
+    fs2_setlen(&buf, 2);
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2_rpad(&buf, 8, &pad);
+
+    CHECK_STR_EQ("abxyxyxy", buf.v, "abxyxyxy");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_pad_untouched) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("ab");
+    fs2 pad = fs2_fromstr("xy");
+    void *pad_v = pad.v;
+
+    fs2_rpad(&str, 8, &pad);
+
+    CHECK_PTR_EQ("pad v unchanged", pad.v, pad_v);
+    CHECK_STR_EQ("pad content unchanged", pad.v, "xy");
+    CHECK_EQ  ("pad len unchanged", pad.len, 2);
+    CHECK_FS2VALID(1, &pad);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
  * fs2_rpad — LOCAL с недостаточной ёмкостью → abort в reserve
  *   (LOCAL проходит fs2_cant_realloc, но fs2_prepare_growth в reserve
  *    внутри падает, если sz < need)
@@ -4095,3 +4297,17 @@ Test(fs2_api, repeat_new_via_rpad_works) {
     assert_balanced();
 }
 
+Test(fs2_api, repeat_new_works_via_rpad) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 r = fs2_repeat_new(&s, 4);
+
+    CHECK_STR_EQ("abababab", r.v, "abababab");
+    CHECK_EQ  ("len", r.len, 8);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
