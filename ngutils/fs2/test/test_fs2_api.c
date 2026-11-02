@@ -3999,3 +3999,99 @@ Test(fs2_api, tolower_high_byte_no_ub) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_rpad — LOCAL с недостаточной ёмкостью → abort в reserve
+ *   (LOCAL проходит fs2_cant_realloc, но fs2_prepare_growth в reserve
+ *    внутри падает, если sz < need)
+ * ========================================================================= */
+
+Test(fs2_api, rpad_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 4);                    /* sz = 4, вмещает только "abc\0" */
+    fs2_memcpy_str(&buf, 0, "abc", 3);
+    fs2_setlen(&buf, 3);
+    fs2 pad = fs2_fromstr("x");
+
+    fs2_rpad(&buf, 10, &pad);            /* need = 11 > sz = 4 → abort */
+    fs2_free(&pad);
+}
+
+/* LOCAL с достаточной ёмкостью — работает, остаётся LOCAL */
+Test(fs2_api, rpad_local_sufficient_capacity_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "ab", 2);
+    fs2_setlen(&buf, 2);
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2_rpad(&buf, 8, &pad);
+
+    CHECK_STR_EQ("abxyxyxy", buf.v, "abxyxyxy");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&buf));
+    CHECK_TRUE("not ALLOC",  !fs2_is_alloc(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_rpad — promotion empty → ALLOC (семантика теперь верная)
+ * ========================================================================= */
+
+Test(fs2_api, rpad_empty_canon_str_with_nonempty_pad) {
+    __fs2_checkreset();
+    fs2 str = FS2();               /* canonical empty */
+    fs2 pad = fs2_fromstr("ab");
+
+    fs2_rpad(&str, 5, &pad);
+
+    CHECK_STR_EQ("ababa", str.v, "ababa");
+    CHECK_EQ  ("len", str.len, 5);
+    CHECK_FALSE("no longer canon",  fs2_is_canon(&str));
+    CHECK_TRUE ("now ALLOC",        fs2_is_alloc(&str));
+    CHECK_FS2VALID(1, &str);
+    CHECK_FS2VALID(2, &pad);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api, rpad_fs2empty_str_with_nonempty_pad) {
+    __fs2_checkreset();
+    fs2 str = FS2EMPTY;
+    fs2 pad = fs2_fromstr("ab");
+
+    fs2_rpad(&str, 5, &pad);
+
+    CHECK_STR_EQ("ababa", str.v, "ababa");
+    CHECK_FALSE("not STATIC anymore", fs2_is_static(&str));
+    CHECK_TRUE ("now ALLOC",          fs2_is_alloc(&str));
+    CHECK_FS2VALID(1, &str);
+
+    fs2_free(&str);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Регрессия: fs2_repeat_new через rpad_new теперь работает
+ * ========================================================================= */
+
+Test(fs2_api, repeat_new_via_rpad_works) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 r = fs2_repeat_new(&s, 4);
+
+    CHECK_STR_EQ("abababab", r.v, "abababab");
+    CHECK_EQ  ("len", r.len, 8);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
