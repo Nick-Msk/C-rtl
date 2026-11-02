@@ -3349,3 +3349,285 @@ Test(fs2, right_new_len_eq_zero_matches_empty) {
     fs2_free(&b);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_right — nominal (substring path: len < s->len)
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2 *r = fs2_heap_right(&src, 3);
+
+    CHECK_STR_EQ("def", r->v, "def");
+    CHECK_EQ  ("len", r->len, 3);
+    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_TRUE("ALLOC",     fs2_is_alloc(r));
+    CHECK_FS2VALID(1, r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_single_char) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *r = fs2_heap_right(&src, 1);
+
+    CHECK_STR_EQ("o", r->v, "o");
+    CHECK_EQ  ("len", r->len, 1);
+    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_len_one_less_than_slen) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+
+    fs2 *r = fs2_heap_right(&src, 2);
+
+    CHECK_STR_EQ("bc", r->v, "bc");
+    CHECK_EQ  ("len", r->len, 2);
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_right — clone path (len >= s->len)
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_len_eq_slen_clones_whole) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *r = fs2_heap_right(&src, 5);
+
+    CHECK_STR_EQ("whole", r->v, "hello");
+    CHECK_EQ  ("len", r->len, 5);
+    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_TRUE("ALLOC",     fs2_is_alloc(r));
+    CHECK_TRUE("independent buffer", r->v != src.v);
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_len_beyond_clamps_to_whole) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+
+    fs2 *r = fs2_heap_right(&src, 100);
+
+    CHECK_STR_EQ("whole (clamped)", r->v, "abc");
+    CHECK_EQ  ("len", r->len, 3);
+    CHECK_TRUE("bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_right — len == 0 при непустом src (substring path → пусто)
+ *   fs2_heap_substr(s, s->len, 0) → stack FS2EMPTY → stacktoheap
+ *   → BODYALLOC | STATIC, eq_empty=true, canon=false, v!=""
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_len_zero_is_fs2empty_shape) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *r = fs2_heap_right(&src, 0);
+
+    CHECK_TRUE ("eq_empty shape", fs2_eq_empty(r));
+    CHECK_FALSE("not canon",      fs2_is_canon(r));
+    CHECK_NOT_NULL("v readable",  r->v);
+    CHECK_TRUE ("STATIC shape",   fs2_is_static(r));
+    CHECK_FALSE("not ALLOC",      fs2_is_alloc(r));
+    CHECK_TRUE ("bodyalloc",      fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_right — пустой src (clone path → нормализация в FS2EMPTY)
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_fs2empty_returns_empty) {
+    __fs2_checkreset();
+    fs2 src = FS2EMPTY;
+
+    fs2 *r = fs2_heap_right(&src, 5);
+
+    CHECK_TRUE ("eq_empty shape", fs2_eq_empty(r));
+    CHECK_TRUE ("bodyalloc",      fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    /* src STATIC — нечего освобождать */
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_canonical_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 *r = fs2_heap_right(&src, 5);
+
+    /* clone нормализует пустое (в т.ч. каноническое) → FS2EMPTY */
+    CHECK_TRUE ("eq_empty shape", fs2_eq_empty(r));
+    CHECK_FALSE("not canon",      fs2_is_canon(r));
+    CHECK_TRUE ("bodyalloc",      fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_right — STATIC src
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_from_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 *r = fs2_heap_right(&src, 3);
+
+    CHECK_STR_EQ("llo", r->v, "llo");
+    CHECK_TRUE ("ALLOC copy (not aliased)", fs2_is_alloc(r));
+    CHECK_TRUE ("bodyalloc",                fs2_is_bodyalloc(r));
+    CHECK_FALSE("not STATIC",               fs2_is_static(r));
+    CHECK_TRUE ("independent buffer",       r->v != src.v);
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_from_static_src_clamp) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hi");
+
+    fs2 *r = fs2_heap_right(&src, 100);
+
+    /* clone path — heap copy of literal */
+    CHECK_STR_EQ("whole", r->v, "hi");
+    CHECK_TRUE ("ALLOC",     fs2_is_alloc(r));
+    CHECK_TRUE ("bodyalloc", fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_right — guards (invfatal)
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_null_aborts, .signal = SIGABRT) {
+    fs2_heap_right(NULL, 5);
+}
+
+/* =========================================================================
+ * fs2_heap_right — src immutability / independence
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    void *orig_v = src.v;
+
+    fs2 *r = fs2_heap_right(&src, 4);
+
+    CHECK_PTR_EQ("src v unchanged",       src.v, orig_v);
+    CHECK_STR_EQ("src content unchanged", src.v, "original");
+    CHECK_STR_EQ("result is copy",        r->v,  "inal");
+    CHECK_FS2VALID(1, r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_right_independent_buffers) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2 *r = fs2_heap_right(&src, 3);
+
+    /* мутация результата не должна задевать src */
+    r->v[0] = 'X';
+
+    CHECK_STR_EQ("result mutated",     r->v,  "Xef");
+    CHECK_STR_EQ("src still original", src.v, "abcdef");
+    CHECK_FS2VALID(1, r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency: heap_right(s, n) == right_new(s, n) по содержимому
+ * (один и тот же алгоритм: clone / substr_new)
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_matches_right_new_content) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2  stackr = fs2_right_new(&src, 4);
+    fs2 *heapr  = fs2_heap_right(&src, 4);
+
+    CHECK_STR_EQ("stack content", stackr.v,   "cdef");
+    CHECK_STR_EQ("heap  content", heapr->v,   "cdef");
+    CHECK_EQ  ("same len",        stackr.len, heapr->len);
+    CHECK_FS2VALID(1, &stackr);
+    CHECK_FS2VALID(2, heapr);
+
+    fs2_free(&stackr);
+    fs2_free(&src);
+    fs2_free(heapr);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Многократные вызовы — баланс аллокаций на каждой итерации
+ * ========================================================================= */
+
+Test(fs2_api, heap_right_multiple_calls_balance) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("0123456789");
+
+    for (size_t k = 1; k <= 5; k++) {
+        fs2 *r = fs2_heap_right(&src, k);
+        CHECK_FS2VALID(1, r);
+        CHECK_EQ("len", r->len, k);
+        CHECK_STR_EQ("tail", r->v, &"0123456789"[10 - k]);
+        fs2_free(r);
+    }
+
+    fs2_free(&src);
+    assert_balanced();
+}
