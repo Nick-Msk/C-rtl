@@ -441,8 +441,8 @@ fs2_right_new(const fs2 *s, size_t len) {
  */
 static inline fs2 *
 fs2_heap_right(const fs2 *s, size_t len) {
-    if (!s)
-        return fs2_heap();
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
+    
     if (len >= s->len)
         return fs2_heap_clone(s);
 
