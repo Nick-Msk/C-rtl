@@ -463,13 +463,14 @@ fs2_heap_substr(const fs2 *s, size_t from, size_t len) {
  *
  * NULL-safe: returns NULL unchanged.
  *
- * @param str  fs2 (ALLOC or LOCAL). May be NULL.
- * @return     @p str (or NULL).
+ * @param str  fs2 (ALLOC or LOCAL).
+ * @return     @p str.
  */
 fs2 *
 fs2_toupper(fs2 *str) {
-    if (!str)
+    if (fs2_cant_mutate(str))
         return str;
+        
     for (size_t i = 0; i < str->len; i++)
         str->v[i] = toupper( (unsigned char) str->v[i]);
     return str;
@@ -480,8 +481,8 @@ fs2_toupper(fs2 *str) {
  *
  * NULL-safe: returns NULL unchanged.
  *
- * @param str  fs2 (ALLOC or LOCAL). May be NULL.
- * @return     @p str (or NULL).
+ * @param str  fs2 (ALLOC or LOCAL).
+ * @return     @p str.
  */
 fs2 *
 fs2_tolower(fs2 *str) {
