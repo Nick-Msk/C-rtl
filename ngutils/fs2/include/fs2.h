@@ -300,7 +300,7 @@ fs2_cant_mutate(const fs2 *s) {
  */
 static inline bool
 fs2_cant_realloc(fs2 *s) {
-    invfatal(ERR_NULL_INPUT, s,
+    invfatal(ERR_NULL_INPUT, s != NULL,
                   "Cannot grow for null destination!");
     if (fs2_is_empty(s))
         return false;               /* empty → OK, will grow via reserve */
