@@ -391,7 +391,7 @@ fs2_left_new(const fs2 *s, size_t len) {
  * @return     New heap fs2.
  */
 static inline fs2 *
-fs2_heap_left(fs2 *s, size_t len) {
+fs2_heap_left(const fs2 *s, size_t len) {
     return fs2_heap_substr(s, 0, len);
 }
 
