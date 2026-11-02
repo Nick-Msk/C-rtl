@@ -2754,3 +2754,262 @@ Test(fs2, left_canonical_noop) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_left_new — stack constructor
+ * ========================================================================= */
+
+Test(fs2, left_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2 r = fs2_left_new(&src, 3);
+
+    CHECK_STR_EQ("abc", r.v, "abc");
+    CHECK_EQ  ("len", r.len, 3);
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&r));
+    CHECK_FALSE("not BODYALLOC", fs2_is_bodyalloc(&r));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);   /* src untouched */
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, left_new_single_char) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_left_new(&src, 1);
+
+    CHECK_STR_EQ("h", r.v, "h");
+    CHECK_EQ  ("len", r.len, 1);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, left_new_len_zero_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_left_new(&src, 0);
+
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&r));
+    CHECK_FALSE("not canon", fs2_is_canon(&r));
+    CHECK_NOT_NULL("v readable", r.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, left_new_len_beyond_clamps) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+
+    fs2 r = fs2_left_new(&src, 100);
+
+    CHECK_STR_EQ("whole (clamped)", r.v, "abc");
+    CHECK_EQ  ("len", r.len, 3);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, left_new_from_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 r = fs2_left_new(&src, 3);
+
+    CHECK_STR_EQ("hel", r.v, "hel");
+    CHECK_TRUE("ALLOC copy (not aliased)", fs2_is_alloc(&r));
+    CHECK_FALSE("not STATIC", fs2_is_static(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+}
+
+Test(fs2, left_new_empty_src_returns_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = FS2EMPTY;
+
+    fs2 r = fs2_left_new(&src, 5);
+
+    CHECK_TRUE("eq_empty shape", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+}
+
+Test(fs2, left_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    void *orig_v = src.v;
+
+    fs2 r = fs2_left_new(&src, 4);
+
+    CHECK_PTR_EQ("src v unchanged", src.v, orig_v);
+    CHECK_STR_EQ("src content unchanged", src.v, "original");
+    CHECK_STR_EQ("result is copy", r.v, "orig");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2, left_new_null_aborts, .signal = SIGABRT) {
+    fs2_left_new(NULL, 3);
+}
+
+/* =========================================================================
+ * fs2_heap_left — heap constructor
+ * ========================================================================= */
+
+Test(fs2, heap_left_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+
+    fs2 *h = fs2_heap_left(&src, 3);
+
+    CHECK_STR_EQ("abc", h->v, "abc");
+    CHECK_EQ  ("len", h->len, 3);
+    CHECK_TRUE("ALLOC",     fs2_is_alloc(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_left_single_char) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *h = fs2_heap_left(&src, 1);
+
+    CHECK_STR_EQ("h", h->v, "h");
+    CHECK_EQ  ("len", h->len, 1);
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+/* ⚠ Empty result: FS2EMPTY-shape + BODYALLOC = STATIC|BODYALLOC */
+Test(fs2, heap_left_len_zero_returns_static_bodyalloc) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 *h = fs2_heap_left(&src, 0);
+
+    CHECK_EQ  ("len", h->len, 0);
+    CHECK_EQ  ("sz",  h->sz, 1);
+    CHECK_TRUE("STATIC axis", fs2_is_static(h));
+    CHECK_TRUE("BODYALLOC",   fs2_is_bodyalloc(h));
+    CHECK_FALSE("not ALLOC-string", fs2_is_alloc(h));
+    CHECK_STR_EQ("v empty", h->v, "");
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);   /* frees only struct */
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2, heap_left_len_beyond_clamps) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+
+    fs2 *h = fs2_heap_left(&src, 100);
+
+    CHECK_STR_EQ("whole (clamped)", h->v, "abc");
+    CHECK_TRUE("ALLOC", fs2_is_alloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_left_from_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello");
+
+    fs2 *h = fs2_heap_left(&src, 3);
+
+    CHECK_STR_EQ("hel", h->v, "hel");
+    CHECK_TRUE("ALLOC (heap copy)", fs2_is_alloc(h));
+    CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
+    CHECK_FS2VALID(1, h);
+
+    fs2_free(h);
+}
+
+Test(fs2, heap_left_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("original");
+    void *orig_v = src.v;
+
+    fs2 *h = fs2_heap_left(&src, 4);
+
+    CHECK_PTR_EQ("src v unchanged", src.v, orig_v);
+    CHECK_STR_EQ("src content unchanged", src.v, "original");
+    CHECK_STR_EQ("result is copy", h->v, "orig");
+    CHECK_FS2VALID(1, h);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(h);
+    assert_balanced();
+}
+
+Test(fs2, heap_left_null_aborts, .signal = SIGABRT) {
+    fs2_heap_left(NULL, 3);
+}
+
+/* =========================================================================
+ * Consistency: left_new == *heap_left (content-wise)
+ * ========================================================================= */
+
+Test(fs2, left_new_and_heap_left_match) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abcdef");
+    const size_t cases[] = { 0, 1, 3, 5, 6, 100 };
+    size_t n = sizeof(cases) / sizeof(cases[0]);
+
+    for (size_t i = 0; i < n; i++) {
+        fs2  stack_v = fs2_left_new(&src, cases[i]);
+        fs2 *heap_v  = fs2_heap_left(&src, cases[i]);
+
+        /* Same content, len, sz */
+        CHECK_EQ  ("len",     stack_v.len, heap_v->len);
+        CHECK_EQ  ("sz",      stack_v.sz,  heap_v->sz);
+        CHECK_STR_EQ("content", stack_v.v, heap_v->v);
+
+        /* Same string-axis flags (ignore BODYALLOC) */
+        CHECK_EQ  ("string-axis flags match",
+                   stack_v.flags & ~FS2_BODYALLOC,
+                   heap_v->flags & ~FS2_BODYALLOC);
+
+        CHECK_TRUE ("heap has BODYALLOC",  fs2_is_bodyalloc(heap_v));
+        CHECK_FALSE("stack no BODYALLOC", fs2_is_bodyalloc(&stack_v));
+        CHECK_FS2VALID((int)(i * 2),     &stack_v);
+        CHECK_FS2VALID((int)(i * 2 + 1), heap_v);
+
+        fs2_free(&stack_v);
+        fs2_free(heap_v);
+    }
+
+    fs2_free(&src);
+    assert_balanced();
+}
