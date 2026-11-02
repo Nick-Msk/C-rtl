@@ -1223,3 +1223,188 @@ Test(fs2, catstr_matches_cat_via_wrap) {
     fs2_free(&b);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_rev_catstr — nominal
+ * ========================================================================= */
+
+Test(fs2, rev_catstr_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+
+    fs2 *ret = fs2_rev_catstr(&dst, "hello ");
+
+    CHECK_PTR_EQ("returns dst", ret, &dst);
+    CHECK_STR_EQ("content", dst.v, "hello world");
+    CHECK_EQ  ("len", dst.len, 11);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_empty_str_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("world");
+
+    fs2_rev_catstr(&dst, "");
+
+    CHECK_STR_EQ("unchanged", dst.v, "world");
+    CHECK_EQ  ("len", dst.len, 5);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_into_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+
+    fs2_rev_catstr(&dst, "hello");
+
+    CHECK_STR_EQ("promoted", dst.v, "hello");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_into_canonical_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    fs2_rev_catstr(&dst, "hi");
+
+    CHECK_STR_EQ("content", dst.v, "hi");
+    CHECK_TRUE ("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_multiple) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("C");
+
+    fs2_rev_catstr(&dst, "B");
+    fs2_rev_catstr(&dst, "A");
+
+    /* "C" + "B" → "BC", then "A" prepended → "ABC" */
+    CHECK_STR_EQ("ABC", dst.v, "ABC");
+    CHECK_EQ  ("len", dst.len, 3);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_triggers_realloc) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("x");
+    size_t orig_sz = dst.sz;
+
+    char big[1024];
+    memset(big, 'A', 1023);
+    big[1023] = '\0';
+
+    fs2_rev_catstr(&dst, big);
+
+    CHECK_TRUE("grew", dst.sz > orig_sz);
+    CHECK_EQ  ("len", dst.len, 1024);
+    CHECK_EQ  ("first", dst.v[0], 'A');
+    CHECK_EQ  ("last",  dst.v[1023], 'x');
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2, rev_catstr_local_within_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 32);
+    memcpy(dst.v, "tail", 5);
+    fs2_setlen(&dst, 4);
+
+    fs2_rev_catstr(&dst, "head-");
+
+    CHECK_STR_EQ("content", dst.v, "head-tail");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&dst));
+    CHECK_FS2VALID(1, &dst);
+}
+
+/* =========================================================================
+ * fs2_rev_catstr — guards
+ * ========================================================================= */
+Test(fs2, rev_catstr_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_rev_catstr(&dst, "!");   /* → cant_realloc OR cant_copy → invfatal → SIGABRT */
+}
+
+/* Regression: fs2_memcpy_str directly on non-empty STATIC */
+Test(fs2, memcpy_str_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_memcpy_str(&dst, 0, "x", 1);   /* → cant_copy → invfatal */
+}
+
+/* Regression: fs2_memmove directly on non-empty STATIC (self-move) */
+Test(fs2, memmove_self_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hi");
+    fs2_memmove(&dst, 1, NULL, 0, 2);   /* src=NULL → src=dst → cant_copy → invfatal */
+}
+
+/* Regression: fs2_memcpy with non-empty STATIC dst */
+Test(fs2, memcpy_static_nonempty_dst_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 dst = FS2LITERAL("hi");
+    fs2 src = fs2_fromstr("x");
+    fs2_memcpy(&dst, 0, &src, 0, 1);
+    fs2_free(&src);
+}
+
+Test(fs2, rev_catstr_null_dst_aborts, .signal = SIGABRT) {
+    fs2_rev_catstr(NULL, "x");
+}
+
+Test(fs2, rev_catstr_null_beginner_aborts, .signal = SIGABRT) {
+    /* ← было SIGSEGV (strlen(NULL)), теперь SIGABRT */
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("a");
+    fs2_rev_catstr(&dst, NULL);
+    fs2_free(&dst);
+}
+
+Test(fs2, rev_catstr_local_overflow_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    FS2LOCAL(dst, 4);
+    fs2_rev_catstr(&dst, "hello world");   /* selfmove → reserve → abort */
+}
+
+/* =========================================================================
+ * ⚠ Hazard: rev_catstr(&dst, dst.v) — restrict violation + data corruption
+ *
+ * Trace:
+ *   1. len = dst->len
+ *   2. selfmove shifts old content [0, len) to [len, 2*len)
+ *   3. memcpy_str(v, 0, dst.v, len) — but dst.v now points to shifted content
+ *      and v[0..len) contains garbage after selfmove
+ *   4. Result: corrupted
+ *
+ * NOT tested (UB). Caller must clone first:
+ *   fs2 tmp = fs2_fromstr("prefix");
+ *   fs2_rev_catstr(&dst, tmp.v);
+ *   fs2_free(&tmp);
+ * ========================================================================= */
+
+Test(fs2, rev_catstr_fs2empty_promotes) {
+    __fs2_checkreset();
+    fs2 dst = FS2EMPTY;
+    fs2_rev_catstr(&dst, "hi");
+    CHECK_STR_EQ("promoted", dst.v, "hi");
+    CHECK_TRUE("ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+    fs2_free(&dst);
+    assert_balanced();
+}
