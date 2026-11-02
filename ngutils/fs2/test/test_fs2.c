@@ -782,7 +782,7 @@ Test(fs2_api, fromstr_matches_wrap_clone) {
     for (size_t i = 0; i < n; i++) {
         fs2 a = fs2_fromstr(inputs[i]);
         
-        fs2 tmp = fs2_wrap(inputs[i]);
+        fs2 tmp = _fs2_wrap(inputs[i]);
         fs2 b = fs2_clone(&tmp);
 
         CHECK_STR_EQ("same content", a.v, b.v);
@@ -4052,11 +4052,11 @@ Test(fs2, cant_mutate_local_with_content_proceeds) {
 }
 
 /* =========================================================================
- * fs2_wrap — tolerant NVL-style wrap
+ * _fs2_wrap — tolerant NVL-style wrap
  * ========================================================================= */
 
 Test(fs2, wrap_basic) {
-    fs2 s = fs2_wrap("hello");
+    fs2 s = _fs2_wrap("hello");
 
     CHECK_STR_EQ("content", s.v, "hello");
     CHECK_EQ  ("len", s.len, 5);
@@ -4071,12 +4071,12 @@ Test(fs2, wrap_basic) {
 Test(fs2, wrap_aliases_input) {
     /* v must point INTO the input, not a copy */
     const char *src = "hello";
-    fs2 s = fs2_wrap(src);
+    fs2 s = _fs2_wrap(src);
     CHECK_PTR_EQ("aliases src", s.v, src);
 }
 
 Test(fs2, wrap_empty_string) {
-    fs2 s = fs2_wrap("");
+    fs2 s = _fs2_wrap("");
 
     CHECK_EQ  ("len", s.len, 0);
     CHECK_EQ  ("sz",  s.sz, 1);
@@ -4086,7 +4086,7 @@ Test(fs2, wrap_empty_string) {
 }
 
 Test(fs2, wrap_null_returns_empty_const_shape) {
-    fs2 s = fs2_wrap(NULL);
+    fs2 s = _fs2_wrap(NULL);
 
     CHECK_EQ  ("len", s.len, 0);
     CHECK_EQ  ("sz",  s.sz, 1);
@@ -4100,7 +4100,7 @@ Test(fs2, wrap_null_returns_empty_const_shape) {
 
 Test(fs2, wrap_no_allocations) {
     __fs2_checkreset();
-    fs2 s = fs2_wrap("hello");   /* must NOT touch counters */
+    fs2 s = _fs2_wrap("hello");   /* must NOT touch counters */
     fs2_free(&s);
     assert_balanced();           /* 0 alloc, 0 free */
 }
@@ -4110,7 +4110,7 @@ Test(fs2, wrap_long_string) {
     memset(big, 'A', 1000);
     big[1000] = '\0';
 
-    fs2 s = fs2_wrap(big);
+    fs2 s = _fs2_wrap(big);
     CHECK_EQ("len", s.len, 1000);
     CHECK_EQ("sz",  s.sz, 1001);
     CHECK_EQ("first", s.v[0], 'A');
@@ -4121,7 +4121,7 @@ Test(fs2, wrap_long_string) {
 Test(fs2, wrap_non_ascii) {
     /* UTF-8 "привет" = 12 bytes */
     const char *src = "\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82";
-    fs2 s = fs2_wrap(src);
+    fs2 s = _fs2_wrap(src);
     CHECK_EQ("len", s.len, 12);
     CHECK_EQ("first byte", (unsigned char)s.v[0], 0xD0);
     CHECK_PTR_EQ("aliases", s.v, src);
@@ -4129,11 +4129,11 @@ Test(fs2, wrap_non_ascii) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * fs2_wrap_notnull — strict variant, NULL → SIGABRT
+ * _fs2_wrap_notnull — strict variant, NULL → SIGABRT
  * ══════════════════════════════════════════════════════════════════════════ */
 
 Test(fs2, wrap_notnull_basic) {
-    fs2 s = fs2_wrap_notnull("hello");
+    fs2 s = _fs2_wrap_notnull("hello");
 
     CHECK_STR_EQ("content", s.v, "hello");
     CHECK_EQ  ("len", s.len, 5);
@@ -4144,13 +4144,13 @@ Test(fs2, wrap_notnull_basic) {
 
 Test(fs2, wrap_notnull_aliases_input) {
     const char *src = "hello";
-    fs2 s = fs2_wrap_notnull(src);
+    fs2 s = _fs2_wrap_notnull(src);
     CHECK_PTR_EQ("aliases src", s.v, src);
 }
 
 Test(fs2, wrap_notnull_empty_string) {
     /* "" is valid (non-NULL), just empty */
-    fs2 s = fs2_wrap_notnull("");
+    fs2 s = _fs2_wrap_notnull("");
 
     CHECK_EQ("len", s.len, 0);
     CHECK_EQ("sz",  s.sz, 1);
@@ -4160,12 +4160,12 @@ Test(fs2, wrap_notnull_empty_string) {
 }
 
 Test(fs2, wrap_notnull_null_aborts, .signal = SIGABRT) {
-    fs2_wrap_notnull(NULL);
+    _fs2_wrap_notnull(NULL);
 }
 
 Test(fs2, wrap_notnull_no_allocations) {
     __fs2_checkreset();
-    fs2 s = fs2_wrap_notnull("x");
+    fs2 s = _fs2_wrap_notnull("x");
     fs2_free(&s);
     assert_balanced();
 }
@@ -4179,8 +4179,8 @@ Test(fs2, wrap_vs_notnull_same_for_nonnull) {
     size_t n = sizeof(inputs) / sizeof(inputs[0]);
 
     for (size_t i = 0; i < n; i++) {
-        fs2 a = fs2_wrap(inputs[i]);
-        fs2 b = fs2_wrap_notnull(inputs[i]);
+        fs2 a = _fs2_wrap(inputs[i]);
+        fs2 b = _fs2_wrap_notnull(inputs[i]);
         CHECK_EQ("len",   a.len,   b.len);
         CHECK_EQ("sz",    a.sz,    b.sz);
         CHECK_EQ("flags", a.flags, b.flags);
@@ -4191,14 +4191,14 @@ Test(fs2, wrap_vs_notnull_same_for_nonnull) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * fs2_wrap + fs2_cat (usage pattern)
+ * _fs2_wrap + fs2_cat (usage pattern)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 Test(fs2, wrap_as_cat_src) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("prefix_");
 
-    fs2 tmp = fs2_wrap("suffix");
+    fs2 tmp = _fs2_wrap("suffix");
     test_cat(&dst, &tmp);
 
     CHECK_STR_EQ("prefixed+suffix", dst.v, "prefix_suffix");
@@ -4211,7 +4211,7 @@ Test(fs2, wrap_notnull_as_cat_src) {
     __fs2_checkreset();
     fs2 dst = fs2_fromstr("a");
 
-    fs2 tmp = fs2_wrap_notnull("bc");
+    fs2 tmp = _fs2_wrap_notnull("bc");
     test_cat(&dst, &tmp);
 
     CHECK_STR_EQ("abc", dst.v, "abc");

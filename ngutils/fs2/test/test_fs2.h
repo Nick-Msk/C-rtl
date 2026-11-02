@@ -10,6 +10,7 @@
 #define TEST_FS2_H
 
 #include "fs2.h"
+#include "fs2_internal_utils.h"
 #include "log.h"
 #include "test_common.h"
 

@@ -4,6 +4,8 @@
  *        reverse, partialsort, and N-occurrence search functions.
  */
 
+#define FS2_INTERNAL_UTILS
+
 #include "fs2_api.h"
 #include <locale.h>
 

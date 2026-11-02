@@ -1211,7 +1211,7 @@ Test(fs2, catstr_matches_cat_via_wrap) {
 
     fs2_catstr(&a, "suffix");
 
-    fs2 tmp = fs2_wrap_notnull("suffix");
+    fs2 tmp = _fs2_wrap_notnull("suffix");
     fs2_cat(&b, &tmp);
 
     CHECK_STR_EQ("a == b", a.v, b.v);

@@ -7,6 +7,7 @@
 #include <stdarg.h>
 
 #include "fs2.h"
+#include "fs2_internal_utils.h"
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Version
@@ -170,7 +171,7 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
  */
 fs2
 fs2_fromstr (const char *src) {
-    fs2 tmp = fs2_wrap(src);
+    fs2 tmp = _fs2_wrap(src);
     return fs2_clone(&tmp);
 }
 

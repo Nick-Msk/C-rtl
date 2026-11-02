@@ -614,46 +614,6 @@ fs2_substr_bounds(const fs2 *s, size_t *from, size_t *len) {
  * ───────────────────────────────────────────────────────────────────────── */
  
 /**
- * @brief Wrap a C-string as an fs2 view (STATIC, zero-copy).
- *
- * @param str  NUL-terminated string, or NULL.
- *             NULL is treated as the empty string.
- * @return     fs2 view aliasing @p str (or the empty view if NULL).
- *             @p str must outlive every use of the result.
- * @note       No allocation. `fs2_free` on the result is a no-op.
- *             Do not pass the result as both `dst` and `src` to fs2_cat
- *             (restrict violation).
- */
-static inline fs2 
-fs2_wrap(const char *str) {
-    if (!str)
-        return FS2EMPTY;
-    size_t  len = strlen(str), sz = len + 1;
-    fs2 res = (fs2) {.len = len, .sz = sz, .v = (char *) str, .flags = FS2_STATIC};
-    return res;
-}
-
-/**
- * @brief Wrap a not null C-string as an fs2 view (STATIC, zero-copy).
- *
- * @param str  NUL-terminated string, or NULL.
- *             NULL is treated as the empty string.
- * @return     fs2 view aliasing @p str.
- *             @p str must outlive every use of the result.
- * @note       No allocation. `fs2_free` on the result is a no-op.
- *             Do not pass the result as both `dst` and `src` to fs2_cat
- *             (restrict violation).
- */
-static inline fs2 
-fs2_wrap_notnull(const char *str) {
-    invfatal(ERR_NULL_INPUT, str != NULL, "Null src");
-
-    size_t  len = strlen(str), sz = len + 1;
-    fs2 res = (fs2) {.len = len, .sz = sz, .v = (char *) str, .flags = FS2_STATIC};
-    return res;
-}
-
-/**
  * @brief Create a growable fs2 with the given initial capacity.
  *
  * Returns a stack-body fs2 (no BODYALLOC) with FS2_ALLOC set. The buffer
@@ -676,7 +636,7 @@ fs2_init(size_t sz) {
  *
  * @param src  NUL-terminated string, or NULL (treated as "" → FS2EMPTY).
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
- * @note NULL is not an error — consistent with fs2_wrap.
+ * @note NULL is not an error — consistent with _fs2_wrap.
  */
 extern fs2         fs2_fromstr(const char *src);
 
@@ -931,7 +891,7 @@ fs2_memcpy(fs2 *restrict dst, size_t dstpos, const fs2 *restrict src, size_t src
 /**
  * @brief Copy @p len bytes from a raw C-string into @p dst at @p dstpos (internal).
  *
- * Avoids the strlen call that fs2_wrap would incur by constructing
+ * Avoids the strlen call that _fs2_wrap would incur by constructing
  * a temporary STATIC fs2 with a known length, then delegates to
  * fs2_memcpy.
  *

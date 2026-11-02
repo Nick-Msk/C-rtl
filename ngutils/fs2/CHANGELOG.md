@@ -93,7 +93,7 @@ the call site, not as silent memory corruption downstream. The future bare
   and aligns with SQL collation convention (`utf8mb4_general_ci`).
 - **`fs2_reverse` → `fs2_flip`** — `reserve` and `reverse` are visually
   confusable; `flip` is unambiguous.
-- **`fs2_wrap`**: `NULL` → `FS2EMPTY` (already in 0.2.0, reaffirmed).
+- **`_fs2_wrap`**: `NULL` → `FS2EMPTY` (already in 0.2.0, reaffirmed).
 - **`fs2_move` semantics:** source is reset to `FS2EMPTY` (safe empty,
   `v==""`, `sz=1`) instead of `FS2()` (`v=NULL`). Both sides end up safe
   empty after move. Callers can `printf("%s", dst.v)` and `src.v` without
@@ -206,7 +206,7 @@ utility.
   `fs2_memmove`, `fs2_selfmove`. Safe copying/moving, handling `realloc`
   and overlaps.
 - **Constructors (Value + Heap):** `fs2_fromstr`, `fs2_fromstrf`,
-  `fs2_clone`, `fs2_movefrom`, `fs2_wrap` (zero-copy). Full `fs2_heap_*`
+  `fs2_clone`, `fs2_movefrom`, `_fs2_wrap` (zero-copy). Full `fs2_heap_*`
   twins.
 - **Mutation (Append/Overwrite):** `fs2_cat`, `fs2_catstr`,
   `fs2_rev_catstr` (prepend), `fs2_cpy`, `fs2_cpystr`.
@@ -226,7 +226,7 @@ utility.
 ### Changed
 
 - **`fs2_setlen`** safely handles canonical empty strings (`FS2()`).
-- **`FS2WRAP` macro** replaced with the `fs2_wrap` inline function,
+- **`FS2WRAP` macro** replaced with the `_fs2_wrap` inline function,
   fixing multi-evaluation issues.
 - **Primitive / Protected split:** zero-checks in primitive (`fs2_*`),
   validation moved to planned `pfs2_*` *(later dropped — see Unreleased)*.

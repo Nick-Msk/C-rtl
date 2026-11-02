@@ -122,7 +122,7 @@ single up-front check) call `ufs2_*`.
 - **`fs2_cpy` clears first, then appends**: equivalent to `fs2_setlen(dst, 0); fs2_cat(dst, src);`.
 - **`fs2_rpad`/`fs2_lpad` follow PostgreSQL**: `rpad('hello', 2) -> 'he'` (truncates from the right, keeps left). Empty `pad` does not extend.
 - **`fs2_trim`/`ltrim`/`rtrim`/`btrim`** — character-set trim, PostgreSQL-style. `btrim` is an alias for `trim` (both sides).
-- **`fs2_wrap(NULL)` is `FS2EMPTY`**: wrapping NULL gives a valid read-only empty view.
+- **`_fs2_wrap(NULL)` is `FS2EMPTY`**: wrapping NULL gives a valid read-only empty view.
 - **`fs2_setsize`/`fs2_reserve` are grow-only**; `fs2_shrink` is the only shrinker. `reserve` rounds to power-of-2, `setsize` is exact, `shrink` reallocs to `len+1`.
 - **`fs2_parse_double` respects `LC_NUMERIC`**: call `setlocale(LC_NUMERIC, "C")` if you need locale-independent parsing.
 - **Overlapping matches count separately**: `fs2_instr_posn("aaa", "aa", 0, 2) == 1` (not `-1`).
@@ -132,7 +132,7 @@ single up-front check) call `ufs2_*`.
 ### Constructors (Value & Heap)
 Return `fs2` by value (or `fs2 *` for heap). Free with `fs2_free`.
 
-- `fs2_init(sz)`, `fs2_fromstr(s)`, `fs2_fromstrf(fmt, ...)`, `fs2_clone(src)`, `fs2_wrap(s)`
+- `fs2_init(sz)`, `fs2_fromstr(s)`, `fs2_fromstrf(fmt, ...)`, `fs2_clone(src)`, `_fs2_wrap(s)`
 - `fs2_adopt(char **)`, `fs2_adoptn(char **, len)` — take ownership of heap C-string
 - `fs2_movefrom(fs2 *src)`, `fs2_movefromstr(const char **, fl)` — steal from another source
 - Substrings: `fs2_substr_new`, `fs2_left_new`, `fs2_right_new`, `fs2_slice` (zero-copy view)

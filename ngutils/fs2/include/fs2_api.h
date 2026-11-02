@@ -17,6 +17,7 @@
 #include <ctype.h>
 
 #include "fs2.h"
+#include "fs2_internal_utils.h"
 
 // -------------------------------- Internal helpers --------------------------------------
 
@@ -216,7 +217,7 @@ fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
 /**
  * @brief Append a C-string @p src to @p dst in place.
  *
- * Convenience wrapper: wraps @p src with `fs2_wrap` and calls `fs2_cat`.
+ * Convenience wrapper: wraps @p src with `_fs2_wrap` and calls `fs2_cat`.
  *
  * @param dst  Non-NULL fs2 (ALLOC or LOCAL).
  * @param src  NUL-terminated string (may be NULL → no-op).
@@ -224,7 +225,7 @@ fs2_cat(fs2 *restrict dst, const fs2 *restrict src);
  */
 static inline fs2 *
 fs2_catstr(fs2 *restrict dst, const char *restrict src) {
-    fs2 s = fs2_wrap_notnull(src);
+    fs2 s = _fs2_wrap_notnull(src);
     return fs2_cat(dst, &s);
 }
 
@@ -269,7 +270,7 @@ fs2_cpy(fs2 *restrict dst, const fs2* restrict src) {
  */
 static inline fs2* 
 fs2_cpystr(fs2 *restrict dst, const char *restrict src){
-    fs2 l = fs2_wrap(src);
+    fs2 l = _fs2_wrap(src);
     return fs2_cpy(dst, &l); 
 }
 
@@ -550,7 +551,7 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
 static inline fs2 *
 fs2_rpadstr(fs2 *restrict str, size_t len, const char *restrict padstr) {
 
-    fs2 tmp = fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap(padstr);
     return fs2_rpad(str, len, &tmp);
 }
 
@@ -585,7 +586,7 @@ fs2_rpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 static inline fs2
 fs2_rpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr) {
     
-    fs2 tmp = fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap(padstr);
     return fs2_rpad_new(str, len, &tmp);
 }
 
@@ -625,7 +626,7 @@ fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
 static inline fs2 *
 fs2_lpadstr(fs2 *restrict str, size_t len, const char *restrict padstr) {
 
-    fs2 tmp = fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap(padstr);
     return fs2_lpad(str, len, &tmp);
 }
 
@@ -660,7 +661,7 @@ fs2_lpad_new(const fs2 *restrict str, size_t len, const fs2 *restrict pad) {
 static inline fs2
 fs2_lpadstr_new(const fs2 *restrict str, size_t len, const char *restrict padstr) {
     
-    fs2 tmp = fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap(padstr);
     return fs2_lpad_new(str, len, &tmp);
 }
 
@@ -1940,13 +1941,13 @@ fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
 
 static inline ptrdiff_t
 fs2_instr_posn_str(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
-    fs2 wrapped = fs2_wrap(pattern);
+    fs2 wrapped = _fs2_wrap(pattern);
     return fs2_instr_posn(str, &wrapped, pos, nth);
 }
 
 static inline ptrdiff_t
 fs2_instr_posn_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
-    fs2 wrapped = fs2_wrap(pattern);
+    fs2 wrapped = _fs2_wrap(pattern);
     return fs2_instr_posn_ci(str, &wrapped, pos, nth);
 }
 // wrapper over fs2_instr_posn_str!!, non-ci
@@ -1996,7 +1997,7 @@ fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl);
 // fs2 -> c-str
 static inline fs2 *
 fs2_replace_fromstr(fs2 *restrict s, const fs2 *restrict pat, const char *restrict repl) {
-    fs2 tmp = fs2_wrap(repl);
+    fs2 tmp = _fs2_wrap(repl);
     return fs2_replace(s, pat, &tmp);
 }
 // c-str -> c-str
@@ -2011,7 +2012,7 @@ fs2_replace_fromstr(fs2 *restrict s, const fs2 *restrict pat, const char *restri
  */
 static inline fs2 *
 fs2_replace_cstr(fs2 *restrict s, const char *restrict pat, const char *restrict repl) {
-    fs2 tmp = fs2_wrap(pat);
+    fs2 tmp = _fs2_wrap(pat);
     return fs2_replace_fromstr(s, &tmp, repl);
 }
 
@@ -2048,19 +2049,19 @@ fs2_rtrim(fs2 *restrict s, const fs2 *restrict pattern) {
 /* c-string pattern wrappers */
 static inline fs2 *
 fs2_trim_str(fs2 *restrict s, const char *restrict pattern) {
-    fs2 tmp = fs2_wrap(pattern);
+    fs2 tmp = _fs2_wrap(pattern);
     return fs2_trim(s, &tmp);
 }
 
 static inline fs2 *
 fs2_ltrim_str(fs2 *restrict s, const char *restrict pattern) {
-    fs2 tmp = fs2_wrap(pattern);
+    fs2 tmp = _fs2_wrap(pattern);
     return fs2_ltrim(s, &tmp);
 }
 
 static inline fs2 *
 fs2_rtrim_str(fs2 *restrict s, const char *restrict pattern) {
-    fs2 tmp = fs2_wrap(pattern);
+    fs2 tmp = _fs2_wrap(pattern);
     return fs2_rtrim(s, &tmp);
 }
 
@@ -2087,13 +2088,13 @@ fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
 /* c-string wrappers */
 static inline bool
 fs2_starts_with_str(const fs2 *restrict s, const char *restrict prefix) {
-    fs2 tmp = fs2_wrap(prefix);
+    fs2 tmp = _fs2_wrap(prefix);
     return fs2_starts_with(s, &tmp);
 }
 
 static inline bool
 fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
-    fs2 tmp = fs2_wrap(suffix);
+    fs2 tmp = _fs2_wrap(suffix);
     return fs2_ends_with(s, &tmp);
 }
 // 
@@ -2104,7 +2105,7 @@ fs2_contains(const fs2 *restrict s, const fs2 *restrict pat) {
 // c-str wrap
 static inline bool
 fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
-    fs2 tmp = fs2_wrap(pat);
+    fs2 tmp = _fs2_wrap(pat);
     return fs2_contains(s, &tmp);
 }
 // count
@@ -2131,7 +2132,7 @@ fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
 // c-str wrap
 static inline size_t
 fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
-    fs2 tmp = fs2_wrap(pat);
+    fs2 tmp = _fs2_wrap(pat);
     return fs2_count(s, &tmp);
 }
 
@@ -2166,7 +2167,7 @@ fs2_heap_repeat(const fs2 *restrict s, size_t n) {
 
 static inline fs2
 fs2_repeat_str_new(const char *restrict s, size_t n) {
-    fs2 tmp = fs2_wrap(s);
+    fs2 tmp = _fs2_wrap(s);
     return fs2_repeat_new(&tmp, n);
 }
 
@@ -2208,13 +2209,13 @@ fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
 /* c-string wrappers */
 static inline fs2 *
 fs2_strip_prefix_str(fs2 *restrict s, const char *restrict prefix) {
-    fs2 tmp = fs2_wrap(prefix);
+    fs2 tmp = _fs2_wrap(prefix);
     return fs2_strip_prefix(s, &tmp);
 }
 
 static inline fs2 *
 fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
-    fs2 tmp = fs2_wrap(suffix);
+    fs2 tmp = _fs2_wrap(suffix);
     return fs2_strip_suffix(s, &tmp);
 }
 
@@ -2249,13 +2250,13 @@ fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
 
 static inline fs2
 fs2_strip_prefix_str_new(const fs2 *restrict src, const char *restrict prefix) {
-    fs2 tmp = fs2_wrap(prefix);
+    fs2 tmp = _fs2_wrap(prefix);
     return fs2_strip_prefix_new(src, &tmp);
 }
 
 static inline fs2
 fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
-    fs2 tmp = fs2_wrap(suffix);
+    fs2 tmp = _fs2_wrap(suffix);
     return fs2_strip_suffix_new(src, &tmp);
 }
 
