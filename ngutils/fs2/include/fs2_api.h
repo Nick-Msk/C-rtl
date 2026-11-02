@@ -442,7 +442,7 @@ fs2_right_new(const fs2 *s, size_t len) {
 static inline fs2 *
 fs2_heap_right(const fs2 *s, size_t len) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");
-    
+
     if (len >= s->len)
         return fs2_heap_clone(s);
 
@@ -506,13 +506,16 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad);
  *
  * @param str     Non-NULL fs2 (ALLOC or LOCAL).
  * @param len     Target total length.
- * @param padstr  Non-NULL non-empty C-string pad pattern.
+ * @param padstr  Non-NULL C-string pad pattern.
+ *                Empty string ("") is a no-op (like any zero-length pad).
  * @return        @p str.
+ * @warning       `invfatal` (SIGABRT) if @p padstr is NULL.
+ * @pre           @p padstr must not alias @p str's buffer (restrict).
+ *                For self-padding, use fs2_repeat().
  */
 static inline fs2 *
 fs2_rpadstr(fs2 *restrict str, size_t len, const char *restrict padstr) {
-
-    fs2 tmp = _fs2_wrap(padstr);
+    fs2 tmp = _fs2_wrap_notnull(padstr);
     return fs2_rpad(str, len, &tmp);
 }
 
