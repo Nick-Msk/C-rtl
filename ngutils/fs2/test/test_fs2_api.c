@@ -2633,3 +2633,124 @@ Test(fs2, heap_substr_independent_from_src) {
     fs2_free(h);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_left — prefix via fs2_substr(s, 0, len)
+ * ========================================================================= */
+
+Test(fs2, left_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcdef");
+
+    fs2 *ret = fs2_left(&s, 3);
+
+    CHECK_PTR_EQ("returns s", ret, &s);
+    CHECK_STR_EQ("abc", s.v, "abc");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, left_len_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_left(&s, 0);
+
+    CHECK_STR_EQ("empty", s.v, "");
+    CHECK_EQ  ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, left_len_eq_slen_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig_v = s.v;
+
+    fs2_left(&s, 5);
+
+    CHECK_PTR_EQ("v unchanged", s.v, orig_v);
+    CHECK_STR_EQ("unchanged", s.v, "hello");
+    CHECK_EQ  ("len", s.len, 5);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, left_len_beyond_clamps) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_left(&s, 100);
+
+    CHECK_STR_EQ("whole string (clamped)", s.v, "abc");
+    CHECK_EQ  ("len", s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, left_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_left(&s, 1);
+
+    CHECK_STR_EQ("h", s.v, "h");
+    CHECK_EQ  ("len", s.len, 1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, left_local) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    memcpy(s.v, "abcdef", 7);
+    fs2_setlen(&s, 6);
+
+    fs2_left(&s, 3);
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+    CHECK_TRUE("still LOCAL", fs2_is_local(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+/* =========================================================================
+ * fs2_left — guards (delegated to fs2_substr / fs2_cant_mutate)
+ * ========================================================================= */
+
+Test(fs2, left_null_aborts, .signal = SIGABRT) {
+    fs2_left(NULL, 3);
+}
+
+Test(fs2, left_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_left(&s, 3);   /* cant_mutate → invfatal */
+}
+
+/* Empty variants — silent skip (no abort) */
+Test(fs2, left_fs2empty_noop) {
+    fs2 s = FS2EMPTY;
+    fs2_left(&s, 5);
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+}
+
+Test(fs2, left_canonical_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_left(&s, 5);
+    CHECK_EQ("len", s.len, 0);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
