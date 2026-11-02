@@ -6487,3 +6487,65 @@ Test(fs2_api, genrnd_new_matches_manual_init) {
     fs2_free(&via);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_heap_genrnd — только обёртка-специфика
+ * (charset-семантика — в genrnd-тестах)
+ * ========================================================================= */
+
+Test(fs2_api, heap_genrnd_basic) {
+    __fs2_checkreset();
+    fs2 *s = fs2_heap_genrnd(10, 'a');
+
+    cr_assert(s != NULL);
+    CHECK_EQ  ("len",            s->len, 10);
+    CHECK_TRUE("BODYALLOC",      fs2_is_bodyalloc(s));
+    CHECK_TRUE("ALLOC",          fs2_is_alloc(s));
+    CHECK_EQ  ("NUL at len",     s->v[s->len], '\0');
+    CHECK_FS2VALID(1, s);
+
+    for (size_t i = 0; i < s->len; i++)
+        CHECK_TRUE("a-z", s->v[i] >= 'a' && s->v[i] <= 'z');
+
+    fs2_free(s);
+    assert_balanced();
+}
+
+Test(fs2_api, heap_genrnd_len_zero) {
+    __fs2_checkreset();
+    fs2 *s = fs2_heap_genrnd(0, 'a');
+
+    cr_assert(s != NULL);
+    CHECK_EQ  ("len",         s->len, 0);
+    CHECK_TRUE("empty",       fs2_is_empty(s));
+    CHECK_TRUE("BODYALLOC",   fs2_is_bodyalloc(s));
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(s));
+    CHECK_NOT_NULL("v allocated", s->v);
+    CHECK_FS2VALID(1, s);
+
+    fs2_free(s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Эквивалентность heap vs stack вариантов (по форме)
+ * ========================================================================= */
+
+Test(fs2_api, heap_genrnd_matches_stack_genrnd_form) {
+    __fs2_checkreset();
+    fs2  stack = fs2_genrnd_new(8, '0');
+    fs2 *heap  = fs2_heap_genrnd(8, '0');
+
+    cr_assert(heap != NULL);
+    CHECK_EQ  ("same len",       stack.len, heap->len);
+    CHECK_TRUE("stack ALLOC",    fs2_is_alloc(&stack));
+    CHECK_TRUE("heap ALLOC",     fs2_is_alloc(heap));
+    CHECK_FALSE("stack not body", fs2_is_bodyalloc(&stack));
+    CHECK_TRUE ("heap body",     fs2_is_bodyalloc(heap));
+    CHECK_FS2VALID(1, &stack);
+    CHECK_FS2VALID(2, heap);
+
+    fs2_free(&stack);
+    fs2_free(heap);
+    assert_balanced();
+}
