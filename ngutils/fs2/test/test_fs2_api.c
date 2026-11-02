@@ -875,3 +875,49 @@ Test(fs2, sort_static_nonempty_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("dcba");
     fs2_sort(&s, true);
 }
+
+/* =========================================================================
+ * fs2_cant_realloc — assert-style contract
+ * ========================================================================= */
+
+Test(fs2, cant_realloc_null_aborts, .signal = SIGABRT) {
+    fs2_cant_realloc(NULL);
+}
+
+Test(fs2, cant_realloc_canonical_empty_proceeds) {
+    fs2 s = FS2();
+    CHECK_FALSE("empty → proceed", fs2_cant_realloc(&s));
+}
+
+Test(fs2, cant_realloc_fs2empty_proceeds) {
+    fs2 s = FS2EMPTY;
+    CHECK_FALSE("empty → proceed", fs2_cant_realloc(&s));
+}
+
+Test(fs2, cant_realloc_alloc_empty_proceeds) {
+    __fs2_checkreset();
+    fs2 s = fs2_init(16);
+    CHECK_FALSE("ALLOC empty → proceed", fs2_cant_realloc(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, cant_realloc_local_proceeds) {
+    __fs2_checkreset();
+    FS2LOCAL(s, 16);
+    /* LOCAL → false (grow path will abort if capacity insufficient) */
+    CHECK_FALSE("LOCAL → proceed", fs2_cant_realloc(&s));
+}
+
+Test(fs2, cant_realloc_alloc_nonempty_proceeds) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+    CHECK_FALSE("ALLOC non-empty → proceed", fs2_cant_realloc(&s));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2, cant_realloc_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hi");
+    fs2_cant_realloc(&s);   /* ← было SIGINT, теперь SIGABRT */
+}
