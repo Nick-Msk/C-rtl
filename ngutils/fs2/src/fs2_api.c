@@ -509,7 +509,8 @@ fs2_tolower(fs2 *str) {
  */
 fs2 *                    
 fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    fs2_cant_realloc(str);   // assert-style: NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+    if (!fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+        return str;
     invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to rpad");
 
     if (len < str->len)
@@ -543,7 +544,9 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
  */
 fs2 *                    
 fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    invraise(str != NULL && pad != NULL, "Null pointers %p %p", str, pad);
+    if (!fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+        return str;
+    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to rpad");
 
     if (len < str->len)
         return fs2_left(str, len);
