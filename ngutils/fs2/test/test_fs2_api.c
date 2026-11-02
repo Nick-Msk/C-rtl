@@ -6199,3 +6199,219 @@ Test(fs2_api, lpadstr_new_matches_lpad_new_with_wrapped_pad) {
     fs2_free(&via_str);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_genrnd — nominal: каждый тип → свой charset
+ * ========================================================================= */
+
+/* Хелпер: проверить, что все символы в диапазоне [lo, hi] */
+static bool
+all_in_range(const fs2 *s, char lo, char hi) {
+    for (size_t i = 0; i < s->len; i++)
+        if (s->v[i] < lo || s->v[i] > hi)
+            return false;
+    return true;
+}
+
+Test(fs2_api, genrnd_lowercase) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2 *r = fs2_genrnd(&s, 20, 'a');
+
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_EQ  ("len",        s.len, 20);
+    CHECK_TRUE("all a-z",    all_in_range(&s, 'a', 'z'));
+    CHECK_EQ  ("NUL at len", s.v[s.len], '\0');
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_uppercase) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 20, 'A');
+
+    CHECK_EQ  ("len",    s.len, 20);
+    CHECK_TRUE("all A-Z", all_in_range(&s, 'A', 'Z'));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_digits) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 20, '0');
+
+    CHECK_EQ  ("len",    s.len, 20);
+    CHECK_TRUE("all 0-9", all_in_range(&s, '0', '9'));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_unknown_type_fills_question) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 10, 'x');   /* любой не-селектор */
+
+    CHECK_EQ  ("len",    s.len, 10);
+    for (size_t i = 0; i < s.len; i++)
+        CHECK_EQ("char", s.v[i], '?');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_genrnd — статистика: покрытие алфавита
+ *   Ловит баг "rndint(26 - 1) даёт [0,24], 'z' недостижим"
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_lowercase_covers_full_alphabet) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_genrnd(&s, 1000, 'a');
+
+    bool saw[26] = {false};
+    for (size_t i = 0; i < s.len; i++) {
+        if (s.v[i] >= 'a' && s.v[i] <= 'z')
+            saw[s.v[i] - 'a'] = true;
+    }
+    for (int i = 0; i < 26; i++)
+        CHECK_TRUE("letter present", saw[i]);   /* все 26 хотя бы раз */
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_digits_covers_full_alphabet) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_genrnd(&s, 500, '0');
+
+    bool saw[10] = {false};
+    for (size_t i = 0; i < s.len; i++)
+        saw[s.v[i] - '0'] = true;
+    for (int i = 0; i < 10; i++)
+        CHECK_TRUE("digit present", saw[i]);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_genrnd — overwrite (не append!) и len == 0
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_overwrites_existing_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    cr_assert(s.len == 5);
+
+    fs2_genrnd(&s, 3, 'a');
+
+    CHECK_EQ  ("len truncated to 3", s.len, 3);
+    CHECK_EQ  ("old content gone",   s.v[3], '\0');
+    /* старые байты 'h','e','l' заменены случайными — хотя бы один
+     * отличается с очень высокой вероятностью, но не проверяем
+     * конкретные значения. Главное — len=3, а не 5. */
+    CHECK_TRUE("all a-z", all_in_range(&s, 'a', 'z'));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_len_zero_truncates_to_empty) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_genrnd(&s, 0, 'a');
+
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("empty",  fs2_is_empty(&s));
+    CHECK_EQ  ("v[0]",   s.v[0], '\0');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_canon_str_promotes) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_genrnd(&s, 5, 'a');
+
+    CHECK_EQ  ("len",             s.len, 5);
+    CHECK_FALSE("no longer canon", fs2_is_canon(&s));
+    CHECK_TRUE ("now ALLOC",       fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_fs2empty_str_promotes) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_genrnd(&s, 5, 'a');
+
+    CHECK_EQ  ("len",                 s.len, 5);
+    CHECK_FALSE("not STATIC anymore",  fs2_is_static(&s));
+    CHECK_TRUE ("now ALLOC",           fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_genrnd — guards
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_null_aborts, .signal = SIGABRT) {
+    fs2_genrnd(NULL, 5, 'a');
+}
+
+Test(fs2_api, genrnd_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_genrnd(&s, 5, 'a');
+}
+
+/* =========================================================================
+ * fs2_genrnd — LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, genrnd_local_sufficient_capacity_works) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+
+    fs2_genrnd(&buf, 10, 'a');
+
+    CHECK_EQ  ("len",          buf.len, 10);
+    CHECK_TRUE("still LOCAL",  fs2_is_local(&buf));
+    CHECK_TRUE("all a-z",      all_in_range(&buf, 'a', 'z'));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+Test(fs2_api, genrnd_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    FS2LOCAL(buf, 4);
+    fs2_genrnd(&buf, 10, 'a');   /* need=11 > sz=4 */
+}
