@@ -299,25 +299,26 @@ fs2_cat(fs2 *restrict dst, const fs2 *restrict src) {
  * @brief Prepend a C-string @p beginner to @p dst in place.
  *
  * Moves existing content forward and copies @p beginner at position 0.
- * NULL or empty @p beginner is a no-op.
+ * Empty @p beginner is a no-op.
  *
  * @param dst       Non-NULL fs2 (ALLOC or LOCAL).
- * @param beginner  NUL-terminated string (NULL is safe).
+ * @param beginner  Non-NULL NUL-terminated string.
  * @return          @p dst.
+ *
+ * @warning `invfatal` (SIGABRT) if @p dst or @p beginner is NULL,
+ *          or if @p dst is non-empty STATIC.
  */
 fs2 *
 fs2_rev_catstr(fs2 *restrict dst, const char *restrict beginner) {
-    invraise(dst != NULL, "Null pointer %p", dst);
+    invfatal(ERR_NULL_INPUT, dst != NULL && beginner != NULL, 
+        "Null pointers %p %p", dst, beginner);
 
-    if (!beginner)
-        return dst;
     size_t  len = strlen(beginner);
     if (len == 0)       // no any allocations if null or empty 
         return dst;
+
     fs2_selfmove(dst, len, 0, dst->len);
-
     fs2_memcpy_str(dst, 0, beginner, len);
-
     return fs2_setlen(dst, dst->len + len);
 }
 
