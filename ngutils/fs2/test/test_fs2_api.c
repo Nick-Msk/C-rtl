@@ -8157,3 +8157,209 @@ Test(fs2_api, nrchr_nth_fs2empty_v_not_null) {
     CHECK_FS2VALID(1, &s);
     assert_balanced();
 }
+
+/* Хелпер: сколько вхождений c (ci) в окне [len-lim, len) */
+static size_t count_ci_in_window(const fs2 *s, int c, size_t lim) {
+    size_t lo = (lim < s->len) ? s->len - lim : 0;
+    size_t n  = 0;
+    for (size_t k = 1; ; k++) {
+        ptrdiff_t p = fs2_chr_ci_nth(s, c, k);
+        if (p < 0) break;
+        if ((size_t)p >= lo) n++;
+    }
+    return n;
+}
+
+/* =========================================================================
+ * fs2_rchr_ci_nth — nominal (reverse + ci)
+ * ========================================================================= */
+
+Test(fs2_api, rchr_ci_nth_k1_matches_rchr_ci) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("MiSsIsSiPpI");
+
+    CHECK_EQ("'s' k=1", fs2_rchr_ci_nth(&s, 's', 1), fs2_rchr_ci(&s, 's'));   /* 6 */
+    CHECK_EQ("'i' k=1", fs2_rchr_ci_nth(&s, 'i', 1), fs2_rchr_ci(&s, 'i'));   /* 10 */
+    CHECK_EQ("'p' k=1", fs2_rchr_ci_nth(&s, 'p', 1), fs2_rchr_ci(&s, 'p'));   /* 9 */
+    CHECK_EQ("'m' k=1", fs2_rchr_ci_nth(&s, 'm', 1), fs2_rchr_ci(&s, 'm'));   /* 0 */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "BaNaNa": 'a'/'A' на 1,3,5 — reverse k=1→5, k=2→3, k=3→1 */
+Test(fs2_api, rchr_ci_nth_banana_mixed_case) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+
+    CHECK_EQ("k=1", fs2_rchr_ci_nth(&s, 'a', 1), 5);
+    CHECK_EQ("k=2", fs2_rchr_ci_nth(&s, 'a', 2), 3);
+    CHECK_EQ("k=3", fs2_rchr_ci_nth(&s, 'a', 3), 1);
+    CHECK_EQ("k=4", fs2_rchr_ci_nth(&s, 'a', 4), -1);
+
+    CHECK_EQ("'A' k=1", fs2_rchr_ci_nth(&s, 'A', 1), 5);
+    CHECK_EQ("'A' k=3", fs2_rchr_ci_nth(&s, 'A', 3), 1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, rchr_ci_nth_k0_invalid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+    CHECK_EQ("k=0", fs2_rchr_ci_nth(&s, 'a', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, rchr_ci_nth_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("'z'", fs2_rchr_ci_nth(&s, 'z', 1), -1);
+    CHECK_EQ("'0'", fs2_rchr_ci_nth(&s, '0', 1), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* nonletters — ci == cs, reverse nth */
+Test(fs2_api, rchr_ci_nth_nonletters_same_as_cs) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a1b2!c");
+
+    CHECK_EQ("'1'", fs2_rchr_ci_nth(&s, '1', 1), fs2_rchr_nth(&s, '1', 1));
+    CHECK_EQ("'2'", fs2_rchr_ci_nth(&s, '2', 1), fs2_rchr_nth(&s, '2', 1));
+    CHECK_EQ("'!'", fs2_rchr_ci_nth(&s, '!', 1), fs2_rchr_nth(&s, '!', 1));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nrchr_ci_nth — окно + reverse + ci
+ * ========================================================================= */
+
+/* "BaNaNa": 'a'/'A' на 1,3,5. lim=3 → окно [3,6)="NaNa", 'a' на 3,5 */
+Test(fs2_api, nrchr_ci_nth_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+
+    size_t n_in_win = count_ci_in_window(&s, 'a', 3);
+    cr_assert_eq(n_in_win, 2, "окно [3,6) содержит 2 'a'/'A' (позиции 3, 5)");
+
+    CHECK_EQ("k=1 lim=3 → 5",  fs2_nrchr_ci_nth(&s, 'a', 1, 3), 5);
+    CHECK_EQ("k=2 lim=3 → 3",  fs2_nrchr_ci_nth(&s, 'a', 2, 3), 3);
+    CHECK_EQ("k=3 lim=3 → -1", fs2_nrchr_ci_nth(&s, 'a', 3, 3), -1);
+
+    /* lim=2 → окно [4,6)="Na", 'a' только на 5 */
+    cr_assert_eq(count_ci_in_window(&s, 'a', 2), 1);
+    CHECK_EQ("k=1 lim=2 → 5",  fs2_nrchr_ci_nth(&s, 'a', 1, 2), 5);
+    CHECK_EQ("k=2 lim=2 → -1", fs2_nrchr_ci_nth(&s, 'a', 2, 2), -1);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* offset от начала строки, не от окна (ci-вариант) */
+Test(fs2_api, nrchr_ci_nth_offset_from_string_start) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("AxBxC");   /* 'X'/'x' на 1, 3 */
+
+    /* lim=3 → окно [2,5)="BxC", 'x' на 3 в строке (=1 в окне) */
+    CHECK_EQ("k=1 lim=3 → 3",  fs2_nrchr_ci_nth(&s, 'x', 1, 3), 3);
+    CHECK_EQ("k=2 lim=3 → -1", fs2_nrchr_ci_nth(&s, 'x', 2, 3), -1);
+
+    /* lim=4 → окно [1,5)="xBxC", 'x' на 1, 3 */
+    CHECK_EQ("k=1 lim=4 → 3",  fs2_nrchr_ci_nth(&s, 'x', 1, 4), 3);
+    CHECK_EQ("k=2 lim=4 → 1",  fs2_nrchr_ci_nth(&s, 'x', 2, 4), 1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_lim_eq_len_matches_rchr_ci_nth) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("MiSsIsSiPpI");
+
+    for (size_t k = 1; k <= 5; k++) {
+        CHECK_EQ("'s'", fs2_nrchr_ci_nth(&s, 's', k, s.len), fs2_rchr_ci_nth(&s, 's', k));
+        CHECK_EQ("'i'", fs2_nrchr_ci_nth(&s, 'i', k, s.len), fs2_rchr_ci_nth(&s, 'i', k));
+    }
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+    CHECK_EQ("k=1", fs2_nrchr_ci_nth(&s, 'a', 1, 0), -1);
+    CHECK_EQ("k=0", fs2_nrchr_ci_nth(&s, 'a', 0, 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_k0_invalid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+    CHECK_EQ("k=0 lim=6", fs2_nrchr_ci_nth(&s, 'a', 0, 6), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_lim_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");
+    CHECK_EQ("lim=100",      fs2_nrchr_ci_nth(&s, 'a', 3, 100), 1);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nrchr_ci_nth(&s, 'a', 3, SIZE_MAX), 1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("BaNaNa");
+    CHECK_EQ("k=2 lim=4", fs2_nrchr_ci_nth(&s, 'a', 2, 4), 3);
+    CHECK_EQ("k=3 lim=4", fs2_nrchr_ci_nth(&s, 'a', 3, 4), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_null_aborts, .signal = SIGABRT) {
+    fs2_nrchr_ci_nth(NULL, 'a', 1, 5);
+}
+
+/* =========================================================================
+ * fs2_nrchr_ci_nth — FS2() (v==NULL): guard-ветка (k==0 || v==NULL)
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_ci_nth_canon_v_null_returns_minus1) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    CHECK_EQ("k=1",        fs2_nrchr_ci_nth(&s, 'a', 1, 100), -1);
+    CHECK_EQ("k=5",        fs2_nrchr_ci_nth(&s, 'a', 5, 100), -1);
+    CHECK_EQ("k=SIZE_MAX", fs2_nrchr_ci_nth(&s, 'a', SIZE_MAX, 100), -1);
+    CHECK_EQ("lim=0",      fs2_nrchr_ci_nth(&s, 'a', 1, 0),   -1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nth_fs2empty_v_not_null) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v);
+
+    CHECK_EQ("k=1", fs2_nrchr_ci_nth(&s, 'a', 1, 100), -1);
+    CHECK_EQ("k=0", fs2_nrchr_ci_nth(&s, 'a', 0, 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
