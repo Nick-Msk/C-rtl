@@ -72,7 +72,7 @@ fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
  */
 ptrdiff_t   
 fs2_chr_nth   (const fs2 *str, int c, size_t k) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     return fs2_nchr_nth(str, c, k, str->len);
 } 
@@ -90,7 +90,7 @@ fs2_chr_nth   (const fs2 *str, int c, size_t k) {
  */
 ptrdiff_t
 fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     if (k == 0) 
         return -1;                        // 1-based
