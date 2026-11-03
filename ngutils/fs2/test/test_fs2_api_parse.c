@@ -2724,3 +2724,513 @@ Test(fs2_api, pos_parse_char_chained_via_newpos) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_short — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)42);
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)-42);
+    CHECK_EQ("newpos", np, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0");
+    size_t np = 999; short v = 99;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)0);
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_leading_spaces_and_pos) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   42xyz");
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)42);
+    CHECK_EQ("newpos", np, 5);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_pos_mid_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123");
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 3, &np, &v));
+    CHECK_EQ("value",  v,  (short)123);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_short — границы SHRT
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_shrt_max) {
+    __fs2_checkreset();
+    char buf[16];
+    snprintf(buf, sizeof buf, "%d", SHRT_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  SHRT_MAX);
+    CHECK_EQ("newpos", np, strlen(buf));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_shrt_min) {
+    __fs2_checkreset();
+    char buf[16];
+    snprintf(buf, sizeof buf, "%d", SHRT_MIN);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  SHRT_MIN);
+    CHECK_EQ("newpos", np, strlen(buf));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_shrt_max_plus_one_false_no_write) {
+    __fs2_checkreset();
+    char buf[16];
+    snprintf(buf, sizeof buf, "%lld", (long long)SHRT_MAX + 1);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; short v = 999;
+    cr_assert_not(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_shrt_min_minus_one_false_no_write) {
+    __fs2_checkreset();
+    char buf[16];
+    snprintf(buf, sizeof buf, "%lld", (long long)SHRT_MIN - 1);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; short v = 999;
+    cr_assert_not(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* LLONG_MAX — гарантированно вне short */
+Test(fs2_api, pos_parse_short_llong_max_rejected_by_range) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%lld", LLONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; short v = 999;
+    cr_assert_not(fs2_pos_parse_short(&s, 0, &np, &v));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_short — failures из делегирования, out/newpos НЕ пишутся
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_invalid_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; short v = 999;
+    cr_assert_not(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_empty_fs2empty_false) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not(fs2_pos_parse_short(&s, 0, NULL, NULL));
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_canon_v_null_false) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_not(fs2_pos_parse_short(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_null_s_false) {
+    cr_assert_not(fs2_pos_parse_short(NULL, 0, NULL, NULL));
+}
+
+Test(fs2_api, pos_parse_short_llong_overflow_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("99999999999999999999999999");   /* > LLONG_MAX */
+    cr_assert_not(fs2_pos_parse_short(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_short — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, NULL, &v));
+    CHECK_EQ("value", v, (short)42);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    cr_assert(fs2_pos_parse_short(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_short — делегирование ≡ _llong для малых значений
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_delegates_to_llong) {
+    __fs2_checkreset();
+    static const char *inputs[] = {
+        "0", "42", "-42", "+7", "  123", "1x", "abc", NULL
+    };
+    for (size_t i = 0; inputs[i]; i++) {
+        fs2 s = fs2_fromstr(inputs[i]);
+        size_t np_sh = 0, np_ll = 0;
+        short     v_sh = 0;
+        long long v_ll = 0;
+
+        bool ok_sh = fs2_pos_parse_short(&s, 0, &np_sh, &v_sh);
+        bool ok_ll = fs2_pos_parse_llong(&s, 0, &np_ll, &v_ll);
+
+        cr_assert_eq(ok_sh, ok_ll, "divergence on '%s'", inputs[i]);
+        if (ok_sh) {
+            CHECK_EQ("value",  (long long)v_sh, v_ll);
+            CHECK_EQ("newpos", np_sh, np_ll);
+        }
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)42);
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_plus_sign) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+42");
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)42);
+    CHECK_EQ("newpos", np, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0");
+    size_t np = 999; unsigned short v = 99;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)0);
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_pos_mid_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123");
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 3, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)123);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — reject "-" (наследуется через _ullong)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    size_t np = 12345; unsigned short v = 999;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (unsigned short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_rejects_negative_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    size_t np = 0; unsigned short v = 0;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_NEQ("not USHRT_MAX", (unsigned)v, (unsigned)USHRT_MAX);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — границы USHRT
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_ushrt_max) {
+    __fs2_checkreset();
+    char buf[16];
+    snprintf(buf, sizeof buf, "%u", (unsigned)USHRT_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  USHRT_MAX);
+    CHECK_EQ("newpos", np, strlen(buf));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_ushrt_max_plus_one_false_no_write) {
+    __fs2_checkreset();
+    char buf[32];
+    snprintf(buf, sizeof buf, "%llu", (unsigned long long)USHRT_MAX + 1ULL);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; unsigned short v = 999;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (unsigned short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ULLONG_MAX — гарантированно вне ushort */
+Test(fs2_api, pos_parse_ushort_ullong_max_rejected_by_range) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%llu", ULLONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; unsigned short v = 999;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — failures из делегирования, out/newpos НЕ пишутся
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_invalid_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; unsigned short v = 999;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  (unsigned short)999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_empty_fs2empty_false) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, NULL, NULL));
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_canon_v_null_false) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_null_s_false) {
+    cr_assert_not(fs2_pos_parse_ushort(NULL, 0, NULL, NULL));
+}
+
+Test(fs2_api, pos_parse_ushort_ullong_overflow_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551616");   /* 2^64 */
+    cr_assert_not(fs2_pos_parse_ushort(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, NULL, &v));
+    CHECK_EQ("value", v, (unsigned short)42);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    cr_assert(fs2_pos_parse_ushort(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ushort — делегирование ≡ _ullong для малых значений
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ushort_delegates_to_ullong) {
+    __fs2_checkreset();
+    static const char *inputs[] = {
+        "0", "42", "+7", "  123", "1x", "abc", NULL
+    };
+    for (size_t i = 0; inputs[i]; i++) {
+        fs2 s = fs2_fromstr(inputs[i]);
+        size_t np_us = 0, np_ull = 0;
+        unsigned short     v_us  = 0;
+        unsigned long long v_ull = 0;
+
+        bool ok_us  = fs2_pos_parse_ushort(&s, 0, &np_us,  &v_us);
+        bool ok_ull = fs2_pos_parse_ullong(&s, 0, &np_ull, &v_ull);
+
+        cr_assert_eq(ok_us, ok_ull, "divergence on '%s'", inputs[i]);
+        if (ok_us) {
+            CHECK_EQ("value",  (unsigned long long)v_us, v_ull);
+            CHECK_EQ("newpos", np_us, np_ull);
+        }
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC / LOCAL — общие для обоих
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_short_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("  42");
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)42);
+    CHECK_EQ("newpos", np, 4);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("  42");
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)42);
+    CHECK_EQ("newpos", np, 4);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_short_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "123", 3);
+    fs2_setlen(&buf, 3);
+
+    size_t np = 999; short v = 0;
+    cr_assert(fs2_pos_parse_short(&buf, 0, &np, &v));
+    CHECK_EQ("value",  v,  (short)123);
+    CHECK_EQ("newpos", np, 3);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ushort_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "123", 3);
+    fs2_setlen(&buf, 3);
+
+    size_t np = 999; unsigned short v = 0;
+    cr_assert(fs2_pos_parse_ushort(&buf, 0, &np, &v));
+    CHECK_EQ("value",  v,  (unsigned short)123);
+    CHECK_EQ("newpos", np, 3);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
