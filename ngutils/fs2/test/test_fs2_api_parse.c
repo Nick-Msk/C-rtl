@@ -1366,3 +1366,322 @@ Test(fs2_api, pos_parse_ullong_local_src) {
     CHECK_FS2VALID(1, &buf);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42UL);
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_leading_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   42");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42UL);
+    CHECK_EQ("newpos", np, 5);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_plus_sign) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+42");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42UL);
+    CHECK_EQ("newpos", np, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_trailing_garbage) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42abc");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42UL);
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_pos_mid_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 3, &np, &v));
+    CHECK_EQ("value",  v,  123UL);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — наследуемый reject "-"
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_rejects_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_rejects_negative_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-1");
+    size_t np = 0; unsigned long v = 0;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_NEQ("not ULONG_MAX", v, ULONG_MAX);   /* контраст с голым strtoul */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — границы ULONG (принимаются)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_ulong_max) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%lu", ULONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  ULONG_MAX);
+    CHECK_EQ("newpos", np, strlen(buf));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* 2^63 = LLONG_MAX+1 — влезает и в unsigned long long, и в unsigned long на LP64 */
+Test(fs2_api, pos_parse_ulong_accepts_2_63_on_lp64) {
+#if ULONG_MAX >= (1ULL << 63)
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("9223372036854775808");   /* 2^63 */
+
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value", v, (unsigned long)((unsigned long long)LLONG_MAX + 1ULL));
+    CHECK_EQ("newpos", np, 19);
+    fs2_free(&s);
+    assert_balanced();
+#endif
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — range-violation (только LLP64 / ILP32)
+ * ========================================================================= */
+
+#if ULONG_MAX < ULLONG_MAX
+Test(fs2_api, pos_parse_ulong_above_ulong_max_false_no_write) {
+    __fs2_checkreset();
+    /* ULLONG_MAX заведомо > ULONG_MAX при этом #if */
+    char buf[64];
+    snprintf(buf, sizeof buf, "%llu", ULLONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_ulong_max_plus_one_false) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%llu", (unsigned long long)ULONG_MAX + 1ULL);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+#endif /* ULONG_MAX < ULLONG_MAX */
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — failures из делегирования, out/newpos НЕ пишутся
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_empty_fs2empty_false) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_canon_v_null_false) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_null_s_false) {
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(NULL, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+}
+
+Test(fs2_api, pos_parse_ulong_invalid_format_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; unsigned long v = 999;
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999UL);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ERANGE в strtoull — не range-check ulong, а вообще за пределами ullong */
+Test(fs2_api, pos_parse_ulong_ullong_overflow_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("18446744073709551616");   /* 2^64 */
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_pos_out_of_range_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    cr_assert_not(fs2_pos_parse_ulong(&s, 100, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_only_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   ");
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_only_plus) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+");
+    cr_assert_not(fs2_pos_parse_ulong(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_ulong — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, NULL, &v));
+    CHECK_EQ("value", v, 42UL);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    cr_assert(fs2_pos_parse_ulong(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Делегирование: _ulong ≡ _ullong на малых значениях
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_delegates_to_ullong) {
+    __fs2_checkreset();
+    static const char *inputs[] = {
+        "0", "42", "+7", "  123", "1x", "   -9abc", "abc", NULL
+    };
+    for (size_t i = 0; inputs[i]; i++) {
+        fs2 s = fs2_fromstr(inputs[i]);
+        size_t np_ul = 0, np_ull = 0;
+        unsigned long      v_ul  = 0;
+        unsigned long long v_ull = 0;
+
+        bool ok_ul  = fs2_pos_parse_ulong (&s, 0, &np_ul,  &v_ul);
+        bool ok_ull = fs2_pos_parse_ullong(&s, 0, &np_ull, &v_ull);
+
+        cr_assert_eq(ok_ul, ok_ull, "divergence on '%s'", inputs[i]);
+        if (ok_ul) {
+            CHECK_EQ("value",  (unsigned long long)v_ul, v_ull);
+            CHECK_EQ("newpos", np_ul, np_ull);
+        }
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC / LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_ulong_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("  42");
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42UL);
+    CHECK_EQ("newpos", np, 4);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_ulong_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "123", 3);
+    fs2_setlen(&buf, 3);
+
+    size_t np = 999; unsigned long v = 0;
+    cr_assert(fs2_pos_parse_ulong(&buf, 0, &np, &v));
+    CHECK_EQ("value",  v,  123UL);
+    CHECK_EQ("newpos", np, 3);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
