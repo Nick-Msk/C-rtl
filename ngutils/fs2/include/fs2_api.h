@@ -782,7 +782,7 @@ fs2_rchr_ci(const fs2 *str, int c) {
  */
 static inline ptrdiff_t
 fs2_nrchr(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
@@ -800,7 +800,7 @@ fs2_nrchr(const fs2 *str, int c, size_t lim) {
  */
 static inline ptrdiff_t 
 fs2_nrchr_ci(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
