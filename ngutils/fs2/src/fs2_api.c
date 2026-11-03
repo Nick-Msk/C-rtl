@@ -812,17 +812,17 @@ fs2_pos_parse_ulong(const fs2 *restrict s, size_t pos,
 bool 
 fs2_pos_parse_uint(const fs2 *restrict s, size_t pos, 
                    size_t *restrict newpos, unsigned *restrict out) {
-    unsigned long ul   = 0;
-    size_t        npos = 0;
+    unsigned long long  ull   = 0;
+    size_t              npos = 0;
 
-    if (!fs2_pos_parse_ulong(s, pos, &npos, &ul))
+    if (!fs2_pos_parse_ullong(s, pos, &npos, &ull))
         return false;
 
-    if (ul > UINT_MAX)
-        return logsimpleerr(false, "Parsed int is out of bound %lu <= %u", ul, UINT_MAX);
+    if (ull > UINT_MAX)
+        return logsimpleerr(false, "Parsed int is out of bound %lu <= %u", ull, UINT_MAX);
 
     if (out)
-        *out = (unsigned)ul;
+        *out = (unsigned) ull;
     if (newpos)
         *newpos = npos;
 
