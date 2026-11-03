@@ -92,7 +92,7 @@ ptrdiff_t
 fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
-    if (k == 0) 
+    if (k == 0 || str->v == NULL) 
         return -1;                        // 1-based
 
     const unsigned char *base = (const unsigned char *)str->v;
@@ -143,7 +143,7 @@ ptrdiff_t
 fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
     
-    if (k == 0)
+    if (k == 0 || str->v == NULL)
         return -1;
 
     const unsigned char *base = (const unsigned char *)str->v;
