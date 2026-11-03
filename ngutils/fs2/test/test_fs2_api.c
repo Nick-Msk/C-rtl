@@ -7899,3 +7899,54 @@ Test(fs2_api, nchr_nth_ci_lim_eq_len_matches_chr_ci_nth) {
     fs2_free(&s);
     assert_balanced();
 }
+
+
+/* =========================================================================
+ * fs2_nchr_ci_nth — FS2() не заваливается (helper guard)
+ *   Проверяет ветку "NULL в helper → -1 до base - orig"
+ * ========================================================================= */
+
+Test(fs2_api, nchr_ci_nth_canon_v_null_k_gt_0) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    CHECK_EQ("k=1",        fs2_nchr_ci_nth(&s, 'a', 1, 100), -1);
+    CHECK_EQ("k=5",        fs2_nchr_ci_nth(&s, 'a', 5, 100), -1);
+    CHECK_EQ("k=SIZE_MAX", fs2_nchr_ci_nth(&s, 'a', SIZE_MAX, 100), -1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_nth_canon_v_null_k_0_early_return) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    /* k=0 → early return до любого обращения к str->v */
+    CHECK_EQ("k=0 lim=0",   fs2_nchr_ci_nth(&s, 'a', 0, 0),   -1);
+    CHECK_EQ("k=0 lim=100", fs2_nchr_ci_nth(&s, 'a', 0, 100), -1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* FS2EMPTY (v != NULL): другой путь — helper НЕ возвращает по guard,
+ * а цикл в helper не выполняется. Результат тот же. */
+Test(fs2_api, nchr_ci_nth_fs2empty_v_not_null) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v);
+
+    CHECK_EQ("k=1", fs2_nchr_ci_nth(&s, 'a', 1, 100), -1);
+    CHECK_EQ("k=0", fs2_nchr_ci_nth(&s, 'a', 0, 100), -1);
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_nth_canon_v_null_aborts, .signal = SIGABRT) {
+    fs2_nchr_ci_nth(NULL, 'a', 1, 100);
+}
