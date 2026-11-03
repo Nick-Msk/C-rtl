@@ -7374,6 +7374,46 @@ Test(fs2_api, nrchr_null_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
+ * fs2_nrchr — FS2() (v==NULL)
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_canon_v_null_returns_minus1) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+    cr_assert_eq(s.len, 0);
+
+    CHECK_EQ("'a'",   fs2_nrchr(&s, 'a',   100), -1);
+    CHECK_EQ("'\\0'", fs2_nrchr(&s, '\0',  100), -1);
+    CHECK_EQ("lim=0", fs2_nrchr(&s, 'a',   0),   -1);
+    CHECK_EQ("lim=1", fs2_nrchr(&s, 'a',   1),   -1);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nrchr(&s, 'a', SIZE_MAX), -1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nrchr — FS2EMPTY (v != NULL): другой путь, тот же результат
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_fs2empty_v_not_null_returns_minus1) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v, "precondition: FS2EMPTY has v == \"\"");
+    cr_assert_eq(s.v[0], '\0');
+
+    CHECK_EQ("'a'",   fs2_nrchr(&s, 'a',  100), -1);
+    CHECK_EQ("lim=0", fs2_nrchr(&s, 'a',  0),   -1);
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+
+
+/* =========================================================================
  * fs2_nrchr_ci — case-insensitive + окно
  * ========================================================================= */
 
@@ -7479,6 +7519,54 @@ Test(fs2_api, nrchr_ci_static_src) {
 
 Test(fs2_api, nrchr_ci_null_aborts, .signal = SIGABRT) {
     fs2_nrchr_ci(NULL, 'a', 5);
+}
+
+Test(fs2_api, nrchr_ci_canon_v_null_returns_minus1) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    CHECK_EQ("'a'",   fs2_nrchr_ci(&s, 'a',  100), -1);
+    CHECK_EQ("'A'",   fs2_nrchr_ci(&s, 'A',  100), -1);
+    CHECK_EQ("lim=0", fs2_nrchr_ci(&s, 'a',  0),   -1);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nrchr_ci(&s, 'a', SIZE_MAX), -1);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_fs2empty_v_not_null_returns_minus1) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v);
+
+    CHECK_EQ("'a'",   fs2_nrchr_ci(&s, 'a',  100), -1);
+    CHECK_EQ("lim=0", fs2_nrchr_ci(&s, 'a',  0),   -1);
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_both_empty_forms_return_minus1) {
+    __fs2_checkreset();
+
+    fs2 canon = FS2();      /* v == NULL  → guard */
+    fs2 empty = FS2EMPTY;   /* v != NULL  → avail=0 */
+
+    const size_t lims[] = { 0, 1, 5, 100, SIZE_MAX };
+    for (size_t i = 0; i < sizeof(lims)/sizeof(lims[0]); i++) {
+        CHECK_EQ("canon 'a'",  fs2_nrchr(&canon, 'a', lims[i]), -1);
+        CHECK_EQ("canon 'A'",  fs2_nrchr_ci(&canon, 'A', lims[i]), -1);
+        CHECK_EQ("empty 'a'",  fs2_nrchr(&empty, 'a', lims[i]), -1);
+        CHECK_EQ("empty 'A'",  fs2_nrchr_ci(&empty, 'A', lims[i]), -1);
+    }
+
+    CHECK_FS2VALID(1, &canon);
+    CHECK_FS2VALID(2, &empty);
+
+    fs2_free(&canon);
+    assert_balanced();
 }
 
 /* =========================================================================
