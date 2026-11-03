@@ -2450,3 +2450,277 @@ Test(fs2_api, pos_parse_double_local_src) {
     CHECK_FS2VALID(1, &buf);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_char — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("char",   c,  'a');
+    CHECK_EQ("newpos", np, 1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_last) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 2, &np, &c));
+    CHECK_EQ("char",   c,  'c');
+    CHECK_EQ("newpos", np, 3);   /* == s.len */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_mid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 2, &np, &c));
+    CHECK_EQ("char",   c,  'l');
+    CHECK_EQ("newpos", np, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Одиночный символ */
+Test(fs2_api, pos_parse_char_single_char_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("X");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("char",   c,  'X');
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_char — любой байт валиден (нет skip_spaces, нет reject)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_space_is_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  ");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("char", c,  ' ');   /* пробел — валидный символ */
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_sign_is_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+-.");
+    size_t np = 0; char c = 0;
+
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("'+'", c,  '+');
+    CHECK_EQ("newpos", np, 1);
+
+    cr_assert(fs2_pos_parse_char(&s, 1, &np, &c));
+    CHECK_EQ("'-'", c,  '-');
+
+    cr_assert(fs2_pos_parse_char(&s, 2, &np, &c));
+    CHECK_EQ("'.'", c,  '.');
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_digit_is_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("7");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("char", c,  '7');
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* High byte (>= 0x80) — просто байт, никакого isdigit/isspace */
+Test(fs2_api, pos_parse_char_high_byte) {
+    __fs2_checkreset();
+    char *raw = strdup("A\xE9");
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+    cr_assert_eq(s.len, 2);
+
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 1, &np, &c));
+    CHECK_EQ("high byte", (unsigned char)c, 0xE9u);
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_char — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 0, NULL, &c));
+    CHECK_EQ("char", c, 'a');
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    cr_assert(fs2_pos_parse_char(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_char — fail-cases: out/newpos НЕ пишутся
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_pos_eq_len_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; char c = 'Z';
+    cr_assert_not(fs2_pos_parse_char(&s, 3, &np, &c));   /* pos == len */
+    CHECK_EQ("out untouched",    c,  'Z');
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_pos_gt_len_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; char c = 'Z';
+    cr_assert_not(fs2_pos_parse_char(&s, 100, &np, &c));
+    CHECK_EQ("out untouched",    c,  'Z');
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_empty_fs2empty_false) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;   /* v="", len=0 */
+    size_t np = 12345; char c = 'Z';
+    cr_assert_not(fs2_pos_parse_char(&s, 0, &np, &c));   /* pos >= len */
+    CHECK_EQ("out untouched",    c,  'Z');
+    CHECK_EQ("newpos untouched", np, 12345);
+    assert_balanced();
+}
+
+/* FS2() (v=NULL) — guard `!s->v` → false, без чтения */
+Test(fs2_api, pos_parse_char_canon_v_null_false) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+    size_t np = 12345; char c = 'Z';
+    cr_assert_not(fs2_pos_parse_char(&s, 0, &np, &c));
+    CHECK_EQ("out untouched",    c,  'Z');
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* NULL s — мягкий false (logsimpleerr с `s ? s->len : 0`) */
+Test(fs2_api, pos_parse_char_null_s_false) {
+    size_t np = 12345; char c = 'Z';
+    cr_assert_not(fs2_pos_parse_char(NULL, 0, &np, &c));
+    CHECK_EQ("out untouched",    c,  'Z');
+    CHECK_EQ("newpos untouched", np, 12345);
+}
+
+/* =========================================================================
+ * fs2_pos_parse_char — STATIC / LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("xyz");
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&s, 1, &np, &c));
+    CHECK_EQ("char",   c,  'y');
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_char_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "abc", 3);
+    fs2_setlen(&buf, 3);
+
+    size_t np = 999; char c = 0;
+    cr_assert(fs2_pos_parse_char(&buf, 2, &np, &c));
+    CHECK_EQ("char",   c,  'c');
+    CHECK_EQ("newpos", np, 3);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_char — последовательное чтение строки
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_char_sequential_reads) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    const char *expected = "abc";
+    size_t pos = 0;
+    char c;
+
+    for (size_t i = 0; i < 3; i++) {
+        cr_assert(fs2_pos_parse_char(&s, pos, &pos, &c));
+        CHECK_EQ("char matches", c, expected[i]);
+    }
+    CHECK_EQ("pos advanced to len", pos, s.len);
+
+    /* ещё один — за пределами */
+    cr_assert_not(fs2_pos_parse_char(&s, pos, &pos, &c));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* pos in-place (out-only / newpos-only не ломают последовательность) */
+Test(fs2_api, pos_parse_char_chained_via_newpos) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+
+    size_t np = 0;
+    char c1 = 0, c2 = 0;
+
+    cr_assert(fs2_pos_parse_char(&s, 0, &np, &c1));   /* np → 1 */
+    cr_assert(fs2_pos_parse_char(&s, np, &np, &c2));  /* np → 2 */
+    CHECK_EQ("c1", c1, 'h');
+    CHECK_EQ("c2", c2, 'i');
+    CHECK_EQ("np == len", np, 2);
+
+    cr_assert_not(fs2_pos_parse_char(&s, np, &np, &c2));   /* beyond */
+
+    fs2_free(&s);
+    assert_balanced();
+}
