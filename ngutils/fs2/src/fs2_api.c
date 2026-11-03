@@ -819,7 +819,7 @@ fs2_pos_parse_uint(const fs2 *restrict s, size_t pos,
         return false;
 
     if (ull > UINT_MAX)
-        return logsimpleerr(false, "Parsed int is out of bound %lu <= %u", ull, UINT_MAX);
+        return logsimpleerr(false, "Parsed int is out of bound %llu <= %u", ull, UINT_MAX);
 
     if (out)
         *out = (unsigned) ull;
