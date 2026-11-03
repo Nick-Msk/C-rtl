@@ -715,7 +715,7 @@ fs2_chr_ci(const fs2 *str, int c) {
  */
 static inline ptrdiff_t
 fs2_nchr(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
     return __fs2_chr_raw((const unsigned char *) str->v, avail, c);
@@ -731,7 +731,7 @@ fs2_nchr(const fs2 *str, int c, size_t lim) {
  */
 static inline ptrdiff_t
 fs2_nchr_ci(const fs2 *str, int c, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     size_t avail = (lim < str->len) ? lim : str->len;
     return __fs2_chr_raw_ci((const unsigned char *) str->v, avail, c);
