@@ -7497,14 +7497,6 @@ Test(fs2_api, nrchr_and_rchr_agree_when_lim_covers_string) {
     assert_balanced();
 }
 
-#include <criterion/criterion.h>
-
-#include "test_fs2.h"
-#include "fs2_api.h"
-#include <locale.h>
-
-TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
-
 /* =========================================================================
  * fs2_chr_nth — nominal (по позициям в "banana": 'a' → 1,3,5)
  * ========================================================================= */
