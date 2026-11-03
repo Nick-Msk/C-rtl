@@ -793,7 +793,7 @@ fs2_nrchr(const fs2 *str, int c, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
     if (str->v == NULL) // normal behaviour
         return -1;
-        
+
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
     ptrdiff_t hit = __fs2_rchr_raw((const unsigned char *) str->v + off, avail, c);
@@ -924,7 +924,8 @@ ptrdiff_t   fs2_nrchr_ci_nth(const fs2 *str, int c, size_t k, size_t lim);
  */
 static inline ptrdiff_t
 fs2_anyof(const fs2 *restrict s, const char *restrict strs[], fs2_cmp_t cmp) {
-    invraise(s != NULL && strs != NULL, "Null pointers %p %p", s, strs);
+    invfatal(ERR_NULL_INPUT, s != NULL && strs != NULL, 
+        "Null pointers %p %p", s, strs);
     
     const char   *sv = s->v ? s->v : "";  // normalization FS2() -> ""
     ptrdiff_t     ind = 0;
