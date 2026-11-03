@@ -2005,3 +2005,448 @@ Test(fs2_api, pos_parse_uint_local_src) {
     CHECK_FS2VALID(1, &buf);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_double — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  3.14);
+    CHECK_EQ("newpos", np, 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_negative) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-2.5");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  -2.5);
+    CHECK_EQ("newpos", np, 4);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_plus_sign) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+1.0");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  1.0);
+    CHECK_EQ("newpos", np, 4);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("0");
+    size_t np = 999; double v = 999;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  0.0);
+    CHECK_EQ("newpos", np, 1);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "42" парсится как float 42.0 (не отдельный int-path) */
+Test(fs2_api, pos_parse_double_int_via_double) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42.0);
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ".5" → 0.5, newpos = 2 */
+Test(fs2_api, pos_parse_double_leading_dot) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(".5");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  0.5);
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "5." → 5.0, newpos = 2 (C99: "5." валидная decimal-floating-constant) */
+Test(fs2_api, pos_parse_double_trailing_dot) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("5.");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  5.0);
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — scientific notation
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_scientific_lower) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1.5e3");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  1500.0);
+    CHECK_EQ("newpos", np, 5);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_scientific_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1.5E3");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  1500.0);
+    CHECK_EQ("newpos", np, 5);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_scientific_neg_exp) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1.5e-3");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  1.5e-3);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_scientific_pos_exp) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1.5e+3");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  1500.0);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — spaces / pos > 0 / trailing
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_leading_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   3.14");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  3.14);
+    CHECK_EQ("newpos", np, 7);   /* 3 пробела + 4 символа */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_trailing_garbage) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14abc");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  3.14);
+    CHECK_EQ("newpos", np, 4);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_pos_mid_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc-2.5");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 3, &np, &v));
+    CHECK_EQ("value",  v,  -2.5);
+    CHECK_EQ("newpos", np, 7);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — inf / nan (case-insensitive per C99)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_inf_lower) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("inf");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is inf",   isinf(v), true);
+    CHECK_EQ("positive", v > 0,    true);
+    CHECK_EQ("newpos",   np,       3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_inf_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("INF");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is inf", isinf(v), true);
+    CHECK_EQ("newpos", np, 3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_infinity) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("infinity");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is inf", isinf(v), true);
+    CHECK_EQ("newpos", np, 8);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_neg_inf) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-inf");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is inf",   isinf(v), true);
+    CHECK_EQ("negative", v < 0,    true);
+    CHECK_EQ("newpos",   np,       4);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_nan_lower) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("nan");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is nan", isnan(v), true);
+    CHECK_EQ("newpos", np,       3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_nan_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("NAN");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("is nan", isnan(v), true);
+    CHECK_EQ("newpos", np,       3);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — overflow → ERANGE → false
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_overflow_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("1e999");   /* >> DBL_MAX */
+    size_t np = 12345; double v = 999;
+    cr_assert_not(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999.0);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — fail-cases: "." / "+." / "-" / letters
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_only_dot_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr(".");
+    size_t np = 12345; double v = 999;
+    cr_assert_not(fs2_pos_parse_double(&s, 0, &np, &v));   /* no digits */
+    CHECK_EQ("out untouched",    v,  999.0);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_only_plus_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_only_minus_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_sign_dot_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+.");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+
+    fs2 t = fs2_fromstr("-.");
+    cr_assert_not(fs2_pos_parse_double(&t, 0, NULL, NULL));
+
+    fs2_free(&s);
+    fs2_free(&t);
+    assert_balanced();
+}
+
+/* 'e' как первый символ — отклоняется pre-check (e5 не float) */
+Test(fs2_api, pos_parse_double_e_alone_rejected) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("e5");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_letters_rejected) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_only_spaces_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   ");
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_pos_out_of_range) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14");
+    cr_assert_not(fs2_pos_parse_double(&s, 100, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — empty / canon / NULL
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_empty_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    size_t np = 12345; double v = 999;
+    cr_assert_not(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999.0);
+    CHECK_EQ("newpos untouched", np, 12345);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_canon_v_null) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    size_t np = 12345; double v = 999;
+    cr_assert_not(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999.0);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_null_s) {
+    size_t np = 12345; double v = 999;
+    cr_assert_not(fs2_pos_parse_double(NULL, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999.0);
+    CHECK_EQ("newpos untouched", np, 12345);
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 4);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("3.14");
+    double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, NULL, &v));
+    CHECK_EQ("value", v, 3.14);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-2.5");
+    cr_assert(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — high byte (no UB)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_high_byte_rejected_no_ub) {
+    __fs2_checkreset();
+    char *raw = strdup("\xE9" "3.14");   /* первый байт 0xE9 */
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+
+    /* 0xE9 не digit/dot/sign/inf/nan → "Incorrect sym" */
+    cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_double — STATIC / LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_double_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("  -2.5");
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  -2.5);
+    CHECK_EQ("newpos", np, 6);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_double_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "3.14", 4);
+    fs2_setlen(&buf, 4);
+
+    size_t np = 999; double v = 0;
+    cr_assert(fs2_pos_parse_double(&buf, 0, &np, &v));
+    CHECK_EQ("value",  v,  3.14);
+    CHECK_EQ("newpos", np, 4);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
