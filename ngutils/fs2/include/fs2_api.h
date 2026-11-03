@@ -1103,10 +1103,13 @@ fs2_bsearch_ci(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
  */
 static inline ptrdiff_t
 fs2_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
-    invraise(key != NULL, "Null pointers %p %p", key, arr);
-    if (n == 0) return -1;
+    invfatal(ERR_NULL_INPUT, arr != NULL && key != NULL, 
+        "Null pointers %p %p", arr, key);
+
+    if (n == 0)
+        return -1;
     
-    const char *k = key->v ? key->v : "";
+    const char *k = key->v ? key->v : "";   // normalization
     const char *const *res = bsearch(&k, arr, n, sizeof(const char *), pcstr_cmp);
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
@@ -1121,8 +1124,11 @@ fs2_bsearch_str(const fs2 *restrict key, const char *const *restrict arr, size_t
  */
 static inline ptrdiff_t
 fs2_bsearch_ci_str(const fs2 *restrict key, const char *const *restrict arr, size_t n) {
-    invraise(key != NULL, "Null pointers %p %p", key, arr);
-    if (n == 0) return -1;
+    invfatal(ERR_NULL_INPUT, arr != NULL && key != NULL, 
+        "Null pointers %p %p", arr, key);
+
+    if (n == 0)
+        return -1;
 
     const char *k = key->v ? key->v : "";
     const char *const *res = bsearch(&k, arr, n, sizeof(const char *), pcstr_icmp);
