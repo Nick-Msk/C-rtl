@@ -7209,3 +7209,290 @@ Test(fs2_api, rchr_vs_chr_on_single_occurrence) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_nrchr — nominal: окно последних lim байт, offset от начала строки
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_found_in_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    /* окно [len-lim, len) = [2, 5) = "llo" */
+    CHECK_EQ("'l' последнее в окне", fs2_nrchr(&s, 'l', 3), 3);
+    CHECK_EQ("'o' в окне",            fs2_nrchr(&s, 'o', 3), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Ключевой: offset от начала строки, НЕ от начала окна */
+Test(fs2_api, nrchr_offset_is_from_string_start_not_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbXc");
+    /* индексы:                         01234
+     * 'X' на 1 и 3.
+     * lim=3 → окно [2, 5) = "bXc"; 'X' в окне на 1 (отн.), в строке на 3. */
+
+    CHECK_EQ("'X' at string offset 3", fs2_nrchr(&s, 'X', 3), 3);
+    CHECK_EQ("'X' at string offset 3", fs2_nrchr(&s, 'X', 2), 3);   /* окно "Xc" → 'X' на 3 */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Ключевой: последнее, не первое */
+Test(fs2_api, nrchr_returns_last_in_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("XXaXX");   /* 'X' на 0,1,3,4 */
+
+    /* окно [2, 5) = "aXX" — последнее 'X' в окне на 4 (строка), не на 3 */
+    CHECK_EQ("последнее в окне", fs2_nrchr(&s, 'X', 3), 4);
+    /* окно [1, 5) = "XaXX" — тоже 4 */
+    CHECK_EQ("шире окно",        fs2_nrchr(&s, 'X', 4), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nrchr — clamp / границы
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_lim_eq_len_matches_rchr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("h", fs2_nrchr(&s, 'h', s.len), fs2_rchr(&s, 'h'));
+    CHECK_EQ("l", fs2_nrchr(&s, 'l', s.len), fs2_rchr(&s, 'l'));
+    CHECK_EQ("o", fs2_nrchr(&s, 'o', s.len), fs2_rchr(&s, 'o'));
+    CHECK_EQ("z", fs2_nrchr(&s, 'z', s.len), fs2_rchr(&s, 'z'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_lim_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("lim=100",      fs2_nrchr(&s, 'l', 100), 3);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nrchr(&s, 'l', SIZE_MAX), 3);
+    CHECK_EQ("== fs2_rchr",  fs2_nrchr(&s, 'l', 100), fs2_rchr(&s, 'l'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("nothing examined", fs2_nrchr(&s, 'o', 0), -1);
+    CHECK_EQ("nothing examined", fs2_nrchr(&s, 'h', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_lim_one_examines_only_last_byte) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("'o' at 4",   fs2_nrchr(&s, 'o', 1), 4);
+    CHECK_EQ("'l' hidden", fs2_nrchr(&s, 'l', 1), -1);   /* 'l' на 2,3 — не в [4,5) */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Ключевой: символ найден в полной строке, но НЕ в окне */
+Test(fs2_api, nrchr_hidden_by_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbcd");   /* 'X' на 1 */
+
+    CHECK_EQ("full string",  fs2_nrchr(&s, 'X', 5), 1);
+    CHECK_EQ("lim=4 → окно [1,5) содержит 'X'", fs2_nrchr(&s, 'X', 4), 1);
+    CHECK_EQ("lim=3 → окно [2,5) НЕ содержит", fs2_nrchr(&s, 'X', 3), -1);
+    CHECK_EQ("lim=1 → окно [4,5) НЕ содержит", fs2_nrchr(&s, 'X', 1), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("z", fs2_nrchr(&s, 'z', 100), -1);
+    CHECK_EQ("H", fs2_nrchr(&s, 'H', 100), -1);   /* case-sensitive */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_nul_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    CHECK_EQ("NUL excluded", fs2_nrchr(&s, '\0', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nrchr — пустые / STATIC / guards
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_empty_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data",  fs2_nrchr(&s, 'a', 100), -1);
+    CHECK_EQ("even NUL", fs2_nrchr(&s, '\0', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_canon_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_EQ("no data", fs2_nrchr(&s, 'a', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");
+    CHECK_EQ("'l' в [2,5)", fs2_nrchr(&s, 'l', 3), 3);
+    CHECK_EQ("'h' не в [2,5)", fs2_nrchr(&s, 'h', 3), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_null_aborts, .signal = SIGABRT) {
+    fs2_nrchr(NULL, 'a', 5);
+}
+
+/* =========================================================================
+ * fs2_nrchr_ci — case-insensitive + окно
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_ci_lower_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+
+    CHECK_EQ("'l' в [0,5)", fs2_nrchr_ci(&s, 'l', 5), 3);
+    CHECK_EQ("'h' в [0,5)", fs2_nrchr_ci(&s, 'h', 5), 0);
+    CHECK_EQ("'o' в [0,5)", fs2_nrchr_ci(&s, 'o', 5), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_upper_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("'H' → 0", fs2_nrchr_ci(&s, 'H', 5), 0);
+    CHECK_EQ("'O' → 4", fs2_nrchr_ci(&s, 'O', 5), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_returns_last_in_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo");
+
+    /* окно [2, 5) = "LLo", последнее 'l'/'L' → 3 (строка), не 2 */
+    CHECK_EQ("'l' в окне → 3", fs2_nrchr_ci(&s, 'l', 3), 3);
+    CHECK_EQ("'L' в окне → 3", fs2_nrchr_ci(&s, 'L', 3), 3);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_hidden_by_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbcd");
+
+    CHECK_EQ("полная строка",  fs2_nrchr_ci(&s, 'x', 5), 1);
+    CHECK_EQ("окно [1,5)",     fs2_nrchr_ci(&s, 'x', 4), 1);
+    CHECK_EQ("окно [2,5)",     fs2_nrchr_ci(&s, 'x', 3), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("nothing examined", fs2_nrchr_ci(&s, 'o', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_lim_eq_len_matches_rchr_ci) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo");
+
+    CHECK_EQ("h", fs2_nrchr_ci(&s, 'h', s.len), fs2_rchr_ci(&s, 'h'));
+    CHECK_EQ("l", fs2_nrchr_ci(&s, 'l', s.len), fs2_rchr_ci(&s, 'l'));
+    CHECK_EQ("o", fs2_nrchr_ci(&s, 'o', s.len), fs2_rchr_ci(&s, 'o'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_nonletters_same_as_cs_with_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a1b2!c");
+
+    CHECK_EQ("'1'", fs2_nrchr_ci(&s, '1', 3), fs2_nrchr(&s, '1', 3));
+    CHECK_EQ("'2'", fs2_nrchr_ci(&s, '2', 5), fs2_nrchr(&s, '2', 5));
+    CHECK_EQ("'!'", fs2_nrchr_ci(&s, '!', 6), fs2_nrchr(&s, '!', 6));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nrchr_ci — пустые / STATIC / guards
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_ci_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data", fs2_nrchr_ci(&s, 'a', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("HELLO");
+    CHECK_EQ("'l' в [2,5)", fs2_nrchr_ci(&s, 'l', 3), 3);
+    CHECK_EQ("'h' не в [2,5)", fs2_nrchr_ci(&s, 'h', 3), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nrchr_ci_null_aborts, .signal = SIGABRT) {
+    fs2_nrchr_ci(NULL, 'a', 5);
+}
+
+/* =========================================================================
+ * Симметрия: nrchr(s, c, len) == rchr(s, c); nrchr_ci аналогично
+ * ========================================================================= */
+
+Test(fs2_api, nrchr_and_rchr_agree_when_lim_covers_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("the quick brown fox");
+
+    CHECK_EQ("'o'", fs2_nrchr(&s, 'o', s.len), fs2_rchr(&s, 'o'));
+    CHECK_EQ("'q'", fs2_nrchr(&s, 'q', s.len), fs2_rchr(&s, 'q'));
+    CHECK_EQ("'x'", fs2_nrchr(&s, 'x', s.len), fs2_rchr(&s, 'x'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
