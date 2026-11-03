@@ -43,7 +43,7 @@ Test(fs2_api, anyof_not_found) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("mango");
     CHECK_EQ("mango → -1",    fs2_anyof(&s, fruits, strcmp), -1);
-    CHECK_EQ("Apple → -1",    fs2_anyof(&s, fruits, strcmp), -1);  /* не mango; проверка case */
+    CHECK_EQ("Apple → -1",    fs2_anyof(&s, fruits, strcmp), -1);  /* not mango; case check */
     fs2_free(&s);
 
     fs2 t = fs2_fromstr("Apple");                                   /* case-sensitive */
@@ -54,7 +54,7 @@ Test(fs2_api, anyof_not_found) {
 }
 
 /* =========================================================================
- * fs2_anyof — пустой массив / пустая строка в массиве
+ * fs2_anyof — empty array / empty string in array
  * ========================================================================= */
 
 Test(fs2_api, anyof_empty_array) {
@@ -89,7 +89,7 @@ Test(fs2_api, anyof_empty_string_in_array) {
 }
 
 /* =========================================================================
- * fs2_anyof — FS2() (v==NULL) → нормализация в ""
+ * fs2_anyof — FS2() (v==NULL) → normalized to ""
  * ========================================================================= */
 
 Test(fs2_api, anyof_canon_v_null_normalized_to_empty) {
@@ -109,12 +109,12 @@ Test(fs2_api, anyof_canon_v_null_normalized_to_empty) {
 }
 
 /* =========================================================================
- * fs2_anyof — циклический обход: правильный индекс
+ * fs2_anyof — cyclic scan: correct index
  * ========================================================================= */
 
 Test(fs2_api, anyof_returns_first_match_only) {
     __fs2_checkreset();
-    /* дубликат "b" на индексах 1 и 3 — должен вернуть 1 (первый) */
+    /* duplicate "b" at indices 1 and 3 — must return 1 (first) */
     static const char *dups[] = { "a", "b", "c", "b", NULL };
     fs2 s = fs2_fromstr("b");
     CHECK_EQ("first 'b' → 1", fs2_anyof(&s, dups, strcmp), 1);
@@ -155,12 +155,12 @@ Test(fs2_api, anyof_both_null_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * fs2_anyof — кастомный компаратор: проверка, что cmp реально используется
+ * fs2_anyof — custom comparator: verify cmp is actually used
  * ========================================================================= */
 
-/* Компаратор, который всегда возвращает 0 — «найдено на индексе 0» */
+/* Comparator that always returns 0 — "found at index 0" */
 static int always_equal(const char *a, const char *b) { (void)a; (void)b; return 0; }
-/* Компаратор, который никогда не равен — «не найдено» */
+/* Comparator that never equals — "not found" */
 static int never_equal(const char *a, const char *b) { (void)a; (void)b; return 1; }
 
 Test(fs2_api, anyof_uses_custom_cmp_always_equal) {
@@ -174,7 +174,7 @@ Test(fs2_api, anyof_uses_custom_cmp_always_equal) {
 
 Test(fs2_api, anyof_uses_custom_cmp_never_equal) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstr("apple");   /* есть в массиве */
+    fs2 s = fs2_fromstr("apple");   /* present in the array */
     CHECK_EQ("never_equal → -1", fs2_anyof(&s, fruits, never_equal), -1);
     CHECK_FS2VALID(1, &s);
     fs2_free(&s);
@@ -182,7 +182,7 @@ Test(fs2_api, anyof_uses_custom_cmp_never_equal) {
 }
 
 /* =========================================================================
- * fs2_in / fs2_in_ci — тонкие обёртки (strcmp / strcasecmp)
+ * fs2_in / fs2_in_ci — thin wrappers (strcmp / strcasecmp)
  * ========================================================================= */
 
 Test(fs2_api, in_case_sensitive) {
@@ -230,7 +230,7 @@ Test(fs2_api, in_ci_case_insensitive) {
 }
 
 /* =========================================================================
- * FS2_IN / FS2_NOT_IN макросы — smoke-тесты
+ * FS2_IN / FS2_NOT_IN macros — smoke tests
  * ========================================================================= */
 
 Test(fs2_api, macro_in_case_sensitive) {
@@ -283,7 +283,7 @@ Test(fs2_api, macro_in_hit) {
 Test(fs2_api, macro_in_hit_not_first) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("cherry");
-    CHECK_TRUE("cherry — последний в списке",
+    CHECK_TRUE("cherry — last in the list",
                FS2_IN(&s, "apple", "banana", "cherry"));
     CHECK_FS2VALID(1, &s);
     fs2_free(&s);
@@ -357,7 +357,7 @@ Test(fs2_api, macro_in_ci_hit_exact) {
     assert_balanced();
 }
 
-/* CI: любой регистр должен матчиться */
+/* CI: any case should match */
 Test(fs2_api, macro_in_ci_case_insensitive_hit) {
     __fs2_checkreset();
     fs2 a = fs2_fromstr("APPLE");
@@ -406,7 +406,7 @@ Test(fs2_api, macro_in_ci_null_s_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * FS2_NOT_IN — case-sensitive (логическое отрицание FS2_IN)
+ * FS2_NOT_IN — case-sensitive (logical negation of FS2_IN)
  * ========================================================================= */
 
 Test(fs2_api, macro_not_in_hit) {
@@ -429,7 +429,7 @@ Test(fs2_api, macro_not_in_miss) {
     assert_balanced();
 }
 
-/* CS: "Apple" ∉ {apple}, поэтому NOT_IN → true */
+/* CS: "Apple" not in {apple}, so NOT_IN → true */
 Test(fs2_api, macro_not_in_case_mismatch) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("Apple");
@@ -509,7 +509,7 @@ Test(fs2_api, macro_not_in_ci_null_s_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * Парная семантика: IN ⇔ !NOT_IN (на одинаковом cmp)
+ * Paired semantics: IN ⇔ !NOT_IN (on the same cmp)
  * ========================================================================= */
 
 Test(fs2_api, macro_in_not_in_pair_cs) {
@@ -518,7 +518,7 @@ Test(fs2_api, macro_in_not_in_pair_cs) {
     fs2 b = fs2_fromstr("Apple");   /* case mismatch → ∉ {apple} (cs) */
     fs2 c = fs2_fromstr("mango");
 
-    /* Для каждого входа ровно один из IN/NOT_IN даёт true */
+    /* For each input exactly one of IN/NOT_IN returns true */
     CHECK_TRUE ("apple  IN",          FS2_IN(&a, "apple", "banana"));
     CHECK_FALSE("apple  NOT_IN",      FS2_NOT_IN(&a, "apple", "banana"));
 
@@ -556,7 +556,7 @@ Test(fs2_api, macro_in_not_in_pair_ci) {
 }
 
 /* =========================================================================
- * Согласованность с функциональным API
+ * Consistency with the functional API
  * ========================================================================= */
 
 Test(fs2_api, macro_in_matches_function) {
@@ -612,7 +612,7 @@ Test(fs2_api, macro_not_in_matches_function) {
 }
 
 /* =========================================================================
- * Многоэлементный список: длинный, с дубликатами
+ * Multi-element list: long, with duplicates
  * ========================================================================= */
 
 Test(fs2_api, macro_in_long_list) {
@@ -642,7 +642,7 @@ Test(fs2_api, macro_not_in_long_list_miss) {
     assert_balanced();
 }
 
-/* дубликаты в списке — IN всё равно true (первый матч), NOT_IN — false */
+/* duplicates in the list — IN is still true (first match), NOT_IN — false */
 Test(fs2_api, macro_in_with_duplicates) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("b");

@@ -452,7 +452,7 @@ log_numbers(LogAction            act,
 #define logsimpletype(type, retcode, fmt, ...)                  logsimpletype_act(, type, retcode					, fmt, ##__VA_ARGS__)
 
 /** @brief One-liner: no preambule, no indent. Returns 0. */
-#define logsimple(fmt, ...)                  					logsimpletype(LOG_MSG, 0							, fmt, ##__VA_ARGS__)		// TODO: подумать об объединении с logmsg, можно ли обойти проблему  _LG_LV??
+#define logsimple(fmt, ...)                  					logsimpletype(LOG_MSG, 0							, fmt, ##__VA_ARGS__)		// TODO: consider merging with logmsg — is it possible to work around the _LG_LV issue??
 
 /** @brief va_list variant of logsimple. */
 #define logsimple_ap(fmt, ap)									logsimpletype_act_ap(, LOG_MSG, 0                   , fmt, ap)

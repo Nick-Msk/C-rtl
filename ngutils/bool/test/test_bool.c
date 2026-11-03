@@ -14,7 +14,7 @@ Test(bool, distinct_literals) {
 }
 
 Test(bool, stable_pointer) {
-    /* строковые литералы уникальны в пределах единицы трансляции */
+    /* string literals are unique within a translation unit */
     cr_assert_eq(bool_str(true), bool_str(true));
     cr_assert_eq(bool_str(false), bool_str(false));
 }
@@ -97,7 +97,7 @@ Test(bool, roundtrip) {
 
 // version control
 Test(bool, version_is_top_of_list) {
-    /* versions[0] всегда равен текущей версии */
+    /* versions[0] is always the current version */
     cr_assert_str_eq(bool_version(), bool_versions()[0]);
     cr_assert_str_eq(bool_version(), BOOL_VERSION);
     cr_assert_str_eq(bool_version(), "0.2.0");

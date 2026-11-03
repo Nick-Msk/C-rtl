@@ -2130,7 +2130,7 @@ fs2_repeat_new(const fs2 *restrict s, size_t n) {
     if (fs2_is_empty(s) || n == 0)  
         return FS2();
     
-    /* Overflow: n * s->len (и +1 для NUL) */
+    /* Overflow: n * s->len (and +1 for NUL) */
     if (n > (SIZE_MAX - 1) / s->len) 
         userraise(-1, ERR_OUT_OF_RANGE, 
                  "fs2_repeat_new: n * len overflows size_t");
@@ -2212,13 +2212,13 @@ static inline fs2
 fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
     invraise(src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
     
-    /* Нет префикса или пустой — возвращаем клон как есть */
+    /* No prefix or empty — return the clone as-is */
     if (fs2_is_empty(prefix))          
         return fs2_clone(src);
     if (!fs2_starts_with(src, prefix)) 
         return fs2_clone(src);
     
-    /* Префикс есть — аллоцируем ровно result_len+1 */
+    /* Prefix exists — allocate exactly result_len+1 */
     return fs2_substr_new(src, prefix->len, src->len - prefix->len);
 }
 
@@ -2231,7 +2231,7 @@ fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
     if (!fs2_ends_with(src, suffix))   
         return fs2_clone(src);
     
-    /* Суффикс есть — аллоцируем ровно result_len+1 */
+    /* Suffix exists — allocate exactly result_len+1 */
     return fs2_substr_new(src, 0, src->len - suffix->len);
 }
 

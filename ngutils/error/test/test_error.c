@@ -254,7 +254,7 @@ static sigjmp_buf jump_env;
 static void sigint_flag_jmp(int sig) {
     (void)sig;
     g_sigint_seen = 1;
-    siglongjmp(jump_env, 1); // <--- Прыгаем обратно в тест
+    siglongjmp(jump_env, 1); // <--- Longjmp back to the test
 }
 
 Test(error_try, raise_outside_try_signals_sigint) {
@@ -267,8 +267,8 @@ Test(error_try, raise_outside_try_signals_sigint) {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, &old);
 
-    /* Если sigsetjmp возвращает 0 — это первый проход.
-     * Если 1 — значит, мы вернулись сюда из обработчика сигнала. */
+    /* If sigsetjmp returns 0 — first pass.
+     * If 1 — we returned here from the signal handler. */
     if (sigsetjmp(jump_env, 1) == 0) {
         err_raise(ERR_USER, ERR_NULLABLE_PTR, "no try here");
     }
@@ -770,7 +770,7 @@ Test(error_try, try_without_else) {
     volatile int reached = 0;
     TRY() {
         err_raise(ERR_USER, ERR_NULLABLE_PTR, "boom");
-        reached = 1;   /* не должно выполниться */
+        reached = 1;   /* must not execute */
     }
     cr_assert_eq(reached, 0);
     cr_assert_eq(errenv.depth, 0);

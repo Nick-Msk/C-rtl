@@ -6,13 +6,13 @@
 
 TestSuite(test_fs2_api_sort_search, .init = test_setup, .fini = test_teardown);
 
-/* Хелпер: сделать отсортированный массив fs2 */
+/* Helper: create a sorted fs2 array */
 static void sort_fs2(fs2 *arr, size_t n) {
     qsort(arr, n, sizeof(fs2), fs2_cmp_wrap);
 }
 
 /* =========================================================================
- * fs2_bsearch — FS2() (v==NULL) key: нормализация (не должно падать)
+ * fs2_bsearch — FS2() (v==NULL) key: normalization (must not crash)
  * ========================================================================= */
 
 Test(fs2_api, bsearch_canon_key_vs_nonempty_array_not_found) {
@@ -20,7 +20,7 @@ Test(fs2_api, bsearch_canon_key_vs_nonempty_array_not_found) {
     fs2 arr[] = { fs2_fromstr("a"), fs2_fromstr("b"), fs2_fromstr("c") };
     sort_fs2(arr, 3);
 
-    fs2 key = FS2();   /* v=NULL, len=0 → нормализуется в "" */
+    fs2 key = FS2();   /* v=NULL, len=0 → normalizes to "" */
     cr_assert_null(key.v);
 
     ptrdiff_t i = fs2_bsearch(&key, arr, 3);
@@ -31,10 +31,10 @@ Test(fs2_api, bsearch_canon_key_vs_nonempty_array_not_found) {
     assert_balanced();
 }
 
-/* Ключевой: пустая строка есть в массиве — должна найтись через FS2() */
+/* Key case: empty string is in the array — must be found via FS2() */
 Test(fs2_api, bsearch_canon_key_finds_empty_in_array) {
     __fs2_checkreset();
-    /* "" < "a" < "b" в strcmp-порядке */
+    /* "" < "a" < "b" in strcmp order */
     fs2 arr[] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
     sort_fs2(arr, 3);
 
@@ -52,7 +52,7 @@ Test(fs2_api, bsearch_canon_key_finds_empty_in_array) {
 Test(fs2_api, bsearch_canon_key_vs_empty_array) {
     __fs2_checkreset();
     fs2 key = FS2();
-    fs2 arr[] = { FS2EMPTY };   /* только пустая */
+    fs2 arr[] = { FS2EMPTY };   /* only empty */
 
     ptrdiff_t i = fs2_bsearch(&key, arr, 1);
     CHECK_EQ("found at 0", i, 0);
@@ -72,13 +72,13 @@ Test(fs2_api, bsearch_canon_key_n_zero_returns_minus1) {
 }
 
 /* =========================================================================
- * fs2_bsearch_ci — то же для ci
+ * fs2_bsearch_ci — same for case-insensitive
  * ========================================================================= */
 
 Test(fs2_api, bsearch_ci_canon_key_vs_nonempty_array_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("A"), fs2_fromstr("B"), fs2_fromstr("C") };
-    sort_fs2(arr, 3);   /* sort by cs — для массивов A,B,C порядок совпадает с ci */
+    sort_fs2(arr, 3);   /* sort by cs — for arrays A,B,C the order matches ci */
 
     fs2 key = FS2();
     cr_assert_null(key.v);
@@ -104,7 +104,7 @@ Test(fs2_api, bsearch_ci_canon_key_finds_empty_in_array) {
 }
 
 /* =========================================================================
- * Нормальные попадания (регрессия: фикс не сломал обычный путь)
+ * Normal hits (regression: the fix didn't break the common path)
  * ========================================================================= */
 
 Test(fs2_api, bsearch_found_and_not_found) {
@@ -130,7 +130,7 @@ Test(fs2_api, bsearch_found_and_not_found) {
 Test(fs2_api, bsearch_ci_found_and_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("Apple"), fs2_fromstr("Banana"), fs2_fromstr("Cherry") };
-    /* CI-сортировка для консистентности с bsearch_ci */
+    /* CI sort for consistency with bsearch_ci */
     qsort(arr, 3, sizeof(fs2), fs2_cmp_wrap_ci);
 
     fs2 hit_upper = fs2_fromstr("BANANA");
@@ -177,15 +177,16 @@ Test(fs2_api, bsearch_ci_null_arr_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * Если нормализуешь fs2_cmp_wrap: массив с FS2() внутри тоже работает
- *   (в текущей реализации — упадёт на sort; оставь .disabled = true
- *    пока не примешь фикс fs2_cmp_wrap)
+ * If you normalize fs2_cmp_wrap: an array with FS2() inside also works
+ 
+ *   (in the current implementation it crashes on sort; keep .disabled = true
+ *    until you accept the fs2_cmp_wrap fix)
  * ========================================================================= */
 
 #if 0
 Test(fs2_api, bsearch_array_with_canon_element_sorted) {
     __fs2_checkreset();
-    /* После нормализации fs2_cmp_wrap: FS2() сравняется как "" */
+    /* After normalizing fs2_cmp_wrap: FS2() compares as "" */
     fs2 arr[] = { fs2_fromstr("a"), FS2(), fs2_fromstr("b") };
     sort_fs2(arr, 3);   /* → [FS2(), "a", "b"] */
 
@@ -244,7 +245,7 @@ Test(fs2_api, bsearch_str_n_zero) {
 }
 
 /* =========================================================================
- * fs2_bsearch_str — FS2() (v==NULL) key: нормализация (работает)
+ * fs2_bsearch_str — FS2() (v==NULL) key: normalization (works)
  * ========================================================================= */
 
 Test(fs2_api, bsearch_str_canon_key_not_found) {
@@ -274,7 +275,7 @@ Test(fs2_api, bsearch_str_canon_key_finds_empty) {
     assert_balanced();
 }
 
-/* FS2EMPTY (v != NULL) — тот же результат через другой путь */
+/* FS2EMPTY (v != NULL) — same result via the other path */
 Test(fs2_api, bsearch_str_fs2empty_key) {
     __fs2_checkreset();
     static const char *arr[] = { "", "a", "b" };
@@ -285,12 +286,12 @@ Test(fs2_api, bsearch_str_fs2empty_key) {
 }
 
 /* =========================================================================
- * fs2_bsearch_str — guards (ловят болячку: key == NULL)
+ * fs2_bsearch_str — guards (catch the bug: key == NULL)
  * ========================================================================= */
 
 Test(fs2_api, bsearch_str_null_key_aborts, .signal = SIGABRT) {
     static const char *arr[] = { "a" };
-    fs2_bsearch_str(NULL, arr, 1);   /* ← без фикса — SIGSEGV, с фиксом — SIGABRT */
+    fs2_bsearch_str(NULL, arr, 1);   /* ← without the fix — SIGSEGV, with the fix — SIGABRT */
 }
 
 Test(fs2_api, bsearch_str_null_arr_aborts, .signal = SIGABRT) {
@@ -300,13 +301,13 @@ Test(fs2_api, bsearch_str_null_arr_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * fs2_bsearch_ci_str — то же семейство
+ * fs2_bsearch_ci_str — same family
  * ========================================================================= */
 
 Test(fs2_api, bsearch_ci_str_found_and_not_found) {
     __fs2_checkreset();
     static const char *arr[] = { "APPLE", "Banana", "cherry", "DATE" };
-    /* CI-сортировка (в данном случае порядок совпадает с cs) */
+    /* CI sort (in this case the order matches cs) */
 
     fs2 hit1 = fs2_fromstr("banana");
     fs2 hit2 = fs2_fromstr("CHERRY");
@@ -344,7 +345,7 @@ Test(fs2_api, bsearch_ci_str_n_zero) {
 
 Test(fs2_api, bsearch_ci_str_null_key_aborts, .signal = SIGABRT) {
     static const char *arr[] = { "a" };
-    fs2_bsearch_ci_str(NULL, arr, 1);   /* ← без фикса — SIGSEGV */
+    fs2_bsearch_ci_str(NULL, arr, 1);   /* ← without the fix — SIGSEGV */
 }
 
 Test(fs2_api, bsearch_ci_str_null_arr_aborts, .signal = SIGABRT) {
@@ -354,7 +355,7 @@ Test(fs2_api, bsearch_ci_str_null_arr_aborts, .signal = SIGABRT) {
 }
 
 /* =========================================================================
- * Согласованность с fs2_bsearch (fs2 vs fs2): FS2() работает одинаково
+ * Consistency with fs2_bsearch (fs2 vs fs2): FS2() behaves identically
  * ========================================================================= */
 
 Test(fs2_api, bsearch_str_and_fs2_agree_on_canon_key) {

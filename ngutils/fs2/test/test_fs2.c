@@ -561,13 +561,13 @@ Test(fs2, localfill_free_is_noop) {
 Test(fs2_api, clone_empty_returns_fs2empty) {
     __fs2_checkreset();
     
-    /* Все пустые формы — clone → FS2EMPTY */
+    /* All empty forms — clone → FS2EMPTY */
     fs2 e_static  = FS2EMPTY;
     fs2 e_literal = FS2LITERAL("");
     fs2 e_canon   = FS2();
     fs2 e_alloc   = fs2_init(16);          /* ALLOC, v=malloc(16), sz=16 */
     fs2 e_cleared = fs2_init(16);
-    fs2_clear(&e_cleared);                 /* явно cleared */
+    fs2_clear(&e_cleared);                 /* explicitly cleared */
 
     fs2 *inputs[] = { &e_static, &e_literal, &e_canon, &e_alloc, &e_cleared };
     const char *names[] = { "STATIC", "literal", "canon", "alloc", "cleared" };
@@ -582,7 +582,7 @@ Test(fs2_api, clone_empty_returns_fs2empty) {
         CHECK_STR_EQ("readable", r.v, "");
         CHECK_FS2VALID((int)i, &r);
         
-        /* fs2_free на FS2EMPTY — no-op */
+        /* fs2_free on FS2EMPTY — no-op */
         (void)names[i];
     }
 
@@ -601,7 +601,7 @@ Test(fs2_api, clone_alloc_empty_returns_fs2empty) {
 
     fs2 r = fs2_clone(&src);
 
-    /* ← регресс: со старым guard'ом тут был бы FS2() (canon), не FS2EMPTY */
+    /* ← regression: with the old guard this would be FS2() (canon), not FS2EMPTY */
     CHECK_TRUE("STATIC result", fs2_is_static(&r));
     CHECK_EQ  ("sz", r.sz, 1);
     CHECK_STR_EQ("readable", r.v, "");
@@ -642,7 +642,7 @@ Test(fs2_api, fromstr_empty_returns_fs2empty) {
     CHECK_NOT_NULL("v readable", s.v);
     CHECK_STR_EQ("readable as empty", s.v, "");
     CHECK_FS2VALID(1, &s);
-    /* fs2_free no-op для STATIC */
+    /* fs2_free no-op for STATIC */
 }
 
 Test(fs2_api, fromstr_single_char) {
@@ -678,7 +678,7 @@ Test(fs2_api, fromstr_long_string) {
 
 Test(fs2_api, fromstr_non_ascii) {
     __fs2_checkreset();
-    /* UTF-8 "привет" = 12 байт */
+    /* UTF-8 "привет" = 12 bytes */
     fs2 s = fs2_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
 
     CHECK_EQ("len", s.len, 12);
@@ -698,7 +698,7 @@ Test(fs2_api, fromstr_independent_from_source) {
     char src[] = "hello";
     fs2 s = fs2_fromstr(src);
 
-    /* Изменение src не влияет на s */
+    /* Mutating src does not affect s */
     src[0] = 'X';
     CHECK_STR_EQ("s intact", s.v, "hello");
     CHECK_TRUE ("different buffers", s.v != src);
@@ -709,14 +709,14 @@ Test(fs2_api, fromstr_independent_from_source) {
 }
 
 /* =========================================================================
- * fromstr — NULL handling (выбери A или B)
+ * fromstr — NULL handling (choose A or B)
  * ========================================================================= */
 
-#if defined(FS2_FROMSTR_STRICT)   /* Вариант B */
+#if defined(FS2_FROMSTR_STRICT)   /* Option B */
 Test(fs2_api, fromstr_null_aborts, .signal = SIGABRT) {
     fs2_fromstr(NULL);
 }
-#else                              /* Вариант A: silent */
+#else                              /* Option A: silent */
 Test(fs2_api, fromstr_null_returns_fs2empty) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr(NULL);
@@ -730,7 +730,7 @@ Test(fs2_api, fromstr_null_returns_fs2empty) {
 #endif
 
 /* =========================================================================
- * fromstr — round-trip через cstr
+ * fromstr — round-trip via cstr
  * ========================================================================= */
 
 Test(fs2_api, fromstr_roundtrip_cstr) {
@@ -748,7 +748,7 @@ Test(fs2_api, fromstr_roundtrip_cstr) {
 }
 
 /* =========================================================================
- * fromstr — auto-promote (результат-пустышка остаётся usable)
+ * fromstr — auto-promote (empty result remains usable)
  * ========================================================================= */
 
 Test(fs2_api, fromstr_empty_auto_promotes_on_reserve) {
@@ -756,7 +756,7 @@ Test(fs2_api, fromstr_empty_auto_promotes_on_reserve) {
     fs2 s = fs2_fromstr("");   /* FS2EMPTY */
     CHECK_TRUE("STATIC", fs2_is_static(&s));
 
-    /* Core-only promote: reserve аллоцирует, дальше memcpy + setlen */
+    /* Core-only promote: reserve allocates, then memcpy + setlen */
     fs2_reserve(&s, 3);        /* "hi\0" */
     memcpy(s.v, "hi", 2);
     fs2_setlen(&s, 2);
@@ -800,8 +800,8 @@ Test(fs2_api, fromstr_matches_wrap_clone) {
 Test(fs2_api, clone_does_not_recurse_through_fromstr) {
     __fs2_checkreset();
     
-    /* Если кто-то случайно сделает clone → fromstr → wrap → clone,
-     * этот тест упадёт на stack overflow (SIGSEGV) вместо прохода. */
+    /* If someone accidentally does clone → fromstr → wrap → clone,
+     * this test will crash on stack overflow (SIGSEGV) instead of passing. */
     fs2 src = fs2_fromstr("hello");
     fs2 r = fs2_clone(&src);   /* ← trigger potential recursion */
     
@@ -869,7 +869,7 @@ Test(fs2_api, fromstrf_negative_and_long) {
  * fromstrf — empty result → FS2EMPTY (contract)
  * ========================================================================= */
 
-/* ⚠ Главный регресс: пустой результат должен быть FS2EMPTY, не ALLOC empty */
+/* ⚠ Key regression: empty result must be FS2EMPTY, not ALLOC empty */
 Test(fs2_api, fromstrf_empty_fmt_returns_fs2empty) {
     __fs2_checkreset();
     fs2 s = fs2_fromstrf("%s", "");
@@ -880,7 +880,7 @@ Test(fs2_api, fromstrf_empty_fmt_returns_fs2empty) {
     CHECK_NOT_NULL("v readable", s.v);
     CHECK_STR_EQ("readable", s.v, "");
     CHECK_FS2VALID(1, &s);
-    /* fs2_free no-op для STATIC */
+    /* fs2_free no-op for STATIC */
 }
 
 Test(fs2_api, fromstrf_empty_arg_returns_fs2empty) {
@@ -907,7 +907,7 @@ Test(fs2_api, fromstrf_empty_matches_fromstr_empty) {
     fs2 a = fs2_fromstrf("%s", "");
     fs2 b = fs2_fromstr("");
 
-    /* Оба FS2EMPTY, идентичные флаги */
+    /* Both FS2EMPTY, identical flags */
     CHECK_EQ  ("same len",   a.len,   b.len);
     CHECK_EQ  ("same sz",    a.sz,    b.sz);
     CHECK_EQ  ("same flags", a.flags, b.flags);
@@ -925,7 +925,7 @@ Test(fs2_api, fromstrf_independent_from_args) {
     char arg[] = "orig";
     fs2 s = fs2_fromstrf("%s", arg);
 
-    /* Изменение arg не влияет на s */
+    /* Mutating arg does not affect s */
     arg[0] = 'X';
     CHECK_STR_EQ("s intact", s.v, "orig");
     CHECK_TRUE ("different buffer", s.v != arg);
@@ -975,7 +975,7 @@ Test(fs2_api, fromstrf_then_extend_core) {
     CHECK_STR_EQ("built", s.v, "id=42");
     CHECK_FS2VALID(1, &s);
 
-    /* Core extend: reserve + memcpy + setlen (без catstr) */
+    /* Core extend: reserve + memcpy + setlen (no catstr) */
     const char *suffix     = "&active=1";
     size_t      suffix_len = strlen(suffix);
     fs2_reserve(&s, s.len + suffix_len + 1);
@@ -991,10 +991,10 @@ Test(fs2_api, fromstrf_then_extend_core) {
 
 Test(fs2_api, fromstrf_empty_auto_promotes_on_reserve) {
     __fs2_checkreset();
-    fs2 s = fs2_fromstrf("%s", "");   /* FS2EMPTY (после фикса sz==0) */
+    fs2 s = fs2_fromstrf("%s", "");   /* FS2EMPTY (after the sz==0 fix) */
     CHECK_TRUE("STATIC", fs2_is_static(&s));
 
-    /* Core-only promote: reserve аллоцирует, дальше memcpy */
+    /* Core-only promote: reserve allocates, then memcpy */
     fs2_reserve(&s, 6);         /* "hello\0" */
     memcpy(s.v, "hello", 5);
     fs2_setlen(&s, 5);
@@ -1314,7 +1314,7 @@ Test(fs2_api, move_does_not_leak_dst_old_buffer) {
 
     fs2_move(&dst, &src);
 
-    /* Old dst buffer должен быть освобождён (иначе assert_balanced поймает leak) */
+    /* Old dst buffer must be freed (otherwise assert_balanced catches the leak) */
     fs2_free(&dst);
     fs2_free(&src);
     assert_balanced();
@@ -1347,7 +1347,7 @@ Test(fs2_api, move_empty_src_dst_safe_readable) {
     CHECK_TRUE ("dst STATIC", fs2_is_static(&dst));
     CHECK_EQ   ("dst sz", dst.sz, 1);
     CHECK_NOT_NULL("dst v", dst.v);
-    CHECK_STR_EQ("dst v readable", dst.v, "");   /* ← не крашится */
+    CHECK_STR_EQ("dst v readable", dst.v, "");   /* ← does not crash */
     CHECK_FS2VALID(1, &dst);
     CHECK_FS2VALID(2, &src);
 
@@ -1363,7 +1363,7 @@ Test(fs2_api, move_empty_src_dst_readable_via_printf) {
 
     fs2_move(&dst, &src);
 
-    /* Регресс: если dst.v == NULL → segfault */
+    /* Regression: if dst.v == NULL → segfault */
     char buf[16];
     snprintf(buf, sizeof(buf), "%s", dst.v);
     CHECK_STR_EQ("printf ok", buf, "");
@@ -1423,7 +1423,7 @@ Test(fs2_api, move_symmetric_safe_after) {
 
     fs2_move(&dst, &src);
 
-    /* Обе стороны readable — не крашится */
+    /* Both sides readable — does not crash */
     CHECK_STR_EQ("dst.v", dst.v, "");
     CHECK_STR_EQ("src.v", src.v, "");
     CHECK_FS2VALID(1, &dst);
@@ -1435,7 +1435,7 @@ Test(fs2_api, move_symmetric_safe_after) {
 }
 
 /* =========================================================================
- * Composite: pipeline через move/movefrom
+ * Composite: pipeline via move/movefrom
  * ========================================================================= */
 
 Test(fs2_api, composite_move_chain) {
@@ -1445,7 +1445,7 @@ Test(fs2_api, composite_move_chain) {
     fs2 c = fs2_fromstr("C");
     void *c_v = c.v;
 
-    /* a ← b, b ← c. Теперь: a="B", b="C", c=canon */
+    /* a ← b, b ← c. Now: a="B", b="C", c=canon */
     fs2_move(&a, &b);
     fs2_move(&b, &c);
 
@@ -1496,8 +1496,8 @@ Test(fs2_api, movefrom_preserves_fs2empty_shape) {
 }
 
 Test(fs2_api, movefrom_preserves_literal_empty_sz) {
-    fs2 src = FS2LITERAL("");   /* STATIC, но sz=1 как FS2EMPTY */
-    /* Если когда-нибудь FS2LITERAL("") станет sz != 1 — этот тест поймает */
+    fs2 src = FS2LITERAL("");   /* STATIC, but sz=1 like FS2EMPTY */
+    /* If FS2LITERAL("") ever becomes sz != 1 — this test will catch it */
 
     fs2 res = fs2_movefrom(&src);
     CHECK_TRUE("STATIC", fs2_is_static(&res));
@@ -1505,7 +1505,7 @@ Test(fs2_api, movefrom_preserves_literal_empty_sz) {
     CHECK_FS2VALID(1, &res);
 }
 
-/* Контраст: clone — нормализует */
+/* Contrast: clone — normalizes */
 Test(fs2_api, clone_normalizes_but_movefrom_preserves) {
     __fs2_checkreset();
 
@@ -1574,7 +1574,7 @@ Test(fs2_api, fromraw_empty_alloc) {
 Test(fs2_api, fromraw_nul_written_for_alloc) {
     __fs2_checkreset();
     char *buf = malloc(6);
-    memcpy(buf, "hello", 5);   /* без NUL */
+    memcpy(buf, "hello", 5);   /* without NUL */
 
     fs2 s = fs2_fromraw(buf, 5, FS2_ALLOC);
 
@@ -1585,7 +1585,7 @@ Test(fs2_api, fromraw_nul_written_for_alloc) {
     assert_balanced();
 }
 
-/* ⚠ Защита от BODYALLOC */
+/* ⚠ Guard against BODYALLOC */
 Test(fs2_api, fromraw_bodyalloc_rejected, .signal = SIGABRT) {
     char *buf = strdup("hi");
     fs2_fromraw(buf, 2, FS2_BODYALLOC);
@@ -1685,7 +1685,7 @@ Test(fs2_api, adoptn_alloc_adopts) {
     assert_balanced();
 }
 
-/* ⚠ Ключевой: empty → ALLOC empty, НЕ FS2EMPTY (preserve semantics) */
+/* ⚠ Key: empty → ALLOC empty, NOT FS2EMPTY (preserve semantics) */
 Test(fs2_api, adoptn_empty_preserves_alloc) {
     __fs2_checkreset();
     char *buf = strdup("");
@@ -1707,14 +1707,14 @@ Test(fs2_api, adoptn_empty_preserves_alloc) {
     assert_balanced();
 }
 
-/* ⚠ Регресс на double-free: free(*str) после fromraw = UB */
+/* ⚠ Double-free regression: free(*str) after fromraw = UB */
 Test(fs2_api, adoptn_no_double_free) {
     __fs2_checkreset();
     char *buf = strdup("hello");
 
     fs2 s = fs2_adoptn(&buf, 5);
 
-    /* ASan ловит double-free если импл случайно free(*str) после adopt */
+    /* ASan catches double-free if impl accidentally free(*str) after adopt */
     fs2_free(&s);
     assert_balanced();
 }
@@ -1863,7 +1863,7 @@ Test(fs2_api, heap_independent_instances) {
 
     CHECK_TRUE("different structs", a != b);
 
-    /* Мутация a не трогает b */
+    /* Mutating a does not touch b */
     fs2_reserve(a, 10);
     memcpy(a->v, "x", 2);
     fs2_setlen(a, 1);
@@ -1885,7 +1885,7 @@ Test(fs2_api, heap_free_balances_body_counter) {
     __fs2_checkreset();
     fs2 *h = fs2_heap();
 
-    /* Первая проверка: bodyalloc=1, bodyfreed=0 — mismatch, out-params пишутся */
+    /* First check: bodyalloc=1, bodyfreed=0 — mismatch, out-params are written */
     {
         int a = -1, f = -1, ba = -1, bf = -1;
         fs2_checkleak(&a, &f, &ba, &bf);
@@ -1895,9 +1895,9 @@ Test(fs2_api, heap_free_balances_body_counter) {
 
     fs2_free(h);
 
-    /* После free — всё balanced, fs2_checkleak вернёт true.
-     * Второй вызов не пишет out-params (нет mismatch), поэтому проверяем
-     * через assert_balanced (он сам вызывает fs2_checkleak и пишет log при leak). */
+    /* After free — everything balanced, fs2_checkleak returns true.
+     * Second call does not write out-params (no mismatch), so we check
+     * via assert_balanced (it calls fs2_checkleak and logs on leak). */
     assert_balanced();
 }
 
@@ -1961,7 +1961,7 @@ Test(fs2_api, heap_fill_and_free) {
 Test(fs2_api, heap_twins_use_heap_base) {
     __fs2_checkreset();
     
-    /* Все fs2_heap_* проходят через fs2_heap() — проверим один */
+    /* All fs2_heap_* go through fs2_heap() — we check one */
     fs2 *h = fs2_heap_fromstr("hello");
     
     CHECK_TRUE("BODYALLOC", fs2_is_bodyalloc(h));
@@ -2021,12 +2021,12 @@ Test(fs2_api, heap_init_pow2_rounding) {
     assert_balanced();
 }
 
-/* ⚠ Ключевой: счётчики не дисбалансируются (freestr(NULL) корректно no-op) */
+/* ⚠ Key: counters are not unbalanced (freestr(NULL) is correctly no-op) */
 Test(fs2_api, heap_init_balances_counters) {
     __fs2_checkreset();
     fs2 *h = fs2_heap_init(100);
 
-    /* Если fs2_freestr(res) инкрементит g_free_cnt на NULL v — упадёт здесь */
+    /* If fs2_freestr(res) increments g_free_cnt on NULL v — it will fail here */
     fs2_free(h);
     assert_balanced();
 }
@@ -2039,7 +2039,7 @@ Test(fs2_api, heap_init_independent) {
     CHECK_TRUE("different structs", a != b);
     CHECK_TRUE("different buffers", a->v != b->v);
 
-    /* Мутация a не трогает b */
+    /* Mutating a does not touch b */
     fs2_reserve(a, 100);
     memcpy(a->v, "x", 2);
     fs2_setlen(a, 1);
@@ -2164,7 +2164,7 @@ Test(fs2_api, heap_clone_fs2empty) {
     CHECK_STR_EQ("readable", h->v, "");
     CHECK_FS2VALID(1, h);
 
-    /* fs2_free освободит ТОЛЬКО body (v — .rodata) */
+    /* fs2_free will free ONLY the body (v is .rodata) */
     fs2_free(h);
     assert_balanced();
 }
@@ -2195,7 +2195,7 @@ Test(fs2_api, heap_clone_independent_from_src) {
     fs2 src = fs2_fromstr("original");
     fs2 *h = fs2_heap_clone(&src);
 
-    /* Мутируем src */
+    /* Mutating src */
     fs2_clear(&src);
     fs2_reserve(&src, 8);
     memcpy(src.v, "changed", 7);
@@ -2216,7 +2216,7 @@ Test(fs2_api, heap_clone_mutate_clone_src_intact) {
     fs2 src = fs2_fromstr("original");
     fs2 *h = fs2_heap_clone(&src);
 
-    /* Мутируем clone */
+    /* Mutating the clone */
     fs2_clear(h);
     fs2_reserve(h, 8);
     memcpy(h->v, "modified", 8);
@@ -2244,7 +2244,7 @@ Test(fs2_api, heap_clone_balances_counters) {
     fs2_free(h);
     fs2_free(&src);
 
-    /* Ловит bug в fs2_freestr(NULL) внутри move: было бы alloc=2, freed=1 */
+    /* Catches bug in fs2_freestr(NULL) inside move: would be alloc=2, freed=1 */
     assert_balanced();
 }
 
@@ -2313,7 +2313,7 @@ Test(fs2_api, heap_clone_extend_pipeline) {
     CHECK_TRUE ("BODYALLOC preserved", fs2_is_bodyalloc(h));
     CHECK_FS2VALID(1, h);
 
-    /* src не тронут */
+    /* src untouched */
     CHECK_STR_EQ("src intact", src.v, "prefix");
 
     fs2_free(&src);
@@ -2335,7 +2335,7 @@ Test(fs2_api, heap_clone_matches_stack_clone_content) {
         fs2 stack_clone = fs2_clone(&src);
         fs2 *heap_clone = fs2_heap_clone(&src);
 
-        /* Content, len, string-axis flags — идентичны */
+        /* Content, len, string-axis flags — identical */
         CHECK_EQ  ("len", stack_clone.len, heap_clone->len);
         CHECK_STR_EQ("content", stack_clone.v, heap_clone->v);
         CHECK_EQ  ("string-axis flags match",
@@ -2393,7 +2393,7 @@ Test(fs2_api, heap_fromstr_long) {
 
 Test(fs2_api, heap_fromstr_utf8) {
     __fs2_checkreset();
-    /* "привет" = 12 байт UTF-8 */
+    /* "привет" = 12 bytes UTF-8 */
     fs2 *h = fs2_heap_fromstr("\xD0\xBF\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82");
 
     CHECK_EQ("len", h->len, 12);
@@ -2405,7 +2405,7 @@ Test(fs2_api, heap_fromstr_utf8) {
 }
 
 /* =========================================================================
- * ⚠ Edge case: empty → STATIC|BODYALLOC, не ALLOC|BODYALLOC
+ * ⚠ Edge case: empty → STATIC|BODYALLOC, not ALLOC|BODYALLOC
  * ========================================================================= */
 
 Test(fs2_api, heap_fromstr_empty_is_static_bodyalloc) {
@@ -2421,7 +2421,7 @@ Test(fs2_api, heap_fromstr_empty_is_static_bodyalloc) {
     CHECK_STR_EQ("readable", h->v, "");
     CHECK_FS2VALID(1, h);
 
-    /* fs2_free освободит только body, v — .rodata */
+    /* fs2_free frees only the body, v is .rodata */
     fs2_free(h);
     assert_balanced();
 }
@@ -2445,7 +2445,7 @@ Test(fs2_api, heap_fromstr_empty_auto_promotes_on_grow) {
 }
 
 /* =========================================================================
- * NULL (если fromstr(NULL) silent → FS2EMPTY, иначе invfatal)
+ * NULL (if fromstr(NULL) is silent → FS2EMPTY, otherwise invfatal)
  * ========================================================================= */
 
 #if !defined(FS2_FROMSTR_STRICT)   /* fromstr NULL silent */
@@ -2507,7 +2507,7 @@ Test(fs2_api, heap_fromstr_balances_counters) {
     __fs2_checkreset();
     fs2 *h = fs2_heap_fromstr("hello");
 
-    /* Ловит bug в fs2_freestr(NULL) внутри move */
+    /* Catches bug in fs2_freestr(NULL) inside move */
     fs2_free(h);
     assert_balanced();
 }
@@ -2592,7 +2592,7 @@ Test(fs2_api, reserve_local_within_capacity_noop) {
     CHECK_FS2VALID(1, &s);
 }
 
-/* ⚠ Главный: LOCAL growth → raise, не silent no-op */
+/* ⚠ Key: LOCAL growth → raise, not silent no-op */
 Test(fs2_api, reserve_local_overflow_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     FS2LOCAL(s, 8);
@@ -2679,7 +2679,7 @@ Test(fs2_api, reserve_alloc_empty_preserves_buffer) {
 }
 
 /* =========================================================================
- * Composite: catstr в LOCAL — capacity vs overflow
+ * Composite: catstr in LOCAL — capacity vs overflow
  * ========================================================================= */
 
 Test(fs2_api, local_cat_within_capacity) {
@@ -2733,7 +2733,7 @@ Test(fs2_api, fs2empty_cat_promotes) {
 Test(fs2_api, setlen_zero_on_canonical_ok) {
     __fs2_checkreset();
     fs2 s = FS2();          /* v=NULL, sz=0, len=0 */
-    fs2_setlen(&s, 0);      /* no-op, не raise */
+    fs2_setlen(&s, 0);      /* no-op, does not raise */
     CHECK_EQ("len", s.len, 0);
     CHECK_FS2VALID(1, &s);
     fs2_free(&s);
@@ -2749,7 +2749,7 @@ Test(fs2_api, setlen_zero_on_fs2empty_ok) {
 
 Test(fs2_api, setlen_zero_on_literal_nonempty_aborts, .signal = SIGABRT) {
     fs2 s = FS2LITERAL("hi");   /* len=2, STATIC */
-    fs2_setlen(&s, 0);           /* нельзя отрезать .rodata → raise */
+    fs2_setlen(&s, 0);           /* cannot truncate .rodata → raise */
 }
 
 Test(fs2_api, setlen_same_len_on_literal_noop) {
@@ -2803,10 +2803,10 @@ Test(fs2_api, heap_fromstrf_basic) {
     assert_balanced();
 }
 
-/* ⚠ Edge case: что возвращает fromstrf_va("")?
- *   - ALLOC empty (текущая реализация) → heap_fromstrf = ALLOC|BODYALLOC
- *   - FS2EMPTY (после fix sz==0)       → heap_fromstrf = STATIC|BODYALLOC
- * Тест принимает оба варианта, фиксируя только «BODYALLOC preserved + empty». */
+/* ⚠ Edge case: what does fromstrf_va("") return?
+ *   - ALLOC empty (current implementation) → heap_fromstrf = ALLOC|BODYALLOC
+ *   - FS2EMPTY (after the sz==0 fix)       → heap_fromstrf = STATIC|BODYALLOC
+ * The test accepts both variants, pinning only "BODYALLOC preserved + empty". */
 Test(fs2_api, heap_fromstrf_empty_result) {
     __fs2_checkreset();
     fs2 *h = fs2_heap_fromstrf("%s", "");
@@ -2817,7 +2817,7 @@ Test(fs2_api, heap_fromstrf_empty_result) {
     CHECK_STR_EQ("readable as empty", h->v, "");
     CHECK_FS2VALID(1, h);
 
-    fs2_free(h);   /* освободит только body если STATIC, body+buf если ALLOC */
+    fs2_free(h);   /* frees only body if STATIC, body+buf if ALLOC */
     assert_balanced();
 }
 
@@ -2829,7 +2829,7 @@ Test(fs2_api, heap_fromstrf_balances_counters) {
     __fs2_checkreset();
     fs2 *h = fs2_heap_fromstrf("%s", "hello");
 
-    /* Ловит counter-bug в fs2_freestr(NULL) внутри move */
+    /* Catches counter-bug in fs2_freestr(NULL) inside move */
     fs2_free(h);
     assert_balanced();
 }
@@ -2936,7 +2936,7 @@ Test(fs2_api, heap_movefromstr_static_empty) {
     CHECK_PTR_EQ("from reset", p, NULL);
     CHECK_FS2VALID(1, h);
 
-    fs2_free(h);   /* frees только body */
+    fs2_free(h);   /* frees only body */
     assert_balanced();
 }
 
@@ -2960,7 +2960,7 @@ Test(fs2_api, heap_movefromstr_balances_counters) {
 
     fs2 *h = fs2_heap_movefromstr(&p, FS2_ALLOC);
     fs2_free(h);
-    assert_balanced();   /* ловит counter-bug в fs2_freestr(NULL) + утечки */
+    assert_balanced();   /* catches counter-bug in fs2_freestr(NULL) + leaks */
 }
 
 Test(fs2_api, heap_movefromstr_matches_stack_content) {
@@ -3020,7 +3020,7 @@ Test(fs2_api, shrink_local_nonempty_noop) {
     CHECK_FS2VALID(1, &s);
 }
 
-/* ALLOC — фактически shrinks (unchanged) */
+/* ALLOC — effectively shrinks (unchanged) */
 Test(fs2_api, shrink_alloc_grows_down) {
     __fs2_checkreset();
     fs2 s = fs2_init(100);
@@ -3091,7 +3091,7 @@ Test(fs2, promote_canonical_with_bodyalloc) {
     CHECK_STR_EQ("v readable", h->v, "");
     CHECK_FS2VALID(1, h);
 
-    /* fs2_free освободит только body (v="" .rodata) */
+    /* fs2_free frees only body (v="" .rodata) */
     fs2_free(h);
     assert_balanced();
 }
@@ -3143,7 +3143,7 @@ Test(fs2, promote_alloc_with_content_noop) {
     assert_balanced();
 }
 
-/* ⚠ Ключевой: empty (len=0) но с buffer — no-op, buffer preserved */
+/* ⚠ Key: empty (len=0) but with buffer — no-op, buffer preserved */
 Test(fs2, promote_alloc_empty_with_buffer_noop) {
     __fs2_checkreset();
     fs2 s = fs2_init(16);   /* v=malloc(16), sz=16, len=0, ALLOC */
@@ -3239,14 +3239,14 @@ Test(fs2, promote_result_printf_safe) {
     fs2 s = FS2();
     fs2_promote_empty(&s);
 
-    /* Регресс: printf/strcmp на v не крашится (v="" not NULL) */
+    /* Regression: printf/strcmp on v does not crash (v="" not NULL) */
     char buf[16];
     snprintf(buf, sizeof(buf), "%s", s.v);
     CHECK_STR_EQ("printf", buf, "");
     CHECK_EQ("strlen", strlen(s.v), 0);
     CHECK_EQ("strcmp empty", strcmp(s.v, ""), 0);
 
-    /* fs2_free no-op для STATIC */
+    /* fs2_free no-op for STATIC */
 }
 
 /* =========================================================================
@@ -3268,7 +3268,7 @@ Test(fs2, exch_basic_alloc_alloc) {
     CHECK_EQ("a len", a.len, 4);
     CHECK_EQ("b len", b.len, 3);
 
-    /* Buffers swapped (не просто memcpy!) */
+    /* Buffers swapped (not just memcpy!) */
     CHECK_PTR_EQ("a got b's buffer", a.v, b_v);
     CHECK_PTR_EQ("b got a's buffer", b.v, a_v);
 
@@ -3280,7 +3280,7 @@ Test(fs2, exch_basic_alloc_alloc) {
     assert_balanced();
 }
 
-/* ⚠ Твой главный запрос: a <-> b <-> a */
+/* ⚠ Your key request: a <-> b <-> a */
 Test(fs2, exch_double_restores) {
     __fs2_checkreset();
     fs2 a = fs2_fromstr("AAA");
@@ -3338,7 +3338,7 @@ Test(fs2, exch_same_content_still_swaps_buffers) {
 
     fs2_exch(&a, &b);
 
-    /* Content "identical", но буферы должны реально поменяться */
+    /* Content "identical", but buffers must actually be swapped */
     CHECK_PTR_EQ("a got b's buffer", a.v, b_v);
     CHECK_PTR_EQ("b got a's buffer", b.v, a_v);
     CHECK_STR_EQ("a content", a.v, "XYZ");
@@ -3503,9 +3503,9 @@ Test(fs2, exch_canonical_with_content) {
 
     CHECK_TRUE ("b empty",      fs2_is_empty(&b));
     CHECK_EQ   ("b len",        b.len, 0);
-    /* Per "safe empty" protocol: v должен быть readable (not NULL).
-     * Если этот CHECK падает — нужно добавить fs2_promote_empty(dst)
-     * внутрь fs2_move. */
+    /* Per "safe empty" protocol: v must be readable (not NULL).
+     * If this CHECK fails — need to add fs2_promote_empty(dst)
+     * inside fs2_move. */
     CHECK_NOT_NULL("b v readable (safe empty)", b.v);
 
     CHECK_FS2VALID(1, &a);
@@ -3600,7 +3600,7 @@ Test(fs2, heaptostack_empty) {
 
 Test(fs2, heaptostack_static_bodyalloc) {
     __fs2_checkreset();
-    /* heap-обёртка над STATIC: heap_movefromstr(&"hi", STATIC) */
+    /* heap wrapper over STATIC: heap_movefromstr("hi", STATIC) */
     const char *p = "hi";
     fs2 *h = fs2_heap_movefromstr(&p, FS2_STATIC);
     CHECK_TRUE("STATIC axis", fs2_is_static(h));
@@ -3628,10 +3628,10 @@ Test(fs2, heaptostack_null_inner_aborts, .signal = SIGABRT) {
     fs2_heaptostack(&h);
 }
 
-/* ⚠ Non-BODYALLOC (stack fs2*) — только pointer на stack */
+/* ⚠ Non-BODYALLOC (stack fs2*) — only pointer on stack */
 Test(fs2, heaptostack_stack_fs2_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
-    fs2 *h = malloc(sizeof(fs2));   /* struct on heap, но без BODYALLOC flag */
+    fs2 *h = malloc(sizeof(fs2));   /* struct on heap, but without BODYALLOC flag */
     CHECK_NOT_NULL("alloc", h);
     *h = fs2_fromstr("hi");          /* ALLOC, no BODYALLOC bit */
 
@@ -3667,7 +3667,7 @@ Test(fs2, heaptostack_balances_counters) {
     /* h struct freed, but buffer now owned by s (as stack fs2) */
     fs2_free(&s);
 
-    assert_balanced();   /* ← ловит leak/double-free в move/freebody */
+    assert_balanced();   /* ← catches leak/double-free in move/freebody */
 }
 
 Test(fs2, heaptostack_caller_pointer_nullable) {
@@ -3676,7 +3676,7 @@ Test(fs2, heaptostack_caller_pointer_nullable) {
 
     fs2 s = fs2_heaptostack(&h);
 
-    /* fs2_free(NULL) должен быть no-op */
+    /* fs2_free(NULL) must be no-op */
     fs2_free(h);         /* h == NULL → safe */
     fs2_free(&s);        /* frees content buffer */
 
@@ -3720,7 +3720,7 @@ Test(fs2, heaptostack_result_independent) {
 
     fs2 s = fs2_heaptostack(&h);
 
-    /* Результат — independent value */
+    /* Result — independent value */
     fs2_clear(&s);
     memcpy(s.v, "modified", 8);
     fs2_setlen(&s, 8);
@@ -3797,7 +3797,7 @@ Test(fs2, stacktoheap_static_axis) {
     /* src reset to FS2EMPTY */
     CHECK_TRUE("src empty", fs2_is_empty(&src));
 
-    /* fs2_free освободит только body (v=.rodata) */
+    /* fs2_free frees only body (v=.rodata) */
     fs2_free(h);
     fs2_free(&src);
     assert_balanced();
@@ -3811,7 +3811,7 @@ Test(fs2, stacktoheap_null_aborts, .signal = SIGABRT) {
     fs2_stacktoheap(NULL);
 }
 
-/* ⚠ Главный: BODYALLOC src → abort (иначе alias + double-free) */
+/* ⚠ Key: BODYALLOC src → abort (otherwise alias + double-free) */
 Test(fs2, stacktoheap_bodyalloc_src_aborts, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 *h = fs2_heap_fromstr("hi");   /* BODYALLOC */
@@ -3881,7 +3881,7 @@ Test(fs2, stacktoheap_result_independent) {
 
     fs2 *h = fs2_stacktoheap(&src);
 
-    /* Мутируем h — src уже пуст, не задет */
+    /* Mutating h — src is already empty, untouched */
     fs2_clear(h);
     fs2_reserve(h, 16);
     memcpy(h->v, "modified", 8);
@@ -3927,7 +3927,7 @@ Test(fs2, free_all_kinds_balance) {
     assert_balanced();
 }
 
-/* ⚠ Idempotent только для non-BODYALLOC */
+/* ⚠ Idempotent only for non-BODYALLOC */
 Test(fs2, free_idempotent_nonbodyalloc) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hi");
@@ -3936,9 +3936,9 @@ Test(fs2, free_idempotent_nonbodyalloc) {
     CHECK_PTR_EQ("v NULL", s.v, NULL);
     CHECK_EQ("sz", s.sz, 0);
     CHECK_EQ("len", s.len, 0);
-    /* flags остаются ALLOC, но v=NULL → freestr no-op */
+    /* flags remain ALLOC, but v=NULL → freestr no-op */
     
-    fs2_free(&s);   /* второй раз — no-op */
+    fs2_free(&s);   /* second time — no-op */
     assert_balanced();
 }
 
@@ -4065,7 +4065,7 @@ Test(fs2, wrap_basic) {
     CHECK_FALSE("not ALLOC", fs2_is_alloc(&s));
     CHECK_FALSE("not LOCAL", fs2_is_local(&s));
     CHECK_FS2VALID(1, &s);
-    /* fs2_free — no-op для STATIC */
+    /* fs2_free — no-op for STATIC */
 }
 
 Test(fs2, wrap_aliases_input) {

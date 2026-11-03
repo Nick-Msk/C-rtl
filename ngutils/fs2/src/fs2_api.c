@@ -509,7 +509,7 @@ fs2_tolower(fs2 *str) {
  */
 fs2 *                    
 fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    if (fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+    if (fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, will be promoted
         return str;
     invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to rpad");
 
@@ -544,7 +544,7 @@ fs2_rpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
  */
 fs2 *                    
 fs2_lpad(fs2 *restrict str, size_t len, const fs2 *restrict pad) {
-    if (fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, будет promote
+    if (fs2_cant_realloc(str))   // NULL / non-empty STATIC → abort; empty (FS2()/FS2EMPTY) → OK, will be promoted
         return str;
     invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad - unable to lpad");
 

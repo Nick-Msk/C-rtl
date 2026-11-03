@@ -272,7 +272,7 @@ static inline void              cstr_exch(const char **s1, const char **s2) {
 }
 
 static inline void              item_exch(void *v1, void *v2, size_t sz) {
-    char        buffer[256]; // Маленький буфер на стеке
+    char        buffer[256]; // Small stack buffer
     bool        allocflag = false;
     void       *tmp;
 

@@ -384,8 +384,8 @@ Test(common, compare_dbl_works) {
 }
 
 Test(common, compare_dbl_handles_nan) {
-    /* В C: NAN больше любого числа, но NAN == NAN ложно.
-       Твой код: любая NAN считается "меньше" числа, и NAN == NAN. */
+    /* In C: NAN is greater than any number, but NAN == NAN is false.
+       Our code: any NAN is considered "less than" a number, and NAN == NAN. */
     CHECK_EQ("NaN vs 1.0", compare_dbl(NAN, 1.0), -1);
     CHECK_EQ("1.0 vs NaN", compare_dbl(1.0, NAN),  1);
     CHECK_EQ("NaN vs NaN", compare_dbl(NAN, NAN),  0);
@@ -394,7 +394,7 @@ Test(common, compare_dbl_handles_nan) {
 
 Test(common, compare_ptr_works) {
     int arr[2] = {0, 1};
-    /* Убедимся, что &arr[0] < &arr[1] */
+    /* Ensure &arr[0] < &arr[1] */
     CHECK_EQ("lower vs higher", compare_ptr(&arr[0], &arr[1]), -1);
     CHECK_EQ("higher vs lower", compare_ptr(&arr[1], &arr[0]),  1);
     CHECK_EQ("same ptr",        compare_ptr(&arr[0], &arr[0]),  0);
@@ -425,12 +425,12 @@ Test(common, plong_cmp_works) {
 }
 
 Test(common, pptr_cmp_works) {
-    /* Используем массив, чтобы гарантировать, что &arr[0] < &arr[1] */
+    /* Use an array to guarantee &arr[0] < &arr[1] */
     int arr[2] = {9, 8};
     void *p1 = &arr[0];
     void *p2 = &arr[1];
     
-    /* pptr_cmp ожидает указатели на указатели */
+    /* pptr_cmp expects pointers to pointers */
     CHECK_EQ("p1 vs p2", pptr_cmp(&p1, &p2), -1); 
     CHECK_EQ("p1 vs p2 rev", pptr_revcmp(&p1, &p2), 1);
 }
@@ -481,7 +481,7 @@ Test(common, pcsrr_cmp_basic) {
     const char *b = "banana";
     const char *c = "apple";
 
-    /* Передаем адреса указателей, как это делает qsort */
+    /* Pass addresses of pointers, as qsort does */
     CHECK_TRUE("apple < banana", pcstr_cmp(&a, &b) < 0);
     CHECK_TRUE("banana > apple", pcstr_cmp(&b, &a) > 0);
     CHECK_EQ("apple == apple", pcstr_cmp(&a, &c), 0);
@@ -540,7 +540,7 @@ Test(common, pcsrr_icmp_qsort) {
  * ========================================================================= */
 
 Test(common, pcsrr_cmp_bsearch) {
-    /* Отсортированный массив для bsearch */
+    /* Sorted array for bsearch */
     const char *arr[] = { "apple", "banana", "cherry", "date" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
 
@@ -557,7 +557,7 @@ Test(common, pcsrr_cmp_bsearch) {
 }
 
 Test(common, pcsrr_icmp_bsearch) {
-    /* Отсортированный без учета регистра */
+    /* Sorted case-insensitively */
     const char *arr[] = { "Apple", "banana", "Cherry", "date" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
 
@@ -611,7 +611,7 @@ Test(common, skip_spaces_null) {
 }
 
 Test(common, skip_spaces_other_whitespace_ignored) {
-    /* \n, \r, \v, \f должны считаться "непробелами" */
+    /* \n, \r, \v, \f should be treated as "non-spaces" */
     const char *s = "\n\r\v\f hello";
     const char *res = skip_spaces(s);
 
@@ -620,7 +620,7 @@ Test(common, skip_spaces_other_whitespace_ignored) {
 }
 
 Test(common, skip_spaces_mixed_other_whitespace) {
-    /* Начинается с пробела, потом \n. Должен остановиться на \n */
+    /* Starts with a space, then \n. Should stop at \n */
     const char *s = "  \n  hello";
     const char *res = skip_spaces(s);
 

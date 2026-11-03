@@ -266,7 +266,7 @@ log_preambule(
 	act &= ~LOG_SIMPLE;
 	act &= ~LOG_NOPREAMBULE;
 
-	if (getlevel(modname) < msglevel || g_logfile == NULL) {   // no logging in this case			// TODO: не используется сейчас по факту, мб неверно и нужно рассчитывать корректный lg_lv
+	if (getlevel(modname) < msglevel || g_logfile == NULL) {   // no logging in this case			// TODO: not actually used right now, possibly incorrect — need to compute the correct lg_lv
         fprintf(stderr, "Mod %s NOT FOUND!!!\n", modname);
 		return false;
 	}
