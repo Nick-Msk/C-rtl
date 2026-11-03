@@ -67,7 +67,7 @@ string-axis.
   - `_ci` — case-insensitive (`fs2_chr_ci`, `fs2_instr_ci`, `fs2_cmp_ci`).
   - `_nth` — k-th occurrence (`fs2_chr_nth`, `fs2_rchr_nth`, k is 1-based).
   - `_from` — start searching from a specific position (`fs2_instr_from`).
-  - `_posn` — return position explicitly (`fs2_instr_posn`).
+  - `_posn` — return position explicitly (`fs2_instr_pos_nth`).
   - `_str` — C-string variant of a fs2-argument function (`fs2_instr_str`, `fs2_starts_with_str`).
   - `_cstr` — both arguments as C-strings (`fs2_replace_cstr`).
 - **Heap constructors** use the `fs2_heap_*` prefix.
@@ -118,14 +118,14 @@ single up-front check) call `ufs2_*`.
 - **Safe empty**: `FS2EMPTY` has `v == ""` so `printf("%s", s.v)` is always safe. All empty-results from constructors return `FS2EMPTY`.
 - **`fs2_move` resets `src` to `FS2EMPTY`** (not `FS2()`): after `fs2_move(&a, &b)`, `b.v` is `""` — readable, printable. To reuse `b`, call `fs2_reserve` (auto-promotes).
 - **Finders never match `'\0'`**: `fs2_chr(&s, '\0')` returns `-1`. NUL is a terminator, not content (consistent with `memchr`).
-- **`fs2_instr_posn` matches empty patterns** (Python semantics): `fs2_instr("abc", "")` returns `0`, `fs2_instr_nth("abc", "", k)` returns `k-1` for `k <= len+1`.
+- **`fs2_instr_pos_nth` matches empty patterns** (Python semantics): `fs2_instr("abc", "")` returns `0`, `fs2_instr_nth("abc", "", k)` returns `k-1` for `k <= len+1`.
 - **`fs2_cpy` clears first, then appends**: equivalent to `fs2_setlen(dst, 0); fs2_cat(dst, src);`.
 - **`fs2_rpad`/`fs2_lpad` follow PostgreSQL**: `rpad('hello', 2) -> 'he'` (truncates from the right, keeps left). Empty `pad` does not extend.
 - **`fs2_trim`/`ltrim`/`rtrim`/`btrim`** — character-set trim, PostgreSQL-style. `btrim` is an alias for `trim` (both sides).
 - **`_fs2_wrap(NULL)` is `FS2EMPTY`**: wrapping NULL gives a valid read-only empty view.
 - **`fs2_setsize`/`fs2_reserve` are grow-only**; `fs2_shrink` is the only shrinker. `reserve` rounds to power-of-2, `setsize` is exact, `shrink` reallocs to `len+1`.
 - **`fs2_parse_double` respects `LC_NUMERIC`**: call `setlocale(LC_NUMERIC, "C")` if you need locale-independent parsing.
-- **Overlapping matches count separately**: `fs2_instr_posn("aaa", "aa", 0, 2) == 1` (not `-1`).
+- **Overlapping matches count separately**: `fs2_instr_pos_nth("aaa", "aa", 0, 2) == 1` (not `-1`).
 
 ## API
 
@@ -191,8 +191,8 @@ All return `ptrdiff_t` (offset or `-1`). Never match `'\0'`.
 - `fs2_instr(str, pattern)` — first occurrence
 - `fs2_instr_from(str, pattern, pos)` — first from `pos`
 - `fs2_instr_nth(str, pattern, nth)` — nth occurrence from start
-- `fs2_instr_posn(str, pattern, pos, nth)` — base function (all params explicit)
-- `_ci` suffix for insensitive: `fs2_instr_ci`, `fs2_instr_posn_ci`, …
+- `fs2_instr_pos_nth(str, pattern, pos, nth)` — base function (all params explicit)
+- `_ci` suffix for insensitive: `fs2_instr_ci`, `fs2_instr_pos_ci_nth`, …
 - `_str` suffix for C-string pattern: `fs2_instr_str`, `fs2_instr_posn_str`, …
 
 ### Finders — Sets, Spans, Arrays

@@ -965,7 +965,7 @@ typedef char *(*fs2_findfn_t)(const char *haystack,
                                     const char *needle);
 
 static inline ptrdiff_t
-fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_pos_common_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                        size_t pos, size_t nth, fs2_findfn_t find) {
     invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
     if (nth == 0)                    
@@ -993,9 +993,11 @@ fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
     
     while (haystack <= haystack_end) {
         const char *hit = find(haystack, needle);
-        if (!hit) break;
+        if (!hit)
+            break;
         count++;
-        if (count == nth) return (ptrdiff_t)(hit - str->v);
+        if (count == nth)
+            return (ptrdiff_t)(hit - str->v);
         haystack = hit + 1;
     }
     return -1;
@@ -1003,15 +1005,15 @@ fs2_instr_posn_common(const fs2 *restrict str, const fs2 *restrict pattern,
 
 /* Public wrappers pass their own finder */
 ptrdiff_t
-fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_pos_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth) {
-    return fs2_instr_posn_common(str, pattern, pos, nth, strstr);
+    return fs2_instr_pos_common_nth(str, pattern, pos, nth, strstr);
 }
 
 ptrdiff_t
-fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_pos_ci_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                   size_t pos, size_t nth) {
-    return fs2_instr_posn_common(str, pattern, pos, nth, strcasestr);
+    return fs2_instr_pos_common_nth(str, pattern, pos, nth, strcasestr);
 }
 
 // replace 

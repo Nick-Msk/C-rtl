@@ -1828,7 +1828,7 @@ fs2_nonspace_span(const fs2 *restrict s, size_t pos) {
  * @note Empty pattern is invalid: returns -1.
  */
 ptrdiff_t
-fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_pos_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth);
 
  /**
@@ -1845,7 +1845,7 @@ fs2_instr_posn(const fs2 *restrict str, const fs2 *restrict pattern,
  * @note Empty pattern is invalid: returns -1.
  */              
 ptrdiff_t
-fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
+fs2_instr_pos_ci_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                   size_t pos, size_t nth);               
 
 /**
@@ -1858,7 +1858,7 @@ fs2_instr_posn_ci(const fs2 *restrict str, const fs2 *restrict pattern,
  */
 static inline ptrdiff_t
 fs2_instr_from(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
-    return fs2_instr_posn(str, pattern, pos, 1);
+    return fs2_instr_pos_nth(str, pattern, pos, 1);
 }
 
 /**
@@ -1871,7 +1871,7 @@ fs2_instr_from(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos)
  */
 static inline ptrdiff_t
 fs2_instr_nth(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) {
-    return fs2_instr_posn(str, pattern, 0, nth);
+    return fs2_instr_pos_nth(str, pattern, 0, nth);
 }
 
 /**
@@ -1883,7 +1883,7 @@ fs2_instr_nth(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) 
  */
 static inline ptrdiff_t
 fs2_instr(const fs2 *restrict str, const fs2 *restrict pattern) {
-    return fs2_instr_posn(str, pattern, 0, 1);
+    return fs2_instr_pos_nth(str, pattern, 0, 1);
 }
 
 /**
@@ -1896,7 +1896,7 @@ fs2_instr(const fs2 *restrict str, const fs2 *restrict pattern) {
  */
 static inline ptrdiff_t
 fs2_instr_from_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t pos) {
-    return fs2_instr_posn_ci(str, pattern, pos, 1);
+    return fs2_instr_pos_ci_nth(str, pattern, pos, 1);
 }
 
 /**
@@ -1909,7 +1909,7 @@ fs2_instr_from_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t p
  */
 static inline ptrdiff_t
 fs2_instr_nth_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t nth) {
-    return fs2_instr_posn_ci(str, pattern, 0, nth);
+    return fs2_instr_pos_ci_nth(str, pattern, 0, nth);
 }
 
 /**
@@ -1921,7 +1921,7 @@ fs2_instr_nth_ci(const fs2 *restrict str, const fs2 *restrict pattern, size_t nt
  */
 static inline ptrdiff_t
 fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
-    return fs2_instr_posn_ci(str, pattern, 0, 1);
+    return fs2_instr_pos_ci_nth(str, pattern, 0, 1);
 }
 
 // -------------------------- C-str wrappers -----------------------------------
@@ -1929,13 +1929,13 @@ fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
 static inline ptrdiff_t
 fs2_instr_posn_str(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
     fs2 wrapped = _fs2_wrap(pattern);
-    return fs2_instr_posn(str, &wrapped, pos, nth);
+    return fs2_instr_pos_nth(str, &wrapped, pos, nth);
 }
 
 static inline ptrdiff_t
 fs2_instr_posn_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
     fs2 wrapped = _fs2_wrap(pattern);
-    return fs2_instr_posn_ci(str, &wrapped, pos, nth);
+    return fs2_instr_pos_ci_nth(str, &wrapped, pos, nth);
 }
 // wrapper over fs2_instr_posn_str!!, non-ci
 static inline ptrdiff_t
@@ -2087,7 +2087,7 @@ fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
 // 
 static inline bool
 fs2_contains(const fs2 *restrict s, const fs2 *restrict pat) {
-    return fs2_instr_posn(s, pat, 0, 1) >= 0;
+    return fs2_instr_pos_nth(s, pat, 0, 1) >= 0;
 }
 // c-str wrap
 static inline bool
@@ -2110,7 +2110,7 @@ fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
     size_t    pos   = 0;
     ptrdiff_t hit;
     
-    while ((hit = fs2_instr_posn(s, pat, pos, 1)) >= 0) {
+    while ((hit = fs2_instr_pos_nth(s, pat, pos, 1)) >= 0) {
         count++;
         pos = (size_t)hit + pat->len;   /* non-overlapping */
     }

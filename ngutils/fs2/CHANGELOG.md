@@ -28,7 +28,7 @@ the call site, not as silent memory corruption downstream. The future bare
   `fs2_cmp_ci_wrap`.
 - **Binary search:** `fs2_in_bsearch`, `fs2_in_bsearch_ci`,
   `fs2_in_bsearch_str` — return index or `-1`.
-- **Substring search (`instr`):** `fs2_instr_posn` (base), `fs2_instr_from`,
+- **Substring search (`instr`):** `fs2_instr_pos_nth` (base), `fs2_instr_from`,
   `fs2_instr_nth`, `fs2_instr`, plus `_ci` and `_str` variants.
   Empty pattern matches at every position (Python semantics: `"abc".find("")`
   → `0`, `nth` → `k-1` up to `len+1`).
