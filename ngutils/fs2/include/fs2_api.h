@@ -33,6 +33,8 @@
  */
 static inline ptrdiff_t
 __fs2_chr_raw(const unsigned char *p, size_t avail, int c) {
+    if (p == NULL)  // FS2() for ex.
+        return -1;
     const unsigned char *hit = memchr(p, (unsigned char)c, avail);
     return hit ? (ptrdiff_t)(hit - p) : -1;
 }
@@ -49,6 +51,8 @@ __fs2_chr_raw(const unsigned char *p, size_t avail, int c) {
  */
 static inline ptrdiff_t
 __fs2_chr_raw_ci(const unsigned char *p, size_t avail, int c) {
+    if (p == NULL)  // FS2() for ex.
+        return -1;
     const int lc = tolower((unsigned char)c);
     for (size_t i = 0; i < avail; i++)
         if (tolower(p[i]) == lc) 
@@ -68,6 +72,8 @@ __fs2_chr_raw_ci(const unsigned char *p, size_t avail, int c) {
  */
 static inline ptrdiff_t
 __fs2_rchr_raw(const unsigned char *p, size_t avail, int c) {
+    if (p == NULL)  // FS2() for ex.
+        return -1;
     const unsigned char uc = (unsigned char)c;
     for (ptrdiff_t i = (ptrdiff_t) avail - 1; i >= 0; i--)
         if (p[i] == uc)
@@ -85,6 +91,8 @@ __fs2_rchr_raw(const unsigned char *p, size_t avail, int c) {
  */
 static inline ptrdiff_t
 __fs2_rchr_raw_ci(const unsigned char *p, size_t avail, int c) {
+    if (p == NULL)  // FS2() for ex.
+        return -1;
     const int lc = tolower((unsigned char)c);
     for (ptrdiff_t i = (ptrdiff_t) avail - 1; i >= 0; i--)
         if (tolower(p[i]) == lc)
@@ -783,7 +791,9 @@ fs2_rchr_ci(const fs2 *str, int c) {
 static inline ptrdiff_t
 fs2_nrchr(const fs2 *str, int c, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
-
+    if (str->v == NULL) // normal behaviour
+        return -1;
+        
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
     ptrdiff_t hit = __fs2_rchr_raw((const unsigned char *) str->v + off, avail, c);
@@ -802,6 +812,8 @@ static inline ptrdiff_t
 fs2_nrchr_ci(const fs2 *str, int c, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
+    if (str->v == NULL) // normal behaviour
+        return -1;
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
     ptrdiff_t hit = __fs2_rchr_raw_ci((const unsigned char *) str->v + off, avail, c);
