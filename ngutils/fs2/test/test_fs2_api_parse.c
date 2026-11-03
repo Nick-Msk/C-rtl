@@ -62,13 +62,13 @@ Test(fs2_api, pos_parse_llong_leading_zeros) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  7);
-    CHECK_EQ("newpos", np, 3);   /* все цифры */
+    CHECK_EQ("newpos", np, 3);   /* all digits */
     fs2_free(&s);
     assert_balanced();
 }
 
 /* =========================================================================
- * fs2_pos_parse_llong — пробелы / trailing garbage
+ * fs2_pos_parse_llong — spaces / trailing garbage
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_llong_leading_spaces) {
@@ -77,7 +77,7 @@ Test(fs2_api, pos_parse_llong_leading_spaces) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  42);
-    CHECK_EQ("newpos", np, 5);   /* 3 пробела + 2 цифры */
+    CHECK_EQ("newpos", np, 5);   /* 3 spaces + 2 digits */
     fs2_free(&s);
     assert_balanced();
 }
@@ -88,7 +88,7 @@ Test(fs2_api, pos_parse_llong_trailing_garbage) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  42);
-    CHECK_EQ("newpos", np, 2);   /* только «42» */
+    CHECK_EQ("newpos", np, 2);   /* only "42" */
     fs2_free(&s);
     assert_balanced();
 }
@@ -99,7 +99,7 @@ Test(fs2_api, pos_parse_llong_trailing_spaces) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  42);
-    CHECK_EQ("newpos", np, 2);   /* trailing spaces не считаются */
+    CHECK_EQ("newpos", np, 2);   /* trailing spaces are not counted */
     fs2_free(&s);
     assert_balanced();
 }
@@ -110,7 +110,7 @@ Test(fs2_api, pos_parse_llong_leading_spaces_and_trailing_garbage) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  -42);
-    CHECK_EQ("newpos", np, 5);   /* 2 пробела + '-' + 2 цифры */
+    CHECK_EQ("newpos", np, 5);   /* 2 spaces + '-' + 2 digits */
     fs2_free(&s);
     assert_balanced();
 }
@@ -136,7 +136,7 @@ Test(fs2_api, pos_parse_llong_pos_after_space) {
     size_t np = 999; long long v = 0;
     cr_assert(fs2_pos_parse_llong(&s, 1, &np, &v));
     CHECK_EQ("value",  v,  42);
-    CHECK_EQ("newpos", np, 4);   /* 1 пробел + 2 цифры от pos=1 */
+    CHECK_EQ("newpos", np, 4);   /* 1 space + 2 digits from pos=1 */
     fs2_free(&s);
     assert_balanced();
 }
@@ -153,7 +153,7 @@ Test(fs2_api, pos_parse_llong_pos_last_digit) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_llong — граничные значения LLONG
+ * fs2_pos_parse_llong — boundary values LLONG
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_llong_llong_max) {
@@ -201,7 +201,7 @@ Test(fs2_api, pos_parse_llong_underflow_returns_false) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_llong — опциональные out / newpos
+ * fs2_pos_parse_llong — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_llong_out_null_ok) {
@@ -259,7 +259,7 @@ Test(fs2_api, pos_parse_llong_empty_canon_v_null) {
 
 Test(fs2_api, pos_parse_llong_null_s_returns_false) {
     size_t np = 12345; long long v = 999;
-    cr_assert_not(fs2_pos_parse_llong(NULL, 0, &np, &v));   /* мягкий false, не abort */
+    cr_assert_not(fs2_pos_parse_llong(NULL, 0, &np, &v));   /* soft false, no abort */
     CHECK_EQ("out untouched",    v,  999);
     CHECK_EQ("newpos untouched", np, 12345);
 }
@@ -359,17 +359,17 @@ Test(fs2_api, pos_parse_llong_sign_then_spaces_rejected) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_llong — специальные форматы
+ * fs2_pos_parse_llong — special formats
  * ========================================================================= */
 
-/* base 10: "0x10" → парсит "0", endptr на 'x' */
+/* base 10: "0x10" → parses "0", endptr at 'x' */
 Test(fs2_api, pos_parse_llong_hex_prefix_parsed_as_zero) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("0x10");
     size_t np = 999; long long v = 123;
     cr_assert(fs2_pos_parse_llong(&s, 0, &np, &v));
-    CHECK_EQ("value",  v,  0);     /* base 10 остановился на '0' */
-    CHECK_EQ("newpos", np, 1);     /* съеден только '0' */
+    CHECK_EQ("value",  v,  0);     /* base 10 stopped at '0' */
+    CHECK_EQ("newpos", np, 1);     /* only '0' consumed */
     fs2_free(&s);
     assert_balanced();
 }
@@ -385,15 +385,15 @@ Test(fs2_api, pos_parse_llong_negative_zero) {
     assert_balanced();
 }
 
-/* Высокий байт (>= 0x80) — не должен вызывать UB в isdigit */
+/* High byte (>= 0x80) — must not cause UB in isdigit */
 Test(fs2_api, pos_parse_llong_high_byte_rejected_no_ub) {
     __fs2_checkreset();
-    char *raw = strdup("\xE9" "42");   /* первый байт 0xE9 */
+    char *raw = strdup("\xE9" "42");   /* first byte 0xE9 */
     cr_assert(raw != NULL);
     fs2 s = fs2_adopt(&raw);
     cr_assert(raw == NULL);
 
-    /* 0xE9 не digit, не '+'/'-' → "Incorrect sym" */
+    /* 0xE9 is not a digit, not '+'/'-' → "Incorrect sym" */
     cr_assert_not(fs2_pos_parse_llong(&s, 0, NULL, NULL));
     CHECK_FS2VALID(1, &s);
     fs2_free(&s);
@@ -430,7 +430,7 @@ Test(fs2_api, pos_parse_llong_local_src) {
 }
 
 /* =========================================================================
- * Инвариант: newpos ВСЕГДА > pos на успехе
+ * Invariant: newpos is ALWAYS > pos on success
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_llong_newpos_always_advances) {
@@ -449,7 +449,7 @@ Test(fs2_api, pos_parse_llong_newpos_always_advances) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_long — nominal (делегирование + запись out/newpos)
+ * fs2_pos_parse_long — nominal (delegation + writing out/newpos)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_basic) {
@@ -470,7 +470,7 @@ Test(fs2_api, pos_parse_long_negative_and_spaces) {
     size_t np = 999; long v = 0;
     cr_assert(fs2_pos_parse_long(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  -42L);
-    CHECK_EQ("newpos", np, 5);   /* 2 пробела + '-' + 2 цифры */
+    CHECK_EQ("newpos", np, 5);   /* 2 spaces + '-' + 2 digits */
     fs2_free(&s);
     assert_balanced();
 }
@@ -487,7 +487,7 @@ Test(fs2_api, pos_parse_long_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_long — опциональные out / newpos
+ * fs2_pos_parse_long — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_out_null) {
@@ -519,7 +519,7 @@ Test(fs2_api, pos_parse_long_both_null) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_long — границы LONG (принимаются)
+ * fs2_pos_parse_long — LONG boundaries (accepted)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_long_max) {
@@ -552,14 +552,14 @@ Test(fs2_api, pos_parse_long_long_min) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_long — range-violation (активен только на LLP64 / ILP32)
- *   На LP64 (macOS/Linux) long == long long → ветка мертва, тесты пропускаем.
+ * fs2_pos_parse_long — range-violation (active only on LLP64 / ILP32)
+ *   On LP64 (macOS/Linux) long == long long → dead branch, tests skipped.
  * ========================================================================= */
 
 #if LONG_MAX < LLONG_MAX
 Test(fs2_api, pos_parse_long_above_long_max_returns_false) {
     __fs2_checkreset();
-    /* LLONG_MAX гарантированно > LONG_MAX при этом #if */
+    /* LLONG_MAX is guaranteed > LONG_MAX under this #if */
     fs2 s = fs2_fromstr("9223372036854775807");   /* LLONG_MAX */
     size_t np = 12345; long v = 999;
     cr_assert_not(fs2_pos_parse_long(&s, 0, &np, &v));
@@ -582,8 +582,8 @@ Test(fs2_api, pos_parse_long_below_long_min_returns_false) {
 #endif /* LONG_MAX < LLONG_MAX */
 
 /* =========================================================================
- * fs2_pos_parse_long — failures: out/newpos НЕ трогаются
- *   (fail-path из делегирования _llong)
+ * fs2_pos_parse_long — failures: out/newpos are NOT touched
+ *   (fail-path from _llong delegation)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_invalid_format_false_no_write) {
@@ -601,7 +601,7 @@ Test(fs2_api, pos_parse_long_overflow_false_no_write) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("99999999999999999999999999");
     size_t np = 12345; long v = 999;
-    cr_assert_not(fs2_pos_parse_long(&s, 0, &np, &v));   /* ERANGE в _llong */
+    cr_assert_not(fs2_pos_parse_long(&s, 0, &np, &v));   /* ERANGE in _llong */
     CHECK_EQ("out untouched",    v,  999L);
     CHECK_EQ("newpos untouched", np, 12345);
     fs2_free(&s);
@@ -642,14 +642,14 @@ Test(fs2_api, pos_parse_long_canon_v_null_false) {
 
 Test(fs2_api, pos_parse_long_null_s_false) {
     size_t np = 12345; long v = 999;
-    cr_assert_not(fs2_pos_parse_long(NULL, 0, &np, &v));   /* мягкий false */
+    cr_assert_not(fs2_pos_parse_long(NULL, 0, &np, &v));   /* soft false */
     CHECK_EQ("out untouched",    v,  999L);
     CHECK_EQ("newpos untouched", np, 12345);
 }
 
 /* =========================================================================
- * Делегирование: long и llong дают одинаковый результат на одном входе
- * (LP64-путь — range check пропускает всё, что llong уже пропустил)
+ * Delegation: long and llong give the same result on the same input
+ * (LP64 path — range check passes everything llong already passed)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_delegates_to_llong) {
@@ -677,7 +677,7 @@ Test(fs2_api, pos_parse_long_delegates_to_llong) {
 }
 
 /* =========================================================================
- * STATIC / LOCAL — ведут себя так же
+ * STATIC / LOCAL — behave the same
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_long_static_src) {
@@ -727,7 +727,7 @@ Test(fs2_api, pos_parse_int_negative_and_spaces) {
     size_t np = 999; int v = 0;
     cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  -42);
-    CHECK_EQ("newpos", np, 5);   /* 2 пробела + '-' + 2 цифры */
+    CHECK_EQ("newpos", np, 5);   /* 2 spaces + '-' + 2 digits */
     fs2_free(&s);
     assert_balanced();
 }
@@ -744,7 +744,7 @@ Test(fs2_api, pos_parse_int_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_int — опциональные out / newpos
+ * fs2_pos_parse_int — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_int_out_null) {
@@ -776,7 +776,7 @@ Test(fs2_api, pos_parse_int_both_null) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_int — границы INT (принимаются)
+ * fs2_pos_parse_int — INT boundaries (accepted)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_int_int_max) {
@@ -808,7 +808,7 @@ Test(fs2_api, pos_parse_int_int_min) {
     assert_balanced();
 }
 
-/* INT_MAX + 1 — уже за пределами int, но в пределах long long */
+/* INT_MAX + 1 — beyond int, but within long long */
 Test(fs2_api, pos_parse_int_above_int_max_false_no_write) {
     __fs2_checkreset();
     char buf[32];
@@ -838,7 +838,7 @@ Test(fs2_api, pos_parse_int_below_int_min_false_no_write) {
     assert_balanced();
 }
 
-/* LLONG_MAX (гарантированно вне int) — rejected via range-check, не через ERANGE */
+/* LLONG_MAX (guaranteed outside int) — rejected via range-check, not via ERANGE */
 Test(fs2_api, pos_parse_int_llong_max_rejected_by_range) {
     __fs2_checkreset();
     char buf[64];
@@ -866,7 +866,7 @@ Test(fs2_api, pos_parse_int_llong_min_rejected_by_range) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_int — failures: out/newpos НЕ трогаются
+ * fs2_pos_parse_int — failures: out/newpos are NOT touched
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_int_invalid_format_false_no_write) {
@@ -880,7 +880,7 @@ Test(fs2_api, pos_parse_int_invalid_format_false_no_write) {
     assert_balanced();
 }
 
-/* ERANGE в strtoll (не range-check int, а вообще за пределами llong) */
+/* ERANGE in strtoll (not int range-check, but beyond llong) */
 Test(fs2_api, pos_parse_int_llong_overflow_false_no_write) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("99999999999999999999999999");   /* > LLONG_MAX */
@@ -932,7 +932,7 @@ Test(fs2_api, pos_parse_int_null_s_false) {
 }
 
 /* =========================================================================
- * Делегирование + эквивалентность _llong для малых значений
+ * Delegation + _llong equivalence for small values
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_int_delegates_to_llong) {
@@ -1071,7 +1071,7 @@ Test(fs2_api, pos_parse_ullong_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ullong — отказ по `-` (главное отличие от strtoull)
+ * fs2_pos_parse_ullong — rejection of '-' (key difference from strtoull)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ullong_rejects_negative) {
@@ -1093,7 +1093,7 @@ Test(fs2_api, pos_parse_ullong_rejects_negative_with_spaces) {
     assert_balanced();
 }
 
-/* -0 → тоже reject: код не делает исключения для нуля */
+/* -0 → also rejected: the code makes no exception for zero */
 Test(fs2_api, pos_parse_ullong_rejects_negative_zero) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("-0");
@@ -1105,7 +1105,7 @@ Test(fs2_api, pos_parse_ullong_rejects_negative_zero) {
     assert_balanced();
 }
 
-/* -1 не превращается в ULLONG_MAX (как было бы с голым strtoull) */
+/* -1 does not become ULLONG_MAX (as with bare strtoull) */
 Test(fs2_api, pos_parse_ullong_negative_one_not_ullong_max) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("-1");
@@ -1141,7 +1141,7 @@ Test(fs2_api, pos_parse_ullong_rejects_only_minus) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ullong — границы ULLONG
+ * fs2_pos_parse_ullong — ULLONG boundaries
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ullong_ullong_max) {
@@ -1161,7 +1161,7 @@ Test(fs2_api, pos_parse_ullong_ullong_max) {
 
 Test(fs2_api, pos_parse_ullong_ullong_max_plus_one_false) {
     __fs2_checkreset();
-    /* 2^64 — гарантированно > ULLONG_MAX на любой платформе */
+    /* 2^64 — guaranteed > ULLONG_MAX on any platform */
     fs2 s = fs2_fromstr("18446744073709551616");
     size_t np = 12345; unsigned long long v = 999;
     cr_assert_not(fs2_pos_parse_ullong(&s, 0, &np, &v));   /* ERANGE */
@@ -1171,7 +1171,7 @@ Test(fs2_api, pos_parse_ullong_ullong_max_plus_one_false) {
     assert_balanced();
 }
 
-/* 2^63 = LLONG_MAX + 1 — не влезает в long long, но в unsigned long long помещается */
+/* 2^63 = LLONG_MAX + 1 — does not fit in long long, but fits in unsigned long long */
 Test(fs2_api, pos_parse_ullong_accepts_2_63) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("9223372036854775808");   /* 2^63 */
@@ -1185,7 +1185,7 @@ Test(fs2_api, pos_parse_ullong_accepts_2_63) {
     assert_balanced();
 }
 
-/* Контраст: _llong на 2^63 → false (ERANGE), _ullong → true. Семантика unsigned. */
+/* Contrast: _llong on 2^63 → false (ERANGE), _ullong → true. Unsigned semantics. */
 Test(fs2_api, pos_parse_ullong_vs_llong_above_llong_max) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("9223372036854775808");   /* 2^63 */
@@ -1201,7 +1201,7 @@ Test(fs2_api, pos_parse_ullong_vs_llong_above_llong_max) {
     assert_balanced();
 }
 
-/* LLONG_MAX — влезает и в long long, и в unsigned long long */
+/* LLONG_MAX — fits in both long long and unsigned long long */
 Test(fs2_api, pos_parse_ullong_accepts_llong_max) {
     __fs2_checkreset();
     char buf[64];
@@ -1307,7 +1307,7 @@ Test(fs2_api, pos_parse_ullong_pos_out_of_range) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ullong — опциональные out / newpos
+ * fs2_pos_parse_ullong — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ullong_out_null) {
@@ -1428,7 +1428,7 @@ Test(fs2_api, pos_parse_ulong_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ulong — наследуемый reject "-"
+ * fs2_pos_parse_ulong — inherited reject "-"
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ulong_rejects_negative) {
@@ -1447,13 +1447,13 @@ Test(fs2_api, pos_parse_ulong_rejects_negative_one) {
     fs2 s = fs2_fromstr("-1");
     size_t np = 0; unsigned long v = 0;
     cr_assert_not(fs2_pos_parse_ulong(&s, 0, &np, &v));
-    CHECK_NEQ("not ULONG_MAX", v, ULONG_MAX);   /* контраст с голым strtoul */
+    CHECK_NEQ("not ULONG_MAX", v, ULONG_MAX);   /* contrast with bare strtoul */
     fs2_free(&s);
     assert_balanced();
 }
 
 /* =========================================================================
- * fs2_pos_parse_ulong — границы ULONG (принимаются)
+ * fs2_pos_parse_ulong — ULONG boundaries (accepted)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ulong_ulong_max) {
@@ -1471,7 +1471,7 @@ Test(fs2_api, pos_parse_ulong_ulong_max) {
     assert_balanced();
 }
 
-/* 2^63 = LLONG_MAX+1 — влезает и в unsigned long long, и в unsigned long на LP64 */
+/* 2^63 = LLONG_MAX+1 — fits in both unsigned long long and unsigned long on LP64 */
 Test(fs2_api, pos_parse_ulong_accepts_2_63_on_lp64) {
 #if ULONG_MAX >= (1ULL << 63)
     __fs2_checkreset();
@@ -1487,13 +1487,13 @@ Test(fs2_api, pos_parse_ulong_accepts_2_63_on_lp64) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ulong — range-violation (только LLP64 / ILP32)
+ * fs2_pos_parse_ulong — range-violation (LLP64 / ILP32 only)
  * ========================================================================= */
 
 #if ULONG_MAX < ULLONG_MAX
 Test(fs2_api, pos_parse_ulong_above_ulong_max_false_no_write) {
     __fs2_checkreset();
-    /* ULLONG_MAX заведомо > ULONG_MAX при этом #if */
+    /* ULLONG_MAX is necessarily > ULONG_MAX under this #if */
     char buf[64];
     snprintf(buf, sizeof buf, "%llu", ULLONG_MAX);
     fs2 s = fs2_fromstr(buf);
@@ -1522,7 +1522,7 @@ Test(fs2_api, pos_parse_ulong_ulong_max_plus_one_false) {
 #endif /* ULONG_MAX < ULLONG_MAX */
 
 /* =========================================================================
- * fs2_pos_parse_ulong — failures из делегирования, out/newpos НЕ пишутся
+ * fs2_pos_parse_ulong — failures from delegation, out/newpos are NOT written
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ulong_empty_fs2empty_false) {
@@ -1564,7 +1564,7 @@ Test(fs2_api, pos_parse_ulong_invalid_format_false_no_write) {
     assert_balanced();
 }
 
-/* ERANGE в strtoull — не range-check ulong, а вообще за пределами ullong */
+/* ERANGE in strtoull — not ulong range-check, but beyond ullong */
 Test(fs2_api, pos_parse_ulong_ullong_overflow_false) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("18446744073709551616");   /* 2^64 */
@@ -1598,7 +1598,7 @@ Test(fs2_api, pos_parse_ulong_only_plus) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ulong — опциональные out / newpos
+ * fs2_pos_parse_ulong — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ulong_out_null) {
@@ -1630,7 +1630,7 @@ Test(fs2_api, pos_parse_ulong_both_null) {
 }
 
 /* =========================================================================
- * Делегирование: _ulong ≡ _ullong на малых значениях
+ * Delegation: _ulong ≡ _ullong for small values
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ulong_delegates_to_ullong) {
@@ -1719,7 +1719,7 @@ Test(fs2_api, pos_parse_uint_leading_spaces_and_plus) {
     size_t np = 999; unsigned v = 0;
     cr_assert(fs2_pos_parse_uint(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  42u);
-    CHECK_EQ("newpos", np, 6);   /* 3 пробела + '+' + 2 цифры */
+    CHECK_EQ("newpos", np, 6);   /* 3 spaces + '+' + 2 digits */
     fs2_free(&s);
     assert_balanced();
 }
@@ -1747,7 +1747,7 @@ Test(fs2_api, pos_parse_uint_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_uint — reject "-" (наследуется через _ulong/_ullong)
+ * fs2_pos_parse_uint — reject "-" (inherited via _ulong/_ullong)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_rejects_negative) {
@@ -1766,13 +1766,13 @@ Test(fs2_api, pos_parse_uint_rejects_negative_one) {
     fs2 s = fs2_fromstr("-1");
     size_t np = 0; unsigned v = 0;
     cr_assert_not(fs2_pos_parse_uint(&s, 0, &np, &v));
-    CHECK_NEQ("not UINT_MAX", v, UINT_MAX);   /* контраст с голым strtoul */
+    CHECK_NEQ("not UINT_MAX", v, UINT_MAX);   /* contrast with bare strtoul */
     fs2_free(&s);
     assert_balanced();
 }
 
 /* =========================================================================
- * fs2_pos_parse_uint — границы UINT (принимаются)
+ * fs2_pos_parse_uint — UINT boundaries (accepted)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_uint_max) {
@@ -1791,7 +1791,7 @@ Test(fs2_api, pos_parse_uint_uint_max) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_uint — UINT_MAX + 1 → false (все платформы)
+ * fs2_pos_parse_uint — UINT_MAX + 1 → false (all platforms)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_uint_max_plus_one_false_no_write) {
@@ -1809,28 +1809,28 @@ Test(fs2_api, pos_parse_uint_uint_max_plus_one_false_no_write) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_uint — АКТИВНЫЙ range-check в _uint
- *   Только когда ULONG_MAX > UINT_MAX (LP64): значение > UINT_MAX,
- *   но влезает в ulong → _ulong успешно парсит, _uint отвергает по range.
- *   На LLP64 (ULONG_MAX == UINT_MAX) _ulong отвергнет раньше → мёртв.
+ * fs2_pos_parse_uint — ACTIVE range-check in _uint
+ *   Only when ULONG_MAX > UINT_MAX (LP64): value > UINT_MAX,
+ *   but fits in ulong → _ulong parses successfully, _uint rejects by range.
+ *   On LLP64 (ULONG_MAX == UINT_MAX) _ulong rejects earlier → dead.
  * ========================================================================= */
 
 #if ULONG_MAX > UINT_MAX
 Test(fs2_api, pos_parse_uint_range_check_active_on_lp64) {
     __fs2_checkreset();
-    /* значение влезает в ulong (LP64: 64-bit), но > UINT_MAX */
+    /* value fits in ulong (LP64: 64-bit), but > UINT_MAX */
     char buf[32];
     snprintf(buf, sizeof buf, "%llu", (unsigned long long)UINT_MAX + 1ULL);
     fs2 s = fs2_fromstr(buf);
 
-    /* _ulong примет успешно */
+    /* _ulong accepts successfully */
     unsigned long ul = 0;
     size_t np_ul = 0;
     cr_assert(fs2_pos_parse_ulong(&s, 0, &np_ul, &ul),
               "precondition: _ulong must accept this value on this platform");
     cr_assert(ul > UINT_MAX, "precondition: ul > UINT_MAX");
 
-    /* _uint отвергнет по range */
+    /* _uint rejects by range */
     size_t np = 12345; unsigned v = 999;
     cr_assert_not(fs2_pos_parse_uint(&s, 0, &np, &v));
     CHECK_EQ("out untouched",    v,  999u);
@@ -1842,7 +1842,7 @@ Test(fs2_api, pos_parse_uint_range_check_active_on_lp64) {
 #endif /* ULONG_MAX > UINT_MAX */
 
 /* =========================================================================
- * fs2_pos_parse_uint — failures из делегирования, out/newpos НЕ пишутся
+ * fs2_pos_parse_uint — failures from delegation, out/newpos are NOT written
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_empty_fs2empty_false) {
@@ -1908,7 +1908,7 @@ Test(fs2_api, pos_parse_uint_pos_out_of_range_false) {
     assert_balanced();
 }
 
-/* ERANGE в strtoull — не range-check uint, а за пределами ullong */
+/* ERANGE in strtoull — not uint range-check, but beyond ullong */
 Test(fs2_api, pos_parse_uint_ullong_overflow_false) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("18446744073709551616");   /* 2^64 */
@@ -1918,7 +1918,7 @@ Test(fs2_api, pos_parse_uint_ullong_overflow_false) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_uint — опциональные out / newpos
+ * fs2_pos_parse_uint — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_out_null) {
@@ -1950,7 +1950,7 @@ Test(fs2_api, pos_parse_uint_both_null) {
 }
 
 /* =========================================================================
- * Делегирование: _uint ≡ _ulong на значениях в диапазоне uint
+ * Delegation: _uint ≡ _ulong for values in uint range
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_uint_delegates_to_ulong) {
@@ -2055,7 +2055,7 @@ Test(fs2_api, pos_parse_double_zero) {
     assert_balanced();
 }
 
-/* "42" парсится как float 42.0 (не отдельный int-path) */
+/* "42" is parsed as float 42.0 (not a separate int path) */
 Test(fs2_api, pos_parse_double_int_via_double) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("42");
@@ -2079,7 +2079,7 @@ Test(fs2_api, pos_parse_double_leading_dot) {
     assert_balanced();
 }
 
-/* "5." → 5.0, newpos = 2 (C99: "5." валидная decimal-floating-constant) */
+/* "5." → 5.0, newpos = 2 (C99: "5." is a valid decimal-floating-constant) */
 Test(fs2_api, pos_parse_double_trailing_dot) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("5.");
@@ -2149,7 +2149,7 @@ Test(fs2_api, pos_parse_double_leading_spaces) {
     size_t np = 999; double v = 0;
     cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
     CHECK_EQ("value",  v,  3.14);
-    CHECK_EQ("newpos", np, 7);   /* 3 пробела + 4 символа */
+    CHECK_EQ("newpos", np, 7);   /* 3 spaces + 4 characters */
     fs2_free(&s);
     assert_balanced();
 }
@@ -2307,7 +2307,7 @@ Test(fs2_api, pos_parse_double_sign_dot_false) {
     assert_balanced();
 }
 
-/* 'e' как первый символ — отклоняется pre-check (e5 не float) */
+/* 'e' as first char — rejected by pre-check (e5 is not a float) */
 Test(fs2_api, pos_parse_double_e_alone_rejected) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("e5");
@@ -2373,7 +2373,7 @@ Test(fs2_api, pos_parse_double_null_s) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_double — опциональные out / newpos
+ * fs2_pos_parse_double — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_double_out_null) {
@@ -2410,12 +2410,12 @@ Test(fs2_api, pos_parse_double_both_null) {
 
 Test(fs2_api, pos_parse_double_high_byte_rejected_no_ub) {
     __fs2_checkreset();
-    char *raw = strdup("\xE9" "3.14");   /* первый байт 0xE9 */
+    char *raw = strdup("\xE9" "3.14");   /* first byte 0xE9 */
     cr_assert(raw != NULL);
     fs2 s = fs2_adopt(&raw);
     cr_assert(raw == NULL);
 
-    /* 0xE9 не digit/dot/sign/inf/nan → "Incorrect sym" */
+    /* 0xE9 is not digit/dot/sign/inf/nan → "Incorrect sym" */
     cr_assert_not(fs2_pos_parse_double(&s, 0, NULL, NULL));
     CHECK_FS2VALID(1, &s);
     fs2_free(&s);
@@ -2489,7 +2489,7 @@ Test(fs2_api, pos_parse_char_mid) {
     assert_balanced();
 }
 
-/* Одиночный символ */
+/* Single character */
 Test(fs2_api, pos_parse_char_single_char_string) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("X");
@@ -2502,7 +2502,7 @@ Test(fs2_api, pos_parse_char_single_char_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_char — любой байт валиден (нет skip_spaces, нет reject)
+ * fs2_pos_parse_char — any byte is valid (no skip_spaces, no reject)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_char_space_is_char) {
@@ -2510,7 +2510,7 @@ Test(fs2_api, pos_parse_char_space_is_char) {
     fs2 s = fs2_fromstr("  ");
     size_t np = 999; char c = 0;
     cr_assert(fs2_pos_parse_char(&s, 0, &np, &c));
-    CHECK_EQ("char", c,  ' ');   /* пробел — валидный символ */
+    CHECK_EQ("char", c,  ' ');   /* space — a valid character */
     CHECK_EQ("newpos", np, 1);
     fs2_free(&s);
     assert_balanced();
@@ -2545,7 +2545,7 @@ Test(fs2_api, pos_parse_char_digit_is_char) {
     assert_balanced();
 }
 
-/* High byte (>= 0x80) — просто байт, никакого isdigit/isspace */
+/* High byte (>= 0x80) — just a byte, no isdigit/isspace */
 Test(fs2_api, pos_parse_char_high_byte) {
     __fs2_checkreset();
     char *raw = strdup("A\xE9");
@@ -2564,7 +2564,7 @@ Test(fs2_api, pos_parse_char_high_byte) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_char — опциональные out / newpos
+ * fs2_pos_parse_char — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_char_out_null) {
@@ -2596,7 +2596,7 @@ Test(fs2_api, pos_parse_char_both_null) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_char — fail-cases: out/newpos НЕ пишутся
+ * fs2_pos_parse_char — fail-cases: out/newpos are NOT written
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_char_pos_eq_len_false) {
@@ -2631,7 +2631,7 @@ Test(fs2_api, pos_parse_char_empty_fs2empty_false) {
     assert_balanced();
 }
 
-/* FS2() (v=NULL) — guard `!s->v` → false, без чтения */
+/* FS2() (v=NULL) — guard !s->v → false, no read */
 Test(fs2_api, pos_parse_char_canon_v_null_false) {
     __fs2_checkreset();
     fs2 s = FS2();
@@ -2644,7 +2644,7 @@ Test(fs2_api, pos_parse_char_canon_v_null_false) {
     assert_balanced();
 }
 
-/* NULL s — мягкий false (logsimpleerr с `s ? s->len : 0`) */
+/* NULL s — soft false (logsimpleerr with `s ? s->len : 0`) */
 Test(fs2_api, pos_parse_char_null_s_false) {
     size_t np = 12345; char c = 'Z';
     cr_assert_not(fs2_pos_parse_char(NULL, 0, &np, &c));
@@ -2682,7 +2682,7 @@ Test(fs2_api, pos_parse_char_local_src) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_char — последовательное чтение строки
+ * fs2_pos_parse_char — sequential reading of a string
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_char_sequential_reads) {
@@ -2698,14 +2698,14 @@ Test(fs2_api, pos_parse_char_sequential_reads) {
     }
     CHECK_EQ("pos advanced to len", pos, s.len);
 
-    /* ещё один — за пределами */
+    /* one more — out of bounds */
     cr_assert_not(fs2_pos_parse_char(&s, pos, &pos, &c));
 
     fs2_free(&s);
     assert_balanced();
 }
 
-/* pos in-place (out-only / newpos-only не ломают последовательность) */
+/* pos in-place (out-only / newpos-only do not break the sequence) */
 Test(fs2_api, pos_parse_char_chained_via_newpos) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hi");
@@ -2786,7 +2786,7 @@ Test(fs2_api, pos_parse_short_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_short — границы SHRT
+ * fs2_pos_parse_short — SHRT boundaries
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_short_shrt_max) {
@@ -2845,7 +2845,7 @@ Test(fs2_api, pos_parse_short_shrt_min_minus_one_false_no_write) {
     assert_balanced();
 }
 
-/* LLONG_MAX — гарантированно вне short */
+/* LLONG_MAX — guaranteed outside short */
 Test(fs2_api, pos_parse_short_llong_max_rejected_by_range) {
     __fs2_checkreset();
     char buf[64];
@@ -2859,7 +2859,7 @@ Test(fs2_api, pos_parse_short_llong_max_rejected_by_range) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_short — failures из делегирования, out/newpos НЕ пишутся
+ * fs2_pos_parse_short — failures from delegation, out/newpos are NOT written
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_short_invalid_false_no_write) {
@@ -2901,7 +2901,7 @@ Test(fs2_api, pos_parse_short_llong_overflow_false) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_short — опциональные out / newpos
+ * fs2_pos_parse_short — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_short_out_null) {
@@ -2933,7 +2933,7 @@ Test(fs2_api, pos_parse_short_both_null) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_short — делегирование ≡ _llong для малых значений
+ * fs2_pos_parse_short — delegation ≡ _llong for small values
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_short_delegates_to_llong) {
@@ -3010,7 +3010,7 @@ Test(fs2_api, pos_parse_ushort_pos_mid_string) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ushort — reject "-" (наследуется через _ullong)
+ * fs2_pos_parse_ushort — reject "-" (inherited via _ullong)
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ushort_rejects_negative) {
@@ -3035,7 +3035,7 @@ Test(fs2_api, pos_parse_ushort_rejects_negative_one) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ushort — границы USHRT
+ * fs2_pos_parse_ushort — USHRT boundaries
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ushort_ushrt_max) {
@@ -3066,7 +3066,7 @@ Test(fs2_api, pos_parse_ushort_ushrt_max_plus_one_false_no_write) {
     assert_balanced();
 }
 
-/* ULLONG_MAX — гарантированно вне ushort */
+/* ULLONG_MAX — guaranteed outside ushort */
 Test(fs2_api, pos_parse_ushort_ullong_max_rejected_by_range) {
     __fs2_checkreset();
     char buf[64];
@@ -3080,7 +3080,7 @@ Test(fs2_api, pos_parse_ushort_ullong_max_rejected_by_range) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ushort — failures из делегирования, out/newpos НЕ пишутся
+ * fs2_pos_parse_ushort — failures from delegation, out/newpos are NOT written
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ushort_invalid_false_no_write) {
@@ -3122,7 +3122,7 @@ Test(fs2_api, pos_parse_ushort_ullong_overflow_false) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ushort — опциональные out / newpos
+ * fs2_pos_parse_ushort — optional out / newpos
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ushort_out_null) {
@@ -3154,7 +3154,7 @@ Test(fs2_api, pos_parse_ushort_both_null) {
 }
 
 /* =========================================================================
- * fs2_pos_parse_ushort — делегирование ≡ _ullong для малых значений
+ * fs2_pos_parse_ushort — delegation ≡ _ullong for small values
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_ushort_delegates_to_ullong) {
@@ -3182,7 +3182,7 @@ Test(fs2_api, pos_parse_ushort_delegates_to_ullong) {
 }
 
 /* =========================================================================
- * STATIC / LOCAL — общие для обоих
+ * STATIC / LOCAL — common for both
  * ========================================================================= */
 
 Test(fs2_api, pos_parse_short_static_src) {
