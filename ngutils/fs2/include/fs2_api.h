@@ -1052,15 +1052,18 @@ fs2_not_in_ci(const fs2 *restrict s, const char *restrict strs[]) {
  */
 static inline ptrdiff_t
 fs2_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
-    logauto(n);
-    logauto((void *) key);
-    logauto((void *) arr );
-    
-    invraise(key != NULL, "Null pointers %p %p", key, arr);
+    invfatal(ERR_NULL_INPUT, arr != NULL && key != NULL, 
+        "Null pointers %p %p", key, arr);
 
-    if (n == 0) return -1;
+    // promote
+    const fs2     *findkey = key;
+    if (fs2_is_empty(key))
+        findkey = &fs2_empty_const;
+
+    if (n == 0)
+        return -1;
     
-    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_cmp_wrap);
+    const fs2 *res = bsearch(findkey, arr, n, sizeof(fs2), fs2_cmp_wrap);
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
 
@@ -1076,10 +1079,17 @@ fs2_bsearch(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
  */
 static inline ptrdiff_t
 fs2_bsearch_ci(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
-    invraise(key != NULL, "Null pointers %p %p", key, arr);
-    if (n == 0) return -1;
+    invfatal(ERR_NULL_INPUT, arr != NULL && key != NULL, 
+        "Null pointers %p %p", key, arr);
 
-    const fs2 *res = bsearch(key, arr, n, sizeof(fs2), fs2_cmp_wrap_ci);
+    const fs2     *findkey = key;
+    if (fs2_is_empty(key))
+        findkey = &fs2_empty_const;
+
+    if (n == 0)
+        return -1;
+
+    const fs2 *res = bsearch(findkey, arr, n, sizeof(fs2), fs2_cmp_wrap_ci);
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
 
