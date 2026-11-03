@@ -7,7 +7,7 @@
 TestSuite(test_fs2_api_instr, .init = test_setup, .fini = test_teardown);
 
 /* =========================================================================
- * fs2_instr_pos_nth — ядро, case-sensitive
+ * fs2_instr_pos_nth — core, case-sensitive
  * ========================================================================= */
 
 Test(fs2_api, instr_pos_nth_basic) {
@@ -38,13 +38,13 @@ Test(fs2_api, instr_pos_nth_zero) {
 
 Test(fs2_api, instr_pos_nth_pos_skips_earlier) {
     __fs2_checkreset();
-    fs2 h = fs2_fromstr("banana");   /* "an" на 1, 3 */
+    fs2 h = fs2_fromstr("banana");   /* "an" at 1, 3 */
     fs2 p = fs2_fromstr("an");
 
     CHECK_EQ("pos=0 nth=1", fs2_instr_pos_nth(&h, &p, 0, 1), 1);
     CHECK_EQ("pos=0 nth=2", fs2_instr_pos_nth(&h, &p, 0, 2), 3);
 
-    /* pos=2 → "an" на 1 отсекается */
+    /* pos=2 → "an" at 1 is excluded */
     CHECK_EQ("pos=2 nth=1", fs2_instr_pos_nth(&h, &p, 2, 1), 3);
     CHECK_EQ("pos=2 nth=2", fs2_instr_pos_nth(&h, &p, 2, 2), -1);
 
@@ -53,7 +53,7 @@ Test(fs2_api, instr_pos_nth_pos_skips_earlier) {
     assert_balanced();
 }
 
-/* Перекрывающиеся вхождения считаются раздельно: "aaa"/"aa" → 0 и 1 */
+/* Overlapping occurrences are counted separately: "aaa"/"aa" → 0 and 1 */
 Test(fs2_api, instr_pos_nth_overlapping) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aaa");
@@ -97,7 +97,7 @@ Test(fs2_api, instr_pos_nth_pos_at_or_beyond_len) {
 }
 
 /* =========================================================================
- * fs2_instr_pos_nth — empty pattern (Python-семантика)
+ * fs2_instr_pos_nth — empty pattern (Python semantics)
  * ========================================================================= */
 
 Test(fs2_api, instr_pos_nth_empty_pattern_from_zero) {
@@ -135,7 +135,7 @@ Test(fs2_api, instr_pos_nth_empty_pattern_with_pos) {
 }
 
 /* =========================================================================
- * fs2_instr_pos_ci_nth — ядро, case-insensitive
+ * fs2_instr_pos_ci_nth — core, case-insensitive
  * ========================================================================= */
 
 Test(fs2_api, instr_pos_ci_nth_basic) {
@@ -195,7 +195,7 @@ Test(fs2_api, instr_pos_ci_nth_nth_zero) {
     assert_balanced();
 }
 
-/* Empty pattern в ci — та же Python-семантика, регистр не важен */
+/* Empty pattern in ci — same Python semantics, case doesn't matter */
 Test(fs2_api, instr_pos_ci_nth_empty_pattern) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aBc");
@@ -210,7 +210,7 @@ Test(fs2_api, instr_pos_ci_nth_empty_pattern) {
 }
 
 /* =========================================================================
- * Врапперы fs2_instr / _from / _nth — case-sensitive
+ * Wrappers fs2_instr / _from / _nth — case-sensitive
  * ========================================================================= */
 
 Test(fs2_api, instr_first) {
@@ -253,7 +253,7 @@ Test(fs2_api, instr_nth_from_zero) {
     assert_balanced();
 }
 
-/* Врапперы эквивалентны вызовам ядра с правильными аргументами */
+/* Wrappers are equivalent to core calls with proper arguments */
 Test(fs2_api, instr_wrappers_match_core) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("mississippi");
@@ -269,7 +269,7 @@ Test(fs2_api, instr_wrappers_match_core) {
 }
 
 /* =========================================================================
- * Врапперы fs2_instr_ci / _from_ci / _nth_ci — case-insensitive
+ * Wrappers fs2_instr_ci / _from_ci / _nth_ci — case-insensitive
  * ========================================================================= */
 
 Test(fs2_api, instr_ci_first) {
@@ -314,7 +314,7 @@ Test(fs2_api, instr_nth_ci) {
 }
 
 /* =========================================================================
- * C-str врапперы — smoke test: эквивалентность fs2-версии
+ * C-str wrappers — smoke test: equivalence with fs2 version
  * ========================================================================= */
 
 Test(fs2_api, instr_str_matches_fs2_version) {
@@ -336,7 +336,7 @@ Test(fs2_api, instr_str_matches_fs2_version) {
 }
 
 /* =========================================================================
- * Граничные: пустой haystack / STATIC
+ * Edge cases: empty haystack / STATIC
  * ========================================================================= */
 
 Test(fs2_api, instr_empty_haystack) {
@@ -346,7 +346,7 @@ Test(fs2_api, instr_empty_haystack) {
 
     CHECK_EQ("nonempty pattern", fs2_instr_pos_nth(&h, &p, 0, 1), -1);
 
-    /* empty pattern на пустом haystack: единственная позиция — 0 */
+    /* empty pattern on empty haystack: the only position is 0 */
     fs2 e = FS2EMPTY;
     CHECK_EQ("nth=1", fs2_instr_pos_nth(&h, &e, 0, 1), 0);
     CHECK_EQ("nth=2", fs2_instr_pos_nth(&h, &e, 0, 2), -1);
@@ -368,7 +368,7 @@ Test(fs2_api, instr_static_haystack) {
 }
 
 /* =========================================================================
- * NULL-гарды (debug: SIGABRT через invraise)
+ * NULL-guards (debug: SIGABRT via invraise)
  * ========================================================================= */
 
 Test(fs2_api, instr_null_str_aborts, .signal = SIGABRT) {
