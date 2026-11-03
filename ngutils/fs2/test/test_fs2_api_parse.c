@@ -2219,7 +2219,7 @@ Test(fs2_api, pos_parse_double_neg_inf) {
     fs2 s = fs2_fromstr("-inf");
     size_t np = 999; double v = 0;
     cr_assert(fs2_pos_parse_double(&s, 0, &np, &v));
-    CHECK_EQ("is inf",   isinf(v), true);
+    CHECK_NEQ("is inf",   isinf(v), 0); 
     CHECK_EQ("negative", v < 0,    true);
     CHECK_EQ("newpos",   np,       4);
     fs2_free(&s);
