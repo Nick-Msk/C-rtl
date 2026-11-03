@@ -704,3 +704,286 @@ Test(fs2_api, pos_parse_long_local_src) {
     CHECK_FS2VALID(1, &buf);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_pos_parse_int — nominal
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  42);
+    CHECK_EQ("newpos", np, 2);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_negative_and_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  -42xyz");
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  -42);
+    CHECK_EQ("newpos", np, 5);   /* 2 пробела + '-' + 2 цифры */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_pos_mid_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123");
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 3, &np, &v));
+    CHECK_EQ("value",  v,  123);
+    CHECK_EQ("newpos", np, 6);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_int — опциональные out / newpos
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_out_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 999;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, NULL));
+    CHECK_EQ("newpos", np, 2);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_newpos_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, NULL, &v));
+    CHECK_EQ("value", v, 42);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_both_null) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    cr_assert(fs2_pos_parse_int(&s, 0, NULL, NULL));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_int — границы INT (принимаются)
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_int_max) {
+    __fs2_checkreset();
+    char buf[32];
+    snprintf(buf, sizeof buf, "%d", INT_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  INT_MAX);
+    CHECK_EQ("newpos", np, strlen(buf));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_int_min) {
+    __fs2_checkreset();
+    char buf[32];
+    snprintf(buf, sizeof buf, "%d", INT_MIN);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  INT_MIN);
+    CHECK_EQ("newpos", np, strlen(buf));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* INT_MAX + 1 — уже за пределами int, но в пределах long long */
+Test(fs2_api, pos_parse_int_above_int_max_false_no_write) {
+    __fs2_checkreset();
+    char buf[32];
+    snprintf(buf, sizeof buf, "%lld", (long long)INT_MAX + 1);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* INT_MIN - 1 */
+Test(fs2_api, pos_parse_int_below_int_min_false_no_write) {
+    __fs2_checkreset();
+    char buf[32];
+    snprintf(buf, sizeof buf, "%lld", (long long)INT_MIN - 1);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* LLONG_MAX (гарантированно вне int) — rejected via range-check, не через ERANGE */
+Test(fs2_api, pos_parse_int_llong_max_rejected_by_range) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%lld", LLONG_MAX);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_llong_min_rejected_by_range) {
+    __fs2_checkreset();
+    char buf[64];
+    snprintf(buf, sizeof buf, "%lld", LLONG_MIN);
+    fs2 s = fs2_fromstr(buf);
+
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_pos_parse_int — failures: out/newpos НЕ трогаются
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_invalid_format_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* ERANGE в strtoll (не range-check int, а вообще за пределами llong) */
+Test(fs2_api, pos_parse_int_llong_overflow_false_no_write) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("99999999999999999999999999");   /* > LLONG_MAX */
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_pos_out_of_range_false) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 100, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_empty_fs2empty_false) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_canon_v_null_false) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_null_s_false) {
+    size_t np = 12345; int v = 999;
+    cr_assert_not(fs2_pos_parse_int(NULL, 0, &np, &v));
+    CHECK_EQ("out untouched",    v,  999);
+    CHECK_EQ("newpos untouched", np, 12345);
+}
+
+/* =========================================================================
+ * Делегирование + эквивалентность _llong для малых значений
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_delegates_to_llong) {
+    __fs2_checkreset();
+    static const char *inputs[] = {
+        "0", "42", "-42", "+7", "  123", "1x", "   -9abc", NULL
+    };
+    for (size_t i = 0; inputs[i]; i++) {
+        fs2 s = fs2_fromstr(inputs[i]);
+        size_t np_int = 0, np_ll = 0;
+        int       v_int = 0;
+        long long v_ll  = 0;
+
+        bool ok_int = fs2_pos_parse_int  (&s, 0, &np_int, &v_int);
+        bool ok_ll  = fs2_pos_parse_llong(&s, 0, &np_ll,  &v_ll);
+
+        cr_assert_eq(ok_int, ok_ll, "divergence on '%s'", inputs[i]);
+        if (ok_int) {
+            CHECK_EQ("value",  (long long)v_int, v_ll);
+            CHECK_EQ("newpos", np_int, np_ll);
+        }
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC / LOCAL
+ * ========================================================================= */
+
+Test(fs2_api, pos_parse_int_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("  -42");
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&s, 0, &np, &v));
+    CHECK_EQ("value",  v,  -42);
+    CHECK_EQ("newpos", np, 5);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, pos_parse_int_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "123", 3);
+    fs2_setlen(&buf, 3);
+
+    size_t np = 999; int v = 0;
+    cr_assert(fs2_pos_parse_int(&buf, 0, &np, &v));
+    CHECK_EQ("value",  v,  123);
+    CHECK_EQ("newpos", np, 3);
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
