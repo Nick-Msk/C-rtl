@@ -125,7 +125,7 @@ fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
  */
 ptrdiff_t
 fs2_chr_ci_nth  (const fs2 *str, int c, size_t k) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     return fs2_nchr_ci_nth(str, c, k, str->len);
 }
@@ -141,7 +141,7 @@ fs2_chr_ci_nth  (const fs2 *str, int c, size_t k) {
  */
 ptrdiff_t
 fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
     
     if (k == 0)
         return -1;
@@ -179,7 +179,7 @@ fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim) {
  */
 ptrdiff_t
 fs2_rchr_nth  (const fs2 *str, int c, size_t k) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
     return fs2_nrchr_nth(str, c, k, str->len);
 }
@@ -198,9 +198,9 @@ fs2_rchr_nth  (const fs2 *str, int c, size_t k) {
  */
 ptrdiff_t
 fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
-    invraise(str != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
-    if (k == 0)
+    if (k == 0 || str->v == NULL)
         return -1;
 
     size_t avail = (lim < str->len) ? lim : str->len;
