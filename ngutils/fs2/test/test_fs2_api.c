@@ -7496,3 +7496,326 @@ Test(fs2_api, nrchr_and_rchr_agree_when_lim_covers_string) {
     fs2_free(&s);
     assert_balanced();
 }
+
+#include <criterion/criterion.h>
+
+#include "test_fs2.h"
+#include "fs2_api.h"
+#include <locale.h>
+
+TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * fs2_chr_nth — nominal (по позициям в "banana": 'a' → 1,3,5)
+ * ========================================================================= */
+
+Test(fs2_api, chr_nth_k1_first) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=1 → 1", fs2_chr_nth(&s, 'a', 1), 1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_k2) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=2 → 3", fs2_chr_nth(&s, 'a', 2), 3);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_k3) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=3 → 5", fs2_chr_nth(&s, 'a', 3), 5);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_beyond_count) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* 'a' ровно 3 */
+    CHECK_EQ("k=4 → -1",  fs2_chr_nth(&s, 'a', 4), -1);
+    CHECK_EQ("k=100 → -1", fs2_chr_nth(&s, 'a', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_k0_invalid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=0 → -1", fs2_chr_nth(&s, 'a', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_unique_occurrence) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");   /* 'h' ровно один */
+    CHECK_EQ("k=1 → 0", fs2_chr_nth(&s, 'h', 1), 0);
+    CHECK_EQ("k=2 → -1", fs2_chr_nth(&s, 'h', 2), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("'z' k=1", fs2_chr_nth(&s, 'z', 1), -1);
+    CHECK_EQ("'H' k=1", fs2_chr_nth(&s, 'H', 1), -1);   /* case-sensitive */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "mississippi": 's' на 2,3,5,6; 'i' на 1,4,7,10; 'p' на 8,9 */
+Test(fs2_api, chr_nth_mississippi) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mississippi");
+
+    CHECK_EQ("'s' k=1 → 2", fs2_chr_nth(&s, 's', 1), 2);
+    CHECK_EQ("'s' k=2 → 3", fs2_chr_nth(&s, 's', 2), 3);
+    CHECK_EQ("'s' k=3 → 5", fs2_chr_nth(&s, 's', 3), 5);
+    CHECK_EQ("'s' k=4 → 6", fs2_chr_nth(&s, 's', 4), 6);
+    CHECK_EQ("'s' k=5 → -1", fs2_chr_nth(&s, 's', 5), -1);
+
+    CHECK_EQ("'i' k=1 → 1",  fs2_chr_nth(&s, 'i', 1), 1);
+    CHECK_EQ("'i' k=4 → 10", fs2_chr_nth(&s, 'i', 4), 10);
+    CHECK_EQ("'i' k=5 → -1", fs2_chr_nth(&s, 'i', 5), -1);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_k1_matches_chr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mississippi");
+    CHECK_EQ("'s' k=1 == fs2_chr", fs2_chr_nth(&s, 's', 1), fs2_chr(&s, 's'));
+    CHECK_EQ("'i' k=1 == fs2_chr", fs2_chr_nth(&s, 'i', 1), fs2_chr(&s, 'i'));
+    CHECK_EQ("'m' k=1 == fs2_chr", fs2_chr_nth(&s, 'm', 1), fs2_chr(&s, 'm'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_empty_and_static) {
+    __fs2_checkreset();
+    fs2 e = FS2EMPTY;
+    CHECK_EQ("empty k=1", fs2_chr_nth(&e, 'a', 1), -1);
+    CHECK_EQ("empty k=0", fs2_chr_nth(&e, 'a', 0), -1);
+    CHECK_FS2VALID(1, &e);
+
+    fs2 st = FS2LITERAL("banana");
+    CHECK_EQ("static 'a' k=2", fs2_chr_nth(&st, 'a', 2), 3);
+    CHECK_FS2VALID(1, &st);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_nth_null_aborts, .signal = SIGABRT) {
+    fs2_chr_nth(NULL, 'a', 1);
+}
+
+/* =========================================================================
+ * fs2_nchr_nth — окно + nth
+ * ========================================================================= */
+
+Test(fs2_api, nchr_nth_k1_matches_nchr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mississippi");
+
+    CHECK_EQ("'s' k=1 lim=11", fs2_nchr_nth(&s, 's', 1, 11), fs2_nchr(&s, 's', 11));
+    CHECK_EQ("'i' k=1 lim=5",  fs2_nchr_nth(&s, 'i', 1, 5),  fs2_nchr(&s, 'i', 5));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_k2_within_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* 'a' на 1,3,5 */
+
+    /* lim=6 → все три в окне */
+    CHECK_EQ("k=1 lim=6 → 1", fs2_nchr_nth(&s, 'a', 1, 6), 1);
+    CHECK_EQ("k=2 lim=6 → 3", fs2_nchr_nth(&s, 'a', 2, 6), 3);
+    CHECK_EQ("k=3 lim=6 → 5", fs2_nchr_nth(&s, 'a', 3, 6), 5);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Ключевой: k-е вхождение существует в строке, но вне окна → -1 */
+Test(fs2_api, nchr_nth_hidden_by_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");   /* 'a' на 1,3,5 */
+
+    /* lim=4 → окно [0,4) содержит только 1-е и 2-е 'a' (на 1 и 3) */
+    CHECK_EQ("k=2 lim=4 → 3",  fs2_nchr_nth(&s, 'a', 2, 4), 3);
+    CHECK_EQ("k=3 lim=4 → -1", fs2_nchr_nth(&s, 'a', 3, 4), -1);
+
+    /* lim=3 → окно [0,3) содержит только 'a' на 1 */
+    CHECK_EQ("k=1 lim=3 → 1",  fs2_nchr_nth(&s, 'a', 1, 3), 1);
+    CHECK_EQ("k=2 lim=3 → -1", fs2_nchr_nth(&s, 'a', 2, 3), -1);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=1 lim=0 → -1", fs2_nchr_nth(&s, 'a', 1, 0), -1);
+    CHECK_EQ("k=0 lim=0 → -1", fs2_nchr_nth(&s, 'a', 0, 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_lim_eq_len_matches_chr_nth) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mississippi");
+
+    for (size_t k = 1; k <= 5; k++) {
+        CHECK_EQ("'s'", fs2_nchr_nth(&s, 's', k, s.len), fs2_chr_nth(&s, 's', k));
+        CHECK_EQ("'i'", fs2_nchr_nth(&s, 'i', k, s.len), fs2_chr_nth(&s, 'i', k));
+    }
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_lim_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+
+    CHECK_EQ("lim=100",      fs2_nchr_nth(&s, 'a', 3, 100), 5);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nchr_nth(&s, 'a', 3, SIZE_MAX), 5);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_k0_invalid) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("k=0 lim=6", fs2_nchr_nth(&s, 'a', 0, 6), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+    CHECK_EQ("'z' k=1 lim=6", fs2_nchr_nth(&s, 'z', 1, 6), -1);
+    CHECK_EQ("'a' k=4 lim=6", fs2_nchr_nth(&s, 'a', 4, 6), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data", fs2_nchr_nth(&s, 'a', 1, 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("banana");
+    CHECK_EQ("'a' k=2 lim=6", fs2_nchr_nth(&s, 'a', 2, 6), 3);
+    CHECK_EQ("'a' k=2 lim=3", fs2_nchr_nth(&s, 'a', 2, 3), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_nth_null_aborts, .signal = SIGABRT) {
+    fs2_nchr_nth(NULL, 'a', 1, 5);
+}
+
+/* =========================================================================
+ * ci-варианты (chr_ci_nth / nchr_ci_nth) — минимально
+ * ========================================================================= */
+
+Test(fs2_api, chr_ci_nth_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");   /* 'a'/'A' на 1,3,5 */
+
+    CHECK_EQ("k=1", fs2_chr_ci_nth(&s, 'a', 1), 1);
+    CHECK_EQ("k=2", fs2_chr_ci_nth(&s, 'a', 2), 3);
+    CHECK_EQ("k=3", fs2_chr_ci_nth(&s, 'a', 3), 5);
+    CHECK_EQ("k=4", fs2_chr_ci_nth(&s, 'a', 4), -1);
+    CHECK_EQ("'A' k=1", fs2_chr_ci_nth(&s, 'A', 1), 1);
+    CHECK_EQ("'A' k=3", fs2_chr_ci_nth(&s, 'A', 3), 5);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_nth_k0_and_not_found) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("k=0", fs2_chr_ci_nth(&s, 'l', 0), -1);
+    CHECK_EQ("'z' k=1", fs2_chr_ci_nth(&s, 'z', 1), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, chr_ci_nth_null_aborts, .signal = SIGABRT) {
+    fs2_chr_ci_nth(NULL, 'a', 1);
+}
+
+Test(fs2_api, nchr_ci_nth_with_window) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("BaNaNa");   /* 'a'/'A' на 1,3,5 */
+
+    CHECK_EQ("k=2 lim=6 → 3",  fs2_nchr_ci_nth(&s, 'a', 2, 6), 3);
+    CHECK_EQ("k=2 lim=4 → 3",  fs2_nchr_ci_nth(&s, 'a', 2, 4), 3);
+    CHECK_EQ("k=3 lim=4 → -1", fs2_nchr_ci_nth(&s, 'a', 3, 4), -1);
+    CHECK_EQ("k=1 lim=2 → 1",  fs2_nchr_ci_nth(&s, 'a', 1, 2), 1);
+    CHECK_EQ("k=2 lim=2 → -1", fs2_nchr_ci_nth(&s, 'a', 2, 2), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_nth_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("k=1 lim=0", fs2_nchr_ci_nth(&s, 'l', 1, 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_nth_null_aborts, .signal = SIGABRT) {
+    fs2_nchr_ci_nth(NULL, 'a', 1, 5);
+}
+
+/* =========================================================================
+ * Согласованность: nchr_nth(..., lim=len) == chr_nth
+ * ========================================================================= */
+
+Test(fs2_api, nchr_nth_ci_lim_eq_len_matches_chr_ci_nth) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("MiSsIsSiPpI");
+
+    for (size_t k = 1; k <= 6; k++) {
+        CHECK_EQ("'s'", fs2_nchr_ci_nth(&s, 's', k, s.len), fs2_chr_ci_nth(&s, 's', k));
+        CHECK_EQ("'i'", fs2_nchr_ci_nth(&s, 'i', k, s.len), fs2_chr_ci_nth(&s, 'i', k));
+    }
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
