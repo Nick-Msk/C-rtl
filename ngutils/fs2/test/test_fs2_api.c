@@ -6749,3 +6749,232 @@ Test(fs2_api, chr_ci_static_src) {
 Test(fs2_api, chr_ci_null_aborts, .signal = SIGABRT) {
     fs2_chr_ci(NULL, 'a');
 }
+
+/* =========================================================================
+ * fs2_nchr — nominal + граница лимита
+ * ========================================================================= */
+
+Test(fs2_api, nchr_found_within_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");   /* 'l' на 2, 'l' на 3 */
+
+    CHECK_EQ("l in [0,5)",  fs2_nchr(&s, 'l', 5), 2);
+    CHECK_EQ("l in [0,4)",  fs2_nchr(&s, 'l', 4), 2);
+    CHECK_EQ("l in [0,3)",  fs2_nchr(&s, 'l', 3), 2);   /* 2 < 3 — попал */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Ключевой: найдено бы за пределами lim, но lim отсекает */
+Test(fs2_api, nchr_hidden_by_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("'l' beyond lim=2",  fs2_nchr(&s, 'l', 2), -1);   /* 'l' на 2, не в [0,2) */
+    CHECK_EQ("'o' beyond lim=4",  fs2_nchr(&s, 'o', 4), -1);   /* 'o' на 4, не в [0,4) */
+    CHECK_EQ("'h' beyond lim=0",  fs2_nchr(&s, 'h', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("nothing examined", fs2_nchr(&s, 'h', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* lim > len → clamp до len, ведёт себя как fs2_chr */
+Test(fs2_api, nchr_lim_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("lim=100",   fs2_nchr(&s, 'o', 100), 4);
+    CHECK_EQ("lim=SIZE_MAX", fs2_nchr(&s, 'o', SIZE_MAX), 4);
+    CHECK_EQ("== fs2_chr", fs2_nchr(&s, 'l', 100), fs2_chr(&s, 'l'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_lim_eq_len_matches_chr) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("h", fs2_nchr(&s, 'h', s.len), fs2_chr(&s, 'h'));
+    CHECK_EQ("l", fs2_nchr(&s, 'l', s.len), fs2_chr(&s, 'l'));
+    CHECK_EQ("o", fs2_nchr(&s, 'o', s.len), fs2_chr(&s, 'o'));
+    CHECK_EQ("z", fs2_nchr(&s, 'z', s.len), fs2_chr(&s, 'z'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_not_found_any_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("z lim=100", fs2_nchr(&s, 'z', 100), -1);
+    CHECK_EQ("H lim=100", fs2_nchr(&s, 'H', 100), -1);   /* case-sensitive */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nchr — пустые строки / STATIC / guards
+ * ========================================================================= */
+
+Test(fs2_api, nchr_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data", fs2_nchr(&s, 'a', 100), -1);
+    CHECK_EQ("NUL",     fs2_nchr(&s, '\0', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_canon_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    CHECK_EQ("no data", fs2_nchr(&s, 'a', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");
+    CHECK_EQ("l in [0,4)", fs2_nchr(&s, 'l', 4), 2);
+    CHECK_EQ("l in [0,2)", fs2_nchr(&s, 'l', 2), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_null_aborts, .signal = SIGABRT) {
+    fs2_nchr(NULL, 'a', 5);
+}
+
+/* =========================================================================
+ * fs2_nchr_ci — nominal (case-insensitive + лимит)
+ * ========================================================================= */
+
+Test(fs2_api, nchr_ci_lower_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+
+    CHECK_EQ("h in [0,5)", fs2_nchr_ci(&s, 'h', 5), 0);
+    CHECK_EQ("l in [0,5)", fs2_nchr_ci(&s, 'l', 5), 2);
+    CHECK_EQ("o in [0,5)", fs2_nchr_ci(&s, 'o', 5), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_upper_query) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    CHECK_EQ("H in [0,5)", fs2_nchr_ci(&s, 'H', 5), 0);
+    CHECK_EQ("O in [0,5)", fs2_nchr_ci(&s, 'O', 5), 4);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_hidden_by_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo");
+
+    CHECK_EQ("'l' beyond lim=2",  fs2_nchr_ci(&s, 'l', 2), -1);   /* 'L' на 2 */
+    CHECK_EQ("'l' within lim=3",  fs2_nchr_ci(&s, 'l', 3), 2);
+    CHECK_EQ("'o' beyond lim=4",  fs2_nchr_ci(&s, 'o', 4), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_lim_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("nothing examined", fs2_nchr_ci(&s, 'h', 0), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_lim_beyond_len_clamped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+
+    CHECK_EQ("lim=100",       fs2_nchr_ci(&s, 'o', 100), 4);
+    CHECK_EQ("lim=SIZE_MAX",  fs2_nchr_ci(&s, 'o', SIZE_MAX), 4);
+    CHECK_EQ("== fs2_chr_ci", fs2_nchr_ci(&s, 'l', 100), fs2_chr_ci(&s, 'l'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_lim_eq_len_matches_chr_ci) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo");
+
+    CHECK_EQ("h", fs2_nchr_ci(&s, 'h', s.len), fs2_chr_ci(&s, 'h'));
+    CHECK_EQ("l", fs2_nchr_ci(&s, 'l', s.len), fs2_chr_ci(&s, 'l'));
+    CHECK_EQ("o", fs2_nchr_ci(&s, 'o', s.len), fs2_chr_ci(&s, 'o'));
+    CHECK_EQ("z", fs2_nchr_ci(&s, 'z', s.len), fs2_chr_ci(&s, 'z'));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_not_found_any_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    CHECK_EQ("z", fs2_nchr_ci(&s, 'z', 100), -1);
+    CHECK_EQ("0", fs2_nchr_ci(&s, '0', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* digits/punct — ci == cs, в т.ч. с лимитом */
+Test(fs2_api, nchr_ci_nonletters_same_as_cs_with_lim) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a1b2!c");
+
+    CHECK_EQ("'1'", fs2_nchr_ci(&s, '1', 3), fs2_nchr(&s, '1', 3));
+    CHECK_EQ("'2'", fs2_nchr_ci(&s, '2', 5), fs2_nchr(&s, '2', 5));
+    CHECK_EQ("'!'", fs2_nchr_ci(&s, '!', 6), fs2_nchr(&s, '!', 6));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nchr_ci — пустые / STATIC / guards
+ * ========================================================================= */
+
+Test(fs2_api, nchr_ci_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    CHECK_EQ("no data", fs2_nchr_ci(&s, 'a', 100), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("HELLO");
+    CHECK_EQ("l in [0,4)", fs2_nchr_ci(&s, 'l', 4), 2);
+    CHECK_EQ("l in [0,2)", fs2_nchr_ci(&s, 'l', 2), -1);
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api, nchr_ci_null_aborts, .signal = SIGABRT) {
+    fs2_nchr_ci(NULL, 'a', 5);
+}
