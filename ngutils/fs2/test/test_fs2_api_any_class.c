@@ -265,3 +265,392 @@ Test(fs2_api, macro_not_in_semantics) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * FS2_IN — case-sensitive
+ * ========================================================================= */
+
+Test(fs2_api, macro_in_hit) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("apple");
+    CHECK_TRUE("apple in {apple,banana,cherry}",
+               FS2_IN(&s, "apple", "banana", "cherry"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_hit_not_first) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("cherry");
+    CHECK_TRUE("cherry — последний в списке",
+               FS2_IN(&s, "apple", "banana", "cherry"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mango");
+    CHECK_FALSE("mango not in {apple,banana,cherry}",
+                FS2_IN(&s, "apple", "banana", "cherry"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* case-sensitive: "Apple" ≠ "apple" */
+Test(fs2_api, macro_in_case_mismatch) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Apple");
+    CHECK_FALSE("'Apple' ∉ {apple} (cs)",
+                FS2_IN(&s, "apple"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_single_element) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("only");
+    fs2 b = fs2_fromstr("other");
+
+    CHECK_TRUE ("'only'  ∈ {only}",  FS2_IN(&a, "only"));
+    CHECK_FALSE("'other' ∉ {only}",  FS2_IN(&b, "only"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_empty_string_member) {
+    __fs2_checkreset();
+    fs2 empty = FS2EMPTY;
+    fs2 canon = FS2();
+    fs2 non   = fs2_fromstr("x");
+
+    CHECK_TRUE ("FS2EMPTY matches \"\"",  FS2_IN(&empty, "", "a"));
+    CHECK_TRUE ("FS2()     matches \"\"",  FS2_IN(&canon, "", "a"));
+    CHECK_FALSE("'x' ∉ {\"\",\"a\"}",       FS2_IN(&non,   "", "a"));
+
+    fs2_free(&canon);
+    fs2_free(&non);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_null_s_aborts, .signal = SIGABRT) {
+    FS2_IN(NULL, "apple", "banana");
+}
+
+/* =========================================================================
+ * FS2_IN_CI — case-insensitive
+ * ========================================================================= */
+
+Test(fs2_api, macro_in_ci_hit_exact) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("apple");
+    CHECK_TRUE("apple ∈ {apple} (ci)",
+               FS2_IN_CI(&s, "apple", "banana"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* CI: любой регистр должен матчиться */
+Test(fs2_api, macro_in_ci_case_insensitive_hit) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("APPLE");
+    fs2 b = fs2_fromstr("Apple");
+    fs2 c = fs2_fromstr("aPpLe");
+
+    CHECK_TRUE("APPLE ∈ {apple}", FS2_IN_CI(&a, "apple"));
+    CHECK_TRUE("Apple ∈ {apple}", FS2_IN_CI(&b, "apple"));
+    CHECK_TRUE("aPpLe ∈ {apple}", FS2_IN_CI(&c, "apple"));
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+    CHECK_FS2VALID(3, &c);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_ci_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("MANGO");
+    CHECK_FALSE("MANGO ∉ {apple,banana,cherry}",
+                FS2_IN_CI(&s, "apple", "banana", "cherry"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_ci_single_element) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("ONLY");
+    fs2 b = fs2_fromstr("OTHER");
+
+    CHECK_TRUE ("'ONLY'  ∈ {only} (ci)",  FS2_IN_CI(&a, "only"));
+    CHECK_FALSE("'OTHER' ∉ {only} (ci)",  FS2_IN_CI(&b, "only"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_ci_null_s_aborts, .signal = SIGABRT) {
+    FS2_IN_CI(NULL, "apple");
+}
+
+/* =========================================================================
+ * FS2_NOT_IN — case-sensitive (логическое отрицание FS2_IN)
+ * ========================================================================= */
+
+Test(fs2_api, macro_not_in_hit) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("mango");
+    CHECK_TRUE("mango ∉ {apple,banana,cherry}",
+               FS2_NOT_IN(&s, "apple", "banana", "cherry"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("apple");
+    CHECK_FALSE("apple ∉ {apple,banana} → false",
+                FS2_NOT_IN(&s, "apple", "banana"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* CS: "Apple" ∉ {apple}, поэтому NOT_IN → true */
+Test(fs2_api, macro_not_in_case_mismatch) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("Apple");
+    CHECK_TRUE("'Apple' ∉ {apple} (cs) → NOT_IN true",
+               FS2_NOT_IN(&s, "apple"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_single_element) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("only");
+    fs2 b = fs2_fromstr("other");
+
+    CHECK_FALSE("'only'  ∉ {only} → false", FS2_NOT_IN(&a, "only"));
+    CHECK_TRUE ("'other' ∉ {only} → true",  FS2_NOT_IN(&b, "only"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_null_s_aborts, .signal = SIGABRT) {
+    FS2_NOT_IN(NULL, "apple");
+}
+
+/* =========================================================================
+ * FS2_NOT_IN_CI — case-insensitive
+ * ========================================================================= */
+
+Test(fs2_api, macro_not_in_ci_hit) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("MANGO");
+    CHECK_TRUE("MANGO ∉ {apple,banana} (ci)",
+               FS2_NOT_IN_CI(&s, "apple", "banana"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_ci_case_insensitive_miss) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("APPLE");
+    fs2 b = fs2_fromstr("Apple");
+    fs2 c = fs2_fromstr("aPpLe");
+
+    CHECK_FALSE("APPLE ∈ {apple} → NOT_IN_CI false", FS2_NOT_IN_CI(&a, "apple"));
+    CHECK_FALSE("Apple ∈ {apple} → NOT_IN_CI false", FS2_NOT_IN_CI(&b, "apple"));
+    CHECK_FALSE("aPpLe ∈ {apple} → NOT_IN_CI false", FS2_NOT_IN_CI(&c, "apple"));
+
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+    CHECK_FS2VALID(3, &c);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_ci_single_element) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("ONLY");
+    fs2 b = fs2_fromstr("OTHER");
+
+    CHECK_FALSE("'ONLY' ∈ {only} → false", FS2_NOT_IN_CI(&a, "only"));
+    CHECK_TRUE ("'OTHER' ∉ {only} → true", FS2_NOT_IN_CI(&b, "only"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_ci_null_s_aborts, .signal = SIGABRT) {
+    FS2_NOT_IN_CI(NULL, "apple");
+}
+
+/* =========================================================================
+ * Парная семантика: IN ⇔ !NOT_IN (на одинаковом cmp)
+ * ========================================================================= */
+
+Test(fs2_api, macro_in_not_in_pair_cs) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("apple");
+    fs2 b = fs2_fromstr("Apple");   /* case mismatch → ∉ {apple} (cs) */
+    fs2 c = fs2_fromstr("mango");
+
+    /* Для каждого входа ровно один из IN/NOT_IN даёт true */
+    CHECK_TRUE ("apple  IN",          FS2_IN(&a, "apple", "banana"));
+    CHECK_FALSE("apple  NOT_IN",      FS2_NOT_IN(&a, "apple", "banana"));
+
+    CHECK_FALSE("Apple  IN",          FS2_IN(&b, "apple", "banana"));
+    CHECK_TRUE ("Apple  NOT_IN",      FS2_NOT_IN(&b, "apple", "banana"));
+
+    CHECK_FALSE("mango  IN",          FS2_IN(&c, "apple", "banana"));
+    CHECK_TRUE ("mango  NOT_IN",      FS2_NOT_IN(&c, "apple", "banana"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_in_not_in_pair_ci) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("APPLE");   /* ci → ∈ {apple} */
+    fs2 b = fs2_fromstr("Apple");
+    fs2 c = fs2_fromstr("MANGO");
+
+    CHECK_TRUE ("APPLE  IN_CI",       FS2_IN_CI(&a, "apple", "banana"));
+    CHECK_FALSE("APPLE  NOT_IN_CI",   FS2_NOT_IN_CI(&a, "apple", "banana"));
+
+    CHECK_TRUE ("Apple  IN_CI",       FS2_IN_CI(&b, "apple", "banana"));
+    CHECK_FALSE("Apple  NOT_IN_CI",   FS2_NOT_IN_CI(&b, "apple", "banana"));
+
+    CHECK_FALSE("MANGO  IN_CI",       FS2_IN_CI(&c, "apple", "banana"));
+    CHECK_TRUE ("MANGO  NOT_IN_CI",   FS2_NOT_IN_CI(&c, "apple", "banana"));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Согласованность с функциональным API
+ * ========================================================================= */
+
+Test(fs2_api, macro_in_matches_function) {
+    __fs2_checkreset();
+    static const char *fruits[] = { "apple", "banana", "cherry", NULL };
+
+    fs2 hit  = fs2_fromstr("banana");
+    fs2 miss = fs2_fromstr("mango");
+
+    CHECK_EQ("banana IN == fs2_in",
+             FS2_IN(&hit,  "apple", "banana", "cherry"),
+             fs2_in(&hit,  fruits));
+    CHECK_EQ("mango IN == fs2_in",
+             FS2_IN(&miss, "apple", "banana", "cherry"),
+             fs2_in(&miss, fruits));
+
+    CHECK_EQ("banana IN_CI == fs2_in_ci",
+             FS2_IN_CI(&hit,  "apple", "banana", "cherry"),
+             fs2_in_ci(&hit,  fruits));
+    CHECK_EQ("mango IN_CI == fs2_in_ci",
+             FS2_IN_CI(&miss, "apple", "banana", "cherry"),
+             fs2_in_ci(&miss, fruits));
+
+    fs2_free(&hit);
+    fs2_free(&miss);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_matches_function) {
+    __fs2_checkreset();
+    static const char *fruits[] = { "apple", "banana", NULL };
+
+    fs2 hit  = fs2_fromstr("apple");
+    fs2 miss = fs2_fromstr("mango");
+
+    CHECK_EQ("apple NOT_IN == fs2_not_in",
+             FS2_NOT_IN(&hit,  "apple", "banana"),
+             fs2_not_in(&hit,  fruits));
+    CHECK_EQ("mango NOT_IN == fs2_not_in",
+             FS2_NOT_IN(&miss, "apple", "banana"),
+             fs2_not_in(&miss, fruits));
+
+    CHECK_EQ("apple NOT_IN_CI == fs2_not_in_ci",
+             FS2_NOT_IN_CI(&hit,  "apple", "banana"),
+             fs2_not_in_ci(&hit,  fruits));
+    CHECK_EQ("mango NOT_IN_CI == fs2_not_in_ci",
+             FS2_NOT_IN_CI(&miss, "apple", "banana"),
+             fs2_not_in_ci(&miss, fruits));
+
+    fs2_free(&hit);
+    fs2_free(&miss);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Многоэлементный список: длинный, с дубликатами
+ * ========================================================================= */
+
+Test(fs2_api, macro_in_long_list) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hotpink");
+
+    CHECK_TRUE("hotpink in long list",
+               FS2_IN(&s,
+                      "red", "orange", "yellow", "green", "cyan",
+                      "blue", "violet", "black", "white", "gray",
+                      "pink", "hotpink", "magenta"));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, macro_not_in_long_list_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("silver");
+
+    CHECK_TRUE("silver ∉ long list",
+               FS2_NOT_IN(&s,
+                          "red", "orange", "yellow", "green", "cyan",
+                          "blue", "violet", "black", "white", "gray"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* дубликаты в списке — IN всё равно true (первый матч), NOT_IN — false */
+Test(fs2_api, macro_in_with_duplicates) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("b");
+
+    CHECK_TRUE ("'b' IN {a,b,b,c}",     FS2_IN(&s, "a", "b", "b", "c"));
+    CHECK_FALSE("'b' NOT_IN {a,b,b,c}", FS2_NOT_IN(&s, "a", "b", "b", "c"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
