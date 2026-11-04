@@ -2435,3 +2435,328 @@ Test(fs2_api_modificators, count_str_matches_fs2_version) {
     fs2_free(&pat);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_repeat_new — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, repeat_new_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 r = fs2_repeat_new(&s, 4);
+
+    CHECK_STR_EQ("abababab", r.v, "abababab");
+    CHECK_EQ  ("len",        r.len, 8);
+    CHECK_TRUE("ALLOC",           fs2_is_alloc(&r));
+    CHECK_FALSE("not bodyalloc",  fs2_is_bodyalloc(&r));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &s);        /* src untouched */
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, repeat_new_multi_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 r = fs2_repeat_new(&s, 3);
+    CHECK_STR_EQ("abcabcabc", r.v, "abcabcabc");
+    CHECK_EQ  ("len",         r.len, 9);
+    fs2_free(&r);
+
+    /* Single char x5 */
+    fs2 c = fs2_fromstr("x");
+    fs2 r2 = fs2_repeat_new(&c, 5);
+    CHECK_STR_EQ("xxxxx", r2.v, "xxxxx");
+    fs2_free(&c);
+    fs2_free(&r2);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* n == 1 -> equivalent to a clone of s */
+Test(fs2_api_modificators, repeat_new_n_one) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2 r = fs2_repeat_new(&s, 1);
+
+    CHECK_STR_EQ("hello", r.v, "hello");
+    CHECK_EQ  ("len",     r.len, 5);
+    CHECK_TRUE("independent", r.v != s.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* Source is STATIC / LOCAL — result is always ALLOC (by value) */
+Test(fs2_api_modificators, repeat_new_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("ab");
+
+    fs2 r = fs2_repeat_new(&s, 3);
+
+    CHECK_STR_EQ("ababab", r.v, "ababab");
+    CHECK_TRUE("ALLOC",     fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != s.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, repeat_new_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 8);
+    fs2_memcpy_str(&buf, 0, "ab", 2);
+    fs2_setlen(&buf, 2);
+
+    fs2 r = fs2_repeat_new(&buf, 4);
+
+    CHECK_STR_EQ("abababab", r.v, "abababab");
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(&r));
+    CHECK_TRUE("not LOCAL",  !fs2_is_local(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_repeat_new — early-return cases (empty src / n == 0)
+ *
+ *   Both return FS2() (canonical empty, ALLOC v=NULL),
+ *   NOT a clone of src, NOT FS2EMPTY.
+ * ========================================================================= */
+
+Test(fs2_api_modificators, repeat_new_n_zero_returns_canon) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 r = fs2_repeat_new(&s, 0);
+
+    CHECK_TRUE ("canon",  fs2_is_canon(&r));
+    CHECK_TRUE ("empty",  fs2_is_empty(&r));
+    CHECK_EQ   ("len",    r.len, 0);
+    CHECK_PTR_EQ("v",     r.v, NULL);
+    CHECK_EQ   ("sz",     r.sz, 0);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, repeat_new_fs2empty_src_returns_canon) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2 r = fs2_repeat_new(&s, 100);
+
+    CHECK_TRUE("canon", fs2_is_canon(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, repeat_new_canon_src_returns_canon) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2 r = fs2_repeat_new(&s, 5);
+
+    CHECK_TRUE("canon", fs2_is_canon(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, repeat_new_static_empty_literal_returns_canon) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("");
+
+    fs2 r = fs2_repeat_new(&s, 5);
+
+    CHECK_TRUE("canon", fs2_is_canon(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_repeat_new — overflow guard (userraise -> SIGINT without TRY)
+ * ========================================================================= */
+
+/* s->len == 1, n == SIZE_MAX: n > (SIZE_MAX-1)/1 -> overflow */
+Test(fs2_api_modificators, repeat_new_overflow_1_byte_sigint, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("a");
+    (void) fs2_repeat_new(&s, SIZE_MAX);
+    fs2_free(&s);
+}
+
+/* s->len == 2, n == SIZE_MAX: n > (SIZE_MAX-1)/2 -> overflow */
+Test(fs2_api_modificators, repeat_new_overflow_2_bytes_sigint, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("ab");
+    (void) fs2_repeat_new(&s, SIZE_MAX);
+    fs2_free(&s);
+}
+
+/* Inside TRY(): overflow longjmps to else, records ERR_OUT_OF_RANGE */
+Test(fs2_api_modificators, repeat_new_overflow_caught_by_try) {
+    __fs2_checkreset();
+    err_clean(true);
+    err_resetenv();
+
+    fs2 s = fs2_fromstr("abc");
+    bool caught = false;
+
+    TRY() {
+        (void) fs2_repeat_new(&s, SIZE_MAX);
+        cr_assert_fail("expected userraise; got normal return");
+    } else {
+        caught = true;
+    }
+
+    cr_assert(caught, "TRY() else-branch should have been reached");
+    cr_assert_eq(err_count(), 1, "one error record expected");
+
+    ErrorInfo info = {0};
+    cr_assert(err_last(&info));
+    cr_assert_eq(info.type, ERR_USER);
+    cr_assert_eq(info.code, ERR_OUT_OF_RANGE);
+
+    err_clean(true);
+    err_resetenv();
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Boundary: n = (SIZE_MAX - 1) / s->len must NOT overflow the check.
+ * We don't actually allocate that much — the check passes, then
+ * fs2_reserve tries to allocate and userraises (OOM). Either way, not UB.
+ * Skip this test (would try to allocate ~SIZE_MAX bytes). */
+/* (intentionally not tested) */
+
+/* =========================================================================
+ * fs2_repeat_new — guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, repeat_new_null_s_aborts, .signal = SIGABRT) {
+    fs2_repeat_new(NULL, 5);
+}
+
+/* =========================================================================
+ * src immutability / independence
+ * ========================================================================= */
+
+Test(fs2_api_modificators, repeat_new_src_untouched_and_independent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xy");
+    void *orig = s.v;
+
+    fs2 r = fs2_repeat_new(&s, 3);
+
+    CHECK_PTR_EQ("src v unchanged", s.v, orig);
+    CHECK_STR_EQ("src content",     s.v, "xy");
+    CHECK_STR_EQ("result",          r.v, "xyxyxy");
+    CHECK_TRUE ("independent",      r.v != s.v);
+
+    /* Mutating result must not affect src */
+    r.v[0] = 'Z';
+    CHECK_STR_EQ("result mutated", r.v, "Zyxyxy");
+    CHECK_STR_EQ("src original",   s.v, "xy");
+
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_repeat — BODYALLOC wrapper
+ * ========================================================================= */
+
+Test(fs2_api_modificators, heap_repeat_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+
+    fs2 *r = fs2_heap_repeat(&s, 4);
+
+    cr_assert_not_null(r);
+    CHECK_STR_EQ("abababab", r->v, "abababab");
+    CHECK_EQ  ("len",        r->len, 8);
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(r));
+    CHECK_TRUE("BODYALLOC",  fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+    CHECK_FS2VALID(2, &s);
+
+    fs2_free(&s);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, heap_repeat_empty_result) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2 *r = fs2_heap_repeat(&s, 0);
+
+    cr_assert_not_null(r);
+    CHECK_TRUE ("BODYALLOC",     fs2_is_bodyalloc(r));
+    CHECK_TRUE ("empty",         fs2_is_empty(r));
+    CHECK_TRUE ("eq_empty shape", fs2_eq_empty(r));   /* v!="", STATIC, sz=1 */
+    CHECK_EQ  ("len",       r->len, 0);
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(&s);
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, heap_repeat_null_s_aborts, .signal = SIGABRT) {
+    fs2_heap_repeat(NULL, 5);
+}
+
+/* heap_repeat overflow: inner userraise -> SIGINT (no TRY) */
+Test(fs2_api_modificators, heap_repeat_overflow_sigint, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("abc");
+    (void) fs2_heap_repeat(&s, SIZE_MAX);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Consistency: heap_repeat ≡ heaptostack(repeat_new)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, heap_repeat_matches_stack_version) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xy");
+
+    fs2  stack = fs2_repeat_new(&s, 3);
+    fs2 *heap  = fs2_heap_repeat(&s, 3);
+
+    cr_assert_not_null(heap);
+    CHECK_STR_EQ("same content", stack.v,   heap->v);
+    CHECK_EQ  ("same len",       stack.len, heap->len);
+    CHECK_FALSE("stack not body", fs2_is_bodyalloc(&stack));
+    CHECK_TRUE ("heap body",      fs2_is_bodyalloc(heap));
+    CHECK_FS2VALID(1, &stack);
+    CHECK_FS2VALID(2, heap);
+
+    fs2_free(&s);
+    fs2_free(&stack);
+    fs2_free(heap);
+    assert_balanced();
+}
