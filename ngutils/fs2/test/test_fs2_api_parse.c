@@ -3666,3 +3666,93 @@ Test(fs2_api, parse_static_src) {
     CHECK_FS2VALID(1, &s);
     assert_balanced();
 }
+
+#include <criterion/criterion.h>
+
+#include "test_fs2.h"
+#include "fs2_api.h"
+#include "error.h"
+#include <locale.h>
+
+TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * userraise behaviour for fs2_parse_*
+ *
+ * Flow: fs2_parse_* -> fs2_tryparse_* (returns false on failure)
+ *                    -> userraise(ERR_UNABLE_PARSE_DATA, ...)
+ *                    -> err_raise:
+ *                         - no active TRY() -> raise(SIGINT)
+ *                         - active TRY()    -> siglongjmp to innermost else
+ * ========================================================================= */
+
+/* No active TRY(): userraise hits the last-resort SIGINT so a debugger
+ * (or core dump) can inspect the process. */
+Test(fs2_api, parse_int_outside_try_raises_sigint, .signal = SIGINT) {
+    fs2 s = fs2_fromstr("not a number");
+    (void) fs2_parse_int(&s);   /* must raise -> SIGINT terminates the process */
+    /* unreachable */
+}
+
+/* Inside TRY(): userraise longjmps to the else branch; the error stack
+ * gets exactly one ERR_USER / ERR_UNABLE_PARSE_DATA record. */
+Test(fs2_api, parse_int_inside_try_caught_by_else) {
+    __fs2_checkreset();
+    err_clean(true);
+    err_resetenv();
+
+    fs2 s = fs2_fromstr("not a number");
+    bool caught = false;
+
+    TRY() {
+        (void) fs2_parse_int(&s);
+        cr_assert_fail("expected userraise; got normal return");
+    } else {
+        caught = true;
+    }
+
+    cr_assert(caught, "TRY() else-branch should have been reached");
+    cr_assert_eq(err_count(), 1, "one error record expected");
+
+    ErrorInfo info = {0};
+    cr_assert(err_last(&info), "err_last should succeed");
+    cr_assert_eq(info.type, ERR_USER);
+    cr_assert_eq(info.code, ERR_UNABLE_PARSE_DATA);
+
+    err_clean(true);
+    err_resetenv();
+    fs2_free(&s);
+    assert_balanced();
+}
+
+
+/* Inside TRY(): empty FS2EMPTY -> pos_parse_llong hits the
+ * "Null input or pos out of length" guard (pos=0 >= len=0),
+ * which returns false, then userraise longjmps to the else branch. */
+Test(fs2_api, parse_llong_empty_inside_try_caught_by_else) {
+    __fs2_checkreset();
+    err_clean(true);
+    err_resetenv();
+
+    fs2 s = FS2EMPTY;
+    bool caught = false;
+
+    TRY() {
+        (void) fs2_parse_llong(&s);
+        cr_assert_fail("expected userraise on empty string; got normal return");
+    } else {
+        caught = true;
+    }
+
+    cr_assert(caught, "TRY() else-branch should have been reached");
+    cr_assert_eq(err_count(), 1, "one error record expected");
+
+    ErrorInfo info = {0};
+    cr_assert(err_last(&info), "err_last should succeed");
+    cr_assert_eq(info.type, ERR_USER);
+    cr_assert_eq(info.code, ERR_UNABLE_PARSE_DATA);
+
+    err_clean(true);
+    err_resetenv();
+    assert_balanced();
+}
