@@ -1288,3 +1288,105 @@ Test(fs2_api_modif, trim_null_pattern_aborts, .signal = SIGABRT) {
     fs2_trim(&s, NULL);                       /* fs2-version: strict */
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * fs2_trim / fs2_ltrim / fs2_rtrim — flag dispatch
+ *   Core logic is covered by fs2_trim_common tests; here we only verify
+ *   that each wrapper passes the right (left, right) pair.
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_wrapper_both_flags) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 *r = fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("hi",      s.v, "hi");   /* both sides trimmed */
+    CHECK_PTR_EQ("chain",   r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, ltrim_wrapper_left_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 *r = fs2_ltrim(&s, &pat);
+
+    CHECK_STR_EQ("hi  ",   s.v, "hi  ");   /* right side intact */
+    CHECK_PTR_EQ("chain",  r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, rtrim_wrapper_right_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 *r = fs2_rtrim(&s, &pat);
+
+    CHECK_STR_EQ("  hi",   s.v, "  hi");   /* left side intact */
+    CHECK_PTR_EQ("chain",  r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Equivalence: each wrapper ≡ fs2_trim_common with explicit flags
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_wrappers_match_common) {
+    __fs2_checkreset();
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 a = fs2_fromstr("  hi  ");
+    fs2 b = fs2_fromstr("  hi  ");
+    fs2_trim(&a, &pat);
+    fs2_trim_common(&b, &pat, true, true);
+    CHECK_STR_EQ("trim == common(t,t)", a.v, b.v);
+    fs2_free(&a);
+    fs2_free(&b);
+
+    fs2 c = fs2_fromstr("  hi  ");
+    fs2 d = fs2_fromstr("  hi  ");
+    fs2_ltrim(&c, &pat);
+    fs2_trim_common(&d, &pat, true, false);
+    CHECK_STR_EQ("ltrim == common(t,f)", c.v, d.v);
+    fs2_free(&c);
+    fs2_free(&d);
+
+    fs2 e = fs2_fromstr("  hi  ");
+    fs2 f = fs2_fromstr("  hi  ");
+    fs2_rtrim(&e, &pat);
+    fs2_trim_common(&f, &pat, false, true);
+    CHECK_STR_EQ("rtrim == common(f,t)", e.v, f.v);
+    fs2_free(&e);
+    fs2_free(&f);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards inherited from fs2_trim_common
+ * ========================================================================= */
+
+Test(fs2_api_modif, ltrim_null_aborts, .signal = SIGABRT) {
+    fs2_ltrim(NULL, NULL);
+}
+
+Test(fs2_api_modif, rtrim_null_aborts, .signal = SIGABRT) {
+    fs2_rtrim(NULL, NULL);
+}
