@@ -2028,19 +2028,8 @@ fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
 }
 
 // Repeat  Stack from fs2
-static inline fs2
-fs2_repeat_new(const fs2 *restrict s, size_t n) {
-    invraise(s != NULL, "Null pointer");
-    if (fs2_is_empty(s) || n == 0)  
-        return FS2();
-    
-    /* Overflow: n * s->len (and +1 for NUL) */
-    if (n > (SIZE_MAX - 1) / s->len) 
-        userraise(-1, ERR_OUT_OF_RANGE, 
-                 "fs2_repeat_new: n * len overflows size_t");
-    
-    return fs2_rpad_new(&FS2EMPTY, n * s->len, s);
-}
+extern fs2
+fs2_repeat_new(const fs2 *restrict s, size_t n);
 
 // in-place
 extern fs2 *

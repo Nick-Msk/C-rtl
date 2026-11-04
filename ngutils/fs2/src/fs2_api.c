@@ -1232,13 +1232,35 @@ fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
     return s;
 }
 
+fs2
+fs2_repeat_new(const fs2 *restrict s, size_t n) {
+    invfatal(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
+        
+    if (fs2_is_empty(s) || n == 0)  
+        return FS2();
+    
+    /* Overflow: n * s->len (and +1 for NUL) */
+    if (n > (SIZE_MAX - 1) / s->len) 
+        userraise(-1, ERR_OUT_OF_RANGE, 
+                 "fs2_repeat_new: n * len overflows size_t");
+    
+    return fs2_rpad_new(&FS2EMPTY, n * s->len, s);
+}
+
 fs2 *
 fs2_repeat(fs2 *restrict s, size_t n) {
-    invraise(s != NULL, "Null pointer");
+    invfatal(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
     
-    if (n == 0) { fs2_setlen(s, 0); return s; }
-    if (n == 1) return s;
-    if (s->len == 0) return s;
+    if (n == 0) { 
+        fs2_setlen(s, 0); 
+        return s; 
+    }
+    if (n == 1)
+        return s;
+    if (s->len == 0)
+        return s;
     
     if (n > (SIZE_MAX - 1) / s->len)
         userraise(-1, ERR_OUT_OF_RANGE,
@@ -1259,8 +1281,11 @@ fs2_repeat(fs2 *restrict s, size_t n) {
 // Initcap
 fs2 *
 fs2_initcap(fs2 *restrict s) {
-    invraise(s != NULL, "Null pointer");
-    if (fs2_is_empty(s)) return s;
+    invfatal(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
+
+    if (fs2_is_empty(s))
+        return s;
     
     bool at_word_start = true;
     for (size_t i = 0; i < s->len; i++) {
