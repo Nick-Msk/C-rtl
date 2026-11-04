@@ -2060,10 +2060,11 @@ fs2_heap_repeat_str(const char *restrict s, size_t n) {
 }
 
 // prefix/suffix removers
-
 static inline fs2 *
 fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
-    invraise(s != NULL && prefix != NULL, "Null pointers %p %p", s, prefix);
+    invfatal(ERR_NULL_INPUT, s != NULL && prefix != NULL, 
+        "Null pointers %p %p", s, prefix);
+
     if (fs2_is_empty(prefix))         
         return s;
     if (!fs2_starts_with(s, prefix))  
@@ -2076,7 +2077,9 @@ fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
 
 static inline fs2 *
 fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
-    invraise(s != NULL && suffix != NULL, "Null pointers %p %p", s, suffix);
+    invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
+        "Null pointers %p %p", s, suffix);
+
     if (fs2_is_empty(suffix))         
         return s;
     if (!fs2_ends_with(s, suffix))    
