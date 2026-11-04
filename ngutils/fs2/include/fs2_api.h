@@ -2144,7 +2144,7 @@ fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
 }
 
 /* ==================== Heap constructor ==================== */
-
+/*
 static inline fs2 *
 fs2_heap_strip_prefix(const fs2 *restrict src, const fs2 *restrict prefix) {
     fs2 tmp = fs2_strip_prefix_new(src, prefix);
@@ -2155,7 +2155,7 @@ static inline fs2 *
 fs2_heap_strip_suffix(const fs2 *restrict src, const fs2 *restrict suffix) {
     fs2 tmp = fs2_strip_suffix_new(src, suffix);
     return fs2_stacktoheap(&tmp);
-}
+} */
 
 /**
  * @brief Capitalize first letter of each word, lowercase the rest.
