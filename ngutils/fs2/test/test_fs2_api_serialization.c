@@ -258,3 +258,310 @@ Test(fs2_api_ser, serialize_overwrites_each_time) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_from_new — one test per _Generic branch
+ * ========================================================================= */
+
+Test(fs2_api_ser, from_new_signed_family) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new((signed char)-42);
+    CHECK_STR_EQ("-42",  a.v, "-42");
+    CHECK_FS2VALID(1, &a);
+    fs2_free(&a);
+
+    fs2 b = fs2_from_new((short)-12345);
+    CHECK_STR_EQ("-12345", b.v, "-12345");
+    fs2_free(&b);
+
+    fs2 c = fs2_from_new((int)-123456789);
+    CHECK_STR_EQ("-123456789", c.v, "-123456789");
+    fs2_free(&c);
+
+    fs2 d = fs2_from_new((long)-1L);
+    CHECK_STR_EQ("-1", d.v, "-1");
+    fs2_free(&d);
+
+    fs2 e = fs2_from_new((long long)LLONG_MIN);
+    char expect[64]; snprintf(expect, sizeof expect, "%lld", LLONG_MIN);
+    CHECK_STR_EQ("LLONG_MIN", e.v, expect);
+    fs2_free(&e);
+
+    assert_balanced();
+}
+
+Test(fs2_api_ser, from_new_unsigned_family) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new((unsigned char)200);
+    CHECK_STR_EQ("200", a.v, "200");
+    fs2_free(&a);
+
+    fs2 b = fs2_from_new((unsigned short)65535);
+    CHECK_STR_EQ("65535", b.v, "65535");
+    fs2_free(&b);
+
+    fs2 c = fs2_from_new((unsigned)UINT_MAX);
+    char expect[64]; snprintf(expect, sizeof expect, "%u", UINT_MAX);
+    CHECK_STR_EQ("UINT_MAX", c.v, expect);
+    fs2_free(&c);
+
+    fs2 d = fs2_from_new((unsigned long)ULONG_MAX);
+    CHECK_EQ("ULONG_MAX len > 0", d.len > 0, true);
+    fs2_free(&d);
+
+    fs2 e = fs2_from_new((unsigned long long)ULLONG_MAX);
+    CHECK_STR_EQ("ULLONG_MAX", e.v, "18446744073709551615");
+    fs2_free(&e);
+
+    assert_balanced();
+}
+
+Test(fs2_api_ser, from_new_floats) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new((float)1.5f);
+    CHECK_STR_EQ("1.500000", a.v, "1.500000");
+    fs2_free(&a);
+
+    fs2 b = fs2_from_new((double)-0.5);
+    CHECK_STR_EQ("-0.500000", b.v, "-0.500000");
+    fs2_free(&b);
+
+    assert_balanced();
+}
+
+Test(fs2_api_ser, from_new_char_explicit_cast) {
+    __fs2_checkreset();
+    fs2 r = fs2_from_new((char)'A');         /* explicit cast: type is char -> "%c" -> "A" */
+    CHECK_STR_EQ("A", r.v, "A");
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* GOTCHA: 'A' in C has type int, not char; _Generic picks int -> "%d" -> "65". */
+Test(fs2_api_ser, from_new_char_constant_is_int_gotcha) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new('A');               /* int -> "65" */
+    CHECK_STR_EQ("65", a.v, "65");
+    fs2_free(&a);
+
+    fs2 b = fs2_from_new('z');               /* int -> "122" */
+    CHECK_STR_EQ("122", b.v, "122");
+    fs2_free(&b);
+
+    assert_balanced();
+}
+
+Test(fs2_api_ser, from_new_pointers) {
+    __fs2_checkreset();
+    int x = 42;
+
+    fs2 a = fs2_from_new((void *)&x);
+    cr_assert_gt(a.len, 0, "pointer output must be non-empty");
+    char *first = strdup(a.v);
+    cr_assert_not_null(first);
+    fs2_free(&a);
+
+    fs2 b = fs2_from_new((const void *)&x);
+    cr_assert_gt(b.len, 0, "pointer output must be non-empty");
+    /* Same address -> same serialization (assuming same format) */
+    CHECK_STR_EQ("same address, same text", b.v, first);
+    fs2_free(&b);
+
+    free(first);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_from_new — meta
+ * ========================================================================= */
+
+Test(fs2_api_ser, from_new_returns_alloc_by_value) {
+    __fs2_checkreset();
+    fs2 r = fs2_from_new(42);
+
+    CHECK_EQ  ("len",  r.len, 2);
+    CHECK_TRUE("ALLOC",           fs2_is_alloc(&r));
+    CHECK_FALSE("not BODYALLOC",  fs2_is_bodyalloc(&r));
+    CHECK_FALSE("not STATIC",     fs2_is_static(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* Each call allocates its own buffer — results are independent. */
+Test(fs2_api_ser, from_new_calls_are_independent) {
+    __fs2_checkreset();
+
+    fs2 a = fs2_from_new(1);
+    fs2 b = fs2_from_new(2);
+
+    CHECK_TRUE("independent buffers", a.v != b.v);
+    CHECK_STR_EQ("a", a.v, "1");
+    CHECK_STR_EQ("b", b.v, "2");
+
+    /* Mutating one must not affect the other */
+    a.v[0] = 'X';
+    CHECK_STR_EQ("a mutated",       a.v, "X");
+    CHECK_STR_EQ("b still original", b.v, "2");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_heap_from — same as from_new, but BODYALLOC | ALLOC
+ * ========================================================================= */
+
+Test(fs2_api_ser, heap_from_basic) {
+    __fs2_checkreset();
+    fs2 *r = fs2_heap_from(42);
+
+    cr_assert_not_null(r);
+    CHECK_STR_EQ("42", r->v, "42");
+    CHECK_EQ  ("len",  r->len, 2);
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(r));
+    CHECK_TRUE("BODYALLOC",  fs2_is_bodyalloc(r));
+    CHECK_FS2VALID(1, r);
+
+    fs2_free(r);
+    assert_balanced();
+}
+
+Test(fs2_api_ser, heap_from_negative_and_double) {
+    __fs2_checkreset();
+
+    fs2 *a = fs2_heap_from((int)-42);
+    CHECK_STR_EQ("-42", a->v, "-42");
+    fs2_free(a);
+
+    fs2 *b = fs2_heap_from((double)3.14);
+    CHECK_STR_EQ("3.140000", b->v, "3.140000");
+    fs2_free(b);
+
+    assert_balanced();
+}
+
+Test(fs2_api_ser, heap_from_calls_are_independent) {
+    __fs2_checkreset();
+
+    fs2 *a = fs2_heap_from(1);
+    fs2 *b = fs2_heap_from(2);
+
+    cr_assert(a != b);
+    CHECK_TRUE("independent buffers", a->v != b->v);
+
+    fs2_free(a);
+    fs2_free(b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_serialize_concat — appends, does not replace
+ * ========================================================================= */
+
+Test(fs2_api_ser, serialize_concat_appends) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    long n = fs2_serialize_concat(&s, 42);
+    CHECK_EQ  ("return",     n,  2L);
+    CHECK_STR_EQ("abc42",    s.v, "abc42");
+    CHECK_EQ  ("len",        s.len, 5);
+
+    fs2_serialize_concat(&s, (short)-7);
+    CHECK_STR_EQ("abc42-7",  s.v, "abc42-7");
+
+    fs2_serialize_concat(&s, (double)1.5);
+    CHECK_STR_EQ("abc42-71.500000", s.v, "abc42-71.500000");
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Appending to empty — the "initial" case */
+Test(fs2_api_ser, serialize_concat_on_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_serialize_concat(&s, 42);
+    CHECK_STR_EQ("42", s.v, "42");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FS2_SER_ERRMSG — standalone: renders exactly the format the macro picks
+ *
+ * The raise path in fs2_from_new is practically unreachable (fs2_sprintf
+ * on a fresh FS2() with a fixed tiny format cannot return <= 0). But the
+ * _Generic dispatch behind FS2_SER_ERRMSG can be verified independently
+ * by rendering it through snprintf.
+ * ========================================================================= */
+
+Test(fs2_api_ser, ser_errmsg_int) {
+    char buf[128];
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((int)42), (int)42);
+    CHECK_STR_EQ("Failed to serialize int 42", buf, "Failed to serialize int 42");
+}
+
+Test(fs2_api_ser, ser_errmsg_negative_and_minmax) {
+    char buf[128];
+
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((int)-42), (int)-42);
+    CHECK_STR_EQ("neg", buf, "Failed to serialize int -42");
+
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((long long)LLONG_MIN), (long long)LLONG_MIN);
+    CHECK_EQ("llmin prefix", strncmp(buf, "Failed to serialize long long ", 30), 0);
+}
+
+Test(fs2_api_ser, ser_errmsg_char) {
+    char buf[128];
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((char)'A'), (char)'A');
+    CHECK_STR_EQ("char A", buf, "Failed to serialize char A");
+}
+
+Test(fs2_api_ser, ser_errmsg_char_constant_gotcha) {
+    char buf[128];
+    /* 'A' is int -> picks "%d" -> "65", not "%c" -> "A" */
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG('A'), 'A');
+    CHECK_STR_EQ("int 65", buf, "Failed to serialize int 65");
+}
+
+Test(fs2_api_ser, ser_errmsg_unsigned) {
+    char buf[128];
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((unsigned)UINT_MAX), (unsigned)UINT_MAX);
+    char expect[128]; snprintf(expect, sizeof expect, "Failed to serialize unsigned %u", UINT_MAX);
+    CHECK_STR_EQ("unsigned max", buf, expect);
+
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((unsigned long long)ULLONG_MAX),
+             (unsigned long long)ULLONG_MAX);
+    CHECK_STR_EQ("ullong max", buf, "Failed to serialize unsigned long long 18446744073709551615");
+}
+
+Test(fs2_api_ser, ser_errmsg_floats) {
+    char buf[128];
+
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((float)1.5f), (float)1.5f);
+    CHECK_STR_EQ("float", buf, "Failed to serialize float 1.500000");
+
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((double)-0.5), (double)-0.5);
+    CHECK_STR_EQ("double", buf, "Failed to serialize double -0.500000");
+}
+
+Test(fs2_api_ser, ser_errmsg_pointer_prefix) {
+    /* %p output is implementation-defined; only the prefix is portable. */
+    int x = 42;
+    char buf[128];
+    snprintf(buf, sizeof buf, FS2_SER_ERRMSG((void *)&x), (void *)&x);
+    CHECK_EQ("pointer prefix",
+                 strncmp(buf, "Failed to serialize pointer ", 28), 0);
+    cr_assert_gt(strlen(buf), 28, "pointer text after prefix must be non-empty");
+}
