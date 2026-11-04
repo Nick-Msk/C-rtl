@@ -1301,3 +1301,30 @@ fs2_initcap(fs2 *restrict s) {
     }
     return s;
 }
+
+fs2 *
+fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
+    invfatal(ERR_NULL_INPUT, chars != NULL,  "Null pointer");
+
+    if (fs2_cant_mutate(s) || fs2_is_empty(chars))          //guards:  NULL / empty → no-op; non-empty STATIC → abort
+        return s;
+
+    /* Membership table: 256 bytes on stack, O(|chars|) to build.
+     * For byte-level filtering, a direct lookup table beats any
+     * comparison-based approach — one indexed load per input byte. */
+    bool drop[256] = {0};
+    for (size_t i = 0; i < chars->len; i++)
+        drop[(unsigned char)chars->v[i]] = true;
+
+    /* Single-pass compaction, O(|s|).
+     * Invariant: out <= i at every step, so overwriting s->v[out]
+     * never clobbers an unread byte. The tail [out, len) is left
+     * stale and discarded by fs2_setlen. */
+    size_t out = 0;
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->v[i];
+        if (!drop[c])
+            s->v[out++] = (char)c;
+    }
+    return fs2_setlen(s, out);
+}

@@ -2164,4 +2164,8 @@ fs2_initcap_new(const fs2 *restrict s) {
     return res;
 }
 
+extern fs2 *
+fs2_removeall(fs2 *restrict s, const fs2 *restrict chars);
+
+
 #endif /* !FS2_API_H */
