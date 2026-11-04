@@ -1284,7 +1284,7 @@ fs2_initcap(fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
         "Null pointer");
 
-    if (fs2_is_empty(s))
+    if (fs2_cant_mutate(s))
         return s;
     
     bool at_word_start = true;
