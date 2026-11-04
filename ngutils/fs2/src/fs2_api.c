@@ -1199,9 +1199,11 @@ fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) 
 fs2 *
 fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
                 bool left, bool right) {
-    invraise(s != NULL && pattern != NULL, "Null pointers %p %p", s, pattern);
+    invfatal(ERR_NULL_INPUT, s != NULL && pattern != NULL, 
+        "Null pointers %p %p", s, pattern);
     
-    if (fs2_is_empty(pattern) || s->len == 0) return s;
+    if (fs2_cant_mutate(s) || fs2_is_empty(pattern))          //guards:  NULL / empty → no-op; non-empty STATIC → abort
+        return s;
     
     size_t start = 0;
     size_t end   = s->len;
