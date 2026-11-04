@@ -4289,3 +4289,292 @@ Test(fs2_api_modificators, initcap_new_of_strip_prefix_new) {
     fs2_free(&result);
     assert_balanced();
 }
+
+
+/* =========================================================================
+ * fs2_removeall — nominal (single char set)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_single_char) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("axbxc");
+    fs2 c = fs2_fromstr("x");
+
+    fs2 *r = fs2_removeall(&s, &c);
+
+    CHECK_STR_EQ("abc",    s.v, "abc");
+    CHECK_EQ  ("len",      s.len, 3);
+    CHECK_PTR_EQ("chain",  r, &s);
+    CHECK_FS2VALID(1, &s);
+    CHECK_FS2VALID(2, &c);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_multichar_set) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+    fs2 c = fs2_fromstr("aeiou");
+
+    fs2_removeall(&s, &c);
+
+    CHECK_STR_EQ("hll wrld", s.v, "hll wrld");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_no_match) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 c = fs2_fromstr("xyz");
+    void *orig = s.v;
+
+    fs2_removeall(&s, &c);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("abc",              s.v, "abc");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_all_chars) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 c = fs2_fromstr("abc");
+
+    fs2_removeall(&s, &c);
+
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("empty",  fs2_is_empty(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_duplicates_in_chars) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("axbxc");
+    fs2 c = fs2_fromstr("xxxx");   /* set {x}, four copies */
+
+    fs2_removeall(&s, &c);
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* All 256 byte values in a charset -> result empty, no UB */
+Test(fs2_api_modif, removeall_all_256_bytes) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    /* Every byte 1..255 in a C-string; NUL-terminated at [n].
+     * No embedded NUL because we start at 1 — so fs2_fromstr
+     * (which uses strlen) works correctly. */
+    char raw[256];
+    size_t n = 0;
+    for (int b = 1; b < 256; b++) raw[n++] = (char)b;
+    raw[n] = '\0';
+
+    fs2 c = fs2_fromstr(raw);
+
+    fs2_removeall(&s, &c);
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Only edge chars removed — leading, trailing, first, last
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_leading) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xxxabc");
+    fs2 c = fs2_fromstr("x");
+
+    fs2_removeall(&s, &c);
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_trailing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcxxx");
+    fs2 c = fs2_fromstr("x");
+
+    fs2_removeall(&s, &c);
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * chars == s content — all bytes in s are in chars -> result empty
+ *   (DISTINCT objects; passing same pointer is UB by restrict)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_chars_equals_content) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabc");
+    fs2 c = fs2_fromstr("abcabc");     /* same content, distinct object */
+
+    fs2_removeall(&s, &c);
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty chars / empty s — early no-op
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_empty_chars_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 e = FS2EMPTY;
+    fs2 c = FS2();
+    void *orig = s.v;
+
+    fs2_removeall(&s, &e);
+    CHECK_PTR_EQ("FS2EMPTY noop", s.v, orig);
+    fs2_removeall(&s, &c);
+    CHECK_PTR_EQ("FS2() noop",    s.v, orig);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_empty_src_noop) {
+    __fs2_checkreset();
+    fs2 c = fs2_fromstr("x");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    fs2_removeall(&canon, &c);
+    fs2_removeall(&empty, &c);
+
+    CHECK_TRUE("canon still canon", fs2_is_canon(&canon));
+    CHECK_TRUE("empty still empty", fs2_eq_empty(&empty));
+
+    fs2_free(&canon);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC non-empty: eager abort (fs2_cant_mutate)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_static_no_match_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2 c = fs2_fromstr("xyz");
+    fs2_removeall(&s, &c);      /* eager: aborts even though no match */
+    fs2_free(&c);
+}
+
+Test(fs2_api_modificators, removeall_static_match_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2 c = fs2_fromstr("l");
+    fs2_removeall(&s, &c);
+    fs2_free(&c);
+}
+
+Test(fs2_api_modificators, removeall_static_empty_literal_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("");
+    fs2 c = fs2_fromstr("x");
+
+    fs2_removeall(&s, &c);
+
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * LOCAL src — only shrinks, works
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+    fs2 c = fs2_fromstr("aeiou");
+
+    fs2_removeall(&buf, &c);
+
+    CHECK_STR_EQ("hll wrld",   buf.v, "hll wrld");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_null_s_aborts, .signal = SIGABRT) {
+    fs2 c = fs2_fromstr("x");
+    fs2_removeall(NULL, &c);
+    fs2_free(&c);
+}
+
+Test(fs2_api_modificators, removeall_null_chars_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_removeall(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * chars untouched, s buffer not realloc
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_chars_untouched) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("axbxc");
+    fs2 c = fs2_fromstr("x");
+    void *c_v = c.v;
+
+    fs2_removeall(&s, &c);
+
+    CHECK_PTR_EQ("c.v unchanged", c.v, c_v);
+    CHECK_STR_EQ("c content",     c.v, "x");
+    CHECK_FS2VALID(1, &c);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
