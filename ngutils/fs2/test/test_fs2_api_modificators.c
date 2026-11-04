@@ -3740,3 +3740,102 @@ Test(fs2_api_modificators, strip_suffix_new_matches_inplace_on_clone) {
     fs2_free(&via);
     assert_balanced();
 }
+
+/* =========================================================================
+ * strip_*_str_new — minimal: only the _fs2_wrap(NULL) behaviour differs
+ *   (NULL affix -> FS2EMPTY -> clone of src; core fs2-version aborts)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_new_null_affix_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_strip_prefix_str_new(&src, NULL);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_TRUE ("ALLOC",      fs2_is_alloc(&r));
+    CHECK_TRUE ("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_new_null_affix_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_strip_suffix_str_new(&src, NULL);
+
+    CHECK_STR_EQ("hello", r.v, "hello");
+    CHECK_TRUE ("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* "" behaves the same as NULL */
+Test(fs2_api_modificators, strip_str_new_empty_affix_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r1 = fs2_strip_prefix_str_new(&src, "");
+    fs2 r2 = fs2_strip_suffix_str_new(&src, "");
+
+    CHECK_STR_EQ("prefix \"\"", r1.v, "hello");
+    CHECK_STR_EQ("suffix \"\"", r2.v, "hello");
+
+    fs2_free(&src);
+    fs2_free(&r1);
+    fs2_free(&r2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Contrast: core fs2-version aborts on NULL affix
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_new_null_affix_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("abc");
+    fs2_strip_prefix_new(&src, NULL);
+    fs2_free(&src);
+}
+
+Test(fs2_api_modificators, strip_suffix_new_null_affix_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("abc");
+    fs2_strip_suffix_new(&src, NULL);
+    fs2_free(&src);
+}
+
+/* =========================================================================
+ * Equivalence: _str ≡ fs2-version on non-NULL affix
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_str_new_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+    fs2 pfx = fs2_fromstr("hello ");
+    fs2 sfx = fs2_fromstr(" world");
+
+    fs2 a = fs2_strip_prefix_str_new(&src, "hello ");
+    fs2 b = fs2_strip_prefix_new(&src, &pfx);
+    CHECK_STR_EQ("prefix match", a.v, b.v);
+    CHECK_EQ  ("prefix len",     a.len, b.len);
+    fs2_free(&a);
+    fs2_free(&b);
+
+    fs2 c = fs2_strip_suffix_str_new(&src, " world");
+    fs2 d = fs2_strip_suffix_new(&src, &sfx);
+    CHECK_STR_EQ("suffix match", c.v, d.v);
+    CHECK_EQ  ("suffix len",     c.len, d.len);
+    fs2_free(&c);
+    fs2_free(&d);
+
+    fs2_free(&src);
+    fs2_free(&pfx);
+    fs2_free(&sfx);
+    assert_balanced();
+}
