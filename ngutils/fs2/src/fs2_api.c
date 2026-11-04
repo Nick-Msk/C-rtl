@@ -356,7 +356,7 @@ _fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va
 
 long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
-    invfatal(ERR_NULL_INPUT,fmt != 0, 
+    invfatal(ERR_NULL_INPUT, fmt != 0, 
         "Null fmt string %p", fmt);
     if (fs2_cant_realloc(s))
         return -1L; // never here!
