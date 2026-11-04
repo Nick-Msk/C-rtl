@@ -956,6 +956,142 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+bool 
+fs2_tryparse_ullong(const fs2 *restrict s, unsigned long long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_ullong(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_llong(const fs2 *restrict s, long long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_llong(s, 0, &newpos, out))
+        return false;
+    
+    // Strict mode: there must be NOTHING after the number
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_ulong(const fs2 *restrict s, unsigned long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_ulong(s, 0, &newpos, out))
+        return false;
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+    return true;
+}
+
+bool 
+fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_long(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_uint(const fs2 *restrict s, unsigned *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_uint(s, 0, &newpos, out))
+        return false;
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+
+    return true;
+}
+
+bool 
+fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_int(s, 0, &newpos, out))
+        return false;
+        
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "String mode failed to parse %zu but len %zu", newpos, s->len);;
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_double(const fs2 *restrict s, double *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_double(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_char(const fs2 *restrict s, char *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_char(s, 0, &newpos, out))
+        return false;
+    
+    /* strict = true: reject whitespace characters (space, \t, \n, \r, \v, \f) */
+    if (strict && isspace((unsigned char)s->v[0]))
+        return logsimpleerr(false, 
+            "Strict char parse: leading char '%c' (0x%02x) is whitespace", 
+            s->v[0], (unsigned char)s->v[0]);
+    
+    return true;
+}
+
+bool 
+fs2_tryparse_short(const fs2 *restrict s, short *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_short(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+        
+    return true;
+}
+
+bool 
+fs2_tryparse_ushort(const fs2 *restrict s, unsigned short *restrict out, bool strict) {
+    size_t newpos = 0;
+    if (!fs2_pos_parse_ushort(s, 0, &newpos, out))
+        return false;
+    
+    if (strict && newpos != s->len)
+        return logsimpleerr(false, 
+            "Strict parse failed: consumed %zu but len is %zu", 
+            newpos, s->len);
+        
+    return true;
+}
+
 /* ─────────────────────────────────────────────────────────────────
  * String search API
  * ───────────────────────────────────────────────────────────────── */
