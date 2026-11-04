@@ -10,7 +10,7 @@ TestSuite(fs2_api_modificators, .init = test_setup, .fini = test_teardown);
  * fs2_replace — nominal (ALLOC source)
  * ========================================================================= */
 
-Test(fs2_api, replace_single) {
+Test(fs2_api_modificators, replace_single) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("hello world");
     fs2 pat  = fs2_fromstr("world");
@@ -30,7 +30,7 @@ Test(fs2_api, replace_single) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_multiple) {
+Test(fs2_api_modificators, replace_multiple) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("one apple, two apples, three apple");
     fs2 pat  = fs2_fromstr("apple");
@@ -48,7 +48,7 @@ Test(fs2_api, replace_multiple) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_at_start) {
+Test(fs2_api_modificators, replace_at_start) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("xxxabc");
     fs2 pat  = fs2_fromstr("xxx");
@@ -63,7 +63,7 @@ Test(fs2_api, replace_at_start) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_at_end) {
+Test(fs2_api_modificators, replace_at_end) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("abcxxx");
     fs2 pat  = fs2_fromstr("xxx");
@@ -82,7 +82,7 @@ Test(fs2_api, replace_at_end) {
  * fs2_replace — Python semantics for overlapping
  * ========================================================================= */
 
-Test(fs2_api, replace_overlapping_aaa_to_ba) {
+Test(fs2_api_modificators, replace_overlapping_aaa_to_ba) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aaa");
     fs2 pat  = fs2_fromstr("aa");
@@ -100,7 +100,7 @@ Test(fs2_api, replace_overlapping_aaa_to_ba) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_overlapping_aaaa_to_bb) {
+Test(fs2_api_modificators, replace_overlapping_aaaa_to_bb) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aaaa");
     fs2 pat  = fs2_fromstr("aa");
@@ -118,7 +118,7 @@ Test(fs2_api, replace_overlapping_aaaa_to_bb) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_sequential_multi) {
+Test(fs2_api_modificators, replace_sequential_multi) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("abcabcabc");
     fs2 pat  = fs2_fromstr("abc");
@@ -137,7 +137,7 @@ Test(fs2_api, replace_sequential_multi) {
  * fs2_replace — grow / shrink / identity
  * ========================================================================= */
 
-Test(fs2_api, replace_grow) {
+Test(fs2_api_modificators, replace_grow) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXbXc");
     fs2 pat  = fs2_fromstr("X");
@@ -154,7 +154,7 @@ Test(fs2_api, replace_grow) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_shrink) {
+Test(fs2_api_modificators, replace_shrink) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXYZbXYZc");
     fs2 pat  = fs2_fromstr("XYZ");
@@ -171,7 +171,7 @@ Test(fs2_api, replace_shrink) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_delete) {
+Test(fs2_api_modificators, replace_delete) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXbXcXd");
     fs2 pat  = fs2_fromstr("X");
@@ -187,7 +187,7 @@ Test(fs2_api, replace_delete) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_identity_no_change) {
+Test(fs2_api_modificators, replace_identity_no_change) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("abcabc");
     fs2 pat  = fs2_fromstr("a");
@@ -208,7 +208,7 @@ Test(fs2_api, replace_identity_no_change) {
  * fs2_replace — no-op cases
  * ========================================================================= */
 
-Test(fs2_api, replace_not_found) {
+Test(fs2_api_modificators, replace_not_found) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("hello");
     fs2 pat  = fs2_fromstr("zzz");
@@ -227,7 +227,7 @@ Test(fs2_api, replace_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_pat_longer_than_src) {
+Test(fs2_api_modificators, replace_pat_longer_than_src) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("ab");
     fs2 pat  = fs2_fromstr("abc");
@@ -242,7 +242,7 @@ Test(fs2_api, replace_pat_longer_than_src) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_empty_pat_noop) {
+Test(fs2_api_modificators, replace_empty_pat_noop) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("hello");
     fs2 pat  = FS2EMPTY;
@@ -256,7 +256,7 @@ Test(fs2_api, replace_empty_pat_noop) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_empty_src_fs2empty) {
+Test(fs2_api_modificators, replace_empty_src_fs2empty) {
     __fs2_checkreset();
     fs2 s    = FS2EMPTY;
     fs2 pat  = fs2_fromstr("a");
@@ -270,7 +270,7 @@ Test(fs2_api, replace_empty_src_fs2empty) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_empty_src_canon) {
+Test(fs2_api_modificators, replace_empty_src_canon) {
     __fs2_checkreset();
     fs2 s    = FS2();
     fs2 pat  = fs2_fromstr("a");
@@ -291,7 +291,7 @@ Test(fs2_api, replace_empty_src_canon) {
  *   Non-empty STATIC: mutation attempt -> SIGABRT via fs2_selfmove
  * ========================================================================= */
 
-Test(fs2_api, replace_static_empty_src_noop) {
+Test(fs2_api_modificators, replace_static_empty_src_noop) {
     __fs2_checkreset();
     fs2 s    = FS2EMPTY;
     fs2 pat  = fs2_fromstr("a");
@@ -307,7 +307,7 @@ Test(fs2_api, replace_static_empty_src_noop) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_static_nonempty_src_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_static_nonempty_src_aborts, .signal = SIGABRT) {
     fs2 s    = FS2LITERAL("abc");
     fs2 pat  = fs2_fromstr("b");
     fs2 repl = fs2_fromstr("X");
@@ -326,7 +326,7 @@ Test(fs2_api, replace_static_nonempty_src_aborts, .signal = SIGABRT) {
  *  the actual behaviour so a regression is visible.)
  * ========================================================================= */
 
-Test(fs2_api, replace_local_shrink_works) {
+Test(fs2_api_modificators, replace_local_shrink_works) {
     __fs2_checkreset();
     FS2LOCAL(buf, 16);
     fs2_memcpy_str(&buf, 0, "aXbXc", 5);
@@ -345,7 +345,7 @@ Test(fs2_api, replace_local_shrink_works) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_local_grow_within_capacity_works) {
+Test(fs2_api_modificators, replace_local_grow_within_capacity_works) {
     __fs2_checkreset();
     FS2LOCAL(buf, 16);
     fs2_memcpy_str(&buf, 0, "abc", 3);
@@ -365,7 +365,7 @@ Test(fs2_api, replace_local_grow_within_capacity_works) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_local_grow_beyond_capacity_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_local_grow_beyond_capacity_aborts, .signal = SIGABRT) {
     FS2LOCAL(buf, 8);
     fs2_memcpy_str(&buf, 0, "abcdefg", 7);   /* len=7, sz=8 */
     fs2_setlen(&buf, 7);
@@ -382,7 +382,7 @@ Test(fs2_api, replace_local_grow_beyond_capacity_aborts, .signal = SIGABRT) {
  * fs2_replace — guards (invraise -> SIGABRT in debug)
  * ========================================================================= */
 
-Test(fs2_api, replace_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_null_s_aborts, .signal = SIGABRT) {
     fs2 pat  = fs2_fromstr("a");
     fs2 repl = fs2_fromstr("b");
     fs2_replace(NULL, &pat, &repl);
@@ -390,7 +390,7 @@ Test(fs2_api, replace_null_s_aborts, .signal = SIGABRT) {
     fs2_free(&repl);
 }
 
-Test(fs2_api, replace_null_pat_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_null_pat_aborts, .signal = SIGABRT) {
     fs2 s    = fs2_fromstr("abc");
     fs2 repl = fs2_fromstr("b");
     fs2_replace(&s, NULL, &repl);
@@ -398,7 +398,7 @@ Test(fs2_api, replace_null_pat_aborts, .signal = SIGABRT) {
     fs2_free(&repl);
 }
 
-Test(fs2_api, replace_null_repl_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_null_repl_aborts, .signal = SIGABRT) {
     fs2 s   = fs2_fromstr("abc");
     fs2 pat = fs2_fromstr("b");
     fs2_replace(&s, &pat, NULL);
@@ -410,7 +410,7 @@ Test(fs2_api, replace_null_repl_aborts, .signal = SIGABRT) {
  * fs2_replace — pattern/repl untouched, s buffer grown as needed
  * ========================================================================= */
 
-Test(fs2_api, replace_pat_and_repl_untouched) {
+Test(fs2_api_modificators, replace_pat_and_repl_untouched) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXbXc");
     fs2 pat  = fs2_fromstr("X");
@@ -433,7 +433,7 @@ Test(fs2_api, replace_pat_and_repl_untouched) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_fs2empty_repl_deletes) {
+Test(fs2_api_modificators, replace_fs2empty_repl_deletes) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXXbXXc");
     fs2 pat  = fs2_fromstr("XX");
@@ -447,7 +447,7 @@ Test(fs2_api, replace_fs2empty_repl_deletes) {
     assert_balanced();
 }
 
-Test(fs2_api, replace_canon_repl_deletes) {
+Test(fs2_api_modificators, replace_canon_repl_deletes) {
     __fs2_checkreset();
     fs2 s    = fs2_fromstr("aXXbXXc");
     fs2 pat  = fs2_fromstr("XX");
@@ -468,7 +468,7 @@ Test(fs2_api, replace_canon_repl_deletes) {
  *   Expected: "aQQbQQc" for every non-empty flavor; no-op for empty flavors
  * ========================================================================= */
 
-Test(fs2_api, replace_pat_repl_flavor_matrix) {
+Test(fs2_api_modificators, replace_pat_repl_flavor_matrix) {
     __fs2_checkreset();
 
     /* Build every flavor of "X" once, reuse across iterations. */
@@ -512,7 +512,7 @@ Test(fs2_api, replace_pat_repl_flavor_matrix) {
  * pat is one of the empty flavors -> no-op (early return)
  * ========================================================================= */
 
-Test(fs2_api, replace_empty_pat_flavors_noop) {
+Test(fs2_api_modificators, replace_empty_pat_flavors_noop) {
     __fs2_checkreset();
 
     fs2 pat_canon  = FS2();     /* v = NULL, len = 0 */
@@ -539,7 +539,7 @@ Test(fs2_api, replace_empty_pat_flavors_noop) {
  * s is one of the empty flavors -> always no-op, form preserved
  * ========================================================================= */
 
-Test(fs2_api, replace_empty_src_flavors_stay_empty) {
+Test(fs2_api_modificators, replace_empty_src_flavors_stay_empty) {
     __fs2_checkreset();
 
     fs2 pat  = fs2_fromstr("X");
@@ -565,7 +565,7 @@ Test(fs2_api, replace_empty_src_flavors_stay_empty) {
 }
 
 /* Empty-src × empty-pat also no-op (two empties, still empty) */
-Test(fs2_api, replace_empty_src_empty_pat_noop) {
+Test(fs2_api_modificators, replace_empty_src_empty_pat_noop) {
     __fs2_checkreset();
 
     fs2 pat_canon = FS2();
@@ -594,7 +594,7 @@ Test(fs2_api, replace_empty_src_empty_pat_noop) {
  * repl is one of the empty flavors -> delete (skip memcpy, incl. v==NULL)
  * ========================================================================= */
 
-Test(fs2_api, replace_empty_repl_flavors_delete) {
+Test(fs2_api_modificators, replace_empty_repl_flavors_delete) {
     __fs2_checkreset();
 
     fs2 pat      = fs2_fromstr("XX");
@@ -621,7 +621,7 @@ Test(fs2_api, replace_empty_repl_flavors_delete) {
  *   (self-replace in spirit, but distinct objects — no restrict violation)
  * ========================================================================= */
 
-Test(fs2_api, replace_pat_repl_equal_different_objects) {
+Test(fs2_api_modificators, replace_pat_repl_equal_different_objects) {
     __fs2_checkreset();
 
     fs2 s         = fs2_fromstr("abcabc");
@@ -640,7 +640,7 @@ Test(fs2_api, replace_pat_repl_equal_different_objects) {
  * LOCAL dst (for completeness) — shrink only, grow-within-cap
  * ========================================================================= */
 
-Test(fs2_api, replace_local_dst_matrix) {
+Test(fs2_api_modificators, replace_local_dst_matrix) {
     __fs2_checkreset();
 
     fs2 pat  = fs2_fromstr("X");
@@ -675,7 +675,7 @@ Test(fs2_api, replace_local_dst_matrix) {
  *   (unlike fs2_replace(&s, pat, NULL) which aborts)
  * ========================================================================= */
 
-Test(fs2_api_modif, replace_fromstr_null_repl_deletes) {
+Test(fs2_api_modificators, replace_fromstr_null_repl_deletes) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("aXbXc");
     fs2 pat = fs2_fromstr("X");
@@ -692,7 +692,7 @@ Test(fs2_api_modif, replace_fromstr_null_repl_deletes) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, replace_fromstr_empty_str_repl_deletes) {
+Test(fs2_api_modificators, replace_fromstr_empty_str_repl_deletes) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("aXbXc");
     fs2 pat = fs2_fromstr("X");
@@ -707,7 +707,7 @@ Test(fs2_api_modif, replace_fromstr_empty_str_repl_deletes) {
 }
 
 /* Both NULL and "" go through _fs2_wrap -> FS2EMPTY -> same result */
-Test(fs2_api_modif, replace_fromstr_null_and_empty_repl_same) {
+Test(fs2_api_modificators, replace_fromstr_null_and_empty_repl_same) {
     __fs2_checkreset();
     fs2 pat = fs2_fromstr("X");
 
@@ -728,7 +728,7 @@ Test(fs2_api_modif, replace_fromstr_null_and_empty_repl_same) {
 }
 
 /* Non-NULL repl — normal replace */
-Test(fs2_api_modif, replace_fromstr_normal) {
+Test(fs2_api_modificators, replace_fromstr_normal) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("aXbXc");
     fs2 pat = fs2_fromstr("X");
@@ -747,13 +747,13 @@ Test(fs2_api_modif, replace_fromstr_normal) {
  * fs2_replace_fromstr — CONTRAST: NULL pat still aborts (pat non-lenient)
  * ========================================================================= */
 
-Test(fs2_api_modif, replace_fromstr_null_pat_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_fromstr_null_pat_aborts, .signal = SIGABRT) {
     fs2 s = fs2_fromstr("abc");
     fs2_replace_fromstr(&s, NULL, "X");
     fs2_free(&s);
 }
 
-Test(fs2_api_modif, replace_fromstr_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_fromstr_null_s_aborts, .signal = SIGABRT) {
     fs2 pat = fs2_fromstr("a");
     fs2_replace_fromstr(NULL, &pat, "X");
     fs2_free(&pat);
@@ -763,7 +763,7 @@ Test(fs2_api_modif, replace_fromstr_null_s_aborts, .signal = SIGABRT) {
  * fs2_replace_cstr — BOTH args lenient (pat AND repl via _fs2_wrap)
  * ========================================================================= */
 
-Test(fs2_api_modif, replace_cstr_normal) {
+Test(fs2_api_modificators, replace_cstr_normal) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("one apple, two apple");
 
@@ -777,7 +777,7 @@ Test(fs2_api_modif, replace_cstr_normal) {
 }
 
 /* NULL pat -> _fs2_wrap(NULL) -> FS2EMPTY -> fs2_replace early-returns (no-op) */
-Test(fs2_api_modif, replace_cstr_null_pat_noop) {
+Test(fs2_api_modificators, replace_cstr_null_pat_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
@@ -790,7 +790,7 @@ Test(fs2_api_modif, replace_cstr_null_pat_noop) {
 }
 
 /* NULL repl -> _fs2_wrap(NULL) -> FS2EMPTY -> delete */
-Test(fs2_api_modif, replace_cstr_null_repl_deletes) {
+Test(fs2_api_modificators, replace_cstr_null_repl_deletes) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("aXbXc");
 
@@ -803,7 +803,7 @@ Test(fs2_api_modif, replace_cstr_null_repl_deletes) {
 }
 
 /* Both NULL -> both wrapped as FS2EMPTY -> pat empty -> no-op */
-Test(fs2_api_modif, replace_cstr_both_null_noop) {
+Test(fs2_api_modificators, replace_cstr_both_null_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
@@ -816,7 +816,7 @@ Test(fs2_api_modif, replace_cstr_both_null_noop) {
 }
 
 /* Both "" — pat empty -> no-op */
-Test(fs2_api_modif, replace_cstr_both_empty_noop) {
+Test(fs2_api_modificators, replace_cstr_both_empty_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
@@ -829,7 +829,7 @@ Test(fs2_api_modif, replace_cstr_both_empty_noop) {
 }
 
 /* Only dst NULL aborts (invraise in fs2_replace) */
-Test(fs2_api_modif, replace_cstr_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, replace_cstr_null_s_aborts, .signal = SIGABRT) {
     fs2_replace_cstr(NULL, "a", "b");
 }
 
@@ -837,7 +837,7 @@ Test(fs2_api_modif, replace_cstr_null_s_aborts, .signal = SIGABRT) {
  * Consistency: fromstr ≡ replace with explicit FS2EMPTY for NULL repl
  * ========================================================================= */
 
-Test(fs2_api_modif, replace_fromstr_null_equiv_to_explicit_empty) {
+Test(fs2_api_modificators, replace_fromstr_null_equiv_to_explicit_empty) {
     __fs2_checkreset();
     fs2 pat  = fs2_fromstr("X");
     fs2 empty = FS2EMPTY;
@@ -859,19 +859,11 @@ Test(fs2_api_modif, replace_fromstr_null_equiv_to_explicit_empty) {
     assert_balanced();
 }
 
-#include <criterion/criterion.h>
-
-#include "test_fs2.h"
-#include "fs2_api.h"
-#include <locale.h>
-
-TestSuite(fs2_api_modif, .init = test_setup, .fini = test_teardown);
-
 /* =========================================================================
  * fs2_trim / fs2_ltrim / fs2_rtrim — nominal
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_basic_both) {
+Test(fs2_api_modificators, trim_basic_both) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hello  ");
     fs2 pat = fs2_fromstr(" ");
@@ -889,7 +881,7 @@ Test(fs2_api_modif, trim_basic_both) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_left_only) {
+Test(fs2_api_modificators, trim_left_only) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hello  ");
     fs2 pat = fs2_fromstr(" ");
@@ -904,7 +896,7 @@ Test(fs2_api_modif, trim_left_only) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_right_only) {
+Test(fs2_api_modificators, trim_right_only) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hello  ");
     fs2 pat = fs2_fromstr(" ");
@@ -923,7 +915,7 @@ Test(fs2_api_modif, trim_right_only) {
  * Multichar set pattern — set semantics, not substring
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_multichar_set) {
+Test(fs2_api_modificators, trim_multichar_set) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xyxhellozyx");   /* only x/y/z get trimmed */
     fs2 pat = fs2_fromstr("xyz");
@@ -937,7 +929,7 @@ Test(fs2_api_modif, trim_multichar_set) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_pattern_with_duplicates) {
+Test(fs2_api_modificators, trim_pattern_with_duplicates) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xxhelloxx");
     fs2 pat = fs2_fromstr("xx");            /* still set {x} */
@@ -952,7 +944,7 @@ Test(fs2_api_modif, trim_pattern_with_duplicates) {
 }
 
 /* Mixed content: pattern chars interleaved with kept content */
-Test(fs2_api_modif, trim_mixed) {
+Test(fs2_api_modificators, trim_mixed) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xax");           /* only edge x's trimmed */
     fs2 pat = fs2_fromstr("x");
@@ -970,7 +962,7 @@ Test(fs2_api_modif, trim_mixed) {
  * Full-trim-to-empty (three different code paths)
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_all_left_path) {
+Test(fs2_api_modificators, trim_all_left_path) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xxxx");
     fs2 pat = fs2_fromstr("x");
@@ -986,7 +978,7 @@ Test(fs2_api_modif, trim_all_left_path) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_all_right_path) {
+Test(fs2_api_modificators, trim_all_right_path) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xxxx");
     fs2 pat = fs2_fromstr("x");
@@ -1002,7 +994,7 @@ Test(fs2_api_modif, trim_all_right_path) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_all_both_path) {
+Test(fs2_api_modificators, trim_all_both_path) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("xxxx");
     fs2 pat = fs2_fromstr("x");
@@ -1021,7 +1013,7 @@ Test(fs2_api_modif, trim_all_both_path) {
  * No-op cases (buffer must not be touched — pointer stability)
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_empty_pattern_noop) {
+Test(fs2_api_modificators, trim_empty_pattern_noop) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("hello");
     fs2 pat = FS2EMPTY;
@@ -1036,7 +1028,7 @@ Test(fs2_api_modif, trim_empty_pattern_noop) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_canon_pattern_noop) {
+Test(fs2_api_modificators, trim_canon_pattern_noop) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("hello");
     fs2 pat = FS2();
@@ -1050,7 +1042,7 @@ Test(fs2_api_modif, trim_canon_pattern_noop) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_pattern_no_match_noop) {
+Test(fs2_api_modificators, trim_pattern_no_match_noop) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("hello");
     fs2 pat = fs2_fromstr("xyz");
@@ -1070,7 +1062,7 @@ Test(fs2_api_modif, trim_pattern_no_match_noop) {
  * Empty s (FS2EMPTY / FS2()) — early return, form preserved
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_fs2empty_s_stays_empty) {
+Test(fs2_api_modificators, trim_fs2empty_s_stays_empty) {
     __fs2_checkreset();
     fs2 s   = FS2EMPTY;
     fs2 pat = fs2_fromstr("x");
@@ -1083,7 +1075,7 @@ Test(fs2_api_modif, trim_fs2empty_s_stays_empty) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_canon_s_stays_canon) {
+Test(fs2_api_modificators, trim_canon_s_stays_canon) {
     __fs2_checkreset();
     fs2 s   = FS2();
     fs2 pat = fs2_fromstr("x");
@@ -1102,7 +1094,7 @@ Test(fs2_api_modif, trim_canon_s_stays_canon) {
  *   no-match -> no-op; match -> abort; empty pattern -> no-op
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_static_no_match_abort, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_no_match_abort, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 s   = FS2LITERAL("hello");
     fs2 pat = fs2_fromstr("xyz");
@@ -1117,7 +1109,7 @@ Test(fs2_api_modif, trim_static_no_match_abort, .signal = SIGABRT) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_static_empty_pattern_abort, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_empty_pattern_abort, .signal = SIGABRT) {
     __fs2_checkreset();
     fs2 s   = FS2LITERAL("hello");
     fs2 pat = FS2EMPTY;
@@ -1130,14 +1122,14 @@ Test(fs2_api_modif, trim_static_empty_pattern_abort, .signal = SIGABRT) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_static_full_match_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_full_match_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("   ");
     fs2 pat = fs2_fromstr(" ");
     fs2_trim(&s, &pat);   /* start == end -> fs2_setlen(0) -> abort */
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_static_partial_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_partial_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("  hi  ");
     fs2 pat = fs2_fromstr(" ");
     fs2_trim(&s, &pat);   /* selfmove on STATIC -> abort */
@@ -1148,7 +1140,7 @@ Test(fs2_api_modif, trim_static_partial_aborts, .signal = SIGABRT) {
  * LOCAL s — only shrinks/keeps size, always fits
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_local_shrinks) {
+Test(fs2_api_modificators, trim_local_shrinks) {
     __fs2_checkreset();
     FS2LOCAL(buf, 16);
     fs2_memcpy_str(&buf, 0, "  hello  ", 9);
@@ -1165,7 +1157,7 @@ Test(fs2_api_modif, trim_local_shrinks) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_local_all_to_empty) {
+Test(fs2_api_modificators, trim_local_all_to_empty) {
     __fs2_checkreset();
     FS2LOCAL(buf, 8);
     fs2_memcpy_str(&buf, 0, "xxxx", 4);
@@ -1186,13 +1178,13 @@ Test(fs2_api_modif, trim_local_all_to_empty) {
  * Guards
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_null_s_aborts, .signal = SIGABRT) {
     fs2 pat = fs2_fromstr("x");
     fs2_trim(NULL, &pat);
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_null_pat_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_null_pat_aborts, .signal = SIGABRT) {
     fs2 s = fs2_fromstr("abc");
     fs2_trim(&s, NULL);
     fs2_free(&s);
@@ -1202,7 +1194,7 @@ Test(fs2_api_modif, trim_null_pat_aborts, .signal = SIGABRT) {
  * Pattern not touched
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_pattern_untouched) {
+Test(fs2_api_modificators, trim_pattern_untouched) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hi  ");
     fs2 pat = fs2_fromstr(" ");
@@ -1223,7 +1215,7 @@ Test(fs2_api_modif, trim_pattern_untouched) {
  * Direct fs2_trim_common — both=false is a no-op
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_common_neither_side_noop) {
+Test(fs2_api_modificators, trim_common_neither_side_noop) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hi  ");
     fs2 pat = fs2_fromstr(" ");
@@ -1245,14 +1237,14 @@ Test(fs2_api_modif, trim_common_neither_side_noop) {
  *   regardless of whether the pattern matches anything.
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_static_no_match_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_no_match_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("hello");
     fs2 pat = fs2_fromstr("xyz");
     fs2_trim(&s, &pat);       /* no writes would be needed, but still aborts */
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_static_empty_pattern_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_empty_pattern_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("hello");
     fs2 pat = FS2EMPTY;
     fs2_trim(&s, &pat);       /* early return used to happen here — now aborts */
@@ -1260,21 +1252,21 @@ Test(fs2_api_modif, trim_static_empty_pattern_aborts, .signal = SIGABRT) {
 }
 
 /* Also for ltrim / rtrim (same fs2_trim_common path) */
-Test(fs2_api_modif, trim_static_ltrim_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_ltrim_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("  hi  ");
     fs2 pat = fs2_fromstr(" ");
     fs2_ltrim(&s, &pat);
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_static_rtrim_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_static_rtrim_aborts, .signal = SIGABRT) {
     fs2 s   = FS2LITERAL("  hi  ");
     fs2 pat = fs2_fromstr(" ");
     fs2_rtrim(&s, &pat);
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_null_pattern_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_null_pattern_aborts, .signal = SIGABRT) {
     fs2 s = fs2_fromstr("abc");
     fs2_trim(&s, NULL);                       /* fs2-version: strict */
     fs2_free(&s);
@@ -1286,7 +1278,7 @@ Test(fs2_api_modif, trim_null_pattern_aborts, .signal = SIGABRT) {
  *   that each wrapper passes the right (left, right) pair.
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_wrapper_both_flags) {
+Test(fs2_api_modificators, trim_wrapper_both_flags) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hi  ");
     fs2 pat = fs2_fromstr(" ");
@@ -1302,7 +1294,7 @@ Test(fs2_api_modif, trim_wrapper_both_flags) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, ltrim_wrapper_left_only) {
+Test(fs2_api_modificators, ltrim_wrapper_left_only) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hi  ");
     fs2 pat = fs2_fromstr(" ");
@@ -1318,7 +1310,7 @@ Test(fs2_api_modif, ltrim_wrapper_left_only) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, rtrim_wrapper_right_only) {
+Test(fs2_api_modificators, rtrim_wrapper_right_only) {
     __fs2_checkreset();
     fs2 s   = fs2_fromstr("  hi  ");
     fs2 pat = fs2_fromstr(" ");
@@ -1338,7 +1330,7 @@ Test(fs2_api_modif, rtrim_wrapper_right_only) {
  * Equivalence: each wrapper ≡ fs2_trim_common with explicit flags
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_wrappers_match_common) {
+Test(fs2_api_modificators, trim_wrappers_match_common) {
     __fs2_checkreset();
     fs2 pat = fs2_fromstr(" ");
 
@@ -1374,11 +1366,11 @@ Test(fs2_api_modif, trim_wrappers_match_common) {
  * Guards inherited from fs2_trim_common
  * ========================================================================= */
 
-Test(fs2_api_modif, ltrim_null_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, ltrim_null_aborts, .signal = SIGABRT) {
     fs2_ltrim(NULL, NULL);
 }
 
-Test(fs2_api_modif, rtrim_null_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, rtrim_null_aborts, .signal = SIGABRT) {
     fs2_rtrim(NULL, NULL);
 }
 
@@ -1386,7 +1378,7 @@ Test(fs2_api_modif, rtrim_null_aborts, .signal = SIGABRT) {
  * trim_str / ltrim_str / rtrim_str — nominal
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_str_basic) {
+Test(fs2_api_modificators, trim_str_basic) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1400,7 +1392,7 @@ Test(fs2_api_modif, trim_str_basic) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, ltrim_str_basic) {
+Test(fs2_api_modificators, ltrim_str_basic) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1413,7 +1405,7 @@ Test(fs2_api_modif, ltrim_str_basic) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, rtrim_str_basic) {
+Test(fs2_api_modificators, rtrim_str_basic) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1431,7 +1423,7 @@ Test(fs2_api_modif, rtrim_str_basic) {
  *   (contrast: fs2_trim(&s, NULL) aborts)
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_str_null_pattern_noop) {
+Test(fs2_api_modificators, trim_str_null_pattern_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
     void *orig = s.v;
@@ -1446,7 +1438,7 @@ Test(fs2_api_modif, trim_str_null_pattern_noop) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, trim_str_null_pattern_noop2) {
+Test(fs2_api_modificators, trim_str_null_pattern_noop2) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
     fs2_trim_str(&s, NULL);
@@ -1455,7 +1447,7 @@ Test(fs2_api_modif, trim_str_null_pattern_noop2) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, ltrim_str_null_pattern_noop) {
+Test(fs2_api_modificators, ltrim_str_null_pattern_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1467,7 +1459,7 @@ Test(fs2_api_modif, ltrim_str_null_pattern_noop) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, rtrim_str_null_pattern_noop) {
+Test(fs2_api_modificators, rtrim_str_null_pattern_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1480,7 +1472,7 @@ Test(fs2_api_modif, rtrim_str_null_pattern_noop) {
 }
 
 /* "" pattern — same as NULL: _fs2_wrap("") -> FS2EMPTY -> no-op */
-Test(fs2_api_modif, trim_str_empty_pattern_noop) {
+Test(fs2_api_modificators, trim_str_empty_pattern_noop) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("  hi  ");
 
@@ -1496,7 +1488,7 @@ Test(fs2_api_modif, trim_str_empty_pattern_noop) {
  * Contrast: fs2-version aborts on NULL pattern, _str-version does not
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_null_str_pattern_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_null_str_pattern_aborts, .signal = SIGABRT) {
     fs2 s = fs2_fromstr("abc");
     fs2_trim(&s, NULL);                    /* fs2-version: strict */
     fs2_free(&s);
@@ -1506,7 +1498,7 @@ Test(fs2_api_modif, trim_null_str_pattern_aborts, .signal = SIGABRT) {
  * Equivalence: _str == fs2 with explicit _fs2_wrap(pattern)
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_str_matches_fs2_version) {
+Test(fs2_api_modificators, trim_str_matches_fs2_version) {
     __fs2_checkreset();
     fs2 pat = fs2_fromstr(" ");
 
@@ -1542,7 +1534,7 @@ Test(fs2_api_modif, trim_str_matches_fs2_version) {
  * Multichar pattern
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_str_multichar_set) {
+Test(fs2_api_modificators, trim_str_multichar_set) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("xyzhelloxyz");
 
@@ -1558,14 +1550,292 @@ Test(fs2_api_modif, trim_str_multichar_set) {
  * NULL s still aborts (inherited from fs2_trim_common via invfatal)
  * ========================================================================= */
 
-Test(fs2_api_modif, trim_str_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, trim_str_null_s_aborts, .signal = SIGABRT) {
     fs2_trim_str(NULL, " ");
 }
 
-Test(fs2_api_modif, ltrim_str_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, ltrim_str_null_s_aborts, .signal = SIGABRT) {
     fs2_ltrim_str(NULL, " ");
 }
 
-Test(fs2_api_modif, rtrim_str_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, rtrim_str_null_s_aborts, .signal = SIGABRT) {
     fs2_rtrim_str(NULL, " ");
+}
+
+/* =========================================================================
+ * fs2_starts_with — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 p1  = fs2_fromstr("hello");
+    fs2 p2  = fs2_fromstr("hello world");   /* full string */
+
+    CHECK_TRUE("prefix at start", fs2_starts_with(&s, &p1));
+    CHECK_TRUE("whole string",    fs2_starts_with(&s, &p2));
+
+    fs2_free(&s);
+    fs2_free(&p1);
+    fs2_free(&p2);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, starts_with_no_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 p1  = fs2_fromstr("world");      /* different content */
+    fs2 p2  = fs2_fromstr("Hello");      /* case differs */
+    fs2 p3  = fs2_fromstr("ell");        /* matches inside, not at start */
+
+    CHECK_FALSE("wrong content",  fs2_starts_with(&s, &p1));
+    CHECK_FALSE("case mismatch",  fs2_starts_with(&s, &p2));
+    CHECK_FALSE("not at start",   fs2_starts_with(&s, &p3));
+
+    fs2_free(&s);
+    fs2_free(&p1);
+    fs2_free(&p2);
+    fs2_free(&p3);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, starts_with_prefix_longer) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("ab");
+    fs2 p   = fs2_fromstr("abc");        /* len 3 > s->len 2 */
+
+    CHECK_FALSE("prefix longer", fs2_starts_with(&s, &p));
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_ends_with — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, ends_with_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 s1  = fs2_fromstr("world");
+    fs2 s2  = fs2_fromstr("hello world");   /* full string */
+
+    CHECK_TRUE("suffix at end", fs2_ends_with(&s, &s1));
+    CHECK_TRUE("whole string",  fs2_ends_with(&s, &s2));
+
+    fs2_free(&s);
+    fs2_free(&s1);
+    fs2_free(&s2);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_no_match) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 s1  = fs2_fromstr("world");      /* different */
+    fs2 s2  = fs2_fromstr("Hello");      /* case differs */
+    fs2 s3  = fs2_fromstr("ell");        /* matches inside, not at end */
+
+    CHECK_FALSE("wrong content", fs2_ends_with(&s, &s1));
+    CHECK_FALSE("case mismatch", fs2_ends_with(&s, &s2));
+    CHECK_FALSE("not at end",    fs2_ends_with(&s, &s3));
+
+    fs2_free(&s);
+    fs2_free(&s1);
+    fs2_free(&s2);
+    fs2_free(&s3);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_suffix_longer) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("ab");
+    fs2 suf = fs2_fromstr("cab");
+
+    CHECK_FALSE("suffix longer", fs2_ends_with(&s, &suf));
+
+    fs2_free(&s);
+    fs2_free(&suf);
+    assert_balanced();
+}
+
+/* Repeated pattern: memcmp slice must match at the very end */
+Test(fs2_api_modificators, ends_with_slice_offset_correct) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabc");
+    fs2 suf = fs2_fromstr("abc");
+
+    CHECK_TRUE("last 3 bytes", fs2_ends_with(&s, &suf));
+
+    /* Wrong if the implementation compared v[0..3) instead of v[3..6) */
+    fs2 notsuf = fs2_fromstr("cba");
+    CHECK_FALSE("slice offset", fs2_ends_with(&s, &notsuf));
+
+    fs2_free(&s);
+    fs2_free(&suf);
+    fs2_free(&notsuf);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty prefix / suffix — always true (all flavors)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_empty_prefix_all_flavors) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("abc");
+    fs2 empty  = FS2EMPTY;                /* v="", len=0 */
+    fs2 canon  = FS2();                   /* v=NULL, len=0 */
+    fs2 lit    = FS2LITERAL("");          /* v="", len=0, STATIC */
+
+    CHECK_TRUE("FS2EMPTY", fs2_starts_with(&s, &empty));
+    CHECK_TRUE("FS2()",    fs2_starts_with(&s, &canon));
+    CHECK_TRUE("FS2LITERAL(\"\")", fs2_starts_with(&s, &lit));
+
+    fs2_free(&s);
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_empty_suffix_all_flavors) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("abc");
+    fs2 empty  = FS2EMPTY;
+    fs2 canon  = FS2();
+    fs2 lit    = FS2LITERAL("");
+
+    CHECK_TRUE("FS2EMPTY", fs2_ends_with(&s, &empty));
+    CHECK_TRUE("FS2()",    fs2_ends_with(&s, &canon));
+    CHECK_TRUE("FS2LITERAL(\"\")", fs2_ends_with(&s, &lit));
+
+    fs2_free(&s);
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty s + non-empty prefix/suffix — always false (no deref)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_empty_src_false) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("a");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_FALSE("FS2() + \"a\"",    fs2_starts_with(&canon, &p));
+    CHECK_FALSE("FS2EMPTY + \"a\"", fs2_starts_with(&empty, &p));
+
+    fs2_free(&canon);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_empty_src_false) {
+    __fs2_checkreset();
+    fs2 suf = fs2_fromstr("a");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_FALSE("FS2() + \"a\"",    fs2_ends_with(&canon, &suf));
+    CHECK_FALSE("FS2EMPTY + \"a\"", fs2_ends_with(&empty, &suf));
+
+    fs2_free(&canon);
+    fs2_free(&suf);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * BOTH sides empty, all 4 flavor combinations — must be true, must not crash
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_both_empty_all_flavors) {
+    __fs2_checkreset();
+
+    fs2 fl[] = { FS2(), FS2EMPTY, FS2LITERAL("") };
+
+    for (size_t i = 0; i < 3; i++) {
+        for (size_t j = 0; j < 3; j++) {
+            CHECK_TRUE("all empty flavors",
+                       fs2_starts_with(&fl[i], &fl[j]));
+        }
+    }
+
+    fs2_free(&fl[0]);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_both_empty_all_flavors) {
+    __fs2_checkreset();
+
+    fs2 fl[] = { FS2(), FS2EMPTY, FS2LITERAL("") };
+
+    for (size_t i = 0; i < 3; i++) {
+        for (size_t j = 0; j < 3; j++) {
+            CHECK_TRUE("all empty flavors",
+                       fs2_ends_with(&fl[i], &fl[j]));
+        }
+    }
+
+    fs2_free(&fl[0]);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC src
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello world");
+    fs2 p = fs2_fromstr("hello");
+
+    CHECK_TRUE("match", fs2_starts_with(&s, &p));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello world");
+    fs2 p = fs2_fromstr("world");
+
+    CHECK_TRUE("match", fs2_ends_with(&s, &p));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards (invfatal -> SIGABRT in debug)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_null_s_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2_starts_with(NULL, &p);
+    fs2_free(&p);
+}
+
+Test(fs2_api_modificators, starts_with_null_prefix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_starts_with(&s, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api_modificators, ends_with_null_s_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2_ends_with(NULL, &p);
+    fs2_free(&p);
+}
+
+Test(fs2_api_modificators, ends_with_null_suffix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_ends_with(&s, NULL);
+    fs2_free(&s);
 }
