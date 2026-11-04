@@ -3369,7 +3369,7 @@ Test(fs2_api_modificators, strip_suffix_str_null_s_aborts, .signal = SIGABRT) {
  * fs2_strip_prefix_new — nominal (match path: substr_new, exact-fit)
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_basic) {
+Test(fs2_api_modificators, strip_prefix_new_basic) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello world");
     fs2 p   = fs2_fromstr("hello ");
@@ -3391,7 +3391,7 @@ Test(fs2_api_modif, strip_prefix_new_basic) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_basic) {
+Test(fs2_api_modificators, strip_suffix_new_basic) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello world");
     fs2 p   = fs2_fromstr(" world");
@@ -3412,7 +3412,7 @@ Test(fs2_api_modif, strip_suffix_new_basic) {
 }
 
 /* Whole string stripped -> empty result */
-Test(fs2_api_modif, strip_prefix_new_whole_string) {
+Test(fs2_api_modificators, strip_prefix_new_whole_string) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("abc");
     fs2 p   = fs2_fromstr("abc");
@@ -3429,7 +3429,7 @@ Test(fs2_api_modif, strip_prefix_new_whole_string) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_whole_string) {
+Test(fs2_api_modificators, strip_suffix_new_whole_string) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("abc");
     fs2 p   = fs2_fromstr("abc");
@@ -3447,7 +3447,7 @@ Test(fs2_api_modif, strip_suffix_new_whole_string) {
 }
 
 /* Only ONE strip, not recursive: "aaa" - "aa" -> "a" */
-Test(fs2_api_modif, strip_prefix_new_only_one_occurrence) {
+Test(fs2_api_modificators, strip_prefix_new_only_one_occurrence) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("aaa");
     fs2 p   = fs2_fromstr("aa");
@@ -3461,7 +3461,7 @@ Test(fs2_api_modif, strip_prefix_new_only_one_occurrence) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_only_one_occurrence) {
+Test(fs2_api_modificators, strip_suffix_new_only_one_occurrence) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("aaa");
     fs2 p   = fs2_fromstr("aa");
@@ -3479,7 +3479,7 @@ Test(fs2_api_modif, strip_suffix_new_only_one_occurrence) {
  * no-op paths (clone of src)
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_no_match_clones) {
+Test(fs2_api_modificators, strip_prefix_new_no_match_clones) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello");
     fs2 p   = fs2_fromstr("xyz");
@@ -3497,7 +3497,7 @@ Test(fs2_api_modif, strip_prefix_new_no_match_clones) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_prefix_new_empty_affix_clones) {
+Test(fs2_api_modificators, strip_prefix_new_empty_affix_clones) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello");
     fs2 e   = FS2EMPTY;
@@ -3518,7 +3518,7 @@ Test(fs2_api_modif, strip_prefix_new_empty_affix_clones) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_empty_affix_clones) {
+Test(fs2_api_modificators, strip_suffix_new_empty_affix_clones) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello");
     fs2 e   = FS2EMPTY;
@@ -3534,7 +3534,7 @@ Test(fs2_api_modif, strip_suffix_new_empty_affix_clones) {
 }
 
 /* affix longer than src -> no match -> clone (no underflow in src->len - prefix->len) */
-Test(fs2_api_modif, strip_prefix_new_affix_longer_clones) {
+Test(fs2_api_modificators, strip_prefix_new_affix_longer_clones) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("ab");
     fs2 p   = fs2_fromstr("abc");
@@ -3554,7 +3554,7 @@ Test(fs2_api_modif, strip_prefix_new_affix_longer_clones) {
  * empty src -> clone -> FS2EMPTY (normalization)
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_empty_src_returns_empty) {
+Test(fs2_api_modificators, strip_prefix_new_empty_src_returns_empty) {
     __fs2_checkreset();
     fs2 p = fs2_fromstr("a");
 
@@ -3580,7 +3580,7 @@ Test(fs2_api_modif, strip_prefix_new_empty_src_returns_empty) {
  * STATIC / LOCAL src — works (this is a constructor, not mutator)
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_static_src) {
+Test(fs2_api_modificators, strip_prefix_new_static_src) {
     __fs2_checkreset();
     fs2 src = FS2LITERAL("hello world");
     fs2 p   = fs2_fromstr("hello ");
@@ -3598,7 +3598,7 @@ Test(fs2_api_modif, strip_prefix_new_static_src) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_static_src) {
+Test(fs2_api_modificators, strip_suffix_new_static_src) {
     __fs2_checkreset();
     fs2 src = FS2LITERAL("hello world");
     fs2 p   = fs2_fromstr(" world");
@@ -3613,7 +3613,7 @@ Test(fs2_api_modif, strip_suffix_new_static_src) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_prefix_new_local_src) {
+Test(fs2_api_modificators, strip_prefix_new_local_src) {
     __fs2_checkreset();
     FS2LOCAL(buf, 16);
     fs2_memcpy_str(&buf, 0, "hello world", 11);
@@ -3638,25 +3638,25 @@ Test(fs2_api_modif, strip_prefix_new_local_src) {
  * guards
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_null_src_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, strip_prefix_new_null_src_aborts, .signal = SIGABRT) {
     fs2 p = fs2_fromstr("a");
     fs2_strip_prefix_new(NULL, &p);
     fs2_free(&p);
 }
 
-Test(fs2_api_modif, strip_prefix_new_null_prefix_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, strip_prefix_new_null_prefix_aborts, .signal = SIGABRT) {
     fs2 src = fs2_fromstr("abc");
     fs2_strip_prefix_new(&src, NULL);
     fs2_free(&src);
 }
 
-Test(fs2_api_modif, strip_suffix_new_null_src_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, strip_suffix_new_null_src_aborts, .signal = SIGABRT) {
     fs2 p = fs2_fromstr("a");
     fs2_strip_suffix_new(NULL, &p);
     fs2_free(&p);
 }
 
-Test(fs2_api_modif, strip_suffix_new_null_suffix_aborts, .signal = SIGABRT) {
+Test(fs2_api_modificators, strip_suffix_new_null_suffix_aborts, .signal = SIGABRT) {
     fs2 src = fs2_fromstr("abc");
     fs2_strip_suffix_new(&src, NULL);
     fs2_free(&src);
@@ -3666,7 +3666,7 @@ Test(fs2_api_modif, strip_suffix_new_null_suffix_aborts, .signal = SIGABRT) {
  * src untouched / independent buffer
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_new_src_untouched_and_independent) {
+Test(fs2_api_modificators, strip_new_src_untouched_and_independent) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello world");
     fs2 p   = fs2_fromstr("hello ");
@@ -3697,7 +3697,7 @@ Test(fs2_api_modif, strip_new_src_untouched_and_independent) {
  * Consistency: strip_*_new(src, pat) ≡ strip_*(clone(src), pat)
  * ========================================================================= */
 
-Test(fs2_api_modif, strip_prefix_new_matches_inplace_on_clone) {
+Test(fs2_api_modificators, strip_prefix_new_matches_inplace_on_clone) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello world");
     fs2 p   = fs2_fromstr("hello ");
@@ -3719,7 +3719,7 @@ Test(fs2_api_modif, strip_prefix_new_matches_inplace_on_clone) {
     assert_balanced();
 }
 
-Test(fs2_api_modif, strip_suffix_new_matches_inplace_on_clone) {
+Test(fs2_api_modificators, strip_suffix_new_matches_inplace_on_clone) {
     __fs2_checkreset();
     fs2 src = fs2_fromstr("hello world");
     fs2 p   = fs2_fromstr(" world");
