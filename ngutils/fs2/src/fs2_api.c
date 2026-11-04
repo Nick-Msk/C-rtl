@@ -1103,19 +1103,21 @@ typedef char *(*fs2_findfn_t)(const char *haystack,
 static inline ptrdiff_t
 fs2_instr_pos_common_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                        size_t pos, size_t nth, fs2_findfn_t find) {
-    invraise(str != NULL && pattern != NULL, "Null pointers %p %p", str, pattern);
-    if (nth == 0)                    
+    invfatal(ERR_NULL_INPUT, str != NULL && pattern != NULL, 
+        "Null pointers %p %p", str, pattern);
+
+    if (nth == 0)                 
         return -1;
 
     /* Empty pattern: matches at every position [pos, str->len].
-     * Python semantics: "abc".find("", 2) → 2; "" matches at pos+nth-1. */
+     * Python semantics: "abc".find("", 2) → 2; "" matches at pos+nth-1. works even for FS2() since we don't deref v. */
     if (fs2_is_empty(pattern)) {
         if (pos > str->len || nth > str->len - pos + 1)
             return -1;
         return (ptrdiff_t)(pos + nth - 1);
     }
 
-    if (pos >= str->len)
+    if (str->v == NULL || pos >= str->len)
         return -1;
 
     size_t pat_len = pattern->len;
