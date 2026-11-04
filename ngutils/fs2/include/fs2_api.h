@@ -1966,7 +1966,7 @@ static inline bool
 fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
     invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
         "Null pointers %p %p", s, suffix);
-        
+
     if (suffix->len == 0)        
         return true;
     if (suffix->len > s->len)    
@@ -1997,7 +1997,7 @@ fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
     fs2 tmp = _fs2_wrap(pat);
     return fs2_contains(s, &tmp);
 }
-// count
+
 /**
  * @return Number of non-overlapping occurrences of @p pat.
  *         Returns 0 if @p pat is empty (unlike Python's len+1, which
@@ -2005,7 +2005,9 @@ fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
  */
 static inline size_t
 fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
-    invraise(s != NULL && pat != NULL, "Null pointers %p %p", s, pat);
+    invfatal(ERR_NULL_INPUT, s != NULL && pat != NULL, 
+        "Null pointers %p %p", s, pat);
+
     if (fs2_is_empty(pat)) return 0;   /* no non-overlapping occurrences of "" */
     
     size_t    count = 0;
