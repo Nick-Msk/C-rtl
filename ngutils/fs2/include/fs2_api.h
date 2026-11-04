@@ -351,7 +351,7 @@ fs2_substr(fs2 *s, size_t from, size_t len);
  * @param s     Non-NULL fs2 (any flavor).
  * @param from  Start offset (clamped).
  * @param len   Number of bytes to extract (clamped).
- * @return      A new fs2 (stack, FS2_BODYALLOC body).
+ * @return      A new fs2 stacked
  */
 extern fs2 
 fs2_substr_new(const fs2 *s, size_t from, size_t len);
