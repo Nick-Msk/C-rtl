@@ -1157,7 +1157,7 @@ fs2_instr_pos_ci_nth(const fs2 *restrict str, const fs2 *restrict pattern,
 // replace 
 fs2 *
 fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) {
-    invraise(s != NULL && pat != NULL && repl != NULL, 
+    invfatal(ERR_NULL_INPUT, s != NULL && pat != NULL && repl != NULL, 
              "Null pointers %p %p %p", s, pat, repl);
     
     if (fs2_is_empty(pat))  
@@ -1175,10 +1175,12 @@ fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) 
         size_t tail    = s->len - (p + pat->len);
         size_t new_len = s->len - pat->len + repl->len;
         
-        /* Shift suffix (tail + NUL) right or left — handles both grow 
-         * and shrink, and is no-op when pat->len == repl->len.
-         * fs2_selfmove reserves capacity and survives realloc. */
-        fs2_selfmove(s, p + repl->len, p + pat->len, tail + 1);
+        /* Move only the tail bytes (NOT the NUL). fs2_cant_copy bounds src by
+        * src->len and rejects reading v[len]; fs2_setlen() writes the NUL at
+        * the new tail position, so moving it is unnecessary.
+        * fs2_selfmove reserves tail+1 bytes at dstpos, which covers v[new_len];
+        * fs2_memcpy separately reserves repl->len bytes at p. */
+        fs2_selfmove(s, p + repl->len, p + pat->len, tail);
         
         /* Copy replacement. Skip if empty — memcpy(dst, NULL, 0) is UB
          * (FS2EMPTY has v="", but FS2() has v=NULL). */
