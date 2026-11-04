@@ -2025,3 +2025,165 @@ Test(fs2_api_modificators, starts_with_str_null_s_aborts, .signal = SIGABRT) {
 Test(fs2_api_modificators, ends_with_str_null_s_aborts, .signal = SIGABRT) {
     fs2_ends_with_str(NULL, "a");
 }
+
+/* =========================================================================
+ * fs2_contains — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, contains_match_and_miss) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello world");
+    fs2 y1  = fs2_fromstr("hello");      /* prefix */
+    fs2 y2  = fs2_fromstr("world");      /* suffix */
+    fs2 y3  = fs2_fromstr("o w");        /* middle */
+    fs2 y4  = fs2_fromstr("world!!");    /* not in */
+    fs2 y5  = fs2_fromstr("Hello");      /* case-sensitive miss */
+
+    CHECK_TRUE ("prefix",  fs2_contains(&s, &y1));
+    CHECK_TRUE ("suffix",  fs2_contains(&s, &y2));
+    CHECK_TRUE ("middle",  fs2_contains(&s, &y3));
+    CHECK_FALSE("longer",  fs2_contains(&s, &y4));
+    CHECK_FALSE("case",    fs2_contains(&s, &y5));
+
+    fs2_free(&s);
+    fs2_free(&y1); fs2_free(&y2); fs2_free(&y3);
+    fs2_free(&y4); fs2_free(&y5);
+    assert_balanced();
+}
+
+/* Empty pattern: Python semantics — matches anywhere, always true */
+Test(fs2_api_modificators, contains_empty_pattern_true) {
+    __fs2_checkreset();
+    fs2 s      = fs2_fromstr("abc");
+    fs2 pat    = FS2EMPTY;
+    fs2 canon  = FS2();
+    fs2 lit    = FS2LITERAL("");
+
+    CHECK_TRUE("FS2EMPTY pattern",      fs2_contains(&s, &pat));
+    CHECK_TRUE("FS2() pattern",         fs2_contains(&s, &canon));
+    CHECK_TRUE("FS2LITERAL(\"\") pattern", fs2_contains(&s, &lit));
+
+    fs2_free(&s);
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_contains — empty s (post-fix consistency with FS2EMPTY)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, contains_empty_src_nonempty_pattern_false) {
+    __fs2_checkreset();
+    fs2 pat   = fs2_fromstr("a");
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_FALSE("FS2()",    fs2_contains(&canon, &pat));
+    CHECK_FALSE("FS2EMPTY", fs2_contains(&empty, &pat));
+
+    fs2_free(&canon);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* After the instr_pos_nth consistency fix, FS2() and FS2EMPTY are
+ * equivalent for empty pattern — both should yield true. If this fails,
+ * the FS2()/empty-pattern check ordering was reverted. */
+Test(fs2_api_modificators, contains_empty_src_empty_pattern_true) {
+    __fs2_checkreset();
+    fs2 pat   = FS2EMPTY;
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_TRUE("FS2()",    fs2_contains(&canon, &pat));
+    CHECK_TRUE("FS2EMPTY", fs2_contains(&empty, &pat));
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_contains — guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, contains_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = fs2_fromstr("a");
+    fs2_contains(NULL, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modificators, contains_null_pat_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_contains(&s, NULL);              /* invfatal in instr_pos_nth */
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * fs2_contains_str — nominal + NULL/"" lenient
+ * ========================================================================= */
+
+Test(fs2_api_modificators, contains_str_match_and_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("prefix", fs2_contains_str(&s, "hello"));
+    CHECK_TRUE ("suffix", fs2_contains_str(&s, "world"));
+    CHECK_TRUE ("middle", fs2_contains_str(&s, "o w"));
+    CHECK_FALSE("longer", fs2_contains_str(&s, "world!!"));
+    CHECK_FALSE("case",   fs2_contains_str(&s, "Hello"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* NULL pat -> _fs2_wrap(NULL) -> FS2EMPTY -> empty pattern -> true */
+Test(fs2_api_modificators, contains_str_null_pat_true) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("NULL pat == empty pattern", fs2_contains_str(&s, NULL));
+    CHECK_TRUE("""  pat == empty pattern", fs2_contains_str(&s, ""));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, contains_str_empty_src_null_pat_true) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_TRUE("FS2() + NULL",    fs2_contains_str(&canon, NULL));
+    CHECK_TRUE("FS2EMPTY + NULL", fs2_contains_str(&empty, NULL));
+    CHECK_TRUE("FS2() + \"\"",    fs2_contains_str(&canon, ""));
+    CHECK_TRUE("FS2EMPTY + \"\"", fs2_contains_str(&empty, ""));
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, contains_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_contains_str(NULL, "a");
+}
+
+/* =========================================================================
+ * Consistency: _str ≡ fs2 with explicit wrapped pattern
+ * ========================================================================= */
+
+Test(fs2_api_modificators, contains_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 s     = fs2_fromstr("hello world");
+    fs2 p_ok  = fs2_fromstr("world");
+    fs2 p_no  = fs2_fromstr("xyz");
+
+    CHECK_EQ("match", fs2_contains_str(&s, "world"),
+                      fs2_contains(&s, &p_ok));
+    CHECK_EQ("miss",  fs2_contains_str(&s, "xyz"),
+                      fs2_contains(&s, &p_no));
+
+    fs2_free(&s);
+    fs2_free(&p_ok);
+    fs2_free(&p_no);
+    assert_balanced();
+}
+
