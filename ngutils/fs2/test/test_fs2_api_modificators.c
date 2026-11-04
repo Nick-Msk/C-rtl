@@ -3839,3 +3839,265 @@ Test(fs2_api_modificators, strip_str_new_matches_fs2_version) {
     fs2_free(&sfx);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_initcap — nominal (running in C locale; see test_setup)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2 *r = fs2_initcap(&s);
+
+    CHECK_STR_EQ("Hello World", s.v, "Hello World");
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_all_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO WORLD");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Hello World", s.v, "Hello World");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_mixed_case) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hELLo WoRLD");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Hello World", s.v, "Hello World");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_single_word) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Hello", s.v, "Hello");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_single_char) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("h");
+    fs2 b = fs2_fromstr("H");
+    fs2 c = fs2_fromstr("1");
+    fs2 d = fs2_fromstr("!");
+
+    fs2_initcap(&a); fs2_initcap(&b); fs2_initcap(&c); fs2_initcap(&d);
+
+    CHECK_STR_EQ("h", a.v, "H");
+    CHECK_STR_EQ("H", b.v, "H");
+    CHECK_STR_EQ("1", c.v, "1");
+    CHECK_STR_EQ("!", d.v, "!");
+
+    fs2_free(&a); fs2_free(&b); fs2_free(&c); fs2_free(&d);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Digits are alnum (PostgreSQL semantics)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_digits_are_part_of_word) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123def");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Abc123def", s.v, "Abc123def");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_leading_digit_no_change) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("123abc");
+    fs2_initcap(&s);
+    /* '1' is alnum -> toupper('1') == '1'; rest lowercased (already) */
+    CHECK_STR_EQ("123abc", s.v, "123abc");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Separators: space, punctuation, apostrophe
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_multiple_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a  b   c");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("A  B   C", s.v, "A  B   C");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_leading_trailing_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello  ");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("  Hello  ", s.v, "  Hello  ");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_punctuation_separators) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello-world!foo,bar");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Hello-World!Foo,Bar", s.v, "Hello-World!Foo,Bar");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_apostrophe_is_separator) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("can't");
+    fs2_initcap(&s);
+    /* PostgreSQL: non-alnum = separator -> 't' starts a new word */
+    CHECK_STR_EQ("Can'T", s.v, "Can'T");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_underscore_is_separator) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("_abc_");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("_Abc_", s.v, "_Abc_");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * PostgreSQL docstring example
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_pg_docstring_example) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi THOMAS");
+    fs2_initcap(&s);
+    CHECK_STR_EQ("Hi Thomas", s.v, "Hi Thomas");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty s (FS2 / FS2EMPTY / FS2LITERAL("")) — no-op
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_fs2empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    fs2_initcap(&s);
+    CHECK_TRUE("still eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_canon_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    fs2_initcap(&s);
+    CHECK_TRUE("still canon", fs2_is_canon(&s));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_static_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("");
+    fs2_initcap(&s);
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC non-empty -> eager abort (fs2_cant_mutate)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_initcap(&s);
+}
+
+/* =========================================================================
+ * LOCAL — works (same-size transform, no realloc)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+
+    fs2_initcap(&buf);
+
+    CHECK_STR_EQ("Hello World", buf.v, "Hello World");
+    CHECK_TRUE ("still LOCAL",  fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_null_aborts, .signal = SIGABRT) {
+    fs2_initcap(NULL);
+}
+
+/* =========================================================================
+ * Idempotency: initcap(initcap(s)) == initcap(s)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hELLo WoRLD");
+    fs2_initcap(&s);
+    char *first = strdup(s.v);
+    cr_assert_not_null(first);
+    fs2_initcap(&s);
+    CHECK_STR_EQ("idempotent", s.v, first);
+    free(first);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * High byte in C locale: unchanged, treated as separator
+ *   (in a non-C locale this may differ — see docstring note)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_high_byte_c_locale_unchanged) {
+    __fs2_checkreset();
+    char *raw = strdup("ab\xE9" "cd");
+    cr_assert(raw != NULL);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert(raw == NULL);
+
+    fs2_initcap(&s);
+
+    /* 'A', 'b', 0xE9 (separator in C locale, unchanged),
+     * 'C' (new word start after 0xE9), 'd' */
+    CHECK_EQ("'A'",            s.v[0], 'A');
+    CHECK_EQ("'b'",            s.v[1], 'b');
+    CHECK_EQ("0xE9 unchanged", (unsigned char)s.v[2], 0xE9u);
+    CHECK_EQ("'C'",            s.v[3], 'C');
+    CHECK_EQ("'d'",            s.v[4], 'd');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
