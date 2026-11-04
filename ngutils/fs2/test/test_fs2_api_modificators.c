@@ -2760,3 +2760,382 @@ Test(fs2_api_modificators, heap_repeat_matches_stack_version) {
     fs2_free(heap);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_strip_prefix — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+    fs2 p = fs2_fromstr("hello ");
+
+    fs2 *r = fs2_strip_prefix(&s, &p);
+
+    CHECK_STR_EQ("world",   s.v, "world");
+    CHECK_EQ  ("len",       s.len, 5);
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+    CHECK_FS2VALID(2, &p);
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_prefix_whole_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 p = fs2_fromstr("abc");
+
+    fs2_strip_prefix(&s, &p);
+
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("empty",  fs2_is_empty(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_prefix_no_match) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 p = fs2_fromstr("world");
+    void *orig = s.v;
+
+    fs2_strip_prefix(&s, &p);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_prefix_empty_prefix_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 e = FS2EMPTY;
+    fs2 c = FS2();
+    void *orig = s.v;
+
+    fs2_strip_prefix(&s, &e);
+    CHECK_PTR_EQ("FS2EMPTY noop", s.v, orig);
+    fs2_strip_prefix(&s, &c);
+    CHECK_PTR_EQ("FS2() noop",    s.v, orig);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_prefix_prefix_longer_than_s) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+    fs2 p = fs2_fromstr("abc");
+
+    fs2_strip_prefix(&s, &p);
+
+    CHECK_STR_EQ("ab", s.v, "ab");
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_strip_suffix — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_suffix_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+    fs2 p = fs2_fromstr(" world");
+
+    fs2 *r = fs2_strip_suffix(&s, &p);
+
+    CHECK_STR_EQ("hello",   s.v, "hello");
+    CHECK_EQ  ("len",       s.len, 5);
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_whole_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 p = fs2_fromstr("abc");
+
+    fs2_strip_suffix(&s, &p);
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_no_match) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 p = fs2_fromstr("world");
+    void *orig = s.v;
+
+    fs2_strip_suffix(&s, &p);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_empty_suffix_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 e = FS2EMPTY;
+    fs2 c = FS2();
+
+    fs2_strip_suffix(&s, &e);
+    fs2_strip_suffix(&s, &c);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_suffix_longer_than_s) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("ab");
+    fs2 p = fs2_fromstr("cab");
+
+    fs2_strip_suffix(&s, &p);
+    CHECK_STR_EQ("ab", s.v, "ab");
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Overlap: "aaa" strip "aa" -> "a" (only ONE strip, not recursive)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_only_one_occurrence) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaa");
+    fs2 p = fs2_fromstr("aa");
+
+    fs2_strip_prefix(&s, &p);
+
+    CHECK_STR_EQ("a", s.v, "a");   /* not "" */
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_only_one_occurrence) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaa");
+    fs2 p = fs2_fromstr("aa");
+
+    fs2_strip_suffix(&s, &p);
+
+    CHECK_STR_EQ("a", s.v, "a");   /* not "" */
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty src (FS2() / FS2EMPTY) — no-op, no crash
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_empty_src_noop) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("a");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    fs2_strip_prefix(&canon, &p);
+    fs2_strip_prefix(&empty, &p);
+    CHECK_TRUE("canon empty", fs2_is_canon(&canon));
+    CHECK_TRUE("empty empty", fs2_eq_empty(&empty));
+
+    fs2_strip_suffix(&canon, &p);
+    fs2_strip_suffix(&empty, &p);
+    CHECK_TRUE("canon empty 2", fs2_is_canon(&canon));
+    CHECK_TRUE("empty empty 2", fs2_eq_empty(&empty));
+
+    fs2_free(&canon);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC non-empty: lazy behaviour (no-match -> no-op, match -> abort)
+ *
+ *   If you add `fs2_cant_mutate(s)` upfront (eager, like fs2_toupper),
+ *   flip both `_no_match_noop` tests to `.signal = SIGABRT`.
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_static_prefix_no_match_abort, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");
+    fs2 p = fs2_fromstr("xyz");
+
+    fs2_strip_prefix(&s, &p);   /* starts_with false -> no-op */
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_static_prefix_match_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2 p = fs2_fromstr("hel");
+    fs2_strip_prefix(&s, &p);   /* selfmove on STATIC -> abort */
+    fs2_free(&p);
+}
+
+Test(fs2_api_modificators, strip_static_suffix_no_match_abort, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello");
+    fs2 p = fs2_fromstr("xyz");
+
+    fs2_strip_suffix(&s, &p);   /* ends_with false -> no-op */
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_static_suffix_match_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2 p = fs2_fromstr("llo");
+    fs2_strip_suffix(&s, &p);   /* setlen on STATIC with pos < len -> abort */
+    fs2_free(&p);
+}
+
+/* =========================================================================
+ * LOCAL src — shrinks only, always fits
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+    fs2 p = fs2_fromstr("hello ");
+
+    fs2_strip_prefix(&buf, &p);
+
+    CHECK_STR_EQ("world",      buf.v, "world");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+    fs2 p = fs2_fromstr(" world");
+
+    fs2_strip_suffix(&buf, &p);
+
+    CHECK_STR_EQ("hello",      buf.v, "hello");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_null_s_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2_strip_prefix(NULL, &p);
+    fs2_free(&p);
+}
+
+Test(fs2_api_modificators, strip_prefix_null_prefix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_prefix(&s, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api_modificators, strip_suffix_null_s_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2_strip_suffix(NULL, &p);
+    fs2_free(&p);
+}
+
+Test(fs2_api_modificators, strip_suffix_null_suffix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_suffix(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Pattern not touched, buffer not realloc when result fits
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_pattern_untouched) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 p = fs2_fromstr("he");
+    void *p_v = p.v;
+
+    fs2_strip_prefix(&s, &p);
+
+    CHECK_PTR_EQ("p.v unchanged", p.v, p_v);
+    CHECK_STR_EQ("p content",     p.v, "he");
+    CHECK_FS2VALID(1, &p);
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_pattern_untouched) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 p = fs2_fromstr("lo");
+    void *p_v = p.v;
+
+    fs2_strip_suffix(&s, &p);
+
+    CHECK_PTR_EQ("p.v unchanged", p.v, p_v);
+    CHECK_STR_EQ("p content",     p.v, "lo");
+    CHECK_FS2VALID(1, &p);
+
+    fs2_free(&s);
+    fs2_free(&p);
+    assert_balanced();
+}
