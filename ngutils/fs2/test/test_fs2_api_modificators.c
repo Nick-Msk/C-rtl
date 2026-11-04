@@ -858,3 +858,433 @@ Test(fs2_api_modif, replace_fromstr_null_equiv_to_explicit_empty) {
     fs2_free(&pat);
     assert_balanced();
 }
+
+#include <criterion/criterion.h>
+
+#include "test_fs2.h"
+#include "fs2_api.h"
+#include <locale.h>
+
+TestSuite(fs2_api_modif, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * fs2_trim / fs2_ltrim / fs2_rtrim — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_basic_both) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 *r = fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_EQ  ("len",     s.len, 5);
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+    CHECK_FS2VALID(2, &pat);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_left_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2_ltrim(&s, &pat);
+
+    CHECK_STR_EQ("hello  ", s.v, "hello  ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_right_only) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hello  ");
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2_rtrim(&s, &pat);
+
+    CHECK_STR_EQ("  hello", s.v, "  hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Multichar set pattern — set semantics, not substring
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_multichar_set) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xyxhellozyx");   /* only x/y/z get trimmed */
+    fs2 pat = fs2_fromstr("xyz");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_pattern_with_duplicates) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xxhelloxx");
+    fs2 pat = fs2_fromstr("xx");            /* still set {x} */
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* Mixed content: pattern chars interleaved with kept content */
+Test(fs2_api_modif, trim_mixed) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xax");           /* only edge x's trimmed */
+    fs2 pat = fs2_fromstr("x");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("a", s.v, "a");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Full-trim-to-empty (three different code paths)
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_all_left_path) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xxxx");
+    fs2 pat = fs2_fromstr("x");
+
+    /* left path: start == end -> setlen(0) early */
+    fs2_ltrim(&s, &pat);
+
+    CHECK_EQ  ("len",  s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_all_right_path) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xxxx");
+    fs2 pat = fs2_fromstr("x");
+
+    /* right path: end decreases to 0, no selfmove */
+    fs2_rtrim(&s, &pat);
+
+    CHECK_EQ  ("len",  s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_all_both_path) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("xxxx");
+    fs2 pat = fs2_fromstr("x");
+
+    fs2_trim(&s, &pat);
+
+    CHECK_EQ  ("len",  s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * No-op cases (buffer must not be touched — pointer stability)
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_empty_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2EMPTY;
+    void *orig = s.v;
+
+    fs2_trim(&s, &pat);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_canon_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = FS2();
+
+    fs2_trim(&s, &pat);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_pattern_no_match_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = fs2_fromstr("xyz");
+    void *orig = s.v;
+
+    fs2_trim(&s, &pat);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty s (FS2EMPTY / FS2()) — early return, form preserved
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_fs2empty_s_stays_empty) {
+    __fs2_checkreset();
+    fs2 s   = FS2EMPTY;
+    fs2 pat = fs2_fromstr("x");
+
+    fs2_trim(&s, &pat);
+    CHECK_TRUE("still eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_canon_s_stays_canon) {
+    __fs2_checkreset();
+    fs2 s   = FS2();
+    fs2 pat = fs2_fromstr("x");
+
+    fs2_trim(&s, &pat);
+    CHECK_TRUE("still canon", fs2_is_canon(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC s — current behaviour matrix (lazy abort)
+ *   no-match -> no-op; match -> abort; empty pattern -> no-op
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_static_no_match_abort, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 s   = FS2LITERAL("hello");
+    fs2 pat = fs2_fromstr("xyz");
+
+    fs2_trim(&s, &pat);   /* strspn=0, no writes, setlen(len) is a no-op */
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_TRUE("still STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_static_empty_pattern_abort, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 s   = FS2LITERAL("hello");
+    fs2 pat = FS2EMPTY;
+
+    fs2_trim(&s, &pat);   /* early return */
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_static_full_match_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("   ");
+    fs2 pat = fs2_fromstr(" ");
+    fs2_trim(&s, &pat);   /* start == end -> fs2_setlen(0) -> abort */
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modif, trim_static_partial_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+    fs2_trim(&s, &pat);   /* selfmove on STATIC -> abort */
+    fs2_free(&pat);
+}
+
+/* =========================================================================
+ * LOCAL s — only shrinks/keeps size, always fits
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_local_shrinks) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "  hello  ", 9);
+    fs2_setlen(&buf, 9);
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2_trim(&buf, &pat);
+
+    CHECK_STR_EQ("hello",      buf.v, "hello");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_local_all_to_empty) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 8);
+    fs2_memcpy_str(&buf, 0, "xxxx", 4);
+    fs2_setlen(&buf, 4);
+    fs2 pat = fs2_fromstr("x");
+
+    fs2_trim(&buf, &pat);
+
+    CHECK_EQ  ("len",  buf.len, 0);
+    CHECK_TRUE("LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = fs2_fromstr("x");
+    fs2_trim(NULL, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modif, trim_null_pat_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_trim(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Pattern not touched
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_pattern_untouched) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+    void *pat_v = pat.v;
+
+    fs2_trim(&s, &pat);
+
+    CHECK_PTR_EQ("pat.v unchanged", pat.v, pat_v);
+    CHECK_STR_EQ("pat content",     pat.v, " ");
+    CHECK_FS2VALID(1, &pat);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Direct fs2_trim_common — both=false is a no-op
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_common_neither_side_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+    void *orig = s.v;
+
+    fs2_trim_common(&s, &pat, false, false);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("  hi  ",           s.v, "  hi  ");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC src — EAGER abort via fs2_cant_mutate
+ *   Non-empty STATIC is always a programmer error (trimming a literal),
+ *   regardless of whether the pattern matches anything.
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_static_no_match_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("hello");
+    fs2 pat = fs2_fromstr("xyz");
+    fs2_trim(&s, &pat);       /* no writes would be needed, but still aborts */
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modif, trim_static_empty_pattern_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("hello");
+    fs2 pat = FS2EMPTY;
+    fs2_trim(&s, &pat);       /* early return used to happen here — now aborts */
+    fs2_free(&pat);
+}
+
+/* Also for ltrim / rtrim (same fs2_trim_common path) */
+Test(fs2_api_modif, trim_static_ltrim_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+    fs2_ltrim(&s, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modif, trim_static_rtrim_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("  hi  ");
+    fs2 pat = fs2_fromstr(" ");
+    fs2_rtrim(&s, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modif, trim_str_null_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+    fs2_trim_str(&s, NULL);
+    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");   /* NULL → FS2EMPTY → no-op */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_trim(&s, NULL);                       /* fs2-version: strict */
+    fs2_free(&s);
+}
