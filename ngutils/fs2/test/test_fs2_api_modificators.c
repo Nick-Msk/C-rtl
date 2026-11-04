@@ -1274,15 +1274,6 @@ Test(fs2_api_modif, trim_static_rtrim_aborts, .signal = SIGABRT) {
     fs2_free(&pat);
 }
 
-Test(fs2_api_modif, trim_str_null_pattern_noop) {
-    __fs2_checkreset();
-    fs2 s = fs2_fromstr("  hi  ");
-    fs2_trim_str(&s, NULL);
-    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");   /* NULL → FS2EMPTY → no-op */
-    fs2_free(&s);
-    assert_balanced();
-}
-
 Test(fs2_api_modif, trim_null_pattern_aborts, .signal = SIGABRT) {
     fs2 s = fs2_fromstr("abc");
     fs2_trim(&s, NULL);                       /* fs2-version: strict */
@@ -1389,4 +1380,192 @@ Test(fs2_api_modif, ltrim_null_aborts, .signal = SIGABRT) {
 
 Test(fs2_api_modif, rtrim_null_aborts, .signal = SIGABRT) {
     fs2_rtrim(NULL, NULL);
+}
+
+/* =========================================================================
+ * trim_str / ltrim_str / rtrim_str — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2 *r = fs2_trim_str(&s, " ");
+
+    CHECK_STR_EQ("hi",    s.v, "hi");
+    CHECK_PTR_EQ("chain", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, ltrim_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2_ltrim_str(&s, " ");
+
+    CHECK_STR_EQ("hi  ", s.v, "hi  ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, rtrim_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2_rtrim_str(&s, " ");
+
+    CHECK_STR_EQ("  hi", s.v, "  hi");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL pattern — LENIENT via _fs2_wrap(NULL) -> FS2EMPTY -> no-op
+ *   (contrast: fs2_trim(&s, NULL) aborts)
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_str_null_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+    void *orig = s.v;
+
+    fs2_trim_str(&s, NULL);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("  hi  ",           s.v, "  hi  ");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, trim_str_null_pattern_noop2) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+    fs2_trim_str(&s, NULL);
+    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");   /* NULL → FS2EMPTY → no-op */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, ltrim_str_null_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2_ltrim_str(&s, NULL);
+
+    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, rtrim_str_null_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2_rtrim_str(&s, NULL);
+
+    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "" pattern — same as NULL: _fs2_wrap("") -> FS2EMPTY -> no-op */
+Test(fs2_api_modif, trim_str_empty_pattern_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hi  ");
+
+    fs2_trim_str(&s, "");
+
+    CHECK_STR_EQ("  hi  ", s.v, "  hi  ");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Contrast: fs2-version aborts on NULL pattern, _str-version does not
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_null_str_pattern_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_trim(&s, NULL);                    /* fs2-version: strict */
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Equivalence: _str == fs2 with explicit _fs2_wrap(pattern)
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 pat = fs2_fromstr(" ");
+
+    fs2 a = fs2_fromstr("  hi  ");
+    fs2 b = fs2_fromstr("  hi  ");
+    fs2_trim_str(&a, " ");
+    fs2_trim(&b, &pat);
+    CHECK_STR_EQ("trim_str == trim", a.v, b.v);
+    fs2_free(&a);
+    fs2_free(&b);
+
+    fs2 c = fs2_fromstr("  hi  ");
+    fs2 d = fs2_fromstr("  hi  ");
+    fs2_ltrim_str(&c, " ");
+    fs2_ltrim(&d, &pat);
+    CHECK_STR_EQ("ltrim_str == ltrim", c.v, d.v);
+    fs2_free(&c);
+    fs2_free(&d);
+
+    fs2 e = fs2_fromstr("  hi  ");
+    fs2 f = fs2_fromstr("  hi  ");
+    fs2_rtrim_str(&e, " ");
+    fs2_rtrim(&f, &pat);
+    CHECK_STR_EQ("rtrim_str == rtrim", e.v, f.v);
+    fs2_free(&e);
+    fs2_free(&f);
+
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Multichar pattern
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_str_multichar_set) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xyzhelloxyz");
+
+    fs2_trim_str(&s, "xyz");
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL s still aborts (inherited from fs2_trim_common via invfatal)
+ * ========================================================================= */
+
+Test(fs2_api_modif, trim_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_trim_str(NULL, " ");
+}
+
+Test(fs2_api_modif, ltrim_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_ltrim_str(NULL, " ");
+}
+
+Test(fs2_api_modif, rtrim_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_rtrim_str(NULL, " ");
 }
