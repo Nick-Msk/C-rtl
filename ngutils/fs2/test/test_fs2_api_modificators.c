@@ -669,3 +669,192 @@ Test(fs2_api, replace_local_dst_matrix) {
     fs2_free(&repl);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_replace_fromstr — NULL repl -> _fs2_wrap(NULL) -> FS2EMPTY -> delete
+ *   (unlike fs2_replace(&s, pat, NULL) which aborts)
+ * ========================================================================= */
+
+Test(fs2_api_modif, replace_fromstr_null_repl_deletes) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aXbXc");
+    fs2 pat = fs2_fromstr("X");
+
+    /* NULL repl -> empty -> delete */
+    fs2_replace_fromstr(&s, &pat, NULL);
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+    CHECK_EQ  ("len",   s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, replace_fromstr_empty_str_repl_deletes) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aXbXc");
+    fs2 pat = fs2_fromstr("X");
+
+    fs2_replace_fromstr(&s, &pat, "");
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* Both NULL and "" go through _fs2_wrap -> FS2EMPTY -> same result */
+Test(fs2_api_modif, replace_fromstr_null_and_empty_repl_same) {
+    __fs2_checkreset();
+    fs2 pat = fs2_fromstr("X");
+
+    fs2 a = fs2_fromstr("aXbXc");
+    fs2 b = fs2_fromstr("aXbXc");
+
+    fs2_replace_fromstr(&a, &pat, NULL);
+    fs2_replace_fromstr(&b, &pat, "");
+
+    CHECK_STR_EQ("null repl",  a.v, "abc");
+    CHECK_STR_EQ("empty repl", b.v, "abc");
+    CHECK_EQ  ("same len",     a.len, b.len);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* Non-NULL repl — normal replace */
+Test(fs2_api_modif, replace_fromstr_normal) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aXbXc");
+    fs2 pat = fs2_fromstr("X");
+
+    fs2_replace_fromstr(&s, &pat, "QQ");
+
+    CHECK_STR_EQ("aQQbQQc", s.v, "aQQbQQc");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_replace_fromstr — CONTRAST: NULL pat still aborts (pat non-lenient)
+ * ========================================================================= */
+
+Test(fs2_api_modif, replace_fromstr_null_pat_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_replace_fromstr(&s, NULL, "X");
+    fs2_free(&s);
+}
+
+Test(fs2_api_modif, replace_fromstr_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = fs2_fromstr("a");
+    fs2_replace_fromstr(NULL, &pat, "X");
+    fs2_free(&pat);
+}
+
+/* =========================================================================
+ * fs2_replace_cstr — BOTH args lenient (pat AND repl via _fs2_wrap)
+ * ========================================================================= */
+
+Test(fs2_api_modif, replace_cstr_normal) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("one apple, two apple");
+
+    fs2_replace_cstr(&s, "apple", "banana");
+
+    CHECK_STR_EQ("one banana, two banana", s.v, "one banana, two banana");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* NULL pat -> _fs2_wrap(NULL) -> FS2EMPTY -> fs2_replace early-returns (no-op) */
+Test(fs2_api_modif, replace_cstr_null_pat_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, NULL, "X");
+
+    CHECK_STR_EQ("hello", s.v, "hello");   /* pat empty -> no-op */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* NULL repl -> _fs2_wrap(NULL) -> FS2EMPTY -> delete */
+Test(fs2_api_modif, replace_cstr_null_repl_deletes) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbXc");
+
+    fs2_replace_cstr(&s, "X", NULL);
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Both NULL -> both wrapped as FS2EMPTY -> pat empty -> no-op */
+Test(fs2_api_modif, replace_cstr_both_null_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, NULL, NULL);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Both "" — pat empty -> no-op */
+Test(fs2_api_modif, replace_cstr_both_empty_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_replace_cstr(&s, "", "");
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Only dst NULL aborts (invraise in fs2_replace) */
+Test(fs2_api_modif, replace_cstr_null_s_aborts, .signal = SIGABRT) {
+    fs2_replace_cstr(NULL, "a", "b");
+}
+
+/* =========================================================================
+ * Consistency: fromstr ≡ replace with explicit FS2EMPTY for NULL repl
+ * ========================================================================= */
+
+Test(fs2_api_modif, replace_fromstr_null_equiv_to_explicit_empty) {
+    __fs2_checkreset();
+    fs2 pat  = fs2_fromstr("X");
+    fs2 empty = FS2EMPTY;
+
+    fs2 a = fs2_fromstr("aXbXc");
+    fs2 b = fs2_fromstr("aXbXc");
+
+    fs2_replace_fromstr(&a, &pat, NULL);
+    fs2_replace(&b, &pat, &empty);
+
+    CHECK_STR_EQ("same result",  a.v, b.v);
+    CHECK_EQ  ("same len",       a.len, b.len);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&pat);
+    assert_balanced();
+}
