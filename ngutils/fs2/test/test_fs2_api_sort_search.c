@@ -4,7 +4,7 @@
 #include "fs2_api.h"
 #include <locale.h>
 
-TestSuite(test_fs2_api_sort_search, .init = test_setup, .fini = test_teardown);
+TestSuite(fs2_api_sort_search, .init = test_setup, .fini = test_teardown);
 
 /* Helper: create a sorted fs2 array */
 static void sort_fs2(fs2 *arr, size_t n) {

@@ -5,7 +5,7 @@
 #include <locale.h>
 #include <limits.h>
 
-TestSuite(test_fs2_api_parse, .init = test_setup, .fini = test_teardown);
+TestSuite(fs2_api_parse, .init = test_setup, .fini = test_teardown);
 
 /* =========================================================================
  * fs2_pos_parse_llong — nominal

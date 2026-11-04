@@ -4,7 +4,7 @@
 #include "fs2_api.h"
 #include <locale.h>
 
-TestSuite(test_fs2_api_instr, .init = test_setup, .fini = test_teardown);
+TestSuite(fs2_api_instr, .init = test_setup, .fini = test_teardown);
 
 /* =========================================================================
  * fs2_instr_pos_nth — core, case-sensitive
