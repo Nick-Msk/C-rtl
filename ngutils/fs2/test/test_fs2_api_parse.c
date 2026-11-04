@@ -3496,3 +3496,173 @@ Test(fs2_api, tryparse_all_null_s_returns_false) {
     cr_assert_not(fs2_tryparse_llong (NULL, &ll,  true));
     cr_assert_not(fs2_tryparse_char  (NULL, &c,   true));
 }
+
+/* =========================================================================
+ * parse_* — happy path + non-strict trailing
+ *   Failure (raise) path is framework-specific (userraise may longjmp);
+ *   underlying failure logic is covered by pos_parse_ tryparse_* tests.
+ * ========================================================================= */
+
+Test(fs2_api, parse_llong_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("-42");
+    fs2 trail = fs2_fromstr("42abc");   /* non-strict: trailing tolerated */
+
+    CHECK_EQ("clean",    fs2_parse_llong(&clean), -42LL);
+    CHECK_EQ("trailing", fs2_parse_llong(&trail),  42LL);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ullong_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("42");
+    fs2 trail = fs2_fromstr("42abc");
+
+    CHECK_EQ("clean",    fs2_parse_ullong(&clean), 42ULL);
+    CHECK_EQ("trailing", fs2_parse_ullong(&trail), 42ULL);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_long_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("  -42");
+    fs2 trail = fs2_fromstr("  42xyz");
+
+    CHECK_EQ("clean",    fs2_parse_long(&clean), -42L);
+    CHECK_EQ("trailing", fs2_parse_long(&trail),  42L);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ulong_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("+42");
+    fs2 trail = fs2_fromstr("42abc");
+
+    CHECK_EQ("clean",    fs2_parse_ulong(&clean), 42UL);
+    CHECK_EQ("trailing", fs2_parse_ulong(&trail), 42UL);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_int_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("-42");
+    fs2 trail = fs2_fromstr("42xyz");
+
+    CHECK_EQ("clean",    fs2_parse_int(&clean), -42);
+    CHECK_EQ("trailing", fs2_parse_int(&trail),  42);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_uint_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("42");
+    fs2 trail = fs2_fromstr("42abc");
+
+    CHECK_EQ("clean",    fs2_parse_uint(&clean), 42u);
+    CHECK_EQ("trailing", fs2_parse_uint(&trail), 42u);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_double_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("-2.5");
+    fs2 trail = fs2_fromstr("1.5xyz");
+
+    CHECK_EQ("clean",    fs2_parse_double(&clean), -2.5);
+    CHECK_EQ("trailing", fs2_parse_double(&trail),  1.5);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_short_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("-42");
+    fs2 trail = fs2_fromstr("42abc");
+
+    CHECK_EQ("clean",    fs2_parse_short(&clean), (short)-42);
+    CHECK_EQ("trailing", fs2_parse_short(&trail), (short)42);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+Test(fs2_api, parse_ushort_happy_and_trailing) {
+    __fs2_checkreset();
+    fs2 clean = fs2_fromstr("+42");
+    fs2 trail = fs2_fromstr("42abc");
+
+    CHECK_EQ("clean",    fs2_parse_ushort(&clean), (unsigned short)42);
+    CHECK_EQ("trailing", fs2_parse_ushort(&trail), (unsigned short)42);
+
+    fs2_free(&clean);
+    fs2_free(&trail);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * parse_char — special: reads s->v[0], non-strict = no whitespace check
+ * ========================================================================= */
+
+Test(fs2_api, parse_char_first_byte_nonstrict) {
+    __fs2_checkreset();
+
+    /* Single char */
+    fs2 single = fs2_fromstr("x");
+    CHECK_EQ("single", fs2_parse_char(&single), 'x');
+
+    /* Non-strict: trailing chars are ignored, only s->v[0] is returned */
+    fs2 multi = fs2_fromstr("ab");
+    CHECK_EQ("multi", fs2_parse_char(&multi), 'a');
+
+    /* Non-strict: leading space is NOT rejected (unlike strict=true) */
+    fs2 sp = fs2_fromstr(" y");
+    CHECK_EQ("space", fs2_parse_char(&sp), ' ');
+
+    /* Trailing space after first char is irrelevant */
+    fs2 trail_sp = fs2_fromstr("a ");
+    CHECK_EQ("trail_space", fs2_parse_char(&trail_sp), 'a');
+
+    fs2_free(&single);
+    fs2_free(&multi);
+    fs2_free(&sp);
+    fs2_free(&trail_sp);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * parse_* — STATIC source (checks that const path works)
+ * ========================================================================= */
+
+Test(fs2_api, parse_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("123");
+
+    CHECK_EQ("llong",  fs2_parse_llong (&s), 123LL);
+    CHECK_EQ("int",    fs2_parse_int   (&s), 123);
+    CHECK_EQ("double", fs2_parse_double(&s), 123.0);
+    CHECK_EQ("short",  fs2_parse_short (&s), (short)123);
+
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
