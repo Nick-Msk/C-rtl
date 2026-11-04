@@ -3667,15 +3667,6 @@ Test(fs2_api, parse_static_src) {
     assert_balanced();
 }
 
-#include <criterion/criterion.h>
-
-#include "test_fs2.h"
-#include "fs2_api.h"
-#include "error.h"
-#include <locale.h>
-
-TestSuite(fs2_api, .init = test_setup, .fini = test_teardown);
-
 /* =========================================================================
  * userraise behaviour for fs2_parse_*
  *
