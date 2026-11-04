@@ -3139,3 +3139,228 @@ Test(fs2_api_modificators, strip_suffix_pattern_untouched) {
     fs2_free(&p);
     assert_balanced();
 }
+
+/* =========================================================================
+ * strip_prefix_str / strip_suffix_str — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2 *r = fs2_strip_prefix_str(&s, "hello ");
+
+    CHECK_STR_EQ("world",   s.v, "world");
+    CHECK_EQ  ("len",       s.len, 5);
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    fs2 *r = fs2_strip_suffix_str(&s, " world");
+
+    CHECK_STR_EQ("hello",   s.v, "hello");
+    CHECK_EQ  ("len",       s.len, 5);
+    CHECK_PTR_EQ("chaining", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_prefix_str_no_match_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig = s.v;
+
+    fs2_strip_prefix_str(&s, "xyz");
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_no_match_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig = s.v;
+
+    fs2_strip_suffix_str(&s, "xyz");
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL affix — LENIENT via _fs2_wrap(NULL) -> FS2EMPTY -> no-op
+ *   (contrast: fs2_strip_prefix(&s, NULL) aborts)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_null_affix_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig = s.v;
+
+    fs2_strip_prefix_str(&s, NULL);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_null_affix_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    void *orig = s.v;
+
+    fs2_strip_suffix_str(&s, NULL);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("hello",            s.v, "hello");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "" c-string behaves identically to NULL */
+Test(fs2_api_modificators, strip_str_empty_affix_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2_strip_prefix_str(&s, "");
+    CHECK_STR_EQ("prefix", s.v, "hello");
+
+    fs2_strip_suffix_str(&s, "");
+    CHECK_STR_EQ("suffix", s.v, "hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Contrast: fs2-version aborts on NULL affix, _str-version does not
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_null_affix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_prefix(&s, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api_modificators, strip_suffix_null_affix_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_strip_suffix(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * Equivalence: _str == fs2 with explicit _fs2_wrap(affix)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("he");
+
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("hello");
+    fs2_strip_prefix_str(&a, "he");
+    fs2_strip_prefix(&b, &p);
+    CHECK_STR_EQ("strip_prefix_str == strip_prefix", a.v, b.v);
+    CHECK_EQ  ("same len", a.len, b.len);
+    fs2_free(&a);
+    fs2_free(&b);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("lo");
+
+    fs2 a = fs2_fromstr("hello");
+    fs2 b = fs2_fromstr("hello");
+    fs2_strip_suffix_str(&a, "lo");
+    fs2_strip_suffix(&b, &p);
+    CHECK_STR_EQ("strip_suffix_str == strip_suffix", a.v, b.v);
+    CHECK_EQ  ("same len", a.len, b.len);
+    fs2_free(&a);
+    fs2_free(&b);
+
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Whole string, empty src (FS2() / FS2EMPTY) — no deref, no crash
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_whole_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_strip_prefix_str(&s, "abc");
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_suffix_str_whole_string) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_strip_suffix_str(&s, "abc");
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, strip_str_empty_src_null_affix) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    fs2_strip_prefix_str(&canon, NULL);
+    fs2_strip_suffix_str(&canon, NULL);
+    CHECK_TRUE("canon empty", fs2_is_canon(&canon));
+
+    fs2_strip_prefix_str(&empty, NULL);
+    fs2_strip_suffix_str(&empty, NULL);
+    CHECK_TRUE("empty empty", fs2_eq_empty(&empty));
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL s still aborts (inherited)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, strip_prefix_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_strip_prefix_str(NULL, "a");
+}
+
+Test(fs2_api_modificators, strip_suffix_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_strip_suffix_str(NULL, "a");
+}
