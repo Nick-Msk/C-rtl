@@ -2158,8 +2158,10 @@ extern fs2 *
 fs2_initcap(fs2 *restrict s);
 
 static inline fs2
-fs2_initcap_new(fs2 *restrict s) {
-
+fs2_initcap_new(const fs2 *restrict s) {
+    fs2 res = fs2_clone(s);
+    fs2_initcap(&res);
+    return res;
 }
 
 #endif /* !FS2_API_H */
