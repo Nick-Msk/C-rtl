@@ -2106,7 +2106,7 @@ fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
 
 static inline fs2
 fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
-    invraise(src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
+    invfatal(ERR_NULL_INPUT, src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
     
     /* No prefix or empty — return the clone as-is */
     if (fs2_is_empty(prefix))          
@@ -2120,7 +2120,7 @@ fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
 
 static inline fs2
 fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
-    invraise(src != NULL && suffix != NULL, "Null pointers %p %p", src, suffix);
+    invfatal(ERR_NULL_INPUT, src != NULL && suffix != NULL, "Null pointers %p %p", src, suffix);
     
     if (fs2_is_empty(suffix))          
         return fs2_clone(src);
