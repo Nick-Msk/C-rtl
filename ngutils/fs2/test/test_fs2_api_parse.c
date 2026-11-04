@@ -3234,3 +3234,265 @@ Test(fs2_api, pos_parse_ushort_local_src) {
     CHECK_FS2VALID(1, &buf);
     assert_balanced();
 }
+
+/* =========================================================================
+ * tryparse_* — strict vs non-strict (numeric types)
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_llong) {
+    __fs2_checkreset();
+    long long v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_llong(&trail, &v, false), "nonstrict: trailing allowed");
+    CHECK_EQ("value", v, 42LL);
+    cr_assert_not(fs2_tryparse_llong(&trail, &v, true), "strict: trailing → false");
+
+    fs2 clean = fs2_fromstr("-42");
+    cr_assert(fs2_tryparse_llong(&clean, &v, true), "strict: clean input");
+    CHECK_EQ("value", v, -42LL);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ullong) {
+    __fs2_checkreset();
+    unsigned long long v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_ullong(&trail, &v, false));
+    CHECK_EQ("value", v, 42ULL);
+    cr_assert_not(fs2_tryparse_ullong(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("42");
+    cr_assert(fs2_tryparse_ullong(&clean, &v, true));
+    CHECK_EQ("value", v, 42ULL);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_long) {
+    __fs2_checkreset();
+    long v = 0;
+
+    fs2 trail = fs2_fromstr("  42xyz");
+    cr_assert( fs2_tryparse_long(&trail, &v, false));
+    CHECK_EQ("value", v, 42L);
+    cr_assert_not(fs2_tryparse_long(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("  -42");
+    cr_assert(fs2_tryparse_long(&clean, &v, true));
+    CHECK_EQ("value", v, -42L);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ulong) {
+    __fs2_checkreset();
+    unsigned long v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_ulong(&trail, &v, false));
+    CHECK_EQ("value", v, 42UL);
+    cr_assert_not(fs2_tryparse_ulong(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("+42");
+    cr_assert(fs2_tryparse_ulong(&clean, &v, true));
+    CHECK_EQ("value", v, 42UL);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_int) {
+    __fs2_checkreset();
+    int v = 0;
+
+    fs2 trail = fs2_fromstr("42xyz");
+    cr_assert( fs2_tryparse_int(&trail, &v, false));
+    CHECK_EQ("value", v, 42);
+    cr_assert_not(fs2_tryparse_int(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("-42");
+    cr_assert(fs2_tryparse_int(&clean, &v, true));
+    CHECK_EQ("value", v, -42);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_uint) {
+    __fs2_checkreset();
+    unsigned v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_uint(&trail, &v, false));
+    CHECK_EQ("value", v, 42u);
+    cr_assert_not(fs2_tryparse_uint(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("42");
+    cr_assert(fs2_tryparse_uint(&clean, &v, true));
+    CHECK_EQ("value", v, 42u);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_double) {
+    __fs2_checkreset();
+    double v = 0;
+
+    fs2 trail = fs2_fromstr("1.5xyz");
+    cr_assert( fs2_tryparse_double(&trail, &v, false));
+    CHECK_EQ("value", v, 1.5);
+    cr_assert_not(fs2_tryparse_double(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("-2.5");
+    cr_assert(fs2_tryparse_double(&clean, &v, true));
+    CHECK_EQ("value", v, -2.5);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_short) {
+    __fs2_checkreset();
+    short v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_short(&trail, &v, false));
+    CHECK_EQ("value", v, (short)42);
+    cr_assert_not(fs2_tryparse_short(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("-42");
+    cr_assert(fs2_tryparse_short(&clean, &v, true));
+    CHECK_EQ("value", v, (short)-42);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_ushort) {
+    __fs2_checkreset();
+    unsigned short v = 0;
+
+    fs2 trail = fs2_fromstr("42abc");
+    cr_assert( fs2_tryparse_ushort(&trail, &v, false));
+    CHECK_EQ("value", v, (unsigned short)42);
+    cr_assert_not(fs2_tryparse_ushort(&trail, &v, true));
+
+    fs2 clean = fs2_fromstr("+42");
+    cr_assert(fs2_tryparse_ushort(&clean, &v, true));
+    CHECK_EQ("value", v, (unsigned short)42);
+
+    fs2_free(&trail);
+    fs2_free(&clean);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * tryparse_char — SPECIAL strict semantics
+ *   strict=true ONLY rejects leading whitespace (isspace(s->v[0]));
+ *   it does NOT require newpos == s->len, so trailing bytes are allowed.
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_char_strict_rejects_leading_whitespace_only) {
+    __fs2_checkreset();
+    char c = 0;
+
+    /* strict: leading space → false */
+    fs2 sp = fs2_fromstr(" a");
+    cr_assert_not(fs2_tryparse_char(&sp, &c, true), "leading space, strict");
+
+    /* non-strict: space is a regular char → true, c = ' ' */
+    cr_assert(fs2_tryparse_char(&sp, &c, false), "leading space, non-strict");
+    CHECK_EQ("char", c, ' ');
+
+    /* strict: leading tab → false */
+    fs2 tab = fs2_fromstr("\ta");
+    cr_assert_not(fs2_tryparse_char(&tab, &c, true), "leading tab, strict");
+
+    fs2_free(&sp);
+    fs2_free(&tab);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_strict_accepts_trailing_garbage) {
+    __fs2_checkreset();
+    char c = 0;
+
+    /* "ab" strict → true: leading 'a' is not whitespace; trailing 'b' is NOT checked */
+    fs2 ab = fs2_fromstr("ab");
+    cr_assert(fs2_tryparse_char(&ab, &c, true), "strict accepts 'ab'");
+    CHECK_EQ("char", c, 'a');
+
+    /* "a xyz" strict → true (leading 'a' is not whitespace) */
+    fs2 ag = fs2_fromstr("a xyz");
+    cr_assert(fs2_tryparse_char(&ag, &c, true));
+    CHECK_EQ("char", c, 'a');
+
+    /* "a " strict → true (trailing space is NOT checked) */
+    fs2 at = fs2_fromstr("a ");
+    cr_assert(fs2_tryparse_char(&at, &c, true));
+    CHECK_EQ("char", c, 'a');
+
+    fs2_free(&ab);
+    fs2_free(&ag);
+    fs2_free(&at);
+    assert_balanced();
+}
+
+Test(fs2_api, tryparse_char_nominal) {
+    __fs2_checkreset();
+    char c = 0;
+
+    fs2 s = fs2_fromstr("x");
+    cr_assert(fs2_tryparse_char(&s, &c, true));
+    CHECK_EQ("char", c, 'x');
+
+    /* empty string → false (delegated to pos_parse_char) */
+    fs2 e = FS2EMPTY;
+    cr_assert_not(fs2_tryparse_char(&e, &c, false));
+    cr_assert_not(fs2_tryparse_char(&e, &c, true));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL s — delegates a soft false (no crash) for every type
+ * ========================================================================= */
+
+Test(fs2_api, tryparse_all_null_s_returns_false) {
+    long long ll = 0; unsigned long long ull = 0;
+    long l = 0; unsigned long ul = 0;
+    int i = 0; unsigned u = 0;
+    double d = 0; char c = 0;
+    short sh = 0; unsigned short ush = 0;
+
+    cr_assert_not(fs2_tryparse_llong (NULL, &ll,  false));
+    cr_assert_not(fs2_tryparse_ullong(NULL, &ull, false));
+    cr_assert_not(fs2_tryparse_long  (NULL, &l,   false));
+    cr_assert_not(fs2_tryparse_ulong (NULL, &ul,  false));
+    cr_assert_not(fs2_tryparse_int   (NULL, &i,   false));
+    cr_assert_not(fs2_tryparse_uint  (NULL, &u,   false));
+    cr_assert_not(fs2_tryparse_double(NULL, &d,   false));
+    cr_assert_not(fs2_tryparse_char  (NULL, &c,   false));
+    cr_assert_not(fs2_tryparse_short (NULL, &sh,  false));
+    cr_assert_not(fs2_tryparse_ushort(NULL, &ush, false));
+
+    /* strict=true — same soft false */
+    cr_assert_not(fs2_tryparse_llong (NULL, &ll,  true));
+    cr_assert_not(fs2_tryparse_char  (NULL, &c,   true));
+}
