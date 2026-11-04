@@ -565,3 +565,131 @@ Test(fs2_api_ser, ser_errmsg_pointer_prefix) {
                  strncmp(buf, "Failed to serialize pointer ", 28), 0);
     cr_assert_gt(strlen(buf), 28, "pointer text after prefix must be non-empty");
 }
+
+/* =========================================================================
+ * fs2_nonspace_span — independent expected values (not compared to cspn)
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");         /* ' ' at 5 */
+
+    CHECK_EQ("from 0", fs2_nonspace_span(&s, 0), 5);   /* "hello" */
+    CHECK_EQ("from 5", fs2_nonspace_span(&s, 5), 0);   /* starts with ' ' */
+    CHECK_EQ("from 6", fs2_nonspace_span(&s, 6), 5);   /* "world" */
+    CHECK_EQ("from 11", fs2_nonspace_span(&s, 11), 0); /* pos == len */
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nonspace_span_stops_at_any_whitespace) {
+    __fs2_checkreset();
+    /* Exercise every member of " \t\n\r\v\f" */
+    struct { const char *src; size_t expected; } cases[] = {
+        { "abc def",   3 },   /* space */
+        { "abc\tdef",  3 },   /* tab */
+        { "abc\ndef",  3 },   /* LF */
+        { "abc\rdef",  3 },   /* CR */
+        { "abc\vdef",  3 },   /* VT */
+        { "abc\fdef",  3 },   /* FF */
+        { "abcdef",    6 },   /* no whitespace — whole string */
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        fs2 s = fs2_fromstr(cases[i].src);
+        CHECK_EQ("run until whitespace", fs2_nonspace_span(&s, 0), cases[i].expected);
+        fs2_free(&s);
+    }
+    assert_balanced();
+}
+
+Test(fs2_api, nonspace_span_only_whitespace) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   \t\n\r\v\f   ");
+    CHECK_EQ("immediate", fs2_nonspace_span(&s, 0), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nonspace_span — empty cases (FS2EMPTY / FS2() / pos >= len)
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_fs2empty_v_not_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v, "precondition: FS2EMPTY has v == \"\"");
+
+    CHECK_EQ("pos=0", fs2_nonspace_span(&s, 0), 0);
+    CHECK_EQ("pos=5", fs2_nonspace_span(&s, 5), 0);
+
+    assert_balanced();
+}
+
+Test(fs2_api, nonspace_span_canon_v_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    CHECK_EQ("pos=0",        fs2_nonspace_span(&s, 0),        0);
+    CHECK_EQ("pos=SIZE_MAX", fs2_nonspace_span(&s, SIZE_MAX), 0);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, nonspace_span_pos_at_or_beyond_len) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("pos=len",   fs2_nonspace_span(&s, 5),   0);
+    CHECK_EQ("pos>len",   fs2_nonspace_span(&s, 100), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_nonspace_span — guards (inherited via fs2_cspn)
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_null_s_aborts, .signal = SIGABRT) {
+    fs2_nonspace_span(NULL, 0);
+}
+
+/* =========================================================================
+ * fs2_nonspace_span — STATIC src
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("hello world");
+
+    CHECK_EQ("from 0", fs2_nonspace_span(&s, 0), 5);
+    CHECK_EQ("from 6", fs2_nonspace_span(&s, 6), 5);
+
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency: nonspace_span == cspn(..., " \t\n\r\v\f")
+ *   (kept as a guard against divergence if either changes)
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_matches_cspn) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello\tworld\nfoo");
+
+    for (size_t p = 0; p <= s.len; p++) {
+        CHECK_EQ("matches cspn",
+                 fs2_nonspace_span(&s, p),
+                 fs2_cspn(&s, p, " \t\n\r\v\f"));
+    }
+
+    fs2_free(&s);
+    assert_balanced();
+}
