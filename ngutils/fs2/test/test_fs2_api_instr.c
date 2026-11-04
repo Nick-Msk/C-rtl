@@ -7,10 +7,130 @@
 TestSuite(fs2_api_instr, .init = test_setup, .fini = test_teardown);
 
 /* =========================================================================
+ * Empty pattern — Python semantics matrix
+ *
+ * | str      | pattern  | pos | nth | expected |
+ * |----------|----------|-----|-----|----------|
+ * | FS2EMPTY | FS2EMPTY | 0   | 1   | 0        |
+ * | FS2()    | FS2EMPTY | 0   | 1   | 0 (after consistency fix) |
+ * | "abc"    | FS2EMPTY | 0   | 1   | 0        |
+ * | "abc"    | FS2EMPTY | 0   | 4   | 3        |
+ * | "abc"    | FS2EMPTY | 0   | 5   | -1       |
+ * | "abc"    | FS2EMPTY | 4   | 1   | -1       |
+ * ========================================================================= */
+
+Test(fs2_api_instr, empty_pattern_fs2empty_str) {
+    __fs2_checkreset();
+    fs2 str = FS2EMPTY;
+    fs2 pat = FS2EMPTY;
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_pos_nth(&str, &pat, 0, 1), 0);
+    CHECK_EQ("pos=0 nth=2", fs2_instr_pos_nth(&str, &pat, 0, 2), -1);
+
+    assert_balanced();
+}
+
+// Documented contract: FS2() has no buffer -> 0.
+Test(fs2_api_instr, empty_pattern_fs2_str) {
+    __fs2_checkreset();
+    fs2 str = FS2();          /* v == NULL */
+    fs2 pat = FS2EMPTY;
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_pos_nth(&str, &pat, 0, 1), 0);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_instr, empty_pattern_matrix) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");   /* len=3 */
+    fs2 pat = FS2EMPTY;
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_pos_nth(&str, &pat, 0, 1), 0);
+    CHECK_EQ("pos=0 nth=2", fs2_instr_pos_nth(&str, &pat, 0, 2), 1);
+    CHECK_EQ("pos=0 nth=3", fs2_instr_pos_nth(&str, &pat, 0, 3), 2);
+    CHECK_EQ("pos=0 nth=4", fs2_instr_pos_nth(&str, &pat, 0, 4), 3);
+    CHECK_EQ("pos=0 nth=5", fs2_instr_pos_nth(&str, &pat, 0, 5), -1);
+
+    CHECK_EQ("pos=3 nth=1", fs2_instr_pos_nth(&str, &pat, 3, 1), 3);
+    CHECK_EQ("pos=3 nth=2", fs2_instr_pos_nth(&str, &pat, 3, 2), -1);
+    CHECK_EQ("pos=4 nth=1", fs2_instr_pos_nth(&str, &pat, 4, 1), -1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Overlapping matches — "aaa" / "aa" -> 0, 1 (not 0, -1 for non-overlapping)
+ * ========================================================================= */
+
+Test(fs2_api_instr, overlapping_matches) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("aaa");
+    fs2 pat = fs2_fromstr("aa");
+
+    CHECK_EQ("nth=1", fs2_instr_pos_nth(&str, &pat, 0, 1), 0);
+    CHECK_EQ("nth=2", fs2_instr_pos_nth(&str, &pat, 0, 2), 1);
+    CHECK_EQ("nth=3", fs2_instr_pos_nth(&str, &pat, 0, 3), -1);
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Boundary: pos near end, pattern longer than remaining
+ * ========================================================================= */
+
+Test(fs2_api_instr, pattern_longer_than_remaining) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+    fs2 pat = fs2_fromstr("abcd");
+
+    CHECK_EQ("pattern too long", fs2_instr_pos_nth(&str, &pat, 0, 1), -1);
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_instr, pattern_fits_exactly_at_tail) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+    fs2 pat = fs2_fromstr("bc");     /* len=2, fits only at pos=1 */
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_pos_nth(&str, &pat, 0, 1), 1);
+    CHECK_EQ("pos=1 nth=1", fs2_instr_pos_nth(&str, &pat, 1, 1), 1);
+    CHECK_EQ("pos=2 nth=1", fs2_instr_pos_nth(&str, &pat, 2, 1), -1);   /* need 2 bytes, only 1 left */
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FS2EMPTY as pattern with non-empty str, ci variant too
+ * ========================================================================= */
+
+Test(fs2_api_instr, empty_pattern_ci) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("AbC");
+    fs2 pat = FS2EMPTY;
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_pos_ci_nth(&str, &pat, 0, 1), 0);
+    CHECK_EQ("pos=0 nth=4", fs2_instr_pos_ci_nth(&str, &pat, 0, 4), 3);
+    CHECK_EQ("pos=0 nth=5", fs2_instr_pos_ci_nth(&str, &pat, 0, 5), -1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* =========================================================================
  * fs2_instr_pos_nth — core, case-sensitive
  * ========================================================================= */
 
-Test(fs2_api, instr_pos_nth_basic) {
+Test(fs2_api_instr, instr_pos_nth_basic) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("hello world");
     fs2 p = fs2_fromstr("o");
@@ -26,7 +146,7 @@ Test(fs2_api, instr_pos_nth_basic) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_nth_zero) {
+Test(fs2_api_instr, instr_pos_nth_zero) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("hello");
     fs2 p = fs2_fromstr("l");
@@ -36,7 +156,7 @@ Test(fs2_api, instr_pos_nth_zero) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_nth_pos_skips_earlier) {
+Test(fs2_api_instr, instr_pos_nth_pos_skips_earlier) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("banana");   /* "an" at 1, 3 */
     fs2 p = fs2_fromstr("an");
@@ -54,7 +174,7 @@ Test(fs2_api, instr_pos_nth_pos_skips_earlier) {
 }
 
 /* Overlapping occurrences are counted separately: "aaa"/"aa" → 0 and 1 */
-Test(fs2_api, instr_pos_nth_overlapping) {
+Test(fs2_api_instr, instr_pos_nth_overlapping) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aaa");
     fs2 p = fs2_fromstr("aa");
@@ -68,7 +188,7 @@ Test(fs2_api, instr_pos_nth_overlapping) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_nth_not_found_and_too_long) {
+Test(fs2_api_instr, instr_pos_nth_not_found_and_too_long) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("abc");
     fs2 p1 = fs2_fromstr("xyz");
@@ -83,7 +203,7 @@ Test(fs2_api, instr_pos_nth_not_found_and_too_long) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_nth_pos_at_or_beyond_len) {
+Test(fs2_api_instr, instr_pos_nth_pos_at_or_beyond_len) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("abc");
     fs2 p = fs2_fromstr("a");
@@ -100,7 +220,7 @@ Test(fs2_api, instr_pos_nth_pos_at_or_beyond_len) {
  * fs2_instr_pos_nth — empty pattern (Python semantics)
  * ========================================================================= */
 
-Test(fs2_api, instr_pos_nth_empty_pattern_from_zero) {
+Test(fs2_api_instr, instr_pos_nth_empty_pattern_from_zero) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("abc");
     fs2 p = FS2EMPTY;
@@ -115,7 +235,7 @@ Test(fs2_api, instr_pos_nth_empty_pattern_from_zero) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_nth_empty_pattern_with_pos) {
+Test(fs2_api_instr, instr_pos_nth_empty_pattern_with_pos) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("abc");
     fs2 p = FS2EMPTY;
@@ -138,7 +258,7 @@ Test(fs2_api, instr_pos_nth_empty_pattern_with_pos) {
  * fs2_instr_pos_ci_nth — core, case-insensitive
  * ========================================================================= */
 
-Test(fs2_api, instr_pos_ci_nth_basic) {
+Test(fs2_api_instr, instr_pos_ci_nth_basic) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("Hello World");
     fs2 p = fs2_fromstr("O");
@@ -152,7 +272,7 @@ Test(fs2_api, instr_pos_ci_nth_basic) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_ci_nth_mixed_case) {
+Test(fs2_api_instr, instr_pos_ci_nth_mixed_case) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("HeLLo");
 
@@ -171,7 +291,7 @@ Test(fs2_api, instr_pos_ci_nth_mixed_case) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_ci_nth_overlapping) {
+Test(fs2_api_instr, instr_pos_ci_nth_overlapping) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aAa");
     fs2 p = fs2_fromstr("AA");
@@ -185,7 +305,7 @@ Test(fs2_api, instr_pos_ci_nth_overlapping) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_pos_ci_nth_nth_zero) {
+Test(fs2_api_instr, instr_pos_ci_nth_nth_zero) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("HeLLo");
     fs2 p = fs2_fromstr("l");
@@ -196,7 +316,7 @@ Test(fs2_api, instr_pos_ci_nth_nth_zero) {
 }
 
 /* Empty pattern in ci — same Python semantics, case doesn't matter */
-Test(fs2_api, instr_pos_ci_nth_empty_pattern) {
+Test(fs2_api_instr, instr_pos_ci_nth_empty_pattern) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aBc");
     fs2 p = FS2EMPTY;
@@ -213,7 +333,7 @@ Test(fs2_api, instr_pos_ci_nth_empty_pattern) {
  * Wrappers fs2_instr / _from / _nth — case-sensitive
  * ========================================================================= */
 
-Test(fs2_api, instr_first) {
+Test(fs2_api_instr, instr_first) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("hello world");
     fs2 p = fs2_fromstr("o");
@@ -225,7 +345,7 @@ Test(fs2_api, instr_first) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_from_skips_prefix) {
+Test(fs2_api_instr, instr_from_skips_prefix) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("banana");
     fs2 p = fs2_fromstr("an");
@@ -239,7 +359,7 @@ Test(fs2_api, instr_from_skips_prefix) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_nth_from_zero) {
+Test(fs2_api_instr, instr_nth_from_zero) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("hello world");
     fs2 p = fs2_fromstr("o");
@@ -254,7 +374,7 @@ Test(fs2_api, instr_nth_from_zero) {
 }
 
 /* Wrappers are equivalent to core calls with proper arguments */
-Test(fs2_api, instr_wrappers_match_core) {
+Test(fs2_api_instr, instr_wrappers_match_core) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("mississippi");
     fs2 p = fs2_fromstr("ss");
@@ -272,7 +392,7 @@ Test(fs2_api, instr_wrappers_match_core) {
  * Wrappers fs2_instr_ci / _from_ci / _nth_ci — case-insensitive
  * ========================================================================= */
 
-Test(fs2_api, instr_ci_first) {
+Test(fs2_api_instr, instr_ci_first) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("Hello World");
     fs2 p = fs2_fromstr("O");
@@ -283,7 +403,7 @@ Test(fs2_api, instr_ci_first) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_from_ci) {
+Test(fs2_api_instr, instr_from_ci) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("HeLLo");
     fs2 p = fs2_fromstr("l");
@@ -297,7 +417,7 @@ Test(fs2_api, instr_from_ci) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_nth_ci) {
+Test(fs2_api_instr, instr_nth_ci) {
     __fs2_checkreset();
     fs2 h = fs2_fromstr("aAaA");
     fs2 p = fs2_fromstr("A");
@@ -317,7 +437,7 @@ Test(fs2_api, instr_nth_ci) {
  * C-str wrappers — smoke test: equivalence with fs2 version
  * ========================================================================= */
 
-Test(fs2_api, instr_str_matches_fs2_version) {
+Test(fs2_api_instr, instr_str_matches_fs2_version) {
     __fs2_checkreset();
     fs2 h  = fs2_fromstr("mississippi");
     fs2 p  = fs2_fromstr("ss");
@@ -339,7 +459,7 @@ Test(fs2_api, instr_str_matches_fs2_version) {
  * Edge cases: empty haystack / STATIC
  * ========================================================================= */
 
-Test(fs2_api, instr_empty_haystack) {
+Test(fs2_api_instr, instr_empty_haystack) {
     __fs2_checkreset();
     fs2 h = FS2EMPTY;
     fs2 p = fs2_fromstr("a");
@@ -355,7 +475,7 @@ Test(fs2_api, instr_empty_haystack) {
     assert_balanced();
 }
 
-Test(fs2_api, instr_static_haystack) {
+Test(fs2_api_instr, instr_static_haystack) {
     __fs2_checkreset();
     fs2 h = FS2LITERAL("hello world");
     fs2 p = fs2_fromstr("o");
@@ -371,25 +491,25 @@ Test(fs2_api, instr_static_haystack) {
  * NULL-guards (debug: SIGABRT via invraise)
  * ========================================================================= */
 
-Test(fs2_api, instr_null_str_aborts, .signal = SIGABRT) {
+Test(fs2_api_instr, instr_null_str_aborts, .signal = SIGABRT) {
     fs2 p = fs2_fromstr("x");
     fs2_instr_pos_nth(NULL, &p, 0, 1);
     fs2_free(&p);
 }
 
-Test(fs2_api, instr_null_pattern_aborts, .signal = SIGABRT) {
+Test(fs2_api_instr, instr_null_pattern_aborts, .signal = SIGABRT) {
     fs2 h = fs2_fromstr("hello");
     fs2_instr_pos_nth(&h, NULL, 0, 1);
     fs2_free(&h);
 }
 
-Test(fs2_api, instr_ci_null_str_aborts, .signal = SIGABRT) {
+Test(fs2_api_instr, instr_ci_null_str_aborts, .signal = SIGABRT) {
     fs2 p = fs2_fromstr("x");
     fs2_instr_pos_ci_nth(NULL, &p, 0, 1);
     fs2_free(&p);
 }
 
-Test(fs2_api, instr_ci_null_pattern_aborts, .signal = SIGABRT) {
+Test(fs2_api_instr, instr_ci_null_pattern_aborts, .signal = SIGABRT) {
     fs2 h = fs2_fromstr("hello");
     fs2_instr_pos_ci_nth(&h, NULL, 0, 1);
     fs2_free(&h);
