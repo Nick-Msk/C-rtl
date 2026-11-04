@@ -514,3 +514,156 @@ Test(fs2_api_instr, instr_ci_null_pattern_aborts, .signal = SIGABRT) {
     fs2_instr_pos_ci_nth(&h, NULL, 0, 1);
     fs2_free(&h);
 }
+
+/* =========================================================================
+ * fs2_instr_posn_str / _ci — NULL pattern → _fs2_wrap(NULL) → FS2EMPTY
+ *   (unlike fs2_instr_pos_nth which aborts on NULL pattern)
+ * ========================================================================= */
+
+Test(fs2_api_instr, instr_posn_str_null_pattern_is_empty_semantics) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+
+    /* NULL pattern → wrapped as FS2EMPTY → Python empty-pattern */
+    CHECK_EQ("pos=0 nth=1", fs2_instr_posn_str(&str, NULL, 0, 1), 0);
+    CHECK_EQ("pos=0 nth=4", fs2_instr_posn_str(&str, NULL, 0, 4), 3);
+    CHECK_EQ("pos=0 nth=5", fs2_instr_posn_str(&str, NULL, 0, 5), -1);
+    CHECK_EQ("pos=3 nth=1", fs2_instr_posn_str(&str, NULL, 3, 1), 3);
+
+    CHECK_FS2VALID(1, &str);
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_instr, instr_posn_str_ci_null_pattern_is_empty_semantics) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("AbC");
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_posn_str_ci(&str, NULL, 0, 1), 0);
+    CHECK_EQ("pos=0 nth=4", fs2_instr_posn_str_ci(&str, NULL, 0, 4), 3);
+    CHECK_EQ("pos=0 nth=5", fs2_instr_posn_str_ci(&str, NULL, 0, 5), -1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* "for the record": core version aborts on NULL pattern, wrapper does not.
+ * This is the whole reason _fs2_wrap (lenient) is used here. */
+Test(fs2_api_instr, instr_posn_null_pattern_aborts, .signal = SIGABRT) {
+    fs2 str = fs2_fromstr("abc");
+    fs2_instr_pos_nth(&str, NULL, 0, 1);
+    fs2_free(&str);
+}
+
+/* =========================================================================
+ * fs2_instr_posn_str — delegation (non-NULL pattern)
+ * ========================================================================= */
+
+Test(fs2_api_instr, instr_posn_str_delegates) {
+    __fs2_checkreset();
+    fs2       str = fs2_fromstr("mississippi");
+    fs2       pat = fs2_fromstr("ss");
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_posn_str(&str, "ss", 0, 1),
+                            fs2_instr_pos_nth(&str, &pat, 0, 1));
+    CHECK_EQ("pos=0 nth=2", fs2_instr_posn_str(&str, "ss", 0, 2),
+                            fs2_instr_pos_nth(&str, &pat, 0, 2));
+    CHECK_EQ("pos=4 nth=1", fs2_instr_posn_str(&str, "ss", 4, 1),
+                            fs2_instr_pos_nth(&str, &pat, 4, 1));
+    CHECK_EQ("nth=0",       fs2_instr_posn_str(&str, "ss", 0, 0),
+                            fs2_instr_pos_nth(&str, &pat, 0, 0));
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_instr, instr_posn_str_ci_delegates) {
+    __fs2_checkreset();
+    fs2       str = fs2_fromstr("MiSsIsSiPpI");
+    fs2       pat = fs2_fromstr("SS");
+
+    CHECK_EQ("pos=0 nth=1", fs2_instr_posn_str_ci(&str, "ss", 0, 1),
+                            fs2_instr_pos_ci_nth(&str, &pat, 0, 1));
+    CHECK_EQ("pos=0 nth=2", fs2_instr_posn_str_ci(&str, "ss", 0, 2),
+                            fs2_instr_pos_ci_nth(&str, &pat, 0, 2));
+    CHECK_EQ("pos=4 nth=1", fs2_instr_posn_str_ci(&str, "ss", 4, 1),
+                            fs2_instr_pos_ci_nth(&str, &pat, 4, 1));
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_instr_from_str / _nth_str / _str — CS
+ *   One test covering all three via delegation vs their fs2 equivalents
+ * ========================================================================= */
+
+Test(fs2_api_instr, instr_from_nth_str_wrappers) {
+    __fs2_checkreset();
+    fs2  str = fs2_fromstr("banana");
+    fs2  pat = fs2_fromstr("an");
+
+    /* fs2_instr_str == posn_str(..., 0, 1) */
+    CHECK_EQ("instr_str",       fs2_instr_str(&str, "an"),          1);
+    CHECK_EQ("instr_str fs2",   fs2_instr(&str, &pat),              1);
+
+    /* fs2_instr_from_str == posn_str(..., pos, 1) */
+    CHECK_EQ("from 0",          fs2_instr_from_str(&str, "an", 0),  1);
+    CHECK_EQ("from 2",          fs2_instr_from_str(&str, "an", 2),  3);
+    CHECK_EQ("from 4",          fs2_instr_from_str(&str, "an", 4), -1);
+    CHECK_EQ("from fs2 eq",     fs2_instr_from(&str, &pat, 2),      3);
+
+    /* fs2_instr_nth_str == posn_str(..., 0, nth) */
+    CHECK_EQ("nth=1",           fs2_instr_nth_str(&str, "an", 1),   1);
+    CHECK_EQ("nth=2",           fs2_instr_nth_str(&str, "an", 2),   3);
+    CHECK_EQ("nth=3",           fs2_instr_nth_str(&str, "an", 3),  -1);
+    CHECK_EQ("nth=0",           fs2_instr_nth_str(&str, "an", 0),  -1);
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_instr_from_str_ci / _nth_str_ci / _str_ci — CI
+ * ========================================================================= */
+
+Test(fs2_api_instr, instr_from_nth_str_ci_wrappers) {
+    __fs2_checkreset();
+    fs2  str = fs2_fromstr("BaNaNa");
+    fs2  pat = fs2_fromstr("AN");
+
+    CHECK_EQ("instr_str_ci",    fs2_instr_str_ci(&str, "an"),         1);
+    CHECK_EQ("instr_str_ci fs2",fs2_instr_ci(&str, &pat),             1);
+
+    CHECK_EQ("from_ci 0",       fs2_instr_from_str_ci(&str, "an", 0), 1);
+    CHECK_EQ("from_ci 2",       fs2_instr_from_str_ci(&str, "an", 2), 3);
+    CHECK_EQ("from_ci 4",       fs2_instr_from_str_ci(&str, "an", 4), -1);
+
+    CHECK_EQ("nth_ci 1",        fs2_instr_nth_str_ci(&str, "an", 1),  1);
+    CHECK_EQ("nth_ci 2",        fs2_instr_nth_str_ci(&str, "an", 2),  3);
+    CHECK_EQ("nth_ci 3",        fs2_instr_nth_str_ci(&str, "an", 3), -1);
+
+    fs2_free(&str);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty c-string pattern "" — same as NULL for _fs2_wrap? YES (both → FS2EMPTY)
+ * ========================================================================= */
+
+Test(fs2_api_instr, instr_str_empty_pattern) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+
+    CHECK_EQ("instr_str \"\"",       fs2_instr_str(&str, ""),       0);
+    CHECK_EQ("instr_nth_str \"\" 3", fs2_instr_nth_str(&str, "", 3), 2);
+    CHECK_EQ("instr_nth_str \"\" 5", fs2_instr_nth_str(&str, "", 5), -1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
