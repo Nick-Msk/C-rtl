@@ -3747,3 +3747,214 @@ Test(fs2_api, parse_llong_empty_inside_try_caught_by_else) {
     err_resetenv();
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_spn — nominal
+ * ========================================================================= */
+
+Test(fs2_api, spn_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbbccc");
+
+    CHECK_EQ("aaa",   fs2_spn(&s, 0, "a"),  3);
+    CHECK_EQ("bb",    fs2_spn(&s, 3, "b"),  3);
+    CHECK_EQ("ccc",   fs2_spn(&s, 6, "c"),  3);
+    CHECK_EQ("empty accept", fs2_spn(&s, 0, ""),  0);
+    CHECK_EQ("no match",     fs2_spn(&s, 0, "xyz"), 0);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, spn_from_pos) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbbccc");
+
+    CHECK_EQ("from 0",  fs2_spn(&s, 0, "a"),  3);
+    CHECK_EQ("from 1",  fs2_spn(&s, 1, "a"),  2);
+    CHECK_EQ("from 2",  fs2_spn(&s, 2, "a"),  1);
+    CHECK_EQ("from 3",  fs2_spn(&s, 3, "a"),  0);   /* 'b' not in accept */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_spn — FS2() (v==NULL) — explicit guard test
+ * ========================================================================= */
+
+Test(fs2_api, spn_canon_v_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    /* pos=0 — would have reached strspn(NULL + 0, ...) without the guard */
+    CHECK_EQ("pos=0",       fs2_spn(&s, 0, "abc"),  0);
+    CHECK_EQ("pos=5",       fs2_spn(&s, 5, "abc"),  0);
+    CHECK_EQ("pos=SIZE_MAX", fs2_spn(&s, SIZE_MAX, "abc"), 0);
+    CHECK_EQ("empty accept", fs2_spn(&s, 0, ""),  0);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, spn_fs2empty_v_not_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+    cr_assert_not_null(s.v, "precondition: FS2EMPTY has v == \"\"");
+
+    CHECK_EQ("pos=0", fs2_spn(&s, 0, "abc"), 0);
+    CHECK_EQ("pos=5", fs2_spn(&s, 5, "abc"), 0);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_spn — guards
+ * ========================================================================= */
+
+Test(fs2_api, spn_null_s_aborts, .signal = SIGABRT) {
+    fs2_spn(NULL, 0, "abc");
+}
+
+Test(fs2_api, spn_null_accept_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_spn(&s, 0, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * fs2_spn — static / local
+ * ========================================================================= */
+
+Test(fs2_api, spn_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("aaabbb");
+
+    CHECK_EQ("aaa", fs2_spn(&s, 0, "a"), 3);
+    CHECK_EQ("bb",  fs2_spn(&s, 3, "b"), 3);
+
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cspn — nominal
+ * ========================================================================= */
+
+Test(fs2_api, cspn_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello, world!");
+
+    CHECK_EQ("until comma",  fs2_cspn(&s, 0, ","),  5);   /* "hello" */
+    CHECK_EQ("until space",  fs2_cspn(&s, 0, " "),  6);
+    CHECK_EQ("until !",      fs2_cspn(&s, 0, "!"),  12);
+    CHECK_EQ("empty reject", fs2_cspn(&s, 0, ""),  13);   /* == len */
+    CHECK_EQ("immediate",    fs2_cspn(&s, 0, "h"),  0);    /* first char in reject */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, cspn_from_pos) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbbс");
+
+    CHECK_EQ("from 0, stop at b", fs2_cspn(&s, 0, "b"), 3);
+    CHECK_EQ("from 3, stop at b", fs2_cspn(&s, 3, "b"), 0);
+    CHECK_EQ("from 5, no b",      fs2_cspn(&s, 7, "b"), 1); 
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, cspn_from_pos_notfound) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbbс");
+
+    CHECK_EQ("from 0, stop at b", fs2_cspn(&s, 0, "b"), 3);
+    CHECK_EQ("from 3, stop at b", fs2_cspn(&s, 3, "b"), 0);
+    CHECK_EQ("from 5, no b",      fs2_cspn(&s, 5, "b"), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, cspn_from_pos_no_match_in_tail) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbb");
+    CHECK_EQ("tail has no 'a'", fs2_cspn(&s, 3, "a"), 3);   /* "bbb" whole */
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cspn — FS2() (v==NULL) — explicit guard test
+ * ========================================================================= */
+
+Test(fs2_api, cspn_canon_v_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v, "precondition: FS2() has v == NULL");
+
+    CHECK_EQ("pos=0",  fs2_cspn(&s, 0, "abc"), 0);
+    CHECK_EQ("pos=5",  fs2_cspn(&s, 5, "abc"), 0);
+    CHECK_EQ("empty reject", fs2_cspn(&s, 0, ""), 0);
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api, cspn_fs2empty_v_not_null_returns_zero) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    CHECK_EQ("pos=0", fs2_cspn(&s, 0, "abc"), 0);
+    CHECK_EQ("pos=5", fs2_cspn(&s, 5, "abc"), 0);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_cspn — guards
+ * ========================================================================= */
+
+Test(fs2_api, cspn_null_s_aborts, .signal = SIGABRT) {
+    fs2_cspn(NULL, 0, "abc");
+}
+
+Test(fs2_api, cspn_null_reject_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_cspn(&s, 0, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api, cspn_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("abc 123");
+
+    CHECK_EQ("until space", fs2_cspn(&s, 0, " "), 3);
+
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Согласованность: fs2_nonspace_span == fs2_cspn(..., " \t\n\r\v\f")
+ * ========================================================================= */
+
+Test(fs2_api, nonspace_span_matches_cspn) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_EQ("from 0", fs2_nonspace_span(&s, 0),
+                       fs2_cspn(&s, 0, " \t\n\r\v\f"));
+    CHECK_EQ("from 5", fs2_nonspace_span(&s, 5),
+                       fs2_cspn(&s, 5, " \t\n\r\v\f"));
+
+    fs2_free(&s);
+    assert_balanced();
+}
