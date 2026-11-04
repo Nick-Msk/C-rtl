@@ -11,7 +11,7 @@ TestSuite(fs2_api_serialization, .init = test_setup, .fini = test_teardown);
  * fs2_serialize — meta: replaces content, returns length
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_replaces_content_and_returns_length) {
+Test(fs2_api_serialization, serialize_replaces_content_and_returns_length) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("old content");
 
@@ -33,7 +33,7 @@ Test(fs2_api_ser, serialize_replaces_content_and_returns_length) {
  *   (unsigned char)->"%hhu" -> unsigned number
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_char_prints_character) {
+Test(fs2_api_serialization, serialize_char_prints_character) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -44,7 +44,7 @@ Test(fs2_api_ser, serialize_char_prints_character) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, serialize_signed_char_prints_number) {
+Test(fs2_api_serialization, serialize_signed_char_prints_number) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -58,7 +58,7 @@ Test(fs2_api_ser, serialize_signed_char_prints_number) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, serialize_unsigned_char_prints_number) {
+Test(fs2_api_serialization, serialize_unsigned_char_prints_number) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -75,7 +75,7 @@ Test(fs2_api_ser, serialize_unsigned_char_prints_number) {
 /* GOTCHA: in C, character constants like 'A' have type int (not char).
  * So _Generic picks int -> "%d" -> "65", NOT "%c" -> "A".
  * To get "A", caller must cast: (char)'A'. */
-Test(fs2_api_ser, serialize_char_constant_is_int_gotcha) {
+Test(fs2_api_serialization, serialize_char_constant_is_int_gotcha) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -93,7 +93,7 @@ Test(fs2_api_ser, serialize_char_constant_is_int_gotcha) {
  * fs2_serialize — signed integer chain
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_signed_chain) {
+Test(fs2_api_serialization, serialize_signed_chain) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -113,7 +113,7 @@ Test(fs2_api_ser, serialize_signed_chain) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, serialize_signed_minmax) {
+Test(fs2_api_serialization, serialize_signed_minmax) {
     __fs2_checkreset();
     fs2 s = FS2();
     char buf[64];
@@ -142,7 +142,7 @@ Test(fs2_api_ser, serialize_signed_minmax) {
  * fs2_serialize — unsigned chain
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_unsigned_chain) {
+Test(fs2_api_serialization, serialize_unsigned_chain) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -169,7 +169,7 @@ Test(fs2_api_ser, serialize_unsigned_chain) {
  *   float -> "%f" ; double -> "%lf" (both behave as %f in printf)
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_float) {
+Test(fs2_api_serialization, serialize_float) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -183,7 +183,7 @@ Test(fs2_api_ser, serialize_float) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, serialize_double) {
+Test(fs2_api_serialization, serialize_double) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -204,7 +204,7 @@ Test(fs2_api_ser, serialize_double) {
  *   so we only assert: non-empty and stable for the same pointer.
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_void_pointer) {
+Test(fs2_api_serialization, serialize_void_pointer) {
     __fs2_checkreset();
     int x = 42;
     void *p = &x;
@@ -224,7 +224,7 @@ Test(fs2_api_ser, serialize_void_pointer) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, serialize_const_void_pointer) {
+Test(fs2_api_serialization, serialize_const_void_pointer) {
     __fs2_checkreset();
     int x = 42;
     const void *p = &x;
@@ -241,7 +241,7 @@ Test(fs2_api_ser, serialize_const_void_pointer) {
  * fs2_serialize — chaining / multiple calls
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_overwrites_each_time) {
+Test(fs2_api_serialization, serialize_overwrites_each_time) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -263,7 +263,7 @@ Test(fs2_api_ser, serialize_overwrites_each_time) {
  * fs2_from_new — one test per _Generic branch
  * ========================================================================= */
 
-Test(fs2_api_ser, from_new_signed_family) {
+Test(fs2_api_serialization, from_new_signed_family) {
     __fs2_checkreset();
 
     fs2 a = fs2_from_new((signed char)-42);
@@ -291,7 +291,7 @@ Test(fs2_api_ser, from_new_signed_family) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, from_new_unsigned_family) {
+Test(fs2_api_serialization, from_new_unsigned_family) {
     __fs2_checkreset();
 
     fs2 a = fs2_from_new((unsigned char)200);
@@ -318,7 +318,7 @@ Test(fs2_api_ser, from_new_unsigned_family) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, from_new_floats) {
+Test(fs2_api_serialization, from_new_floats) {
     __fs2_checkreset();
 
     fs2 a = fs2_from_new((float)1.5f);
@@ -332,7 +332,7 @@ Test(fs2_api_ser, from_new_floats) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, from_new_char_explicit_cast) {
+Test(fs2_api_serialization, from_new_char_explicit_cast) {
     __fs2_checkreset();
     fs2 r = fs2_from_new((char)'A');         /* explicit cast: type is char -> "%c" -> "A" */
     CHECK_STR_EQ("A", r.v, "A");
@@ -341,7 +341,7 @@ Test(fs2_api_ser, from_new_char_explicit_cast) {
 }
 
 /* GOTCHA: 'A' in C has type int, not char; _Generic picks int -> "%d" -> "65". */
-Test(fs2_api_ser, from_new_char_constant_is_int_gotcha) {
+Test(fs2_api_serialization, from_new_char_constant_is_int_gotcha) {
     __fs2_checkreset();
 
     fs2 a = fs2_from_new('A');               /* int -> "65" */
@@ -355,7 +355,7 @@ Test(fs2_api_ser, from_new_char_constant_is_int_gotcha) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, from_new_pointers) {
+Test(fs2_api_serialization, from_new_pointers) {
     __fs2_checkreset();
     int x = 42;
 
@@ -379,7 +379,7 @@ Test(fs2_api_ser, from_new_pointers) {
  * fs2_from_new — meta
  * ========================================================================= */
 
-Test(fs2_api_ser, from_new_returns_alloc_by_value) {
+Test(fs2_api_serialization, from_new_returns_alloc_by_value) {
     __fs2_checkreset();
     fs2 r = fs2_from_new(42);
 
@@ -394,7 +394,7 @@ Test(fs2_api_ser, from_new_returns_alloc_by_value) {
 }
 
 /* Each call allocates its own buffer — results are independent. */
-Test(fs2_api_ser, from_new_calls_are_independent) {
+Test(fs2_api_serialization, from_new_calls_are_independent) {
     __fs2_checkreset();
 
     fs2 a = fs2_from_new(1);
@@ -418,7 +418,7 @@ Test(fs2_api_ser, from_new_calls_are_independent) {
  * fs2_heap_from — same as from_new, but BODYALLOC | ALLOC
  * ========================================================================= */
 
-Test(fs2_api_ser, heap_from_basic) {
+Test(fs2_api_serialization, heap_from_basic) {
     __fs2_checkreset();
     fs2 *r = fs2_heap_from(42);
 
@@ -433,7 +433,7 @@ Test(fs2_api_ser, heap_from_basic) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, heap_from_negative_and_double) {
+Test(fs2_api_serialization, heap_from_negative_and_double) {
     __fs2_checkreset();
 
     fs2 *a = fs2_heap_from((int)-42);
@@ -447,7 +447,7 @@ Test(fs2_api_ser, heap_from_negative_and_double) {
     assert_balanced();
 }
 
-Test(fs2_api_ser, heap_from_calls_are_independent) {
+Test(fs2_api_serialization, heap_from_calls_are_independent) {
     __fs2_checkreset();
 
     fs2 *a = fs2_heap_from(1);
@@ -465,7 +465,7 @@ Test(fs2_api_ser, heap_from_calls_are_independent) {
  * fs2_serialize_concat — appends, does not replace
  * ========================================================================= */
 
-Test(fs2_api_ser, serialize_concat_appends) {
+Test(fs2_api_serialization, serialize_concat_appends) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
@@ -486,7 +486,7 @@ Test(fs2_api_ser, serialize_concat_appends) {
 }
 
 /* Appending to empty — the "initial" case */
-Test(fs2_api_ser, serialize_concat_on_empty) {
+Test(fs2_api_serialization, serialize_concat_on_empty) {
     __fs2_checkreset();
     fs2 s = FS2();
 
@@ -506,13 +506,13 @@ Test(fs2_api_ser, serialize_concat_on_empty) {
  * by rendering it through snprintf.
  * ========================================================================= */
 
-Test(fs2_api_ser, ser_errmsg_int) {
+Test(fs2_api_serialization, ser_errmsg_int) {
     char buf[128];
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG((int)42), (int)42);
     CHECK_STR_EQ("Failed to serialize int 42", buf, "Failed to serialize int 42");
 }
 
-Test(fs2_api_ser, ser_errmsg_negative_and_minmax) {
+Test(fs2_api_serialization, ser_errmsg_negative_and_minmax) {
     char buf[128];
 
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG((int)-42), (int)-42);
@@ -522,20 +522,20 @@ Test(fs2_api_ser, ser_errmsg_negative_and_minmax) {
     CHECK_EQ("llmin prefix", strncmp(buf, "Failed to serialize long long ", 30), 0);
 }
 
-Test(fs2_api_ser, ser_errmsg_char) {
+Test(fs2_api_serialization, ser_errmsg_char) {
     char buf[128];
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG((char)'A'), (char)'A');
     CHECK_STR_EQ("char A", buf, "Failed to serialize char A");
 }
 
-Test(fs2_api_ser, ser_errmsg_char_constant_gotcha) {
+Test(fs2_api_serialization, ser_errmsg_char_constant_gotcha) {
     char buf[128];
     /* 'A' is int -> picks "%d" -> "65", not "%c" -> "A" */
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG('A'), 'A');
     CHECK_STR_EQ("int 65", buf, "Failed to serialize int 65");
 }
 
-Test(fs2_api_ser, ser_errmsg_unsigned) {
+Test(fs2_api_serialization, ser_errmsg_unsigned) {
     char buf[128];
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG((unsigned)UINT_MAX), (unsigned)UINT_MAX);
     char expect[128]; snprintf(expect, sizeof expect, "Failed to serialize unsigned %u", UINT_MAX);
@@ -546,7 +546,7 @@ Test(fs2_api_ser, ser_errmsg_unsigned) {
     CHECK_STR_EQ("ullong max", buf, "Failed to serialize unsigned long long 18446744073709551615");
 }
 
-Test(fs2_api_ser, ser_errmsg_floats) {
+Test(fs2_api_serialization, ser_errmsg_floats) {
     char buf[128];
 
     snprintf(buf, sizeof buf, FS2_SER_ERRMSG((float)1.5f), (float)1.5f);
@@ -556,7 +556,7 @@ Test(fs2_api_ser, ser_errmsg_floats) {
     CHECK_STR_EQ("double", buf, "Failed to serialize double -0.500000");
 }
 
-Test(fs2_api_ser, ser_errmsg_pointer_prefix) {
+Test(fs2_api_serialization, ser_errmsg_pointer_prefix) {
     /* %p output is implementation-defined; only the prefix is portable. */
     int x = 42;
     char buf[128];
@@ -570,7 +570,7 @@ Test(fs2_api_ser, ser_errmsg_pointer_prefix) {
  * fs2_nonspace_span — independent expected values (not compared to cspn)
  * ========================================================================= */
 
-Test(fs2_api, nonspace_span_basic) {
+Test(fs2_api_serialization, nonspace_span_basic) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello world");         /* ' ' at 5 */
 
@@ -584,7 +584,7 @@ Test(fs2_api, nonspace_span_basic) {
     assert_balanced();
 }
 
-Test(fs2_api, nonspace_span_stops_at_any_whitespace) {
+Test(fs2_api_serialization, nonspace_span_stops_at_any_whitespace) {
     __fs2_checkreset();
     /* Exercise every member of " \t\n\r\v\f" */
     struct { const char *src; size_t expected; } cases[] = {
@@ -604,7 +604,7 @@ Test(fs2_api, nonspace_span_stops_at_any_whitespace) {
     assert_balanced();
 }
 
-Test(fs2_api, nonspace_span_only_whitespace) {
+Test(fs2_api_serialization, nonspace_span_only_whitespace) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("   \t\n\r\v\f   ");
     CHECK_EQ("immediate", fs2_nonspace_span(&s, 0), 0);
@@ -617,7 +617,7 @@ Test(fs2_api, nonspace_span_only_whitespace) {
  * fs2_nonspace_span — empty cases (FS2EMPTY / FS2() / pos >= len)
  * ========================================================================= */
 
-Test(fs2_api, nonspace_span_fs2empty_v_not_null_returns_zero) {
+Test(fs2_api_serialization, nonspace_span_fs2empty_v_not_null_returns_zero) {
     __fs2_checkreset();
     fs2 s = FS2EMPTY;
     cr_assert_not_null(s.v, "precondition: FS2EMPTY has v == \"\"");
@@ -628,7 +628,7 @@ Test(fs2_api, nonspace_span_fs2empty_v_not_null_returns_zero) {
     assert_balanced();
 }
 
-Test(fs2_api, nonspace_span_canon_v_null_returns_zero) {
+Test(fs2_api_serialization, nonspace_span_canon_v_null_returns_zero) {
     __fs2_checkreset();
     fs2 s = FS2();
     cr_assert_null(s.v, "precondition: FS2() has v == NULL");
@@ -641,7 +641,7 @@ Test(fs2_api, nonspace_span_canon_v_null_returns_zero) {
     assert_balanced();
 }
 
-Test(fs2_api, nonspace_span_pos_at_or_beyond_len) {
+Test(fs2_api_serialization, nonspace_span_pos_at_or_beyond_len) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
@@ -656,7 +656,7 @@ Test(fs2_api, nonspace_span_pos_at_or_beyond_len) {
  * fs2_nonspace_span — guards (inherited via fs2_cspn)
  * ========================================================================= */
 
-Test(fs2_api, nonspace_span_null_s_aborts, .signal = SIGABRT) {
+Test(fs2_api_serialization, nonspace_span_null_s_aborts, .signal = SIGABRT) {
     fs2_nonspace_span(NULL, 0);
 }
 
@@ -664,7 +664,7 @@ Test(fs2_api, nonspace_span_null_s_aborts, .signal = SIGABRT) {
  * fs2_nonspace_span — STATIC src
  * ========================================================================= */
 
-Test(fs2_api, nonspace_span_static_src) {
+Test(fs2_api_serialization, nonspace_span_static_src) {
     __fs2_checkreset();
     fs2 s = FS2LITERAL("hello world");
 
@@ -680,7 +680,7 @@ Test(fs2_api, nonspace_span_static_src) {
  *   (kept as a guard against divergence if either changes)
  * ========================================================================= */
 
-Test(fs2_api, nonspace_span_matches_cspn) {
+Test(fs2_api_serialization, nonspace_span_matches_cspn) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello\tworld\nfoo");
 
