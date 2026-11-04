@@ -1839,3 +1839,189 @@ Test(fs2_api_modificators, ends_with_null_suffix_aborts, .signal = SIGABRT) {
     fs2_ends_with(&s, NULL);
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * starts_with_str / ends_with_str — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_str_match_and_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("match",       fs2_starts_with_str(&s, "hello"));
+    CHECK_TRUE ("whole",       fs2_starts_with_str(&s, "hello world"));
+    CHECK_FALSE("wrong",       fs2_starts_with_str(&s, "world"));
+    CHECK_FALSE("case",        fs2_starts_with_str(&s, "Hello"));
+    CHECK_FALSE("longer",      fs2_starts_with_str(&s, "hello world!!"));
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_str_match_and_miss) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+
+    CHECK_TRUE ("match",   fs2_ends_with_str(&s, "world"));
+    CHECK_TRUE ("whole",   fs2_ends_with_str(&s, "hello world"));
+    CHECK_FALSE("wrong",   fs2_ends_with_str(&s, "hello"));
+    CHECK_FALSE("case",    fs2_ends_with_str(&s, "World"));
+    CHECK_FALSE("longer",  fs2_ends_with_str(&s, "!!hello world"));
+
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Slice offset check: "abcabc" ends_with "abc" — must compare the LAST 3 bytes,
+ * not the first 3. */
+Test(fs2_api_modificators, ends_with_str_slice_offset) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabc");
+
+    CHECK_TRUE ("last 3",  fs2_ends_with_str(&s, "abc"));
+    CHECK_FALSE("cba",     fs2_ends_with_str(&s, "cba"));   /* first 3 reversed */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL pattern — LENIENT via _fs2_wrap(NULL) -> FS2EMPTY -> true
+ *   (contrast: fs2_starts_with(&s, NULL) aborts)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_str_null_prefix_true) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("NULL prefix == empty == always true",
+               fs2_starts_with_str(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_str_null_suffix_true) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("NULL suffix == empty == always true",
+               fs2_ends_with_str(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* "" c-string behaves identically to NULL */
+Test(fs2_api_modificators, starts_with_str_empty_string_true) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("empty prefix", fs2_starts_with_str(&s, ""));
+    CHECK_TRUE("NULL prefix",  fs2_starts_with_str(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_str_empty_string_true) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_TRUE("empty suffix", fs2_ends_with_str(&s, ""));
+    CHECK_TRUE("NULL suffix",  fs2_ends_with_str(&s, NULL));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Equivalence: _str == fs2 with explicit _fs2_wrap(pattern)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("hello world");
+    fs2 p_ok = fs2_fromstr("hello");
+    fs2 p_no = fs2_fromstr("world");
+
+    CHECK_EQ("match", fs2_starts_with_str(&s, "hello"),
+                      fs2_starts_with(&s, &p_ok));
+    CHECK_EQ("miss",  fs2_starts_with_str(&s, "world"),
+                      fs2_starts_with(&s, &p_no));
+
+    fs2_free(&s);
+    fs2_free(&p_ok);
+    fs2_free(&p_no);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("hello world");
+    fs2 p_ok = fs2_fromstr("world");
+    fs2 p_no = fs2_fromstr("hello");
+
+    CHECK_EQ("match", fs2_ends_with_str(&s, "world"),
+                      fs2_ends_with(&s, &p_ok));
+    CHECK_EQ("miss",  fs2_ends_with_str(&s, "hello"),
+                      fs2_ends_with(&s, &p_no));
+
+    fs2_free(&s);
+    fs2_free(&p_ok);
+    fs2_free(&p_no);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty s (FS2 / FS2EMPTY) + NULL/"" pattern — no deref, returns true
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_str_empty_src_null_prefix) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_TRUE("FS2() + NULL",    fs2_starts_with_str(&canon, NULL));
+    CHECK_TRUE("FS2() + \"\"",    fs2_starts_with_str(&canon, ""));
+    CHECK_TRUE("FS2EMPTY + NULL", fs2_starts_with_str(&empty, NULL));
+    CHECK_TRUE("FS2EMPTY + \"\"", fs2_starts_with_str(&empty, ""));
+
+    /* Non-empty pattern against empty s -> false, no deref */
+    CHECK_FALSE("FS2() + \"a\"",    fs2_starts_with_str(&canon, "a"));
+    CHECK_FALSE("FS2EMPTY + \"a\"", fs2_starts_with_str(&empty, "a"));
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, ends_with_str_empty_src_null_suffix) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+
+    CHECK_TRUE("FS2() + NULL",    fs2_ends_with_str(&canon, NULL));
+    CHECK_TRUE("FS2() + \"\"",    fs2_ends_with_str(&canon, ""));
+    CHECK_TRUE("FS2EMPTY + NULL", fs2_ends_with_str(&empty, NULL));
+    CHECK_TRUE("FS2EMPTY + \"\"", fs2_ends_with_str(&empty, ""));
+
+    CHECK_FALSE("FS2() + \"a\"",    fs2_ends_with_str(&canon, "a"));
+    CHECK_FALSE("FS2EMPTY + \"a\"", fs2_ends_with_str(&empty, "a"));
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL s still aborts (inherited from fs2_starts_with / fs2_ends_with)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, starts_with_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_starts_with_str(NULL, "a");
+}
+
+Test(fs2_api_modificators, ends_with_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_ends_with_str(NULL, "a");
+}
