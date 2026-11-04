@@ -1677,11 +1677,12 @@ fs2_parse_ushort(const fs2 *restrict s) {
  * @brief Length of initial run in @p s (from @p pos) of chars in @p accept.
  * @return 0 on null, empty, or pos >= s->len.
  */
-
 static inline size_t
 fs2_spn(const fs2 *restrict s, size_t pos, const char *restrict accept) {
-    invraise(s != NULL && accept != NULL, "Null pointers %p %p", s, accept);
-    if (pos >= s->len) return 0;
+    invfatal(ERR_NULL_INPUT, s != NULL && accept != NULL, 
+        "Null pointers %p %p", s, accept);
+    if (pos >= s->len)
+        return 0;
     return strspn(s->v + pos, accept);
 }
 
@@ -1690,8 +1691,10 @@ fs2_spn(const fs2 *restrict s, size_t pos, const char *restrict accept) {
  */
 static inline size_t
 fs2_cspn(const fs2 *restrict s, size_t pos, const char *restrict reject) {
-    invraise(s != NULL && reject != NULL, "Null pointers %p %p", s, reject);
-    if (pos >= s->len) return 0;
+    invfatal(ERR_NULL_INPUT, s != NULL && reject != NULL, 
+        "Null pointers %p %p", s, reject);
+    if (pos >= s->len)
+        return 0;
     return strcspn(s->v + pos, reject);
 }
 
