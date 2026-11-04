@@ -2065,7 +2065,7 @@ fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
     invfatal(ERR_NULL_INPUT, s != NULL && prefix != NULL, 
         "Null pointers %p %p", s, prefix);
 
-    if (fs2_is_empty(prefix))         
+    if (fs2_cant_mutate(s) || fs2_is_empty(prefix))         
         return s;
     if (!fs2_starts_with(s, prefix))  
         return s;
@@ -2080,7 +2080,7 @@ fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
     invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
         "Null pointers %p %p", s, suffix);
 
-    if (fs2_is_empty(suffix))         
+    if (fs2_cant_mutate(s) || fs2_is_empty(suffix))         
         return s;
     if (!fs2_ends_with(s, suffix))    
         return s;
