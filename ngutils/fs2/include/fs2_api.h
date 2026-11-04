@@ -1952,7 +1952,9 @@ fs2_rtrim_str(fs2 *restrict s, const char *restrict pattern) {
 
 static inline bool
 fs2_starts_with(const fs2 *restrict s, const fs2 *restrict prefix) {
-    invraise(s != NULL && prefix != NULL, "Null pointers %p %p", s, prefix);
+    invfatal(ERR_NULL_INPUT, s != NULL && prefix != NULL, 
+        "Null pointers %p %p", s, prefix);
+
     if (prefix->len == 0)        
         return true;
     if (prefix->len > s->len)    
@@ -1962,7 +1964,9 @@ fs2_starts_with(const fs2 *restrict s, const fs2 *restrict prefix) {
 
 static inline bool
 fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
-    invraise(s != NULL && suffix != NULL, "Null pointers %p %p", s, suffix);
+    invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
+        "Null pointers %p %p", s, suffix);
+        
     if (suffix->len == 0)        
         return true;
     if (suffix->len > s->len)    
