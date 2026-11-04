@@ -2163,9 +2163,10 @@ fs2_heap_strip_suffix(const fs2 *restrict src, const fs2 *restrict suffix) {
  * Words are delimited by non-alphanumeric characters, matching
  * PostgreSQL initcap('hi THOMAS') → 'Hi Thomas'.
  *
- * @note ASCII-only in C locale. Bytes >= 128 are treated as
- *       non-alphanumeric (word separators), like PostgreSQL's
- *       default behavior without ICU collation.
+* @note Locale-dependent: uses isalnum/toupper/tolower from <ctype.h>.
+ *       In C locale (the recommended default) behavior is ASCII-only,
+ *       matching PostgreSQL with a C-locale database. In other locales
+ *       (UTF-8, Latin-1) results may differ.
  */
 extern fs2 *
 fs2_initcap(fs2 *restrict s);
