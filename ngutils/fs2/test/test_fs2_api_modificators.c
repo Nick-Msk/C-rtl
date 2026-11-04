@@ -4101,3 +4101,191 @@ Test(fs2_api_modificators, initcap_high_byte_c_locale_unchanged) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_initcap_new — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_STR_EQ("Hello World", r.v, "Hello World");
+    CHECK_EQ  ("len",           r.len, 11);
+    CHECK_TRUE ("ALLOC",             fs2_is_alloc(&r));
+    CHECK_FALSE("not BODYALLOC",     fs2_is_bodyalloc(&r));
+    CHECK_TRUE ("independent",       r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * src untouched — the core difference vs in-place fs2_initcap
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hELLo WoRLD");
+    void *orig = src.v;
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_PTR_EQ("src v unchanged", src.v, orig);
+    CHECK_STR_EQ("src content",     src.v, "hELLo WoRLD");   /* NOT capitalized */
+    CHECK_STR_EQ("result",          r.v,   "Hello World");
+    CHECK_TRUE ("independent",      r.v != src.v);
+
+    /* Mutating result must not affect src */
+    r.v[0] = 'X';
+    CHECK_STR_EQ("result mutated", r.v,   "Xello World");
+    CHECK_STR_EQ("src original",   src.v, "hELLo WoRLD");
+
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC / LOCAL src — clone removes the mutate barrier
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello world");
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_STR_EQ("Hello World", r.v, "Hello World");
+    CHECK_TRUE ("ALLOC",         fs2_is_alloc(&r));
+    CHECK_TRUE ("independent",   r.v != src.v);
+    CHECK_TRUE ("src still STATIC", fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_new_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+
+    fs2 r = fs2_initcap_new(&buf);
+
+    CHECK_STR_EQ("Hello World",     r.v,   "Hello World");
+    CHECK_TRUE ("result ALLOC",     fs2_is_alloc(&r));
+    CHECK_TRUE ("result not LOCAL", !fs2_is_local(&r));
+    CHECK_STR_EQ("buf untouched",   buf.v, "hello world");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &buf);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * empty src -> clone -> FS2EMPTY (normalization)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_canon_src_returns_empty) {
+    __fs2_checkreset();
+    fs2 src = FS2();
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_new_fs2empty_src_returns_empty) {
+    __fs2_checkreset();
+    fs2 src = FS2EMPTY;
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, initcap_new_static_empty_literal_returns_empty) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("");
+
+    fs2 r = fs2_initcap_new(&src);
+
+    CHECK_TRUE("eq_empty", fs2_eq_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_null_src_aborts, .signal = SIGABRT) {
+    fs2_initcap_new(NULL);
+}
+
+/* =========================================================================
+ * Consistency: _new ≡ clone + in-place initcap
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_matches_clone_then_initcap) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hi THOMAS");
+
+    fs2 manual = fs2_clone(&src);
+    fs2_initcap(&manual);
+
+    fs2 via = fs2_initcap_new(&src);
+
+    CHECK_STR_EQ("same content", manual.v,   via.v);
+    CHECK_EQ  ("same len",       manual.len, via.len);
+    CHECK_FS2VALID(1, &manual);
+    CHECK_FS2VALID(2, &via);
+
+    fs2_free(&src);
+    fs2_free(&manual);
+    fs2_free(&via);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Chaining with other _new constructors
+ * ========================================================================= */
+
+Test(fs2_api_modificators, initcap_new_of_strip_prefix_new) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("prefix:hello world");
+    fs2 pfx = fs2_fromstr("prefix:");
+
+    fs2 stripped = fs2_strip_prefix_new(&src, &pfx);
+    fs2 result   = fs2_initcap_new(&stripped);
+
+    CHECK_STR_EQ("Hello World", result.v, "Hello World");
+    CHECK_FS2VALID(1, &result);
+    CHECK_FS2VALID(2, &stripped);
+
+    fs2_free(&src);
+    fs2_free(&pfx);
+    fs2_free(&stripped);
+    fs2_free(&result);
+    assert_balanced();
+}
