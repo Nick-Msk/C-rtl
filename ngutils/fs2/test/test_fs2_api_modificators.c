@@ -2187,3 +2187,251 @@ Test(fs2_api_modificators, contains_str_matches_fs2_version) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2_count — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_basic) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("banana");
+    fs2 pat = fs2_fromstr("an");
+
+    CHECK_EQ("banana/an", fs2_count(&s, &pat), 2);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_three_occurrences) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abcabcabc");
+    fs2 pat = fs2_fromstr("abc");
+
+    CHECK_EQ("abcabcabc/abc", fs2_count(&s, &pat), 3);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_not_found) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pat = fs2_fromstr("xyz");
+
+    CHECK_EQ("no match", fs2_count(&s, &pat), 0);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_whole_string_as_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abc");
+    fs2 pat = fs2_fromstr("abc");
+
+    CHECK_EQ("whole match", fs2_count(&s, &pat), 1);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_pattern_longer_than_src) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("ab");
+    fs2 pat = fs2_fromstr("abc");
+
+    CHECK_EQ("too long", fs2_count(&s, &pat), 0);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * CRITICAL: non-overlapping semantics
+ *   Overlapping (naive "count every starting position") would give:
+ *     "aaa"/"aa"  -> 2
+ *     "aaaa"/"aa" -> 3
+ *   Non-overlapping (this implementation) gives:
+ *     "aaa"/"aa"  -> 1
+ *     "aaaa"/"aa" -> 2
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_non_overlapping_aaa) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aaa");
+    fs2 pat = fs2_fromstr("aa");
+
+    CHECK_EQ("non-overlapping", fs2_count(&s, &pat), 1);   /* NOT 2 */
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_non_overlapping_aaaa) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aaaa");
+    fs2 pat = fs2_fromstr("aa");
+
+    CHECK_EQ("non-overlapping", fs2_count(&s, &pat), 2);   /* NOT 3 */
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_non_overlapping_single_char) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("aaaaa");
+    fs2 pat = fs2_fromstr("a");
+
+    CHECK_EQ("single-char pattern", fs2_count(&s, &pat), 5);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_mississippi_ss) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("mississippi");
+    fs2 pat = fs2_fromstr("ss");
+
+    /* "ss" at 2 and 5 — not overlapping */
+    CHECK_EQ("mississippi/ss", fs2_count(&s, &pat), 2);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty pattern — explicit 0 (contrasts Python's len+1)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_empty_pattern_zero_all_flavors) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("abc");
+    fs2 e   = FS2EMPTY;
+    fs2 c   = FS2();
+    fs2 lit = FS2LITERAL("");
+
+    CHECK_EQ("FS2EMPTY",         fs2_count(&s, &e),   0);
+    CHECK_EQ("FS2()",            fs2_count(&s, &c),   0);
+    CHECK_EQ("FS2LITERAL(\"\")", fs2_count(&s, &lit), 0);
+
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_empty_pattern_empty_src_zero) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 pat   = FS2EMPTY;
+
+    CHECK_EQ("FS2() + empty",    fs2_count(&canon, &pat), 0);
+    CHECK_EQ("FS2EMPTY + empty", fs2_count(&empty, &pat), 0);
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty src + non-empty pattern -> 0 (no deref)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_empty_src_nonempty_pat_zero) {
+    __fs2_checkreset();
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 pat   = fs2_fromstr("a");
+
+    CHECK_EQ("FS2()",    fs2_count(&canon, &pat), 0);
+    CHECK_EQ("FS2EMPTY", fs2_count(&empty, &pat), 0);
+
+    fs2_free(&canon);
+    fs2_free(&pat);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_null_s_aborts, .signal = SIGABRT) {
+    fs2 pat = fs2_fromstr("a");
+    fs2_count(NULL, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_api_modificators, count_null_pat_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2_count(&s, NULL);
+    fs2_free(&s);
+}
+
+/* =========================================================================
+ * fs2_count_str — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("banana");
+
+    CHECK_EQ("banana/an", fs2_count_str(&s, "an"), 2);
+    CHECK_EQ("no match",  fs2_count_str(&s, "xyz"), 0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_str_non_overlapping) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaaa");
+
+    CHECK_EQ("aaaa/aa", fs2_count_str(&s, "aa"), 2);   /* NOT 3 */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* NULL / "" pat -> _fs2_wrap -> FS2EMPTY -> 0 (lenient, no crash) */
+Test(fs2_api_modificators, count_str_null_or_empty_pat_zero) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_EQ("NULL pat", fs2_count_str(&s, NULL), 0);
+    CHECK_EQ("\"\" pat",  fs2_count_str(&s, ""),   0);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, count_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_count_str(NULL, "a");
+}
+
+/* =========================================================================
+ * Consistency: _str ≡ fs2 with wrapped pattern
+ * ========================================================================= */
+
+Test(fs2_api_modificators, count_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 s    = fs2_fromstr("abcabcabc");
+    fs2 pat  = fs2_fromstr("abc");
+
+    CHECK_EQ("match",  fs2_count_str(&s, "abc"), fs2_count(&s, &pat));
+    CHECK_EQ("miss",   fs2_count_str(&s, "xyz"), 0);
+
+    fs2_free(&s);
+    fs2_free(&pat);
+    assert_balanced();
+}
