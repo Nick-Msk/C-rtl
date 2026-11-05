@@ -1543,3 +1543,19 @@ fs2_normalize_whitespace(fs2 *restrict s) {
     return fs2_setlen(s, out);                 /* pending trailing dropped */
 }
 
+fs2 *
+fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad) {
+    fs2_cant_realloc(s);                      /* NULL / non-empty STATIC abort */
+    invfatal(ERR_NULL_INPUT, pad != NULL, "Null pad");
+
+    if (width < s->len)
+        return fs2_left(s, width);            /* truncate (lpad/rpad convention) */
+    if (width == s->len || fs2_is_empty(pad))
+        return s;
+
+    /* Reserve once for width+1; lpad/rpad then won't double-realloc. */
+    fs2_reserve_span(s, 0, width);
+    fs2_lpad(s, s->len + (width - s->len) / 2, pad);
+    fs2_rpad(s, width, pad);
+    return s;
+}

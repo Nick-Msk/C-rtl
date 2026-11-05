@@ -2349,4 +2349,25 @@ fs2_normalize_whitespace_new(const fs2 *restrict s) {
     return *fs2_normalize_whitespace(&res);
 }
 
+extern fs2 *
+fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad);
+
+static inline fs2 *
+fs2_center_str(fs2 *restrict s, size_t width, const char *restrict pad) {
+    fs2 tmp = _fs2_wrap(pad);
+    return fs2_center(s, width, &tmp);
+}
+
+static inline fs2
+fs2_center_new(const fs2 *restrict s, size_t width, const fs2 *restrict pad) {
+    fs2 res = fs2_clone(s);
+    return *fs2_center(&res, width, pad);
+}
+
+static inline fs2
+fs2_center_strnew(const fs2 *restrict s, size_t width, const char *restrict pad) {
+    fs2 res = fs2_clone(s);
+    return *fs2_center_str(&res, width, pad);
+}
+
 #endif /* !FS2_API_H */
