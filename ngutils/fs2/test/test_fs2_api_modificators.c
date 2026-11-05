@@ -6079,3 +6079,266 @@ Test(fs2_api_modificators, fconcat_str_new_macro_one_element) {
     fs2_free(&r);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_capitalize — nominal (documented semantics: skip non-alnum, upper
+ * first alnum, lower rest)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_single_word) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+
+    fs2 *r = fs2_capitalize(&s);
+
+    CHECK_STR_EQ("Hello", s.v, "Hello");
+    CHECK_PTR_EQ("chain", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_all_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    fs2_capitalize(&s);
+    CHECK_STR_EQ("Hello", s.v, "Hello");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_mixed_case) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hELLo");
+    fs2_capitalize(&s);
+    CHECK_STR_EQ("Hello", s.v, "Hello");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Multi-word: ONLY the first word capitalized, rest lowercased.
+ * Contrast with fs2_initcap (each word). */
+Test(fs2_api_modificators, capitalize_multiword_only_first) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello WORLD");
+
+    fs2_capitalize(&s);
+
+    CHECK_STR_EQ("Hello world", s.v, "Hello world");   /* not "Hello World" */
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Contrast with initcap on the same input */
+Test(fs2_api_modificators, capitalize_vs_initcap) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("hello world");
+    fs2 b = fs2_fromstr("hello world");
+
+    fs2_capitalize(&a);   /* "Hello world" */
+    fs2_initcap   (&b);   /* "Hello World" */
+
+    CHECK_STR_EQ("capitalize", a.v, "Hello world");
+    CHECK_STR_EQ("initcap",    b.v, "Hello World");
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_capitalize — documented "skip non-alnum" behaviour
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_leading_space_skipped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello");
+
+    fs2_capitalize(&s);
+
+    /* Differs from Python: 'h' is uppercased, leading spaces preserved */
+    CHECK_STR_EQ("  Hello", s.v, "  Hello");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_leading_punct_skipped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("!hello");
+
+    fs2_capitalize(&s);
+
+    CHECK_STR_EQ("!Hello", s.v, "!Hello");   /* not "!hello" (Python) */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_leading_digit_is_first_alnum) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("123abc");
+
+    fs2_capitalize(&s);
+
+    /* '1' is alnum -> "first" -> toupper('1') == '1', flag consumed;
+     * 'a','b','c' -> tolower (already lower). */
+    CHECK_STR_EQ("123abc", s.v, "123abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_leading_underscore_skipped) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("_hello");
+
+    fs2_capitalize(&s);
+
+    CHECK_STR_EQ("_Hello", s.v, "_Hello");   /* '_' is not alnum */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * All-punctuation / all-digits: nothing to capitalize, no crash
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_all_punctuation_unchanged) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("!@#$%");
+
+    fs2_capitalize(&s);
+
+    CHECK_STR_EQ("!@#$%", s.v, "!@#$%");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_all_digits_unchanged) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+
+    fs2_capitalize(&s);
+
+    CHECK_STR_EQ("12345", s.v, "12345");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Single char / empty
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_single_letter) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("a");
+    fs2 b = fs2_fromstr("A");
+    fs2 c = fs2_fromstr("1");
+    fs2 d = fs2_fromstr("!");
+
+    fs2_capitalize(&a);
+    fs2_capitalize(&b);
+    fs2_capitalize(&c);
+    fs2_capitalize(&d);
+
+    CHECK_STR_EQ("'a' -> 'A'", a.v, "A");
+    CHECK_STR_EQ("'A' -> 'A'", b.v, "A");
+    CHECK_STR_EQ("'1' -> '1'", c.v, "1");
+    CHECK_STR_EQ("'!' -> '!'", d.v, "!");
+
+    fs2_free(&a); fs2_free(&b); fs2_free(&c); fs2_free(&d);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_fs2empty_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_capitalize(&s);
+
+    CHECK_TRUE("still eq_empty", fs2_eq_empty(&s));
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, capitalize_canon_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+
+    fs2_capitalize(&s);
+
+    CHECK_TRUE("still canon", fs2_is_canon(&s));
+    CHECK_FS2VALID(1, &s);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC non-empty -> eager abort (fs2_cant_mutate)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_capitalize(&s);
+}
+
+Test(fs2_api_modificators, capitalize_static_empty_literal_noop) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("");
+
+    fs2_capitalize(&s);
+
+    CHECK_EQ  ("len",    s.len, 0);
+    CHECK_TRUE("STATIC", fs2_is_static(&s));
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * LOCAL — works (same-size transform)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+
+    fs2_capitalize(&buf);
+
+    CHECK_STR_EQ("Hello world", buf.v, "Hello world");
+    CHECK_TRUE ("still LOCAL",  fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_null_aborts, .signal = SIGABRT) {
+    fs2_capitalize(NULL);
+}
+
+/* =========================================================================
+ * Idempotency: capitalize(capitalize(s)) == capitalize(s)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, capitalize_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hELLo WoRLD");
+    fs2_capitalize(&s);
+    char *first = strdup(s.v);
+    cr_assert_not_null(first);
+    fs2_capitalize(&s);
+    CHECK_STR_EQ("idempotent", s.v, first);
+    free(first);
+    fs2_free(&s);
+    assert_balanced();
+}
