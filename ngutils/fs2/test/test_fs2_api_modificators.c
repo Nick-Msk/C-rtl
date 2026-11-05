@@ -7814,3 +7814,271 @@ Test(fs2_api_modificators, center_matches_lpad_then_rpad) {
     fs2_free(&pad);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_squeeze — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_basic_run) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaabbbccc");
+
+    fs2 *r = fs2_squeeze(&s, 'a');
+
+    CHECK_STR_EQ("abbbccc", s.v, "abbbccc");
+    CHECK_EQ  ("len",       s.len, 7);
+    CHECK_PTR_EQ("chain",   r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_spaces) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a  b   c");
+
+    fs2_squeeze(&s, ' ');
+
+    CHECK_STR_EQ("a b c", s.v, "a b c");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_leading_and_trailing_runs) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello  ");
+
+    fs2_squeeze(&s, ' ');
+
+    /* Leading run -> 1, trailing run -> 1, "hello" untouched */
+    CHECK_STR_EQ(" hello ", s.v, " hello ");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Only `ch` collapses; other runs are untouched */
+Test(fs2_api_modificators, squeeze_other_runs_untouched) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aabbaa");
+
+    fs2_squeeze(&s, 'b');
+
+    CHECK_STR_EQ("aabaa", s.v, "aabaa");   /* only bb -> b */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* All-target -> single char */
+Test(fs2_api_modificators, squeeze_all_target_single) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aaaa");
+
+    fs2_squeeze(&s, 'a');
+
+    CHECK_STR_EQ("a", s.v, "a");
+    CHECK_EQ  ("len", s.len, 1);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Multiple distinct runs collapse independently */
+Test(fs2_api_modificators, squeeze_multiple_runs_of_target) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xxAxxxBxx");
+
+    fs2_squeeze(&s, 'x');
+
+    CHECK_STR_EQ("xAxBx", s.v, "xAxBx");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * no-op cases
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_no_target_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    void *orig = s.v;
+
+    fs2_squeeze(&s, 'x');
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+    CHECK_STR_EQ("abc",              s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_no_runs_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abcabc");
+    void *orig = s.v;
+
+    fs2_squeeze(&s, 'a');   /* 'a' occurs, but never twice in a row */
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+    CHECK_STR_EQ("abcabc",           s.v, "abcabc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_empty_src_noop) {
+    __fs2_checkreset();
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 lit   = FS2LITERAL("");
+
+    fs2_squeeze(&canon, 'x');
+    fs2_squeeze(&empty, 'x');
+    fs2_squeeze(&lit,   'x');
+
+    CHECK_TRUE("canon canon", fs2_is_canon(&canon));
+    CHECK_TRUE("empty empty", fs2_eq_empty(&empty));
+    CHECK_EQ  ("lit len",     lit.len, 0);
+    CHECK_FS2VALID(1, &canon);
+    CHECK_FS2VALID(2, &empty);
+    CHECK_FS2VALID(3, &lit);
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_single_char_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a");
+
+    fs2_squeeze(&s, 'a');
+
+    CHECK_STR_EQ("a", s.v, "a");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * high byte (signed-char correctness)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_high_byte) {
+    __fs2_checkreset();
+    char *raw = strdup("a\xE9\xE9\xE9" "b");   /* a + 3×0xE9 + b */
+    cr_assert_not_null(raw);
+    fs2 s = fs2_adopt(&raw);
+    cr_assert_null(raw);
+
+    fs2_squeeze(&s, 0xE9);   /* int 0xE9, not char (signed on most platforms) */
+
+    CHECK_EQ("len", 3, s.len);
+    CHECK_EQ("[0]='a'",          s.v[0], 'a');
+    CHECK_EQ("[1]=0xE9", (unsigned char)s.v[1], 0xE9u);
+    CHECK_EQ("[2]='b'",          s.v[2], 'b');
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_null_aborts, .signal = SIGABRT) {
+    fs2_squeeze(NULL, 'a');
+}
+
+Test(fs2_api_modificators, squeeze_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("aaa");
+    fs2_squeeze(&s, 'a');
+}
+
+/* =========================================================================
+ * LOCAL — shrinks only
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "aaabbb", 6);
+    fs2_setlen(&buf, 6);
+
+    fs2_squeeze(&buf, 'a');
+
+    CHECK_STR_EQ("abbb",       buf.v, "abbb");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * idempotency
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("xxxxyyyyxxx");
+
+    fs2_squeeze(&s, 'x');
+    char *first = strdup(s.v);
+    cr_assert_not_null(first);
+
+    fs2_squeeze(&s, 'x');
+
+    CHECK_STR_EQ("idempotent", s.v, first);
+
+    free(first);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * _new — clone + in-place
+ * ========================================================================= */
+
+Test(fs2_api_modificators, squeeze_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("aaabbb");
+    void *orig = src.v;
+
+    fs2 r = fs2_squeeze_new(&src, 'a');
+
+    CHECK_STR_EQ("abbb",              r.v, "abbb");
+    CHECK_PTR_EQ("src v unchanged",   src.v, orig);
+    CHECK_STR_EQ("src content",       src.v, "aaabbb");
+    CHECK_TRUE ("independent",        r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("aaabbb");
+
+    fs2 r = fs2_squeeze_new(&src, 'a');
+
+    CHECK_STR_EQ("abbb",           r.v, "abbb");
+    CHECK_TRUE ("ALLOC",           fs2_is_alloc(&r));
+    CHECK_TRUE ("src still STATIC", fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, squeeze_new_null_aborts, .signal = SIGABRT) {
+    fs2_squeeze_new(NULL, 'a');
+}
