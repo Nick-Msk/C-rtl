@@ -2160,17 +2160,26 @@ fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
  *        variants (out of scope for this library).
  */
 extern fs2 *
-fs2_initcap(fs2 *restrict s);
+fs2_initcap(fs2 *s);
 
 static inline fs2
-fs2_initcap_new(const fs2 *restrict s) {
+fs2_initcap_new(const fs2 *s) {
     fs2 res = fs2_clone(s);
     fs2_initcap(&res);
     return res;
 }
 
 extern fs2 *
-fs2_capitalize(fs2 *restrict s);
+fs2_capitalize(fs2 *s);
+
+extern fs2 *
+fs2_zfill(fs2 *s, size_t width);
+
+static inline fs2 
+fs2_zfill_new(const fs2 *s, size_t width) {
+    fs2  res = fs2_clone(s);
+    return *fs2_zfill(&res, width);
+}
 
 /**
  * @brief Remove all occurrences of any byte from @p chars.

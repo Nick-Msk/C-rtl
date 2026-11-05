@@ -1338,6 +1338,36 @@ fs2_capitalize(fs2 *restrict s) {
 }
 
 fs2 *
+fs2_zfill(fs2 *restrict s, size_t width) {
+    invfatal(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
+
+    if (width <= s->len)
+        return s;
+    fs2_cant_realloc(s);
+
+    size_t old_len = s->len;
+    size_t prefix  = (old_len > 0 && (s->v[0] == '-' || s->v[0] == '+')) ? 1 : 0;
+    size_t pad_len = width - old_len;
+
+    /* One reserve for the full target size; selfmove's own reserve is a
+     * no-op afterwards. Using reserve explicitly (not just selfmove) is
+     * required for the empty-body case: when old_len == prefix (e.g. "-"),
+     * selfmove has len=0 → early return → no reserve; but we still need
+     * to write pad_len '0' bytes. */
+    fs2_reserve(s, width + 1);
+
+    /* Shift content after the sign (if any) right by pad_len. */
+    fs2_selfmove(s, prefix + pad_len, prefix, old_len - prefix);
+
+    /* Fill the gap with '0'. */
+    for (size_t i = 0; i < pad_len; i++)
+        s->v[prefix + i] = '0';
+
+    return fs2_setlen(s, width);
+}
+
+fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
     invfatal(ERR_NULL_INPUT, chars != NULL,  "Null pointer");
 
