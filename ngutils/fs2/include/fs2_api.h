@@ -2169,6 +2169,9 @@ fs2_initcap_new(const fs2 *restrict s) {
     return res;
 }
 
+extern fs2 *
+fs2_capitalize(fs2 *restrict s);
+
 /**
  * @brief Remove all occurrences of any byte from @p chars.
  *
@@ -2230,6 +2233,5 @@ fs2_concatall_str_new(fs2 *restrict dst, const char *delim, const char * const *
 
 #define FS2CONCAT_STR_NEW(dst, delim, ...) \
     fs2_concatall_str_new( (dst), (delim), (const char * const[]) { __VA_ARGS__, NULL} )
-
 
 #endif /* !FS2_API_H */

@@ -1300,15 +1300,39 @@ fs2_initcap(fs2 *restrict s) {
     
     bool at_word_start = true;
     for (size_t i = 0; i < s->len; i++) {
-        unsigned char c = (unsigned char)s->v[i];
+        unsigned char c = (unsigned char) s->v[i];
         bool alnum = isalnum(c) != 0;
         
         if (at_word_start && alnum) {
-            s->v[i] = (char)toupper(c);
+            s->v[i] = (char) toupper(c);
         } else {
-            s->v[i] = (char)tolower(c);
+            s->v[i] = (char) tolower(c);
         }
         at_word_start = !alnum;
+    }
+    return s;
+}
+
+// Capitalize
+fs2 *
+fs2_capitalize(fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, 
+        "Null pointer");
+
+    if (fs2_cant_mutate(s))
+        return s;
+    
+    bool seen_first = false;
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char) s->v[i];
+        bool alnum = isalnum(c) != 0;
+        
+        if (!seen_first && alnum) {
+            s->v[i] = (char) toupper(c);
+            seen_first = true;
+        } else {
+            s->v[i] = (char) tolower(c);
+        }
     }
     return s;
 }
