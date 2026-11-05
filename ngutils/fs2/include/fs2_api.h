@@ -2275,6 +2275,13 @@ fs2_swapcase(fs2 *restrict s) {
     return s;
 }    
 
+/**
+ * @note Empty string (and FS2()) is NOT alpha/digit/alnum/space
+ *       (false), even though formally ∀c ∈ ∅ : isalpha(c) holds —
+ *       matches Python/Java/PostgreSQL "consists of" semantics, not
+ *       Rust/C++ "all elements" vacuous-true. fs2_is_ascii is the
+ *       exception: empty is ASCII (vacuously).
+ */
 static inline bool
 fs2_isalpha(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
