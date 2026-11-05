@@ -1292,9 +1292,6 @@ fs2_repeat(fs2 *restrict s, size_t n) {
 // Initcap
 fs2 *
 fs2_initcap(fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, 
-        "Null pointer");
-
     if (fs2_cant_mutate(s))
         return s;
     

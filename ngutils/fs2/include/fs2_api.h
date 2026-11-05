@@ -2262,4 +2262,71 @@ fs2_concatall_str_new(fs2 *restrict dst, const char *delim, const char * const *
 #define FS2CONCAT_STR_NEW(dst, delim, ...) \
     fs2_concatall_str_new( (dst), (delim), (const char * const[]) { __VA_ARGS__, NULL} )
 
+static inline fs2 *
+fs2_swapcase(fs2 *restrict s) {
+    if (fs2_cant_mutate(s))
+        return s;
+
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->v[i];
+        if (isupper(c))      s->v[i] = (char)tolower(c);
+        else if (islower(c)) s->v[i] = (char)toupper(c);
+    }
+    return s;
+}    
+
+static inline bool
+fs2_isalpha(const fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    
+    if (s->len == 0)
+        return false;  
+    for (size_t i = 0; i < s->len; i++)
+        if (!isalpha((unsigned char)s->v[i])) return false;
+    return true;
+}
+
+static inline bool
+fs2_isdigit(const fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    
+    if (s->len == 0)
+        return false; 
+    for (size_t i = 0; i < s->len; i++)
+        if (!isdigit((unsigned char)s->v[i])) return false;
+    return true;
+}
+
+static inline bool
+fs2_isalnum(const fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    
+    if (s->len == 0)
+        return false; 
+    for (size_t i = 0; i < s->len; i++)
+        if (!isalnum((unsigned char)s->v[i])) return false;
+    return true;
+}
+
+static inline bool
+fs2_isspace(const fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    
+    if (s->len == 0)
+        return false; 
+    for (size_t i = 0; i < s->len; i++)
+        if (!isspace((unsigned char)s->v[i])) return false;
+    return true;
+}
+
+static inline bool
+fs2_isascii(const fs2 *restrict s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    
+    for (size_t i = 0; i < s->len; i++)
+        if (!isascii((unsigned char)s->v[i])) return false;
+    return true;
+}
+
+
 #endif /* !FS2_API_H */
