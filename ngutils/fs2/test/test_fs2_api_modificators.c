@@ -4867,3 +4867,95 @@ Test(fs2_api_modificators, removeall_new_matches_inplace_all_removed) {
     fs2_free(&via);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_removeall_new_str — minimal: only the _fs2_wrap(chars) behaviour differs
+ *   (core fs2-version aborts on NULL chars; _str is lenient -> no-op clone)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_str_basic) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+
+    fs2 r = fs2_removeall_new_str(&src, "aeiou");
+
+    CHECK_STR_EQ("hll wrld", r.v, "hll wrld");
+    CHECK_EQ  ("len",        r.len, 8);
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(&r));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* NULL chars -> _fs2_wrap(NULL) -> FS2EMPTY -> clone of src (no-op) */
+Test(fs2_api_modificators, removeall_new_str_null_chars_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_removeall_new_str(&src, NULL);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_TRUE ("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* "" chars behaves identically to NULL */
+Test(fs2_api_modificators, removeall_new_str_empty_chars_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+
+    fs2 r = fs2_removeall_new_str(&src, "");
+
+    CHECK_STR_EQ("hello", r.v, "hello");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Contrast: core fs2-version aborts on NULL chars
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_str_null_chars_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("abc");
+    fs2_removeall_new(&src, NULL);
+    fs2_free(&src);
+}
+
+/* =========================================================================
+ * Equivalence: _str ≡ fs2-version with explicit _fs2_wrap(chars)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+    fs2 c   = fs2_fromstr("aeiou");
+
+    fs2 via_str = fs2_removeall_new_str(&src, "aeiou");
+    fs2 via_fs2 = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("same content", via_str.v,   via_fs2.v);
+    CHECK_EQ  ("same len",       via_str.len, via_fs2.len);
+    CHECK_FS2VALID(1, &via_str);
+    CHECK_FS2VALID(2, &via_fs2);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&via_str);
+    fs2_free(&via_fs2);
+    assert_balanced();
+}
+
+/* NULL s still aborts (inherited from fs2_removeall_new) */
+Test(fs2_api_modificators, removeall_new_str_null_s_aborts, .signal = SIGABRT) {
+    fs2_removeall_new_str(NULL, "a");
+}
