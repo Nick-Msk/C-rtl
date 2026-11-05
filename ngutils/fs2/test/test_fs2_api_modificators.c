@@ -7482,3 +7482,335 @@ Test(fs2_api_modificators, normalize_ws_new_null_aborts, .signal = SIGABRT) {
     fs2_normalize_whitespace_new(NULL);
 }
 
+/* =========================================================================
+ * fs2_center — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_odd_margin) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2 *r = fs2_center(&s, 11, &pad);
+
+    CHECK_STR_EQ("---hello---", s.v, "---hello---");   /* 3 + 5 + 3 */
+    CHECK_EQ  ("len",           s.len, 11);
+    CHECK_PTR_EQ("chain",       r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_even_margin_extra_right) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&s, 10, &pad);
+
+    /* margin=5, left=2, right=3 — extra to right (Python rule) */
+    CHECK_STR_EQ("--hello---", s.v, "--hello---");
+    CHECK_EQ  ("len",          s.len, 10);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_already_fits) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&s, 5, &pad);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_center — truncate when width < len (lpad/rpad convention)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_truncates) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&s, 3, &pad);
+
+    CHECK_STR_EQ("hel", s.v, "hel");
+    CHECK_EQ  ("len",   s.len, 3);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_center — pattern pad
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_multichar_pattern) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hi");
+    fs2 pad = fs2_fromstr("ab");
+
+    fs2_center(&s, 8, &pad);
+    /* margin=6, left=3, right=3 -> "aba" + "hi" + "aba" (both sides fresh) */
+    CHECK_STR_EQ("abahiaba", s.v, "abahiaba");
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_pattern_left_right_independent) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("x");
+    fs2 pad = fs2_fromstr("abc");
+
+    fs2_center(&s, 9, &pad);
+    /* margin=8, left=4, right=4
+     * left: pattern[0..4) = "abca"
+     * right: pattern[0..4) = "abca" (independently)
+     * result: "abca" + "x" + "abca" */
+    CHECK_STR_EQ("abcaXabca", s.v, "abcaxabca");
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * no-op cases
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_empty_pad_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 e = FS2EMPTY;
+    fs2 c = FS2();
+    void *orig = s.v;
+
+    fs2_center(&s, 11, &e);
+    CHECK_PTR_EQ("FS2EMPTY noop", s.v, orig);
+    fs2_center(&s, 11, &c);
+    CHECK_PTR_EQ("FS2() noop",    s.v, orig);
+
+    CHECK_STR_EQ("hello", s.v, "hello");
+    fs2_free(&s);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_width_eq_len_noop) {
+    __fs2_checkreset();
+    fs2 s   = fs2_fromstr("hello");
+    fs2 pad = fs2_fromstr("-");
+    void *orig = s.v;
+
+    fs2_center(&s, 5, &pad);
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * empty src → promote and fill with pad
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_empty_src_fills_all) {
+    __fs2_checkreset();
+    fs2 s   = FS2EMPTY;
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&s, 5, &pad);
+
+    CHECK_STR_EQ("-----", s.v, "-----");
+    CHECK_TRUE ("ALLOC",  fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_canon_src_fills_all) {
+    __fs2_checkreset();
+    fs2 s   = FS2();
+    fs2 pad = fs2_fromstr("ab");
+
+    fs2_center(&s, 6, &pad);
+
+    /* left=3, right=3 -> "aba" + "" + "aba" */
+    CHECK_STR_EQ("abaaba", s.v, "abaaba");
+    CHECK_TRUE ("ALLOC",   fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_null_s_aborts, .signal = SIGABRT) {
+    fs2 pad = fs2_fromstr("-");
+    fs2_center(NULL, 5, &pad);
+    fs2_free(&pad);
+}
+
+Test(fs2_api_modificators, center_null_pad_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("hi");
+    fs2_center(&s, 5, NULL);
+    fs2_free(&s);
+}
+
+Test(fs2_api_modificators, center_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s   = FS2LITERAL("hello");
+    fs2 pad = fs2_fromstr("-");
+    fs2_center(&s, 11, &pad);
+    fs2_free(&pad);
+}
+
+/* =========================================================================
+ * LOCAL
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_local_sufficient_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hi", 2);
+    fs2_setlen(&buf, 2);
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&buf, 6, &pad);
+
+    CHECK_STR_EQ("--hi--",     buf.v, "--hi--");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&pad);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    FS2LOCAL(buf, 4);
+    fs2_memcpy_str(&buf, 0, "hi", 2);
+    fs2_setlen(&buf, 2);
+    fs2 pad = fs2_fromstr("-");
+    fs2_center(&buf, 10, &pad);
+    fs2_free(&pad);
+}
+
+/* =========================================================================
+ * _new and _str variants
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hi");
+    fs2 pad = fs2_fromstr("-");
+    void *orig = src.v;
+
+    fs2 r = fs2_center_new(&src, 6, &pad);
+
+    CHECK_STR_EQ("--hi--",            r.v, "--hi--");
+    CHECK_PTR_EQ("src v unchanged",   src.v, orig);
+    CHECK_STR_EQ("src content",       src.v, "hi");
+    CHECK_TRUE ("independent",        r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&pad);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hi");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2 r = fs2_center_new(&src, 6, &pad);
+
+    CHECK_STR_EQ("--hi--",             r.v, "--hi--");
+    CHECK_TRUE ("ALLOC",               fs2_is_alloc(&r));
+    CHECK_TRUE ("src still STATIC",    fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&pad);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_new_null_aborts, .signal = SIGABRT) {
+    fs2 pad = fs2_fromstr("-");
+    fs2_center_new(NULL, 5, &pad);
+    fs2_free(&pad);
+}
+
+Test(fs2_api_modificators, center_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+
+    fs2_center_str(&s, 6, "-");
+
+    CHECK_STR_EQ("--hi--", s.v, "--hi--");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, center_str_null_pad_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hi");
+
+    fs2_center_str(&s, 6, NULL);   /* NULL pad -> FS2EMPTY -> no-op */
+
+    CHECK_STR_EQ("hi", s.v, "hi");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * consistency: `lpad(w_left)` + `rpad(w_right)` should reproduce center
+ * (a property-based check: lpad to (len + left), then rpad to width)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, center_matches_lpad_then_rpad) {
+    __fs2_checkreset();
+    fs2 a   = fs2_fromstr("hi");
+    fs2 b   = fs2_fromstr("hi");
+    fs2 pad = fs2_fromstr("-");
+
+    fs2_center(&a, 7, &pad);
+    /* margin=5, left=2, right=3 */
+    fs2_lpad(&b, 2 + b.len, &pad);
+    fs2_rpad(&b, 7,       &pad);
+
+    CHECK_STR_EQ("same content", a.v, b.v);
+    CHECK_EQ  ("same len",       a.len, b.len);
+    CHECK_FS2VALID(1, &a);
+    CHECK_FS2VALID(2, &b);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&pad);
+    assert_balanced();
+}
