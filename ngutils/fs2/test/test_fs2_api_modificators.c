@@ -7020,3 +7020,240 @@ Test(fs2_api_modificators, split_part_str_basic) {
     fs2_free(&r);
     fs2_free(&s);
 }
+
+/* =========================================================================
+ * fs2_swapcase — mutate in place
+ * ========================================================================= */
+
+Test(fs2_api_modificators, swapcase_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo WoRLD");
+
+    fs2 *r = fs2_swapcase(&s);
+
+    CHECK_STR_EQ("hEllO wOrld", s.v, "hEllO wOrld");
+    CHECK_PTR_EQ("chain", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_non_letters_unchanged) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aBc 123 !@#");
+
+    fs2_swapcase(&s);
+
+    CHECK_STR_EQ("AbC 123 !@#", s.v, "AbC 123 !@#");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_all_lower_to_upper) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2_swapcase(&s);
+    CHECK_STR_EQ("HELLO", s.v, "HELLO");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_all_upper_to_lower) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HELLO");
+    fs2_swapcase(&s);
+    CHECK_STR_EQ("hello", s.v, "hello");
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Applying twice -> original (involution, NOT idempotency). */
+Test(fs2_api_modificators, swapcase_involution) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("HeLLo WoRLD 42");
+    char *orig = strdup(s.v);
+    cr_assert_not_null(orig);
+
+    fs2_swapcase(&s);
+    fs2_swapcase(&s);
+
+    CHECK_STR_EQ("twice == original", s.v, orig);
+
+    free(orig);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_empty_noop) {
+    __fs2_checkreset();
+    fs2 e = FS2EMPTY;
+    fs2 c = FS2();
+
+    fs2_swapcase(&e);
+    fs2_swapcase(&c);
+
+    CHECK_TRUE("eq_empty preserved", fs2_eq_empty(&e));
+    CHECK_TRUE("canon preserved",    fs2_is_canon(&c));
+    CHECK_FS2VALID(1, &e);
+    CHECK_FS2VALID(2, &c);
+
+    fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "HeLLo", 5);
+    fs2_setlen(&buf, 5);
+
+    fs2_swapcase(&buf);
+
+    CHECK_STR_EQ("hEllO",       buf.v, "hEllO");
+    CHECK_TRUE ("still LOCAL",  fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, swapcase_null_aborts, .signal = SIGABRT) {
+    fs2_swapcase(NULL);
+}
+
+Test(fs2_api_modificators, swapcase_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2_swapcase(&s);
+}
+
+/* =========================================================================
+ * fs2_is_* — grouped predicates
+ * ========================================================================= */
+
+Test(fs2_api_modificators, is_predicates_positive) {
+    __fs2_checkreset();
+
+    fs2 alpha  = fs2_fromstr("abcXYZ");
+    fs2 digit  = fs2_fromstr("0123456789");
+    fs2 alnum  = fs2_fromstr("abc123");
+    fs2 space  = fs2_fromstr(" \t\n\r\v\f");
+    fs2 ascii  = fs2_fromstr("Hello, World! 123");
+
+    CHECK_TRUE ("is_alpha", fs2_isalpha(&alpha));
+    CHECK_TRUE ("is_digit", fs2_isdigit(&digit));
+    CHECK_TRUE ("is_alnum", fs2_isalnum(&alnum));
+    CHECK_TRUE ("is_space", fs2_isspace(&space));
+    CHECK_TRUE ("is_ascii", fs2_isascii(&ascii));
+
+    fs2_free(&alpha); fs2_free(&digit);
+    fs2_free(&alnum); fs2_free(&space);
+    fs2_free(&ascii);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, is_predicates_negative) {
+    __fs2_checkreset();
+
+    fs2 alpha_bad = fs2_fromstr("abc123");   /* digits */
+    fs2 digit_bad = fs2_fromstr("abc");      /* letters */
+    fs2 alnum_bad = fs2_fromstr("abc 123");  /* space */
+    fs2 space_bad = fs2_fromstr("abc ");     /* letters mixed */
+    fs2 ascii_bad = fs2_fromstr("caf\xE9");  /* 0xE9 > 0x7F */
+
+    CHECK_FALSE("is_alpha", fs2_isalpha(&alpha_bad));
+    CHECK_FALSE("is_digit", fs2_isdigit(&digit_bad));
+    CHECK_FALSE("is_alnum", fs2_isalnum(&alnum_bad));
+    CHECK_FALSE("is_space", fs2_isspace(&space_bad));
+    CHECK_FALSE("is_ascii", fs2_isascii(&ascii_bad));
+
+    fs2_free(&alpha_bad); fs2_free(&digit_bad);
+    fs2_free(&alnum_bad); fs2_free(&space_bad);
+    fs2_free(&ascii_bad);
+    assert_balanced();
+}
+
+/* Empty string: all is_* false EXCEPT is_ascii (vacuous true).
+ * Same for FS2() (v == NULL), FS2EMPTY (v == ""), FS2LITERAL("").
+ * No crash on v == NULL — len == 0 short-circuits the loop. */
+Test(fs2_api_modificators, is_predicates_empty) {
+    __fs2_checkreset();
+
+    fs2 c = FS2();
+    fs2 e = FS2EMPTY;
+    fs2 l = FS2LITERAL("");
+
+    const fs2 *forms[] = { &c, &e, &l };
+    for (int i = 0; i < 3; i++) {
+        CHECK_FALSE("is_alpha on empty", fs2_isalpha(forms[i]));
+        CHECK_FALSE("is_digit on empty", fs2_isdigit(forms[i]));
+        CHECK_FALSE("is_alnum on empty", fs2_isalnum(forms[i]));
+        CHECK_FALSE("is_space on empty", fs2_isspace(forms[i]));
+        CHECK_TRUE ("is_ascii on empty", fs2_isascii(forms[i]));  /* vacuous */
+        CHECK_FS2VALID(i + 1, forms[i]);
+    }
+
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* High byte: is_ascii -> false; others follow C locale (false for 0xE9). */
+Test(fs2_api_modificators, is_predicates_high_byte) {
+    __fs2_checkreset();
+    char *raw = strdup("\xE9");   /* single high byte, no embedded NUL */
+    cr_assert_not_null(raw);
+    fs2 hb = fs2_adopt(&raw);
+    cr_assert_null(raw);
+
+    CHECK_FALSE("is_ascii", fs2_isascii(&hb));
+    CHECK_FALSE("is_alpha", fs2_isalpha(&hb));   /* C locale: 0xE9 not alpha */
+    CHECK_FALSE("is_alnum", fs2_isalnum(&hb));
+
+    CHECK_FS2VALID(1, &hb);
+    fs2_free(&hb);
+    assert_balanced();
+}
+
+/* Mixed content: is_alnum true, but is_alpha / is_digit false. */
+Test(fs2_api_modificators, is_predicates_mixed_alnum) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc123");
+
+    CHECK_FALSE("is_alpha", fs2_isalpha(&s));
+    CHECK_FALSE("is_digit", fs2_isdigit(&s));
+    CHECK_TRUE ("is_alnum", fs2_isalnum(&s));
+    CHECK_TRUE ("is_ascii", fs2_isascii(&s));
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, is_predicates_static_src) {
+    __fs2_checkreset();
+    fs2 s = FS2LITERAL("abc");
+
+    CHECK_TRUE("is_alpha", fs2_isalpha(&s));
+    CHECK_TRUE("is_ascii", fs2_isascii(&s));
+    CHECK_FS2VALID(1, &s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, is_predicates_null_aborts, .signal = SIGABRT) {
+    fs2_isalpha(NULL);
+}
+
+Test(fs2_api_modificators, is_predicates_null_aborts_digit, .signal = SIGABRT) {
+    fs2_isdigit(NULL);
+}
+
+Test(fs2_api_modificators, is_predicates_null_aborts_alnum, .signal = SIGABRT) {
+    fs2_isalnum(NULL);
+}
+
+Test(fs2_api_modificators, is_predicates_null_aborts_space, .signal = SIGABRT) {
+    fs2_isspace(NULL);
+}
+
+Test(fs2_api_modificators, is_predicates_null_aborts_ascii, .signal = SIGABRT) {
+    fs2_isascii(NULL);
+}
