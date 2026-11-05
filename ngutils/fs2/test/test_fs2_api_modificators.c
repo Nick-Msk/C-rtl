@@ -5294,3 +5294,285 @@ Test(fs2_api_modificators, concatall_pre_reserve_sufficient) {
     fs2_free(&dst);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_concatall_str — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_basic) {
+    __fs2_checkreset();
+    const char *arr[] = { "a", "b", "c", NULL };
+
+    fs2 dst = FS2();
+    fs2 *r = fs2_concatall_str(&dst, "-", arr);
+
+    CHECK_STR_EQ("a-b-c", dst.v, "a-b-c");
+    CHECK_EQ  ("len",     dst.len, 5);
+    CHECK_PTR_EQ("chain", r, &dst);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, concatall_str_empty_dst_builds_string) {
+    __fs2_checkreset();
+    const char *arr[] = { "hello", "world", NULL };
+
+    fs2 dst = FS2EMPTY;
+    fs2_concatall_str(&dst, ", ", arr);
+
+    CHECK_STR_EQ("hello, world",   dst.v, "hello, world");
+    CHECK_TRUE ("promoted to ALLOC", fs2_is_alloc(&dst));
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, concatall_str_single_element_no_delimiter) {
+    __fs2_checkreset();
+    const char *arr[] = { "solo", NULL };
+
+    fs2 dst = FS2();
+    fs2_concatall_str(&dst, "-", arr);
+
+    CHECK_STR_EQ("solo", dst.v, "solo");   /* no leading "-" */
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL / "" delim — no separator
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_null_delim) {
+    __fs2_checkreset();
+    const char *arr[] = { "foo", "bar", "baz", NULL };
+
+    fs2 dst = FS2();
+    fs2_concatall_str(&dst, NULL, arr);
+
+    CHECK_STR_EQ("foobarbaz", dst.v, "foobarbaz");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, concatall_str_empty_delim) {
+    __fs2_checkreset();
+    const char *arr[] = { "foo", "bar", NULL };
+
+    fs2 dst = FS2();
+    fs2_concatall_str(&dst, "", arr);
+
+    CHECK_STR_EQ("foobar", dst.v, "foobar");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty elem "" — no-op for that element, delim still between non-empty
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_empty_elements) {
+    __fs2_checkreset();
+    const char *arr[] = { "a", "", "b", NULL };
+
+    fs2 dst = FS2();
+    fs2_concatall_str(&dst, "-", arr);
+
+    /* "a" + "-" + "" + "-" + "b" = "a--b" (empty elem still gets delims) */
+    CHECK_STR_EQ("a--b", dst.v, "a--b");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Pre-existing dst content preserved
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_appends_to_existing) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("prefix:");
+    const char *arr[] = { "a", "b", NULL };
+
+    fs2_concatall_str(&dst, "-", arr);
+
+    CHECK_STR_EQ("prefix:a-b", dst.v, "prefix:a-b");
+    CHECK_EQ  ("len",          dst.len, 10);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guard paths: NULL src / empty arr / NULL dst / STATIC dst
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_null_src_noop) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+    void *orig = dst.v;
+
+    fs2_concatall_str(&dst, "-", NULL);
+
+    CHECK_PTR_EQ("buffer unchanged", dst.v, orig);
+    CHECK_STR_EQ("hello",            dst.v, "hello");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, concatall_str_empty_arr_noop) {
+    __fs2_checkreset();
+    const char *arr[] = { NULL };
+
+    fs2 dst = fs2_fromstr("hello");
+    void *orig = dst.v;
+
+    fs2_concatall_str(&dst, "-", arr);
+
+    CHECK_PTR_EQ("buffer unchanged", dst.v, orig);
+    CHECK_STR_EQ("hello",            dst.v, "hello");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, concatall_str_null_dst_aborts, .signal = SIGABRT) {
+    const char *arr[] = { "a", NULL };
+    fs2_concatall_str(NULL, "-", arr);
+}
+
+Test(fs2_api_modif, concatall_str_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2LITERAL("hello");
+    const char *arr[] = { "a", NULL };
+    fs2_concatall_str(&dst, "-", arr);
+}
+
+/* =========================================================================
+ * LOCAL dst — works if capacity fits
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_local_dst) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 32);
+    const char *arr[] = { "ab", "cd", NULL };
+
+    fs2_concatall_str(&buf, "-", arr);
+
+    CHECK_STR_EQ("ab-cd",      buf.v, "ab-cd");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FS2CONCATSTR macro — NULL terminator
+ * ========================================================================= */
+
+Test(fs2_api_modif, fconcatstr_macro_two_elements) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    FS2CONCATSTR(&dst, "-", "x", "y");
+
+    CHECK_STR_EQ("x-y", dst.v, "x-y");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, fconcatstr_macro_one_element) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    FS2CONCATSTR(&dst, "-", "solo");
+
+    CHECK_STR_EQ("solo", dst.v, "solo");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_api_modif, fconcatstr_macro_three_elements) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+
+    FS2CONCATSTR(&dst, ", ", "red", "green", "blue");
+
+    CHECK_STR_EQ("red, green, blue", dst.v, "red, green, blue");
+    CHECK_FS2VALID(1, &dst);
+
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency: concatall_str(dst, d, arr) ≡ concatall(dst, d_fs2, wrapped)
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_matches_concatall_wrapped) {
+    __fs2_checkreset();
+    const char *arr[] = { "a", "b", "c", NULL };
+
+    /* via _str */
+    fs2 dst_str = FS2();
+    fs2_concatall_str(&dst_str, "-", arr);
+
+    /* via concatall with wrapped views */
+    fs2 a = fs2_fromstr("a");
+    fs2 b = fs2_fromstr("b");
+    fs2 c = fs2_fromstr("c");
+    fs2 d = fs2_fromstr("-");
+    const fs2 *arr_fs2[] = { &a, &b, &c, NULL };
+
+    fs2 dst_fs2 = FS2();
+    fs2_concatall(&dst_fs2, &d, arr_fs2);
+
+    CHECK_STR_EQ("same content", dst_str.v,   dst_fs2.v);
+    CHECK_EQ  ("same len",       dst_str.len, dst_fs2.len);
+    CHECK_FS2VALID(1, &dst_str);
+    CHECK_FS2VALID(2, &dst_fs2);
+
+    fs2_free(&a); fs2_free(&b); fs2_free(&c); fs2_free(&d);
+    fs2_free(&dst_str);
+    fs2_free(&dst_fs2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Elements untouched (c-strings are const, but verify they survive)
+ * ========================================================================= */
+
+Test(fs2_api_modif, concatall_str_elements_untouched) {
+    __fs2_checkreset();
+    const char *e1 = "alpha";
+    const char *e2 = "beta";
+    const char *d  = "-";
+    const char *arr[] = { e1, e2, NULL };
+
+    fs2 dst = FS2();
+    fs2_concatall_str(&dst, d, arr);
+
+    /* c-strings themselves are immutable by contract; we verify pointers
+     * in arr[] are still the same (the function does not modify the array) */
+    CHECK_PTR_EQ("arr[0]", arr[0], e1);
+    CHECK_PTR_EQ("arr[1]", arr[1], e2);
+    CHECK_STR_EQ("e1", e1, "alpha");
+    CHECK_STR_EQ("e2", e2, "beta");
+    CHECK_STR_EQ("d",  d,  "-");
+
+    fs2_free(&dst);
+    assert_balanced();
+}
