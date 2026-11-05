@@ -1401,7 +1401,13 @@ fs2_tryparse_ushort(const fs2 *restrict s, unsigned short *restrict out, bool st
 
 
 /**
- * @brief Parse int/long, raising a user error (SIGINT) on failure. Non-strict.
+ * @brief Parse the whole string into an unsigned long long, raising on failure.
+ *
+ * Non-strict: trailing characters are tolerated.
+ * On failure raises a user error (ERR_UNABLE_PARSE_DATA).
+ *
+ * @param s  Non-NULL fs2.
+ * @return   Parsed value (or raises).
  */
 static inline unsigned long long
 fs2_parse_ullong(const fs2 *restrict s) {
@@ -1730,7 +1736,7 @@ fs2_instr_pos_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                size_t pos, size_t nth);
 
  /**
- * @brief Case Insesitive Find the nth occurrence of @p pattern starting at @p pos.
+ * @brief Case-insensitive: find the nth occurrence of @p pattern starting at @p pos.
  *
  * @param str      Haystack (must not be NULL, must have v != NULL).
  * @param pattern  NUL-terminated needle (must not be NULL).
@@ -1824,41 +1830,107 @@ fs2_instr_ci(const fs2 *restrict str, const fs2 *restrict pattern) {
 
 // -------------------------- C-str wrappers -----------------------------------
 
+/**
+ * @brief Find the nth occurrence of a C-string @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param pos      Start position.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_posn_str(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
     fs2 wrapped = _fs2_wrap(pattern);
     return fs2_instr_pos_nth(str, &wrapped, pos, nth);
 }
 
+/**
+ * @brief Case-insensitive: find the nth occurrence of a C-string @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param pos      Start position.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_posn_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos, size_t nth) {
     fs2 wrapped = _fs2_wrap(pattern);
     return fs2_instr_pos_ci_nth(str, &wrapped, pos, nth);
 }
-// wrapper over fs2_instr_posn_str!!, non-ci
+
+/**
+ * @brief Find the first occurrence of a C-string @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param pos      Start position.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_from_str(const fs2 *restrict str, const char *restrict pattern, size_t pos) {
     return fs2_instr_posn_str(str, pattern, pos, 1);
 }
 
+/**
+ * @brief Find the nth occurrence of a C-string @p pattern from the start.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_nth_str(const fs2 *restrict str, const char *restrict pattern, size_t nth) {
     return fs2_instr_posn_str(str, pattern, 0, nth);
 }
 
+/**
+ * @brief Find the first occurrence of a C-string @p pattern.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_str(const fs2 *restrict str, const char *restrict pattern) {
     return fs2_instr_posn_str(str, pattern, 0, 1);
 }
-//wrappers over fs2_instr_posn_str_ci! ci
+
+/**
+ * @brief Case-insensitive: find the first occurrence of a C-string @p pattern from @p pos.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param pos      Start position.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_from_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t pos) {
     return fs2_instr_posn_str_ci(str, pattern, pos, 1);
 }
+
+/**
+ * @brief Case-insensitive: find the nth occurrence of a C-string @p pattern from the start.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @param nth      1-based occurrence number.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_nth_str_ci(const fs2 *restrict str, const char *restrict pattern, size_t nth) {
     return fs2_instr_posn_str_ci(str, pattern, 0, nth);
 }
+
+/**
+ * @brief Case-insensitive: find the first occurrence of a C-string @p pattern.
+ *
+ * @param str      Non-NULL fs2 haystack.
+ * @param pattern  Non-NULL NUL-terminated needle.
+ * @return         Byte offset, or -1.
+ */
 static inline ptrdiff_t
 fs2_instr_str_ci(const fs2 *restrict str, const char *restrict pattern) {
     return fs2_instr_posn_str_ci(str, pattern, 0, 1);
@@ -1986,12 +2058,25 @@ fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
     fs2 tmp = _fs2_wrap(suffix);
     return fs2_ends_with(s, &tmp);
 }
-// 
+/**
+ * @brief Check whether @p pat is present in @p s (case-sensitive).
+ *
+ * @param s    Non-NULL fs2 haystack.
+ * @param pat  Non-NULL fs2 needle (empty pattern → true).
+ * @return     true if @p pat occurs in @p s.
+ */
 static inline bool
 fs2_contains(const fs2 *restrict s, const fs2 *restrict pat) {
     return fs2_instr_pos_nth(s, pat, 0, 1) >= 0;
 }
-// c-str wrap
+
+/**
+ * @brief Check whether a C-string @p pat is present in @p s (case-sensitive).
+ *
+ * @param s    Non-NULL fs2 haystack.
+ * @param pat  Non-NULL NUL-terminated needle.
+ * @return     true if @p pat occurs in @p s.
+ */
 static inline bool
 fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
     fs2 tmp = _fs2_wrap(pat);
@@ -2020,7 +2105,13 @@ fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
     }
     return count;
 }
-// c-str wrap
+/**
+ * @brief Number of non-overlapping occurrences of a C-string @p pat in @p s.
+ *
+ * @param s    Non-NULL fs2 haystack.
+ * @param pat  Non-NULL NUL-terminated needle (empty → 0).
+ * @return     Number of non-overlapping occurrences.
+ */
 static inline size_t
 fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
     fs2 tmp = _fs2_wrap(pat);
@@ -2060,6 +2151,16 @@ fs2_heap_repeat_str(const char *restrict s, size_t n) {
 }
 
 // prefix/suffix removers
+
+/**
+ * @brief Remove a known @p prefix from the start of @p s in place.
+ *
+ * No-op if @p s does not start with @p prefix, or if @p prefix is empty.
+ *
+ * @param s       Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param prefix  Non-NULL fs2 prefix to strip.
+ * @return        @p s.
+ */
 static inline fs2 *
 fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
     invfatal(ERR_NULL_INPUT, s != NULL && prefix != NULL, 
@@ -2075,6 +2176,15 @@ fs2_strip_prefix(fs2 *restrict s, const fs2 *restrict prefix) {
     return fs2_setlen(s, s->len - prefix->len);
 }
 
+/**
+ * @brief Remove a known @p suffix from the end of @p s in place.
+ *
+ * No-op if @p s does not end with @p suffix, or if @p suffix is empty.
+ *
+ * @param s       Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param suffix  Non-NULL fs2 suffix to strip.
+ * @return        @p s.
+ */
 static inline fs2 *
 fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
     invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
@@ -2090,12 +2200,26 @@ fs2_strip_suffix(fs2 *restrict s, const fs2 *restrict suffix) {
 }
 
 /* c-string wrappers */
+/**
+ * @brief Remove a C-string @p prefix from the start of @p s in place.
+ *
+ * @param s       Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param prefix  Non-NULL NUL-terminated prefix to strip.
+ * @return        @p s.
+ */
 static inline fs2 *
 fs2_strip_prefix_str(fs2 *restrict s, const char *restrict prefix) {
     fs2 tmp = _fs2_wrap(prefix);
     return fs2_strip_prefix(s, &tmp);
 }
 
+/**
+ * @brief Remove a C-string @p suffix from the end of @p s in place.
+ *
+ * @param s       Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param suffix  Non-NULL NUL-terminated suffix to strip.
+ * @return        @p s.
+ */
 static inline fs2 *
 fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
     fs2 tmp = _fs2_wrap(suffix);
@@ -2169,21 +2293,73 @@ fs2_initcap_new(const fs2 *s) {
     return res;
 }
 
+/**
+ * @brief Capitalize the first alphabetic character of @p s, lowercase the rest.
+ *
+ * Unlike fs2_initcap (which capitalizes every word), this affects only the
+ * very first alphanumeric byte; everything after is lowercased.
+ *
+ * "hELLO wORLD" → "Hello world"
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @return   @p s.
+ */
 extern fs2 *
 fs2_capitalize(fs2 *s);
 
+/**
+ * @brief Zero-fill @p s to @p width in place.
+ *
+ * If the string begins with a sign ('+' or '-'), it is preserved at the
+ * start and zeros are inserted after it. Width < len is a no-op.
+ *
+ * "42"  + width=6 → "000042"
+ * "-7"  + width=6 → "-00007"
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param width  Target total length.
+ * @return       @p s.
+ */
 extern fs2 *
 fs2_zfill(fs2 *s, size_t width);
 
+/**
+ * @brief Return a stack-allocated copy of @p s zero-filled to @p width.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param width  Target total length.
+ * @return       New stack fs2.
+ */
 static inline fs2 
 fs2_zfill_new(const fs2 *s, size_t width) {
     fs2  res = fs2_clone(s);
     return *fs2_zfill(&res, width);
 }
 
+/**
+ * @brief Map bytes of @p s: each byte in @p from is replaced by the byte
+ *         at the same index in @p to; bytes present in @p from but with no
+ *         corresponding position in @p to are deleted.
+ *
+ * Matches PostgreSQL translate() semantics: the FIRST occurrence of a byte
+ * in @p from wins (reverse-scan of @p from builds the mapping table).
+ *
+ * @param s     Non-NULL fs2 (ALLOC or LOCAL). Modified (may shrink).
+ * @param from  Non-NULL fs2 — source byte set.
+ * @param to    Non-NULL fs2 — replacement byte set (may be shorter → delete).
+ * @return      @p s.
+ */
 extern fs2 *
 fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to);
 
+/**
+ * @brief Translate bytes of @p s using C-string @p from / @p to mappings.
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param from   Non-NULL C-string — source byte set.
+ * @param to     Non-NULL C-string — replacement byte set.
+ * @return       @p s.
+ */
 static inline fs2 *
 fs2_translate_str(fs2 *restrict s, const char *restrict from, const char *restrict to) {
     fs2 tf = _fs2_wrap(from);
@@ -2191,9 +2367,31 @@ fs2_translate_str(fs2 *restrict s, const char *restrict from, const char *restri
     return fs2_translate(s, &tf, &tt);
 }
 
+/**
+ * @brief Return the n-th (1-based) part of @p s split by @p delim.
+ *
+ * Positive n: 1-based from the start. Negative n: 1-based from the end
+ * (n = -1 is the last part, n = -2 the second-to-last, etc.).
+ * n = 0 returns an empty fs2.
+ *
+ * Matches PostgreSQL split_part() semantics.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param delim  Non-NULL fs2 delimiter (empty → no split).
+ * @param n      1-based part number (negative = from the end, 0 → empty).
+ * @return       New stack fs2 (FS2EMPTY if the part does not exist).
+ */
 extern fs2
 fs2_split_part(const fs2 *restrict s, const fs2 *restrict delim, ptrdiff_t n);
 
+/**
+ * @brief Return the n-th part of @p s split by a C-string @p delim.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param delim  Non-NULL NUL-terminated delimiter.
+ * @param n      1-based part number (negative = from the end, 0 → empty).
+ * @return       New stack fs2.
+ */
 static inline fs2
 fs2_split_part_str(const fs2 *restrict s, const char *restrict delim, ptrdiff_t n) {
     fs2 d = _fs2_wrap(delim);
@@ -2220,17 +2418,47 @@ fs2_removeal_str(fs2 *restrict s, const char *restrict chars) {
     return fs2_removeall(s, &tmp);
 }
 
-// optimized version, no full alloc
+/**
+ * @brief Return a stack-allocated copy of @p s with all occurrences of any
+ *         byte from @p chars removed.
+ *
+ * Does NOT modify @p s (works with STATIC fs2 as well).
+ * Optimized: allocates only once for the exact result size.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param chars  Non-NULL fs2 — byte set to remove.
+ * @return       New stack fs2.
+ */
 extern fs2
 fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars); 
 
+/**
+ * @brief Return a stack-allocated copy of @p s with all occurrences of any
+ *         byte from a C-string @p chars removed.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param chars  Non-NULL NUL-terminated byte set to remove.
+ * @return       New stack fs2.
+ */
 static inline fs2
 fs2_removeall_new_str(const fs2 *restrict s, const char *restrict chars) {
     fs2     tmp = _fs2_wrap(chars);
     return fs2_removeall_new(s, &tmp);
 }
 
-// null-ended src
+/**
+ * @brief Append all fs2 strings from a NULL-terminated array to @p dst,
+ *         joined by @p delim.
+ *
+ * The result is concatenated onto the existing content of @p dst.
+ * If @p dst is already non-empty, a delimiter is inserted before the
+ * first element.
+ *
+ * @param dst   Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim Non-NULL fs2 delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of non-NULL fs2 pointers.
+ * @return      @p dst.
+ */
 extern fs2 *
 fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src);
 
@@ -2238,12 +2466,32 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
 #define FS2CONCAT(dst, delim, ...) \
     fs2_concatall( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
 
+/**
+ * @brief Append all C-strings from a NULL-terminated array to @p dst,
+ *         joined by @p delim.
+ *
+ * @param dst   Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim Non-NULL C-string delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of C-strings.
+ * @return      @p dst.
+ */
 extern fs2 *
 fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *restrict src);
 
 #define FS2CONCATSTR(dst, delim, ...) \
     fs2_concatall_str( (dst), (delim), (const char* const[]) { __VA_ARGS__, NULL} )
 
+/**
+ * @brief Return a stack-allocated copy of @p dst with all fs2 strings from
+ *         a NULL-terminated array appended, joined by @p delim.
+ *
+ * Does NOT modify @p dst.
+ *
+ * @param dst   Non-NULL fs2 (any flavor). Not modified.
+ * @param delim Non-NULL fs2 delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of non-NULL fs2 pointers.
+ * @return      New stack fs2.
+ */
 static inline fs2
 fs2_concatall_new(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src) {
     fs2     res = fs2_clone(dst);   // check not null there
@@ -2253,6 +2501,17 @@ fs2_concatall_new(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restri
 #define FS2CONCAT_NEW(dst, delim, ...) \
     fs2_concatall_new( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
 
+/**
+ * @brief Return a stack-allocated copy of @p dst with all C-strings from
+ *         a NULL-terminated array appended, joined by @p delim.
+ *
+ * Does NOT modify @p dst.
+ *
+ * @param dst   Non-NULL fs2 (any flavor). Not modified.
+ * @param delim Non-NULL C-string delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of C-strings.
+ * @return      New stack fs2.
+ */
 static inline fs2
 fs2_concatall_str_new(fs2 *restrict dst, const char *delim, const char * const *restrict src) {
     fs2     res = fs2_clone(dst);   // check not null there
@@ -2262,6 +2521,14 @@ fs2_concatall_str_new(fs2 *restrict dst, const char *delim, const char * const *
 #define FS2CONCAT_STR_NEW(dst, delim, ...) \
     fs2_concatall_str_new( (dst), (delim), (const char * const[]) { __VA_ARGS__, NULL} )
 
+/**
+ * @brief Swap upper/lower case of every byte in place (byte-wise, NOT Unicode-aware).
+ *
+ * Uppercase bytes become lowercase and vice versa; all other bytes are unchanged.
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @return   @p s.
+ */
 static inline fs2 *
 fs2_swapcase(fs2 *restrict s) {
     if (fs2_cant_mutate(s))
@@ -2282,6 +2549,16 @@ fs2_swapcase(fs2 *restrict s) {
  *       Rust/C++ "all elements" vacuous-true. fs2_is_ascii is the
  *       exception: empty is ASCII (vacuously).
  */
+/**
+ * @brief Check whether every byte of @p s is a letter (`isalpha`).
+ *
+ * Empty string returns false (matches Python/Java/PostgreSQL "consists of"
+ * semantics — vacuous truth is intentionally NOT used; see isascii for the
+ * lone exception).
+ *
+ * @param s  Non-NULL fs2.
+ * @return   true if len > 0 and all bytes are letters (locale-dependent).
+ */
 static inline bool
 fs2_isalpha(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
@@ -2293,6 +2570,14 @@ fs2_isalpha(const fs2 *restrict s) {
     return true;
 }
 
+/**
+ * @brief Check whether every byte of @p s is a digit (`isdigit`).
+ *
+ * Empty string returns false.
+ *
+ * @param s  Non-NULL fs2.
+ * @return   true if len > 0 and all bytes are digits (locale-dependent).
+ */
 static inline bool
 fs2_isdigit(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
@@ -2304,6 +2589,14 @@ fs2_isdigit(const fs2 *restrict s) {
     return true;
 }
 
+/**
+ * @brief Check whether every byte of @p s is a letter or digit (`isalnum`).
+ *
+ * Empty string returns false.
+ *
+ * @param s  Non-NULL fs2.
+ * @return   true if len > 0 and all bytes are alphanumeric (locale-dependent).
+ */
 static inline bool
 fs2_isalnum(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
@@ -2315,6 +2608,17 @@ fs2_isalnum(const fs2 *restrict s) {
     return true;
 }
 
+/**
+ * @brief Check whether every byte of @p s is a whitespace character.
+ *
+ * Empty string returns false.
+ *
+ * @note Uses `isspace()` from <ctype.h>: locale-dependent. In C locale
+ *       (recommended), only " \t\n\r\v\f" count as whitespace.
+ *
+ * @param s  Non-NULL fs2.
+ * @return   true if len > 0 and all bytes are whitespace.
+ */
 static inline bool
 fs2_isspace(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
@@ -2326,6 +2630,15 @@ fs2_isspace(const fs2 *restrict s) {
     return true;
 }
 
+/**
+ * @brief Check whether every byte of @p s is in the ASCII range (0-127).
+ *
+ * Empty string returns true (vacuously all bytes are ASCII — the lone
+ * exception to the "empty is false" convention).
+ *
+ * @param s  Non-NULL fs2.
+ * @return   true if all bytes are < 128.
+ */
 static inline bool
 fs2_isascii(const fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
@@ -2352,6 +2665,17 @@ fs2_normalize_whitespace_new(const fs2 *restrict s) {
 extern fs2 *
 fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad);
 
+/**
+ * @brief Center @p str within @p width, padding both sides with a C-string @p pad.
+ *
+ * If width < s->len, the string is truncated. If width == s->len or pad is
+ * empty, no change. Extra padding goes to the left (left-biased centering).
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param width  Target total length.
+ * @param pad    Non-NULL non-empty C-string pad pattern.
+ * @return       @p s.
+ */
 static inline fs2 *
 fs2_center_str(fs2 *restrict s, size_t width, const char *restrict pad) {
     fs2 tmp = _fs2_wrap(pad);
@@ -2364,6 +2688,15 @@ fs2_center_new(const fs2 *restrict s, size_t width, const fs2 *restrict pad) {
     return *fs2_center(&res, width, pad);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p s centered within @p width,
+ *         padded with a C-string @p pad.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param width  Target total length.
+ * @param pad    Non-NULL non-empty C-string pad pattern.
+ * @return       New stack fs2.
+ */
 static inline fs2
 fs2_center_strnew(const fs2 *restrict s, size_t width, const char *restrict pad) {
     fs2 res = fs2_clone(s);
@@ -2373,6 +2706,16 @@ fs2_center_strnew(const fs2 *restrict s, size_t width, const char *restrict pad)
 extern fs2 *
 fs2_squeeze(fs2 *restrict s, int ch);
 
+/**
+ * @brief Return a stack-allocated copy of @p s with consecutive runs of @p ch
+ *         squeezed to a single occurrence.
+ *
+ * "aaabbbcaa" + ch='a' → "abbbca".
+ *
+ * @param s   Non-NULL fs2 (any flavor). Not modified.
+ * @param ch  Character whose consecutive runs to collapse.
+ * @return    New stack fs2.
+ */
 static inline fs2
 fs2_squeeze_new(const fs2 *restrict s, int ch) {
     fs2 res = fs2_clone(s);

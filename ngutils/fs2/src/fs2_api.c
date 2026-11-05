@@ -365,6 +365,14 @@ _fs2_vsprintf_position(fs2 *restrict s, size_t pos, const char *restrict fmt, va
     return cnt;    
 }
 
+/**
+ * @brief Format into an fs2, replacing its current content.
+ *
+ * @param s    Non-NULL fs2 (ALLOC). Content is overwritten.
+ * @param fmt  Non-NULL format string.
+ * @param ...  Format arguments.
+ * @return     Number of characters written (excluding NUL), or -1 on error.
+ */
 long           
 fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     invfatal(ERR_NULL_INPUT, fmt != 0, 
@@ -384,6 +392,17 @@ fs2_sprintf(fs2 *restrict s, const char *restrict fmt, ...) {
     return res;
 }
 
+/**
+ * @brief Append formatted text to the current content of an fs2.
+ *
+ * Unlike fs2_sprintf, this concatenates: the existing content is kept
+ * and the formatted result is appended at the end.
+ *
+ * @param s    Non-NULL fs2 (ALLOC). Content is preserved, new text appended.
+ * @param fmt  Non-NULL format string.
+ * @param ...  Format arguments.
+ * @return     Number of characters appended (excluding NUL), or -1 on error.
+ */
 long           
 fs2_sprintf_concat(fs2 *restrict s, const char *restrict fmt, ...) {
     invfatal(ERR_NULL_INPUT,fmt != 0, 
@@ -967,6 +986,14 @@ fs2_pos_parse_ushort(const fs2 *restrict s, size_t pos,
     return true;
 }
 
+/**
+ * @brief Parse the whole string into an unsigned long long.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_ullong(const fs2 *restrict s, unsigned long long *restrict out, bool strict) {
     size_t newpos = 0;
@@ -981,6 +1008,14 @@ fs2_tryparse_ullong(const fs2 *restrict s, unsigned long long *restrict out, boo
     return true;
 }
 
+/**
+ * @brief Parse the whole string into a long long.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_llong(const fs2 *restrict s, long long *restrict out, bool strict) {
     size_t newpos = 0;
@@ -995,6 +1030,14 @@ fs2_tryparse_llong(const fs2 *restrict s, long long *restrict out, bool strict) 
     return true;
 }
 
+/**
+ * @brief Parse the whole string into an unsigned long.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_ulong(const fs2 *restrict s, unsigned long *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1007,6 +1050,14 @@ fs2_tryparse_ulong(const fs2 *restrict s, unsigned long *restrict out, bool stri
     return true;
 }
 
+/**
+ * @brief Parse the whole string into a long.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1020,6 +1071,14 @@ fs2_tryparse_long(const fs2 *restrict s, long *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into an unsigned int.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_uint(const fs2 *restrict s, unsigned *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1033,6 +1092,14 @@ fs2_tryparse_uint(const fs2 *restrict s, unsigned *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into an int.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1046,6 +1113,14 @@ fs2_tryparse_int(const fs2 *restrict s, int *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into a double.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_double(const fs2 *restrict s, double *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1060,6 +1135,14 @@ fs2_tryparse_double(const fs2 *restrict s, double *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into a single character.
+ *
+ * @param s       Non-NULL fs2 (must be non-empty).
+ * @param out     Output character (may be NULL to discard).
+ * @param strict  If true, rejects leading whitespace.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_char(const fs2 *restrict s, char *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1075,6 +1158,14 @@ fs2_tryparse_char(const fs2 *restrict s, char *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into a short.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_short(const fs2 *restrict s, short *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1089,6 +1180,14 @@ fs2_tryparse_short(const fs2 *restrict s, short *restrict out, bool strict) {
     return true;
 }
 
+/**
+ * @brief Parse the whole string into an unsigned short.
+ *
+ * @param s       Non-NULL fs2.
+ * @param out     Output value (may be NULL to discard).
+ * @param strict  If true, the entire string must be consumed.
+ * @return        true on success.
+ */
 bool 
 fs2_tryparse_ushort(const fs2 *restrict s, unsigned short *restrict out, bool strict) {
     size_t newpos = 0;
@@ -1165,7 +1264,17 @@ fs2_instr_pos_ci_nth(const fs2 *restrict str, const fs2 *restrict pattern,
     return fs2_instr_pos_common_nth(str, pattern, pos, nth, strcasestr);
 }
 
-// replace 
+/**
+ * @brief Replace all non-overlapping occurrences of @p pat with @p repl in place.
+ *
+ * Non-overlapping, like Python's str.replace.
+ * Empty @p pat is a no-op. NULL @p repl is treated as empty (delete).
+ *
+ * @param s     Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pat   Non-NULL fs2 pattern.
+ * @param repl  Non-NULL fs2 replacement (may be empty).
+ * @return      @p s.
+ */
 fs2 *
 fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) {
     invfatal(ERR_NULL_INPUT, s != NULL && pat != NULL && repl != NULL, 
@@ -1206,7 +1315,17 @@ fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl) 
     return s;
 }
 
-// base trim
+/**
+ * @brief Trim characters from the set @p pattern at the edges of @p s.
+ *
+ * Pattern is a character set (like strspn's accept), NOT a substring.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL fs2 — set of bytes to remove from edges.
+ * @param left     Trim from the start.
+ * @param right    Trim from the end.
+ * @return         @p s.
+ */
 fs2 *
 fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
                 bool left, bool right) {
@@ -1243,6 +1362,17 @@ fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern,
     return s;
 }
 
+/**
+ * @brief Return a stack-allocated fs2 containing @p n repetitions of @p s.
+ *
+ * Empty source or n == 0 returns an empty fs2.
+ *
+ * @param s  Non-NULL fs2 (any flavor). Not modified.
+ * @param n  Number of repetitions.
+ * @return   New stack fs2.
+ *
+ * @warning  `userraise` (SIGINT) if n * s->len overflows size_t.
+ */
 fs2
 fs2_repeat_new(const fs2 *restrict s, size_t n) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
@@ -1259,6 +1389,17 @@ fs2_repeat_new(const fs2 *restrict s, size_t n) {
     return fs2_rpad_new(&FS2EMPTY, n * s->len, s);
 }
 
+/**
+ * @brief Repeat @p s in place @p n times.
+ *
+ * n == 0 clears the string. n == 1 is a no-op.
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param n  Number of repetitions.
+ * @return   @p s.
+ *
+ * @warning  `userraise` (SIGINT) if n * s->len overflows size_t.
+ */
 fs2 *
 fs2_repeat(fs2 *restrict s, size_t n) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
@@ -1289,7 +1430,19 @@ fs2_repeat(fs2 *restrict s, size_t n) {
     return fs2_setlen(s, total);
 }
 
-// Initcap
+/**
+ * @brief Capitalize the first letter of each word, lowercase the rest.
+ *
+ * Words are delimited by non-alphanumeric characters, matching
+ * PostgreSQL initcap('hi THOMAS') → 'Hi Thomas'.
+ *
+ * @note Locale-dependent: uses isalnum/toupper/tolower from <ctype.h>.
+ *       Uses the process-wide locale (C setlocale). Not safe if
+ *       another thread calls setlocale concurrently.
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @return   @p s.
+ */
 fs2 *
 fs2_initcap(fs2 *restrict s) {
     if (fs2_cant_mutate(s))
@@ -1310,7 +1463,17 @@ fs2_initcap(fs2 *restrict s) {
     return s;
 }
 
-// Capitalize
+/**
+ * @brief Capitalize the first alphabetic character of @p s, lowercase the rest.
+ *
+ * Unlike fs2_initcap (which capitalizes every word), this affects only the
+ * very first alphanumeric byte; everything after is lowercased.
+ *
+ * "hELLO wORLD" → "Hello world"
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @return   @p s.
+ */
 fs2 *
 fs2_capitalize(fs2 *restrict s) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
@@ -1334,6 +1497,19 @@ fs2_capitalize(fs2 *restrict s) {
     return s;
 }
 
+/**
+ * @brief Zero-fill @p s to @p width in place.
+ *
+ * If the string begins with a sign ('+' or '-'), it is preserved at the
+ * start and zeros are inserted after it. Width < len is a no-op.
+ *
+ * "42"  + width=6 → "000042"
+ * "-7"  + width=6 → "-00007"
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param width  Target total length.
+ * @return       @p s.
+ */
 fs2 *
 fs2_zfill(fs2 *restrict s, size_t width) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
@@ -1364,6 +1540,19 @@ fs2_zfill(fs2 *restrict s, size_t width) {
     return fs2_setlen(s, width);
 }
 
+/**
+ * @brief Map bytes of @p s: each byte in @p from is replaced by the byte
+ *         at the same index in @p to; bytes present in @p from but with no
+ *         corresponding position in @p to are deleted.
+ *
+ * Matches PostgreSQL translate() semantics: the FIRST occurrence of a byte
+ * in @p from wins (reverse-scan of @p from builds the mapping table).
+ *
+ * @param s     Non-NULL fs2 (ALLOC or LOCAL). Modified (may shrink).
+ * @param from  Non-NULL fs2 — source byte set.
+ * @param to    Non-NULL fs2 — replacement byte set (may be shorter → delete).
+ * @return      @p s.
+ */
 fs2 *
 fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to) {
     invfatal(ERR_NULL_INPUT, from != NULL && to != NULL, 
@@ -1391,6 +1580,20 @@ fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to)
     return fs2_setlen(s, out);
 }
 
+/**
+ * @brief Return the n-th (1-based) part of @p s split by @p delim.
+ *
+ * Positive n: 1-based from the start. Negative n: 1-based from the end
+ * (n = -1 is the last part, n = -2 the second-to-last, etc.).
+ * n = 0 returns an empty fs2.
+ *
+ * Matches PostgreSQL split_part() semantics.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param delim  Non-NULL fs2 delimiter (empty → no split).
+ * @param n      1-based part number (negative = from the end, 0 → empty).
+ * @return       New stack fs2 (FS2EMPTY if the part does not exist).
+ */
 fs2
 fs2_split_part(const fs2 *restrict s, const fs2 *restrict delim, ptrdiff_t n) {
     invfatal(ERR_NULL_INPUT, s != NULL && delim != NULL,
@@ -1425,6 +1628,18 @@ fs2_split_part(const fs2 *restrict s, const fs2 *restrict delim, ptrdiff_t n) {
     return fs2_substr_new(s, start, len);
 }
 
+/**
+ * @brief Remove all occurrences of any byte from @p chars in place.
+ *
+ * Uses a 256-byte membership table for O(n+m) single-pass compaction.
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Non-empty STATIC aborts.
+ * @param chars  Non-NULL fs2 — byte set to remove.
+ * @return       @p s.
+ *
+ * @warning `invfatal` (SIGABRT) if @p s is non-empty STATIC,
+ *          even when @p chars is empty.
+ */
 fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
     invfatal(ERR_NULL_INPUT, chars != NULL,  "Null pointer");
@@ -1451,6 +1666,17 @@ fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
     return fs2_setlen(s, out);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p s with all occurrences of any
+ *         byte from @p chars removed.
+ *
+ * Does NOT modify @p s (works with STATIC fs2 as well).
+ * Optimized: allocates only once for the exact result size.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param chars  Non-NULL fs2 — byte set to remove.
+ * @return       New stack fs2.
+ */
 fs2
 fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars) {
     invfatal(ERR_NULL_INPUT, s != NULL && chars != NULL, 
@@ -1477,6 +1703,19 @@ fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars) {
     return res;
 }
 
+/**
+ * @brief Append all fs2 strings from a NULL-terminated array to @p dst,
+ *         joined by @p delim.
+ *
+ * The result is concatenated onto the existing content of @p dst.
+ * If @p dst is already non-empty, a delimiter is inserted before the
+ * first element.
+ *
+ * @param dst   Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim Non-NULL fs2 delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of non-NULL fs2 pointers.
+ * @return      @p dst.
+ */
 fs2 *
 fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src) {
     if (fs2_cant_realloc(dst) || src == NULL)
@@ -1503,7 +1742,15 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
     return dst;
 }
 
-// impossible to call fs2_concatall directly, using reserve is useless here
+/**
+ * @brief Append all C-strings from a NULL-terminated array to @p dst,
+ *         joined by @p delim.
+ *
+ * @param dst   Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim Non-NULL C-string delimiter (NULL or empty → no delimiter).
+ * @param src   NULL-terminated array of C-strings.
+ * @return      @p dst.
+ */
 fs2 *
 fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *restrict src) {
     if (fs2_cant_realloc(dst) || src == NULL)
@@ -1521,6 +1768,19 @@ fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *rest
     return dst;
 }
 
+/**
+ * @brief Collapse all whitespace runs to a single space, trimming leading
+ *         and trailing whitespace.
+ *
+ * Uses isspace() from <ctype.h>: locale-dependent. In C locale (recommended),
+ * only " \t\n\r\v\f" count as whitespace. Matches Python's str.split() with
+ * no separator argument (join semantics).
+ *
+ * "  hello   world  " → "hello world"
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @return   @p s.
+ */
 fs2 *
 fs2_normalize_whitespace(fs2 *restrict s) {
     if (fs2_cant_mutate(s))
@@ -1543,6 +1803,18 @@ fs2_normalize_whitespace(fs2 *restrict s) {
     return fs2_setlen(s, out);                 /* pending trailing dropped */
 }
 
+/**
+ * @brief Center @p s within @p width, padding both sides with @p pad.
+ *
+ * If width < s->len, the string is truncated to width.
+ * If width == s->len or pad is empty, no change.
+ * Extra padding (when the gap is odd) goes to the left (left-biased).
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param width  Target total length.
+ * @param pad    Non-NULL non-empty fs2 pad pattern.
+ * @return       @p s.
+ */
 fs2 *
 fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad) {
     fs2_cant_realloc(s);                      /* NULL / non-empty STATIC abort */
@@ -1560,6 +1832,16 @@ fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad) {
     return s;
 }
 
+/**
+ * @brief Collapse consecutive runs of @p ch to a single occurrence.
+ *
+ * "aaabbbcaa" + ch='a' → "abbbca"
+ * "hello"     + ch='l' → "helo"
+ *
+ * @param s   Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param ch  Character whose consecutive runs to collapse.
+ * @return    @p s.
+ */
 fs2 *
 fs2_squeeze(fs2 *restrict s, int ch) {
     if (fs2_cant_mutate(s))
