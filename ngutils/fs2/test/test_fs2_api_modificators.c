@@ -5912,3 +5912,170 @@ Test(fs2_api_modificators, concatall_new_matches_clone_then_inplace) {
     fs2_free(&via);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_concatall_str_new — minimal: clone + delegate
+ *   (core concatall_str semantics already covered by its own tests)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, concatall_str_new_basic) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("p:");
+    const char *arr[] = { "a", "b", NULL };
+
+    fs2 r = fs2_concatall_str_new(&dst, "-", arr);
+
+    CHECK_STR_EQ("p:-a-b", r.v, "p:-a-b");   /* new semantics: delim before first when dst non-empty */
+    CHECK_TRUE ("ALLOC",           fs2_is_alloc(&r));
+    CHECK_FALSE("not BODYALLOC",   fs2_is_bodyalloc(&r));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* dst untouched (clone makes an independent copy) */
+Test(fs2_api_modificators, concatall_str_new_dst_untouched) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("orig");
+    const char *arr[] = { "a", NULL };
+    void *orig_v = dst.v;
+
+    fs2 r = fs2_concatall_str_new(&dst, "|", arr);
+
+    CHECK_PTR_EQ("dst v unchanged", dst.v, orig_v);
+    CHECK_STR_EQ("dst content",     dst.v, "orig");
+    CHECK_STR_EQ("result",          r.v,   "orig|a");
+    CHECK_TRUE ("independent",      r.v != dst.v);
+
+    r.v[0] = 'X';
+    CHECK_STR_EQ("result mutated", r.v,   "Xrig|a");
+    CHECK_STR_EQ("dst original",   dst.v, "orig");
+
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* KEY: STATIC non-empty dst works (clone removes the mutate barrier) */
+Test(fs2_api_modificators, concatall_str_new_static_dst_works) {
+    __fs2_checkreset();
+    fs2 dst = FS2LITERAL("prefix:");
+    const char *arr[] = { "x", "y", NULL };
+
+    fs2 r = fs2_concatall_str_new(&dst, "-", arr);
+
+    CHECK_STR_EQ("prefix:-x-y",       r.v, "prefix:-x-y");
+    CHECK_TRUE ("result ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE ("result not STATIC",  !fs2_is_static(&r));
+    CHECK_TRUE ("dst still STATIC",   fs2_is_static(&dst));
+    CHECK_STR_EQ("dst unchanged",     dst.v, "prefix:");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * NULL src / empty arr -> clone of dst
+ * ========================================================================= */
+
+Test(fs2_api_modificators, concatall_str_new_null_src_returns_clone) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2 r = fs2_concatall_str_new(&dst, "-", NULL);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_TRUE ("independent", r.v != dst.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &dst);
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, concatall_str_new_empty_arr_returns_clone) {
+    __fs2_checkreset();
+    const char *arr[] = { NULL };
+    fs2 dst = fs2_fromstr("hello");
+
+    fs2 r = fs2_concatall_str_new(&dst, "-", arr);
+
+    CHECK_STR_EQ("hello", r.v, "hello");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guard: NULL dst -> SIGABRT (via fs2_clone)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, concatall_str_new_null_dst_aborts, .signal = SIGABRT) {
+    const char *arr[] = { "a", NULL };
+    fs2_concatall_str_new(NULL, "-", arr);
+}
+
+/* =========================================================================
+ * Consistency: _str_new ≡ clone + _str in-place
+ * ========================================================================= */
+
+Test(fs2_api_modificators, concatall_str_new_matches_clone_then_inplace) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("p:");
+    const char *arr[] = { "a", "b", NULL };
+
+    fs2 manual = fs2_clone(&dst);
+    fs2_concatall_str(&manual, "-", arr);
+
+    fs2 via = fs2_concatall_str_new(&dst, "-", arr);
+
+    CHECK_STR_EQ("same content", manual.v,   via.v);
+    CHECK_EQ  ("same len",       manual.len, via.len);
+    CHECK_FS2VALID(1, &manual);
+    CHECK_FS2VALID(2, &via);
+
+    fs2_free(&dst);
+    fs2_free(&manual);
+    fs2_free(&via);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FS2CONCAT_STR_NEW macro
+ * ========================================================================= */
+
+Test(fs2_api_modificators, fconcat_str_new_macro_three_elements) {
+    __fs2_checkreset();
+    fs2 dst = fs2_fromstr("p:");
+    fs2 r = FS2CONCAT_STR_NEW(&dst, ", ", "red", "green", "blue");
+
+    CHECK_STR_EQ("p:, red, green, blue", r.v, "p:, red, green, blue");
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, fconcat_str_new_macro_one_element) {
+    __fs2_checkreset();
+    fs2 dst = FS2();
+    fs2 r = FS2CONCAT_STR_NEW(&dst, "-", "solo");
+
+    CHECK_STR_EQ("solo", r.v, "solo");
+
+    fs2_free(&dst);
+    fs2_free(&r);
+    assert_balanced();
+}
