@@ -1272,6 +1272,74 @@ extern long                fs2_techfprint(FILE *restrict out, const fs2 *restric
 #define  FS2TECHLOG(s) \
         fs2_techfprint(logfile, (s), #s)        
 
+/**
+ * @brief Dump the full content of @p s to a stream (no truncation).
+ *
+ * Unlike fs2_techfprint (which truncates to FS_TECH_PRINT_COUNT bytes),
+ * this writes the entire content. Format:
+ *
+ *     FS2: <name>: len [N], sz [M], flags [F], s(<ptr>)[
+ *     <raw bytes verbatim>
+ *     ]
+ *
+ * Empty / canonical FS2() (v == NULL) is shown as s((nil))[] with no body.
+ *
+ * @param out   Output stream (may be NULL -> returns 0, no-op).
+ * @param s     fs2 to dump (may be NULL -> prints "<NULL>").
+ * @param name  Label for the header (may be NULL -> "(unnamed)").
+ * @return      Total bytes written, or -1 on I/O error.
+ */
+long
+fs2_techdump(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+
+/**
+ * @brief Dump to a file path and log the path via logsimple().
+ *
+ * Opens @p path in "wb" mode (binary, so no translation of \n).
+ * On success logs: "fs2_techdump_file: <name>: wrote N bytes to <path>".
+ *
+ * @param s     fs2 to dump (may be NULL).
+ * @param name  Label (may be NULL -> "(unnamed)").
+ * @param path  Destination file path (must be non-NULL).
+ * @return      true on success, false on fopen/write/fclose failure.
+ */
+bool
+fs2_techdump_file(const fs2 *restrict s, const char *restrict name, const char *restrict path);
+
+#define FS2TECHDUMP(out, s)        fs2_techdump((out), (s), #s)
+#define FS2TECHDUMPFILE(s, path)   fs2_techdump_file((s), #s, (path))
+
+/**
+ * @brief Emergency dump: auto-generates a filename, writes full content,
+ *        logs the resulting path, and returns it.
+ *
+ * Unlike fs2_techdump_file, this function chooses the destination itself,
+ * so it can be called from error/abort paths without pre-computing paths.
+ *
+ * Destination:
+ *   - $FS2_DUMP_DIR   (if set and non-empty), else
+ *   - $TMPDIR         (POSIX convention), else
+ *   - "/tmp"
+ * Filename:
+ *   fs2dump-<sanitized-name>-<pid>-<epoch>-<seq>.bin
+ *   <sanitized-name>: [A-Za-z0-9._-] kept, all else -> '_'
+ *   <seq>: monotonic per-thread counter (avoids same-second collisions)
+ *
+ * @param s     fs2 to dump (may be NULL -> "<NULL>" marker).
+ * @param name  Label (may be NULL -> "(unnamed)").
+ * @return      Thread-local path string (valid until next call in this
+ *              thread), or NULL on failure (fopen/fwrite/fclose/overflow).
+ *
+ * @note The path is logged via logsimple() as well; the return value
+ *       lets the caller include it in further diagnostics.
+ * @warning Not async-signal-safe (uses stdio, snprintf, getenv,
+ *          thread-locals). Safe from normal error paths, NOT from a
+ *          raw SIGSEGV/SIGABRT handler. For signal-safe dumps, use
+ *          raw open(2)/write(2)/close(2) in a dedicated handler.
+ */
+const char *
+fs2_techdump_emergency(const fs2 *restrict s, const char *restrict name);
+
  /* ─────────────────────────────────────────────────────────────────────────
  * Validator
  * ───────────────────────────────────────────────────────────────────────── */
@@ -1294,7 +1362,8 @@ extern long                fs2_techfprint(FILE *restrict out, const fs2 *restric
  * @param s    fs2 to validate (may be NULL — reports and returns false).
  * @return     true if all invariants hold; false otherwise.
  */
-bool                fs2_validate(FILE *restrict out, const fs2 *restrict s);
+bool                
+fs2_validate(FILE *restrict out, const fs2 *restrict s);
 
 /**
  * @brief Compare two fs2 objects for technical equality.
@@ -1307,7 +1376,10 @@ bool                fs2_validate(FILE *restrict out, const fs2 *restrict s);
  * @return true if len, flags and content are identical; false otherwise.
  * @note invraise(SIGABRT) if either pointer is NULL.
  */
-bool                fs2_techcmp(const fs2 *s1, const fs2 *s2);
+bool                
+fs2_techcmp(const fs2 *s1, const fs2 *s2);
+
+#define FS2TECHDUMP_EMERGENCY(s)  fs2_techdump_emergency((s), #s)
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
