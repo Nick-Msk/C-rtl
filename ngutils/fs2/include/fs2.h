@@ -1255,9 +1255,11 @@ extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
  * 
- * @note  Not thread-safe if multiple threads share the same @p out.
- *        The caller must serialize writes (e.g. mutex around the
- *        entire call).
+ * @note    One fprintf call → single write() syscall in the common
+ *          line-buffered case. POSIX does NOT guarantee FILE* stream
+ *          thread-safety (see C11 7.21.5.5); this works in practice
+ *          because glibc maps it to one write(). For fully-buffered
+ *          shared streams the caller should still serialize
  */
 extern long                fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 

@@ -712,23 +712,36 @@ fs2_cmp_wrap_ci(const void *str1, const void *str2) {
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
  */
-long                                    
+long
 fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name) {
-    // technical print, statis attributes for now
-    long     cnt = 0;
-    if (out){
-        if (s){
-            size_t     len = MIN(FS_TECH_PRINT_COUNT, s->len);
-            // TODO: use guard here
-            cnt += fprintf(out, "FS2: %s: len [%zu], sz [%zu], flags [%d], s(%p)[%.*s", 
-                        name, s->len, s->sz, s->flags, s->v, (unsigned) len, s->v);
-            if (FS_TECH_PRINT_COUNT < s->len)
-                cnt += fprintf(out, "...");
-            cnt += fprintf(out, "]\n");
-        } else
-            cnt += fprintf(out, "FS2: %s: <NULL>\n", name);
+    if (!out)
+        return 0;
+
+    /* Snapshot under NO lock — all fields are read once, no re-read */
+    char   buf[512];
+    int    n;
+
+    if (s) {
+        const char *v   = s->v ? s->v : "(nil)";
+        size_t      len = s->v ? MIN(FS_TECH_PRINT_COUNT, s->len) : 0;
+        int         ell = (s->v && FS_TECH_PRINT_COUNT < s->len) ? 1 : 0;
+
+        n = snprintf(buf, sizeof buf,
+                     "FS2: %s: len [%zu], sz [%zu], flags [%d], s(%p)[%.*s%s]\n",
+                     name, s->len, s->sz, (int)s->flags, (void *)v,
+                     (int) len, v,
+                     ell ? "..." : "");
+    } else {
+        n = snprintf(buf, sizeof buf, "FS2: %s: <NULL>\n", name);
     }
-    return cnt;
+
+    if (n < 0)
+        return -1;
+
+    /* One fprintf call → atomic on the FILE* level (POSIX);
+     * no global mutex needed, no deadlock in crash handlers. */
+    int w = fprintf(out, "%s", buf);
+    return (w < 0) ? -1 : (long)w;
 }
 
 
