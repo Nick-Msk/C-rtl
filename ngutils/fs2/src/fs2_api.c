@@ -1389,3 +1389,19 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
     }
     return dst;
 }
+
+// impossible to call fs2_concatall directly, using reserve is useless here
+fs2 *
+fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *restrict src) {
+    if (fs2_cant_realloc(dst) || src == NULL)
+        return dst;     // unable to write, static non-empty or nothing to do (src is null)
+    
+    const char * const *iter = src;
+    while (*iter) {   // TODO: rewite via fs2array function iterator
+        if (delim && iter != src)
+            fs2_catstr(dst, delim);
+        fs2_catstr(dst, *iter);
+        iter++;
+    }
+    return dst;
+}

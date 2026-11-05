@@ -2202,4 +2202,10 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
 #define FS2CONCAT(dst, delim, ...) \
     fs2_concatall( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
 
+extern fs2 *
+fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *restrict src);
+
+#define FS2CONCATSTR(dst, delim, ...) \
+    fs2_concatall_str( (dst), (delim), (const char* const[]) { __VA_ARGS__, NULL} )
+
 #endif /* !FS2_API_H */
