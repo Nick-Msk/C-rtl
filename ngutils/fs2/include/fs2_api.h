@@ -2370,4 +2370,13 @@ fs2_center_strnew(const fs2 *restrict s, size_t width, const char *restrict pad)
     return *fs2_center_str(&res, width, pad);
 }
 
+extern fs2 *
+fs2_squeeze(fs2 *restrict s, int ch);
+
+static inline fs2
+fs2_squeeze_new(const fs2 *restrict s, int ch) {
+    fs2 res = fs2_clone(s);
+    return *fs2_squeeze(&res, ch);
+}
+
 #endif /* !FS2_API_H */

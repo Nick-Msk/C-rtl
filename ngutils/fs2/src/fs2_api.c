@@ -1559,3 +1559,19 @@ fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad) {
     fs2_rpad(s, width, pad);
     return s;
 }
+
+fs2 *
+fs2_squeeze(fs2 *restrict s, int ch) {
+    if (fs2_cant_mutate(s))
+        return s;
+
+    char target = (char)(unsigned char)ch;
+    size_t out = 0;
+
+    for (size_t i = 0; i < s->len; i++) {
+        if (s->v[i] == target && out > 0 && s->v[out - 1] == target)
+            continue;                /* second+ of a run — skip */
+        s->v[out++] = s->v[i];
+    }
+    return fs2_setlen(s, out);
+}
