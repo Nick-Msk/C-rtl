@@ -2164,8 +2164,28 @@ fs2_initcap_new(const fs2 *restrict s) {
     return res;
 }
 
+/**
+ * @brief Remove all occurrences of any byte from @p chars.
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Non-empty STATIC aborts.
+ * @param chars  Non-NULL fs2 — byte set to remove.
+ * @return       @p s.
+ *
+ * @warning `invfatal` (SIGABRT) if @p s is non-empty STATIC,
+ *          even when @p chars is empty (mutators reject all non-empty
+ *          STATIC inputs upfront, before inspecting arguments).
+ */
 extern fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars);
 
+static inline fs2 *
+fs2_removeal_str(fs2 *restrict s, const char *restrict chars) {
+    fs2     tmp = _fs2_wrap(chars); // no allocation here: no need to fs2_free()
+    return fs2_removeall(s, &tmp);
+}
+
+// optimized version, no full alloc
+extern fs2
+fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars); 
 
 #endif /* !FS2_API_H */

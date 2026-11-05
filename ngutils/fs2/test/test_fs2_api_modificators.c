@@ -4374,7 +4374,7 @@ Test(fs2_api_modificators, removeall_duplicates_in_chars) {
 }
 
 /* All 256 byte values in a charset -> result empty, no UB */
-Test(fs2_api_modif, removeall_all_256_bytes) {
+Test(fs2_api_modificators, removeall_all_256_bytes) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("abc");
 
@@ -4576,5 +4576,294 @@ Test(fs2_api_modificators, removeall_chars_untouched) {
 
     fs2_free(&s);
     fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_removeall_new — nominal
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_nothing_to_remove_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    fs2 c   = fs2_fromstr("xyz");
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_EQ  ("len",         r.len, 5);
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_new_vowels) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+    fs2 c   = fs2_fromstr("aeiou");
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("hll wrld", r.v, "hll wrld");
+    CHECK_EQ  ("len",        r.len, 8);
+    CHECK_TRUE("ALLOC",      fs2_is_alloc(&r));   /* promoted by elem() */
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_new_leading_trailing) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("xxxabc");
+    fs2 b = fs2_fromstr("abcxxx");
+    fs2 c = fs2_fromstr("x");
+
+    fs2 ra = fs2_removeall_new(&a, &c);
+    fs2 rb = fs2_removeall_new(&b, &c);
+
+    CHECK_STR_EQ("leading",  ra.v, "abc");
+    CHECK_STR_EQ("trailing", rb.v, "abc");
+
+    fs2_free(&a); fs2_free(&b); fs2_free(&c);
+    fs2_free(&ra); fs2_free(&rb);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * All removed -> FS2EMPTY (not FS2(); res never promoted by elem)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_all_removed_is_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+    fs2 c   = fs2_fromstr("abc");
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_EQ  ("len",              r.len, 0);
+    CHECK_TRUE("eq_empty",         fs2_eq_empty(&r));    /* v="" STATIC sz=1 */
+    CHECK_TRUE("v readable",       r.v != NULL);
+    CHECK_TRUE("empty",            fs2_is_empty(&r));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty chars — early clone of src (guard against v==NULL in fill_table)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_empty_chars_fs2empty) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    fs2 e   = FS2EMPTY;
+
+    fs2 r = fs2_removeall_new(&src, &e);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_TRUE("independent", r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* chars = FS2() (v==NULL) — must not crash in fs2_fill_table */
+Test(fs2_api_modificators, removeall_new_canon_chars_clones) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello");
+    fs2 c   = FS2();
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("hello", r.v, "hello");   /* no-op, clone of src */
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty src -> FS2EMPTY (all flavors normalize)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_empty_src_all_flavors) {
+    __fs2_checkreset();
+    fs2 c = fs2_fromstr("x");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 lit   = FS2LITERAL("");
+
+    fs2 rc = fs2_removeall_new(&canon, &c);
+    fs2 re = fs2_removeall_new(&empty, &c);
+    fs2 rl = fs2_removeall_new(&lit,   &c);
+
+    CHECK_TRUE("canon src",   fs2_eq_empty(&rc));
+    CHECK_TRUE("empty src",   fs2_eq_empty(&re));
+    CHECK_TRUE("literal src", fs2_eq_empty(&rl));
+    CHECK_FS2VALID(1, &rc);
+    CHECK_FS2VALID(2, &re);
+    CHECK_FS2VALID(3, &rl);
+
+    fs2_free(&canon);
+    fs2_free(&c);
+    fs2_free(&rc);
+    fs2_free(&re);
+    fs2_free(&rl);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * STATIC / LOCAL src — _new constructor works, src untouched
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("hello world");
+    fs2 c   = fs2_fromstr("aeiou");
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("hll wrld",        r.v, "hll wrld");
+    CHECK_TRUE ("ALLOC",            fs2_is_alloc(&r));
+    CHECK_TRUE ("independent",      r.v != src.v);
+    CHECK_TRUE ("src still STATIC", fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, removeall_new_local_src) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello world", 11);
+    fs2_setlen(&buf, 11);
+    fs2 c = fs2_fromstr("aeiou");
+
+    fs2 r = fs2_removeall_new(&buf, &c);
+
+    CHECK_STR_EQ("hll wrld",        r.v,   "hll wrld");
+    CHECK_TRUE ("result ALLOC",     fs2_is_alloc(&r));
+    CHECK_TRUE ("result not LOCAL", !fs2_is_local(&r));
+    CHECK_STR_EQ("buf untouched",   buf.v, "hello world");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &buf);
+
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * src untouched + independence
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_src_untouched_and_independent) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+    fs2 c   = fs2_fromstr("aeiou");
+    void *orig = src.v;
+
+    fs2 r = fs2_removeall_new(&src, &c);
+
+    CHECK_PTR_EQ("src v unchanged", src.v, orig);
+    CHECK_STR_EQ("src content",     src.v, "hello world");
+    CHECK_STR_EQ("result",          r.v,   "hll wrld");
+    CHECK_TRUE ("independent",      r.v != src.v);
+
+    r.v[0] = 'X';
+    CHECK_STR_EQ("result mutated", r.v,   "Xll wrld");
+    CHECK_STR_EQ("src original",   src.v, "hello world");
+
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_null_s_aborts, .signal = SIGABRT) {
+    fs2 c = fs2_fromstr("x");
+    fs2_removeall_new(NULL, &c);
+    fs2_free(&c);
+}
+
+Test(fs2_api_modificators, removeall_new_null_chars_aborts, .signal = SIGABRT) {
+    fs2 src = fs2_fromstr("abc");
+    fs2_removeall_new(&src, NULL);
+    fs2_free(&src);
+}
+
+/* =========================================================================
+ * Consistency: string content matches clone + in-place
+ *   (flavors differ: in-place keeps ALLOC "", _new gives FS2EMPTY on empty)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, removeall_new_matches_inplace_content) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("hello world");
+    fs2 c   = fs2_fromstr("aeiou");
+
+    fs2 manual = fs2_clone(&src);
+    fs2_removeall(&manual, &c);
+
+    fs2 via = fs2_removeall_new(&src, &c);
+
+    CHECK_STR_EQ("same content", manual.v,   via.v);
+    CHECK_EQ  ("same len",       manual.len, via.len);
+    CHECK_EQ  ("strcmp == 0",    fs2_cmp(&manual, &via), 0);
+    CHECK_FS2VALID(1, &manual);
+    CHECK_FS2VALID(2, &via);
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&manual);
+    fs2_free(&via);
+    assert_balanced();
+}
+
+/* All-removed case: content same "", flavors differ (ALLOC vs STATIC) */
+Test(fs2_api_modificators, removeall_new_matches_inplace_all_removed) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("abc");
+    fs2 c   = fs2_fromstr("abc");
+
+    fs2 manual = fs2_clone(&src);
+    fs2_removeall(&manual, &c);       /* ALLOC "" */
+
+    fs2 via = fs2_removeall_new(&src, &c);   /* FS2EMPTY */
+
+    CHECK_EQ("strcmp == 0",     fs2_cmp(&manual, &via), 0);
+    CHECK_TRUE("manual is empty", fs2_is_empty(&manual));
+    CHECK_TRUE("via is empty",    fs2_is_empty(&via));
+
+    fs2_free(&src);
+    fs2_free(&c);
+    fs2_free(&manual);
+    fs2_free(&via);
     assert_balanced();
 }

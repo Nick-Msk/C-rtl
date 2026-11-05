@@ -11,6 +11,17 @@
 
 // Utilities
 
+static inline size_t
+fs2_fill_table(bool *restrict tbl,  size_t cnt, const char *restrict chars) {
+    size_t total = 0UL;
+    for (size_t i = 0; chars[i]; i++) {
+        size_t  ind = (unsigned char)chars[i];
+        if (ind < cnt && !tbl[ind])
+            tbl[ind] = true, total++;
+    }
+    return total;
+}
+
 /**
  * @brief Reverse the string in place.
  *
@@ -1313,8 +1324,7 @@ fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
      * For byte-level filtering, a direct lookup table beats any
      * comparison-based approach — one indexed load per input byte. */
     bool drop[256] = {0};
-    for (size_t i = 0; i < chars->len; i++)
-        drop[(unsigned char)chars->v[i]] = true;
+    fs2_fill_table(drop, sizeof(drop), chars->v);
 
     /* Single-pass compaction, O(|s|).
      * Invariant: out <= i at every step, so overwriting s->v[out]
@@ -1327,4 +1337,30 @@ fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
             s->v[out++] = (char)c;
     }
     return fs2_setlen(s, out);
+}
+
+fs2
+fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars) {
+    invfatal(ERR_NULL_INPUT, s != NULL && chars != NULL, 
+        "Null pointers %p %p", s, chars);
+
+    if (fs2_is_empty(s))
+        return FS2EMPTY;
+
+    if (fs2_is_empty(chars))
+        return fs2_clone(s);
+    
+    bool drop[256] = {0};
+    fs2_fill_table(drop, sizeof(drop), chars->v);
+
+    fs2         res = FS2EMPTY;
+    size_t      out = 0;
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char) s->v[i];
+        if (!drop[c])
+            elem(res, out++) = c;
+    }
+
+    fs2_setlen(&res, out);  // even if FS2EMPTY
+    return res;
 }
