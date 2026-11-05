@@ -26,27 +26,67 @@ the call site, not as silent memory corruption downstream. The future bare
 - **Comparators:** `fs2_cmp`, `fs2_ncmp`, `fs2_cmp_ci`, `fs2_ncmp_ci`,
   `fs2_cmpstr`. Wrappers for `qsort`/`bsearch`: `fs2_cmp_wrap`,
   `fs2_cmp_ci_wrap`.
-- **Binary search:** `fs2_in_bsearch`, `fs2_in_bsearch_ci`,
-  `fs2_in_bsearch_str` — return index or `-1`.
+- **Binary search:** `fs2_bsearch`, `fs2_bsearch_ci`,
+  `fs2_bsearch_str`, `fs2_bsearch_ci_str` — return index or `-1`.
+  Promote canonical `FS2()` key via `findkey` (see Fixed).
 - **Substring search (`instr`):** `fs2_instr_pos_nth` (base), `fs2_instr_from`,
   `fs2_instr_nth`, `fs2_instr`, plus `_ci` and `_str` variants.
   Empty pattern matches at every position (Python semantics: `"abc".find("")`
   → `0`, `nth` → `k-1` up to `len+1`).
+- **Split-part:** `fs2_split_part(s, delim, n)`, `fs2_split_part_str` —
+  n-th part, PostgreSQL `split_part()` semantics. 1-based; negative `n`
+  counts from end; `n == 0` returns empty; empty delimiter → whole string
+  is single part. Uses `fs2_instr_nth` + `fs2_instr_from` (no full-string
+  rescans).
 - **Scanners:** `fs2_spn`, `fs2_cspn`, `fs2_nonspace_span` — length of
   matching / non-matching prefix, locale-independent whitespace skip.
+  `NULL` buffer (`FS2()`) guarded: return 0, no `NULL + 0` UB.
 - **Predicates (text):** `fs2_starts_with` / `fs2_ends_with` / `fs2_contains`
   / `fs2_count` (+ `_str` variants). `fs2_starts_with(s, "")` → true,
   `fs2_contains(s, "")` → true, `fs2_count(s, "")` → 0.
+- **Predicates (classes, ASCII / C locale):** `fs2_is_alpha`,
+  `fs2_is_digit`, `fs2_is_alnum`, `fs2_is_space`, `fs2_is_ascii`.
+  Empty string: all return `false` except `fs2_is_ascii` (`true`,
+  vacuously) — Python/Java/PostgreSQL "consists of" semantics.
 - **Trim (PostgreSQL style):** `fs2_trim` (= `fs2_btrim`), `fs2_ltrim`,
   `fs2_rtrim` + `_str` variants. Character-set trim; not substring.
-- **Case:** `fs2_initcap` (PostgreSQL semantics, non-alnum boundaries).
-  All case functions use `(unsigned char)` casts for UTF-8 safety.
+- **Case:** `fs2_initcap` (PostgreSQL semantics, non-alnum boundaries),
+  `fs2_capitalize` (skip leading non-alnum, upper first alnum, lower rest),
+  `fs2_swapcase` (involution: `f(f(x)) == x`). All use `(unsigned char)`
+  casts for non-ASCII safety.
+- **`fs2_zfill(s, width)`** — zero-pad preserving sign:
+  `"-42"` → `"-0042"` (not `"00-42"`), `"+42"` → `"+0042"`. No-op when
+  `width <= len`. `_new` twin: `fs2_zfill_new`.
+- **`fs2_center(s, width, pad)`** — center in `width` with pattern `pad`.
+  Odd extra byte goes **right** (Python `str.center()` rule). Truncates
+  when `width < len` (PostgreSQL lpad/rpad convention). Both sides
+  restart pattern from `pad[0]` independently. Implemented as
+  `fs2_lpad` + `fs2_rpad` after one upfront `fs2_reserve_span`.
+  `_new` and `_str` variants.
+- **`fs2_squeeze(s, ch)`** — collapse runs of byte `ch` to single byte.
+  Only `ch` runs collapse; other runs untouched. `_new` twin.
+- **`fs2_normalize_whitespace(s)`** — collapse all whitespace runs to a
+  single `' '`, trim leading/trailing. `_new` twin.
+- **`fs2_removeall(s, chars)`** — remove all bytes from a set. Single
+  256-byte lookup table → O(n+m) (vs naive O(n·m)). `_new` and `_str`
+  variants.
+- **`fs2_translate(s, from, to)`** — positional byte mapping (PostgreSQL
+  `translate()`). `from[i]` → `to[i]`; `from[i]` beyond `to->len` is
+  deleted. Duplicates: **first** occurrence wins (reverse iteration over
+  `from`). Single `char map[256]` with `'\0'` sentinel (safe: fs2 has no
+  embedded NUL). `_new` and `_str` variants.
+- **`fs2_concatall(dst, delim, src)`** — join a NULL-terminated array of
+  `fs2 *` into `dst`. `dst` is treated as **first element** of the list:
+  if non-empty, delimiter is inserted before the first src element.
+  Pre-reserves exact size. Variants: `fs2_concatall_str` (C-string array +
+  C-string delim), `fs2_concatall_new`, `fs2_concatall_str_new`. Macros:
+  `FS2CONCAT`, `FS2CONCATSTR`, `FS2CONCAT_NEW`, `FS2CONCAT_STR_NEW`.
 - **Replace:** `fs2_replace`, `fs2_replace_fromstr`, `fs2_replace_cstr`
   — replace all non-overlapping occurrences (`"aaa"` / `"aa"` → `"ba"`).
 - **Strip:** `fs2_strip_prefix`, `fs2_strip_suffix` + `_str` variants,
-  plus `_new` and `_heap_` constructors. No-op when pattern doesn't match.
+  plus `_new` constructors. Eager abort on non-empty STATIC (see Changed).
 - **Repeat:** `fs2_repeat(s, n)` (in-place), `fs2_repeat_new`,
-  `fs2_heap_repeat`, `fs2_repeat_str_new`, `fs2_heap_repeat_str`.
+  `fs2_repeat_str_new`.
 - **Slice:** `fs2_slice(s, from, len)` — zero-copy `STATIC` view.
 - **Capacity management:** `fs2_setsize` (exact grow, no rounding,
   no `FS_MIN_ALLOC` floor), `fs2_shrink` (exact `len+1`, no-op for
@@ -71,13 +111,22 @@ the call site, not as silent memory corruption downstream. The future bare
 - **Parsers (3-level abstraction):**
   - `fs2_pos_parse_*(s, pos, &newpos, &out)` — raw scanner.
   - `fs2_tryparse_*(s, &out, strict)` — parses from 0, strict mode requires
-    consuming the whole string.
+    consuming the whole string (numeric types). **Exception:** `tryparse_char`
+    strict only rejects leading whitespace (PostgreSQL single-char rule).
   - `fs2_parse_*(s)` — lenient tryparse, raises on failure.
   - Supported: `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `llong`,
     `ullong`, `double`, `char`.
   - All `pos_parse`/`tryparse`/`parse` wrappers chain through `llong` / `ullong`
     (the widest type) and check the target range on the way back.
-- **Guards (internal):** `fs2_cant_mutate(s)` (empty + STATIC), 
+- **Tech dump (`fs2_tech.c`):** `fs2_techdump(out, s, name)` — full
+  content to a stream (no truncation, unlike `fs2_techfprint`).
+  `fs2_techdump_file(s, name, path)` — full content to a caller-specified
+  file (checks `fclose` — buffered flush can fail after `fwrite` success).
+  `fs2_techdump_emergency(s, name)` — auto path
+  (`$FS2_DUMP_DIR` / `$TMPDIR` / `/tmp`) with thread-local
+  `fs2dump-<name>-<pid>-<epoch>-<seq>.bin`, returns thread-local path,
+  logs via `logsimple`. Name sanitized to `[A-Za-z0-9._-]`.
+- **Guards (internal):** `fs2_cant_mutate(s)` (empty + STATIC),
   `fs2_cant_growth(s)` (NULL + non-empty STATIC), `fs2_cant_realloc(s)`.
 - **`__clang_analyzer__` guard** around `free(s->v)` in `fs2_freestr`
   — `scan-build` can't prove `v` is malloc'd (no data-flow from `flags`
@@ -112,6 +161,31 @@ the call site, not as silent memory corruption downstream. The future bare
 - **`fs2_free`:** documented idempotency for non-`BODYALLOC` values
   (after `freestr`, state is canonical, second call is no-op). `BODYALLOC`
   values are not idempotent (freeing freed memory is UB).
+- **Eager abort for in-place mutators on non-empty STATIC** — extended to
+  `fs2_trim_common`, `fs2_strip_prefix`, `fs2_strip_suffix`,
+  `fs2_removeall`, `fs2_translate`, `fs2_initcap`, `fs2_capitalize`,
+  `fs2_swapcase`, `fs2_squeeze`, `fs2_normalize_whitespace`. Previously
+  some were lazy (no-op when pattern didn't match); now `fs2_cant_mutate`
+  fires first, even for no-op cases. Rationale: mutating a literal is
+  always a bug; better to fail at the call site than on the one-in-a-
+  thousand call where the pattern happens to match.
+- **`fs2_removeall` guard order** — `fs2_is_empty(chars) ||` was
+  evaluated before `fs2_cant_mutate(s)`, so `FS2LITERAL("hello")` with
+  empty `chars` silently returned instead of aborting. Reordered:
+  `fs2_cant_mutate(s)` first, then pattern check. "Mutators on STATIC =
+  always bug", no exceptions.
+- **`fs2_concatall` guard** — `fs2_cant_mutate(dst)` was rejecting empty
+  `dst` (which is the common case: build from scratch). Changed to
+  `fs2_cant_realloc(dst)` so empty `dst` grows and stays.
+- **`fs2_capitalize` semantics:** documented as "skip leading non-alnum,
+  upper first alnum, lower rest". Differs from Python `str.capitalize()`
+  (uppercases literal first byte). Chosen because it's more useful for
+  real input (`"  hello"` → `"  Hello"` vs Python `"  hello"`).
+- **`fs2_center` extra byte goes right** (Python `str.center()` rule);
+  truncates on `width < len` (PG lpad/rpad convention, unlike Python).
+- **`fs2_translate` first-wins on duplicate `from`** — `"aa"` + `"xy"`
+  maps `'a'` → `'x'`, not `'y'`. Reverse iteration gives earliest-index
+  precedence, matching PostgreSQL.
 - **C standard:** `gnu11` → `gnu2x` (C23) for digit separators and stricter
   `-Wformat` diagnostics. Requires GCC 14+ / Clang 16+.
 - **POSIX extensions:** `-D_GNU_SOURCE` in `Makefile.common` exposes
@@ -122,14 +196,62 @@ the call site, not as silent memory corruption downstream. The future bare
 
 ### Fixed
 
+- **`fs2_replace` `tail + 1` off-by-one:** `fs2_selfmove` was called with
+  `tail + 1` (move tail + NUL). `fs2_cant_copy` bounds `src` reads by
+  `src->len` and rejects reading `v[len]` → `sysraise(ERR_OUT_OF_RANGE)`
+  → `SIGINT`. Fixed: `fs2_selfmove(s, p + repl->len, p + pat->len, tail)`
+  (no `+1`); `fs2_setlen` writes the new NUL. `fs2_replace` was unusable
+  before this fix (crashed on every call).
+- **`fs2_rpad` / `fs2_lpad` dead `if (fs2_cant_realloc(...))`:**
+  `fs2_cant_realloc` always returns `false` (assert-style) — the `if`
+  branch never executed; the whole function was a no-op. Fixed to bare
+  `fs2_cant_realloc(s);`.
+- **`fs2_lpad` missing `fs2_reserve_span`:** when `s->len == 0`, the
+  `fs2_selfmove(s, pad_len, 0, 0)` early-returns via `fs2_cant_copy`
+  (len == 0) without reserving, then the fill loop wrote to `s->v[i]`
+  with no capacity → SIGSEGV. Fixed: `fs2_reserve_span(s, 0, len)` before
+  `fs2_selfmove`.
+- **`fs2_nrchr` / `fs2_nrchr_ci` / `fs2_nrchr_nth` / `fs2_nrchr_ci_nth`
+  `NULL + 0` UB:** `str->v + off` evaluated before any `str->v == NULL`
+  check, formal UB (`C11 §6.5.6p8`). Fixed with `if (str->v == NULL)
+  return -1;` at the top. Only `FS2()` (canonical empty) is affected;
+  `FS2EMPTY` (`v == ""`) was already safe.
+- **`__fs2_chr_raw` / `__fs2_chr_raw_ci` / `__fs2_rchr_raw` /
+  `__fs2_rchr_raw_ci`:** all four internal character finders now guard
+  `if (p == NULL) return -1;` — protects `FS2()` (canonical empty) from
+  `memchr(NULL, ...)` / `NULL + 0` UB in the forward path. Reachable via
+  `fs2_chr`, `fs2_nchr`, `fs2_chr_nth`, `fs2_nchr_nth`, and their `_ci`
+  variants.
+- **`fs2_bsearch` / `fs2_bsearch_ci` empty-key SEGV:** `findkey` was
+  computed (promoting `FS2()` → `FS2EMPTY` shape) but `bsearch(key, ...)`
+  was called with the original `key` — `strcmp(NULL, ...)` → SEGV for
+  `FS2()` key. Fixed: pass `findkey` to `bsearch`.
+- **`fs2_instr_pos_nth` empty-pattern for `FS2()`:** `FS2()` (v=NULL)
+  with empty pattern was returning `-1` (early return via `v == NULL`),
+  but `FS2EMPTY` (v="") with empty pattern returned `0`. Inconsistent.
+  Fixed: move empty-pattern check above `v == NULL` check.
+- **`fs2_is_alpha` / `fs2_is_digit` / `fs2_is_alnum` / `fs2_is_space`
+  on empty:** missing `if (s->len == 0) return false;` — loop ran zero
+  times and returned `true` (vacuous). Python/Java/PG return `false` for
+  empty; only `fs2_is_ascii` stays `true` (vacuously — all zero bytes
+  are ASCII). Fixed.
+- **`fs2_split_part` was extern not inline:** `fs2_api.h` declared it
+  as `fs2 fs2_split_part(...)` (no `static inline`), but no `.c`
+  definition existed → link error `_fs2_split_part`. Fixed: `static
+  inline` (it delegates to other inline helpers, no external symbol
+  needed).
+- **`fs2_translate` missing NULL guards for `from`/`to`:** only `s` was
+  checked; `to->len` dereferenced without check → SEGV for `to == NULL`.
+  Fixed: `invfatal(s != NULL && from != NULL && to != NULL, ...)`.
+- **`fs2_concatall` total sum skipped first element:** `if (delim &&
+  iter != src)` skipped the first element entirely from `total`, so
+  pre-reserve under-counted. `fs2_cat` amortized growth absorbed it, but
+  the pre-reserve optimization was lost. Fixed: `total += (*iter)->len`
+  unconditionally, `+ delim_len` only for `iter != src`.
 - **`fs2_cat` overflow:** `memcpy(dst, src, len + 1)` wrote 1 byte past
   `src` — fixed to `src->len`.
 - **`fs2_rev_catstr` overlap:** `memcpy` → `memmove` for the in-place
   shift.
-- **`fs2_lpad` infinite loop:** iterated over `pad->len` instead of
-  `pad_len` (missing bytes).
-- **`fs2_rpad` truncation:** kept the right part instead of the left
-  (PostgreSQL semantics: `rpad("hello", 2)` → `"he"`).
 - **`fs2_sprintf`:** `vsnprintf` consumed the last character (missing
   `+1` for NUL); `fs2_setlen` now called with the correct length.
 - **`fs2_cpy` on empty:** SIGSEGV when `dst` was canonical `FS2()`;
@@ -184,6 +306,29 @@ the call site, not as silent memory corruption downstream. The future bare
   `NULL` and non-empty STATIC (calls from grow paths); `cant_mutate`
   aborts only on non-empty STATIC (empty is a silent skip — nothing to
   mutate).
+- **`fs2_translate` single `map[256]` with `'\0'` sentinel:** safe
+  because `fs2_validate` enforces `strlen(v) == len` (no embedded NUL).
+  Delete-marker is `map[c] == '\0'`; identity is `map[c] == c`.
+  Reverse-iteration over `from` gives first-wins on duplicates.
+- **`fs2_center` via `fs2_lpad` + `fs2_rpad`:** both sides independently
+  restart pattern from `pad[0]` — not "continuous" (`"x"` width 9 pad
+  `"abc"` → `"abcaXabca"`, not `"abcaXbcab"`). One upfront
+  `fs2_reserve_span` avoids double realloc.
+- **`fs2_zfill` preserves sign:** `"-42"` zfill 5 → `"-0042"`. Sign
+  detection is `s->v[0] == '+' || s->v[0] == '-'` (first byte only;
+  no "digit after sign" check — literal Python rule).
+- **`fs2_squeeze` uses `s->v[out - 1] == target`** — no separate
+  `prev_was` state needed. Because `out <= i` invariant holds and
+  `s->v[out - 1]` is the last **written** byte in the compacted prefix,
+  which is exactly "previous in output". `out == 0` guarded separately
+  (first byte, no run could have started).
+- **`fs2_concatall` treats `dst` as first list element:** non-empty
+  `dst` → delimiter inserted before first src element too. This is what
+  makes `concatall` composable in loops: append rows without tracking
+  "is this the first row" at the caller site.
+- **`fs2_techdump_emergency` is not async-signal-safe:** uses stdio,
+  `getenv`, `snprintf`, thread-locals. Safe from normal error paths,
+  not from raw SIGSEGV/SIGABRT handler.
 - **Locales:** `fs2_parse_double` uses standard `strtod` and respects
   `LC_NUMERIC`. Call `setlocale(LC_NUMERIC, "C")` at app startup for
   locale-independent parsing.
