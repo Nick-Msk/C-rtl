@@ -2191,6 +2191,15 @@ fs2_translate_str(fs2 *restrict s, const char *restrict from, const char *restri
     return fs2_translate(s, &tf, &tt);
 }
 
+extern fs2
+fs2_split_part(const fs2 *restrict s, const fs2 *restrict delim, ptrdiff_t n);
+
+static inline fs2
+fs2_split_part_str(const fs2 *restrict s, const char *restrict delim, ptrdiff_t n) {
+    fs2 d = _fs2_wrap(delim);
+    return fs2_split_part(s, &d, n);
+}
+
 /**
  * @brief Remove all occurrences of any byte from @p chars.
  *

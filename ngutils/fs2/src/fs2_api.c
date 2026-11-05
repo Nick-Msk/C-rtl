@@ -1394,6 +1394,40 @@ fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to)
     return fs2_setlen(s, out);
 }
 
+fs2
+fs2_split_part(const fs2 *restrict s, const fs2 *restrict delim, ptrdiff_t n) {
+    invfatal(ERR_NULL_INPUT, s != NULL && delim != NULL,
+             "Null pointers %p %p", s, delim);
+
+    if (n == 0)
+        return FS2EMPTY;
+
+    if (fs2_is_empty(delim))
+        return (n == 1 || n == -1) ? fs2_clone(s) : FS2EMPTY;
+
+    if (n < 0) {
+        n = (ptrdiff_t)(fs2_count(s, delim) + 1) + n + 1;
+        if (n < 1)
+            return FS2EMPTY;
+    }
+
+    /* start = byte after (n-1)-th delim (skip nth-scan when n == 1). */
+    size_t start = 0;
+    if (n > 1) {
+        ptrdiff_t prev = fs2_instr_nth(s, delim, (size_t)(n - 1));
+        if (prev < 0)
+            return FS2EMPTY;
+        start = (size_t)prev + delim->len;
+    }
+
+    /* First delim AT OR AFTER start -> end of our part.
+     * No need to rescan the prefix; instr_from is O(remaining). */
+    ptrdiff_t end = fs2_instr_from(s, delim, start);
+    size_t    len = (end < 0) ? s->len - start : (size_t)end - start;
+
+    return fs2_substr_new(s, start, len);
+}
+
 fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
     invfatal(ERR_NULL_INPUT, chars != NULL,  "Null pointer");
