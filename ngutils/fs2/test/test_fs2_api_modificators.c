@@ -6342,3 +6342,287 @@ Test(fs2_api_modificators, capitalize_idempotent) {
     fs2_free(&s);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2_zfill — nominal (no sign: behaves like lpad with "0")
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_positive_number) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("42");
+
+    fs2 *r = fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("00042", s.v, "00042");
+    CHECK_EQ  ("len",     s.len, 5);
+    CHECK_PTR_EQ("chain", r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_non_numeric) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("00abc", s.v, "00abc");   /* no sign -> plain left-pad */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_zfill — SIGN handling (the whole point)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_negative_number) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("-0042", s.v, "-0042");   /* NOT "00-42" */
+    CHECK_EQ  ("len",     s.len, 5);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_positive_sign) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("+42");
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("+0042", s.v, "+0042");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_sign_only_minus) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-");
+
+    fs2_zfill(&s, 3);
+
+    CHECK_STR_EQ("-00", s.v, "-00");       /* Python: "-".zfill(3) == "-00" */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_sign_with_non_numeric) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-abc");
+
+    fs2_zfill(&s, 6);
+
+    CHECK_STR_EQ("-00abc", s.v, "-00abc");  /* literal Python rule */
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Contrast with fs2_lpad (which does NOT handle sign)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_vs_lpad_on_negative) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("-42");
+    fs2 b = fs2_fromstr("-42");
+    fs2 zero = FS2LITERAL("0");
+
+    fs2_zfill(&a, 5);                 /* "-0042" */
+    fs2_lpad (&b, 5, &zero);          /* "00-42" */
+
+    CHECK_STR_EQ("zfill", a.v, "-0042");
+    CHECK_STR_EQ("lpad",  b.v, "00-42");
+    CHECK_NEQ ("differ",  strcmp(a.v, b.v), 0);
+
+    fs2_free(&a);
+    fs2_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Empty / canonical empty -> promoted, filled with zeros
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_fs2empty) {
+    __fs2_checkreset();
+    fs2 s = FS2EMPTY;
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("00000", s.v, "00000");
+    CHECK_TRUE ("ALLOC",  fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_canon_empty) {
+    __fs2_checkreset();
+    fs2 s = FS2();
+    cr_assert_null(s.v);
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("00000", s.v, "00000");
+    CHECK_TRUE ("ALLOC",  fs2_is_alloc(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * No-op: width <= len
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_width_eq_len_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+    void *orig = s.v;
+
+    fs2_zfill(&s, 3);
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+    CHECK_STR_EQ("-42",              s.v, "-42");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_width_less_than_len_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+
+    fs2_zfill(&s, 3);
+
+    CHECK_STR_EQ("12345", s.v, "12345");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards: STATIC non-empty aborts, NULL aborts, LOCAL with capacity works
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_null_aborts, .signal = SIGABRT) {
+    fs2_zfill(NULL, 5);
+}
+
+Test(fs2_api_modificators, zfill_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("42");
+    fs2_zfill(&s, 5);
+}
+
+Test(fs2_api_modificators, zfill_local_with_capacity) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "-42", 3);
+    fs2_setlen(&buf, 3);
+
+    fs2_zfill(&buf, 5);
+
+    CHECK_STR_EQ("-0042",      buf.v, "-0042");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_local_insufficient_capacity_aborts, .signal = SIGABRT) {
+    FS2LOCAL(buf, 4);
+    fs2_memcpy_str(&buf, 0, "-42", 3);
+    fs2_setlen(&buf, 3);
+
+    fs2_zfill(&buf, 10);   /* need 11 bytes, sz=4 -> abort in reserve */
+
+    /* unreachable */
+}
+
+/* =========================================================================
+ * Idempotency: zfill(zfill(s, n), n) == zfill(s, n)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("-42");
+
+    fs2_zfill(&s, 5);
+    char *first = strdup(s.v);
+    cr_assert_not_null(first);
+
+    fs2_zfill(&s, 5);
+
+    CHECK_STR_EQ("idempotent", s.v, first);
+
+    free(first);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2_zfill_new — clone + in-place
+ * ========================================================================= */
+
+Test(fs2_api_modificators, zfill_new_negative) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("-42");
+
+    fs2 r = fs2_zfill_new(&src, 5);
+
+    CHECK_STR_EQ("-0042",     r.v, "-0042");
+    CHECK_TRUE ("ALLOC",      fs2_is_alloc(&r));
+    CHECK_TRUE ("independent", r.v != src.v);
+    CHECK_STR_EQ("src untouched", src.v, "-42");
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("-7");
+
+    fs2 r = fs2_zfill_new(&src, 4);
+
+    CHECK_STR_EQ("-007",           r.v, "-007");
+    CHECK_TRUE ("ALLOC",           fs2_is_alloc(&r));
+    CHECK_TRUE ("src still STATIC", fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_new_width_noop_clone) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("12345");
+
+    fs2 r = fs2_zfill_new(&src, 3);
+
+    CHECK_STR_EQ("12345",     r.v, "12345");
+    CHECK_TRUE ("independent", r.v != src.v);   /* clone even on noop */
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, zfill_new_null_aborts, .signal = SIGABRT) {
+    fs2_zfill_new(NULL, 5);
+}
