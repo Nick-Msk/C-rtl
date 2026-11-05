@@ -7257,3 +7257,228 @@ Test(fs2_api_modificators, is_predicates_null_aborts_space, .signal = SIGABRT) {
 Test(fs2_api_modificators, is_predicates_null_aborts_ascii, .signal = SIGABRT) {
     fs2_isascii(NULL);
 }
+
+/* =========================================================================
+ * fs2_normalize_whitespace — collapse + trim
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_collapse_internal) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello   world");
+
+    fs2 *r = fs2_normalize_whitespace(&s);
+
+    CHECK_STR_EQ("hello world", s.v, "hello world");
+    CHECK_EQ  ("len",           s.len, 11);
+    CHECK_PTR_EQ("chain",       r, &s);
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_trim_leading_trailing) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  hello world  ");
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_STR_EQ("hello world", s.v, "hello world");
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_all_whitespace_kinds) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello\t\n\r\v\fworld");
+
+    fs2_normalize_whitespace(&s);
+
+    /* All six isspace chars collapse to single ' ' */
+    CHECK_STR_EQ("hello world", s.v, "hello world");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_mixed) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  \ta  \t\tb  \n  c  ");
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_STR_EQ("a b c", s.v, "a b c");
+    CHECK_EQ  ("len",     s.len, 5);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* All-whitespace -> empty */
+Test(fs2_api_modificators, normalize_ws_all_ws_empties) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("   \t\n  ");
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_EQ  ("len",   s.len, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&s));
+    CHECK_FS2VALID(1, &s);
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * no-op cases: already normalized / no whitespace at all
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_already_normalized_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a b c");
+    void *orig = s.v;
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+    CHECK_STR_EQ("a b c",            s.v, "a b c");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_no_whitespace_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    void *orig = s.v;
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_PTR_EQ("buffer unchanged", s.v, orig);
+    CHECK_STR_EQ("abc",              s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* Empty src (all flavors) -> form preserved, no deref on v=NULL */
+Test(fs2_api_modificators, normalize_ws_empty_src_noop) {
+    __fs2_checkreset();
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 lit   = FS2LITERAL("");
+
+    fs2_normalize_whitespace(&canon);
+    fs2_normalize_whitespace(&empty);
+    fs2_normalize_whitespace(&lit);
+
+    CHECK_TRUE("canon canon", fs2_is_canon(&canon));
+    CHECK_TRUE("empty empty", fs2_eq_empty(&empty));
+    CHECK_EQ  ("lit len",     lit.len, 0);
+
+    CHECK_FS2VALID(1, &canon);
+    CHECK_FS2VALID(2, &empty);
+    CHECK_FS2VALID(3, &lit);
+
+    fs2_free(&canon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * guards
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_null_aborts, .signal = SIGABRT) {
+    fs2_normalize_whitespace(NULL);
+}
+
+Test(fs2_api_modificators, normalize_ws_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello  world");
+    fs2_normalize_whitespace(&s);
+}
+
+/* =========================================================================
+ * LOCAL — shrinks only, always fits
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 32);
+    fs2_memcpy_str(&buf, 0, "  hello   world  ", 17);
+    fs2_setlen(&buf, 17);
+
+    fs2_normalize_whitespace(&buf);
+
+    CHECK_STR_EQ("hello world",   buf.v, "hello world");
+    CHECK_TRUE ("still LOCAL",    fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    assert_balanced();
+}
+
+/* =========================================================================
+ * idempotency
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_idempotent) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("  a  b\tc  ");
+
+    fs2_normalize_whitespace(&s);
+    char *first = strdup(s.v);
+    cr_assert_not_null(first);
+
+    fs2_normalize_whitespace(&s);
+
+    CHECK_STR_EQ("idempotent", s.v, first);
+
+    free(first);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * _new — clone + in-place
+ * ========================================================================= */
+
+Test(fs2_api_modificators, normalize_ws_new_src_untouched) {
+    __fs2_checkreset();
+    fs2 src = fs2_fromstr("  hello   world  ");
+    void *orig = src.v;
+
+    fs2 r = fs2_normalize_whitespace_new(&src);
+
+    CHECK_STR_EQ("hello world",       r.v, "hello world");
+    CHECK_PTR_EQ("src v unchanged",   src.v, orig);
+    CHECK_STR_EQ("src content",       src.v, "  hello   world  ");
+    CHECK_TRUE ("independent",        r.v != src.v);
+    CHECK_FS2VALID(1, &r);
+    CHECK_FS2VALID(2, &src);
+
+    fs2_free(&src);
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_new_static_src) {
+    __fs2_checkreset();
+    fs2 src = FS2LITERAL("  a  b  ");
+
+    fs2 r = fs2_normalize_whitespace_new(&src);
+
+    CHECK_STR_EQ("a b",             r.v, "a b");
+    CHECK_TRUE ("ALLOC",            fs2_is_alloc(&r));
+    CHECK_TRUE ("src still STATIC", fs2_is_static(&src));
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, normalize_ws_new_null_aborts, .signal = SIGABRT) {
+    fs2_normalize_whitespace_new(NULL);
+}
+
