@@ -5103,8 +5103,8 @@ Test(fs2_api_modificators, concatall_appends_to_existing) {
 
     fs2_concatall(&dst, &d, arr);
 
-    CHECK_STR_EQ("prefix:a-b", dst.v, "prefix:a-b");
-    CHECK_EQ  ("len",          dst.len, 10);
+    CHECK_STR_EQ("prefix:-a-b", dst.v, "prefix:-a-b");
+    CHECK_EQ  ("len",          dst.len, strlen("prefix:-a-b"));
     CHECK_FS2VALID(1, &dst);
 
     fs2_free(&a);
@@ -5404,8 +5404,8 @@ Test(fs2_api_modificators, concatall_str_appends_to_existing) {
 
     fs2_concatall_str(&dst, "-", arr);
 
-    CHECK_STR_EQ("prefix:a-b", dst.v, "prefix:a-b");
-    CHECK_EQ  ("len",          dst.len, 10);
+    CHECK_STR_EQ("prefix:-a-b", dst.v, "prefix:-a-b");
+    CHECK_EQ  ("len",          dst.len, strlen("prefix:-a-b"));
     CHECK_FS2VALID(1, &dst);
 
     fs2_free(&dst);
@@ -5591,8 +5591,8 @@ Test(fs2_api_modificators, concatall_new_basic) {
 
     fs2 r = fs2_concatall_new(&dst, &d, arr);
 
-    CHECK_STR_EQ("prefix:a-b", r.v, "prefix:a-b");
-    CHECK_EQ  ("len",          r.len, 10);
+    CHECK_STR_EQ("prefix:-a-b", r.v, "prefix:-a-b");
+    CHECK_EQ  ("len",          r.len, strlen("prefix:-a-b"));
     CHECK_TRUE("ALLOC",           fs2_is_alloc(&r));
     CHECK_FALSE("not BODYALLOC",  fs2_is_bodyalloc(&r));
     CHECK_TRUE("independent",     r.v != dst.v);
@@ -5736,7 +5736,7 @@ Test(fs2_api_modificators, concatall_new_static_dst_works) {
 
     fs2 r = fs2_concatall_new(&dst, &d, arr);
 
-    CHECK_STR_EQ("prefix:a-b",     r.v, "prefix:a-b");
+    CHECK_STR_EQ("prefix:-a-b",     r.v, "prefix:-a-b");
     CHECK_TRUE ("result ALLOC",    fs2_is_alloc(&r));
     CHECK_TRUE ("result not STATIC", !fs2_is_static(&r));
     CHECK_TRUE ("dst still STATIC", fs2_is_static(&dst));
@@ -5779,7 +5779,7 @@ Test(fs2_api_modificators, concatall_new_local_dst_grows_freely) {
 
     fs2 r = fs2_concatall_new(&buf, &d, arr);
 
-    CHECK_STR_EQ("xabc-def",        r.v, "xabc-def");
+    CHECK_STR_EQ("x-abc-def",        r.v, "x-abc-def");
     CHECK_TRUE ("result ALLOC",     fs2_is_alloc(&r));
     CHECK_TRUE ("result not LOCAL", !fs2_is_local(&r));
     CHECK_STR_EQ("buf untouched",   buf.v, "x");
@@ -5852,7 +5852,7 @@ Test(fs2_api_modificators, fconcat_new_macro_two_elements) {
 
     fs2 r = FS2CONCAT_NEW(&dst, &d, &a, &b);
 
-    CHECK_STR_EQ("p:x-y", r.v, "p:x-y");
+    CHECK_STR_EQ("p:-x-y", r.v, "p:-x-y");
     CHECK_FS2VALID(1, &r);
 
     fs2_free(&dst);
