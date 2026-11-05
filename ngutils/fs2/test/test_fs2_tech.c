@@ -7,21 +7,98 @@
 
 TestSuite(fs2_api_tech, .init = test_setup, .fini = test_teardown);
 
-/* Helper: read whole file into a malloc'ed buffer */
-static char *slurp(const char *path, size_t *out_len) {
+/* Read errno (satisfies unix.Errno), reset to 0 for the next call.
+ * Returns the prior value so caller can log it on failure. */
+static inline int errno_take(void) {
+    int e = errno;
+    errno = 0;
+    return e;
+}
+
+/* Read whole file; NULL on failure. No errno leaked to caller. */
+static char *read_file(const char *path, size_t *out_len) {
     FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
+    int  e = errno_take();
+    if (!f) {
+        logsimple("read_file: fopen '%s': %s", path, strerror(e));
+        return NULL;
+    }
+
+    if (fseek(f, 0, SEEK_END) != 0) {
+        e = errno_take();
+        logsimple("read_file: fseek '%s': %s", path, strerror(e));
+        fclose(f);
+        errno_take();
+        return NULL;
+    }
+    errno_take();   /* discard success-path errno */
+
     long sz = ftell(f);
-    if (sz < 0) { fclose(f); return NULL; }
+    e = errno_take();
+    if (sz < 0) {
+        logsimple("read_file: ftell '%s': %s", path, strerror(e));
+        fclose(f);
+        errno_take();
+        return NULL;
+    }
     rewind(f);
+    errno_take();
+
     char *buf = malloc((size_t)sz + 1);
-    if (!buf) { fclose(f); return NULL; }
+    e = errno_take();
+    if (!buf) {
+        logsimple("read_file: malloc %zu: %s", (size_t)sz + 1, strerror(e));
+        fclose(f);
+        errno_take();
+        return NULL;
+    }
+
     size_t rd = fread(buf, 1, (size_t)sz, f);
-    fclose(f);
+    e = errno_take();
+    if (rd != (size_t)sz) {
+        logsimple("read_file: fread '%s': %zu/%zu %s",
+                  path, rd, (size_t)sz,
+                  ferror(f) ? strerror(e) : "(EOF)");
+        free(buf);
+        fclose(f);
+        errno_take();
+        return NULL;
+    }
+
+    if (fclose(f) != 0) {
+        e = errno_take();
+        logsimple("read_file: fclose '%s': %s", path, strerror(e));
+        free(buf);
+        return NULL;
+    }
+    errno_take();   /* discard success-path errno */
+
     buf[rd] = '\0';
     if (out_len) *out_len = rd;
     return buf;
+}
+
+/* fread wrapper: check errno on short read, abort test on I/O error. */
+static size_t fread_or_fail(FILE *f, char *buf, size_t n, const char *where) {
+    errno_take();
+    size_t rd = fread(buf, 1, n, f);
+    
+    int    e  = errno_take();
+    if (rd < n && ferror(f)) {
+        cr_assert_fail("%s: fread %zu/%zu: errno=%d (%s)",
+                       where, rd, n, e, strerror(e));
+    }
+    return rd;
+}
+
+/* tmpfile wrapper: check errno, abort if NULL. */
+static FILE *tmpfile_or_fail(const char *where) {
+    FILE *f = tmpfile();
+    int   e = errno_take();
+    if (!f) {
+        cr_assert_fail("%s: tmpfile: errno=%d (%s)", where, e, strerror(e));
+    }
+    return f;
 }
 
 /* =========================================================================
@@ -32,17 +109,22 @@ Test(fs2_api, techdump_basic_to_tmpfile) {
     __fs2_checkreset();
     fs2 s = fs2_fromstr("hello");
 
-    FILE *f = tmpfile();
+    FILE *f = tmpfile_or_fail(__func__);
     cr_assert_not_null(f);
 
     long w = fs2_techdump(f, &s, "test");
-    cr_assert_gt(w, 0);
+    int  e = errno_take();                      /* ← errno from techdump's fprintf/fwrite */
+    cr_assert_gt(w, 0, "techdump: %ld, errno=%d (%s)", w, e, strerror(e));
+
 
     rewind(f);
-    char buf[256];
-    size_t rd = fread(buf, 1, sizeof buf - 1, f);
-    buf[rd] = '\0';
-    fclose(f);
+    char buf[256] = {0};
+    size_t rd = fread_or_fail(f, buf, sizeof buf - 1, __func__);
+    if (fclose(f) != 0) {
+        e = errno_take();
+        cr_assert_fail("fclose: %s", strerror(e));
+    }
+    errno_take();
 
     /* Header contains key fields */
     cr_assert(strstr(buf, "FS2: test:") != NULL, "header missing: %s", buf);
@@ -74,8 +156,12 @@ Test(fs2_api, techdump_canon_v_null_no_crash) {
     cr_assert_gt(w, 0);
 
     rewind(f);
+    errno_take();
+
     char buf[256] = {0};
     size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    errno_take();
+
     fclose(f);
     cr_assert(rd > 0);
     buf[rd] = '\0';
@@ -95,6 +181,8 @@ Test(fs2_api, techdump_fs2empty_prints_empty_body) {
     cr_assert_not_null(f);
     fs2_techdump(f, &s, "empty");
     rewind(f);
+    errno_take();
+
     char buf[256] = {0};
     size_t rd = fread(buf, 1, sizeof buf - 1, f);
     fclose(f);
@@ -120,7 +208,11 @@ Test(fs2_api, techdump_null_s_prints_null_marker) {
 
     rewind(f);
     char buf[128] = {0};
+    errno_take();
+
     size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    
+
     fclose(f);
     buf[rd] = '\0';
 
@@ -184,7 +276,7 @@ Test(fs2_api, techdump_file_roundtrip) {
     cr_assert(fs2_techdump_file(&s, "roundtrip", path));
 
     size_t rd;
-    char *buf = slurp(path, &rd);
+    char *buf = read_file(path, &rd);
     cr_assert_not_null(buf, "file should exist");
     cr_assert_gt(rd, 0);
 
@@ -229,7 +321,7 @@ Test(fs2_api, techdump_file_canon_v_null_no_crash) {
     cr_assert(fs2_techdump_file(&s, "canon", path));
 
     size_t rd;
-    char *buf = slurp(path, &rd);
+    char *buf = read_file(path, &rd);
     cr_assert_not_null(buf);
     cr_assert(strstr(buf, "(nil)") != NULL);
     cr_assert(strstr(buf, "[]") != NULL);
@@ -255,6 +347,8 @@ Test(fs2_api, techdump_macro) {
     cr_assert_gt(w, 0);
 
     rewind(f);
+    errno_take();
+    
     char buf[256] = {0};
     fread(buf, 1, sizeof buf - 1, f);
     fclose(f);
@@ -284,29 +378,12 @@ Test(fs2_api, techdump_file_null_s_ok) {
     cr_assert(fs2_techdump_file(NULL, "null", path));
 
     size_t rd;
-    char *buf = slurp(path, &rd);
+    char *buf = read_file(path, &rd);
     cr_assert_not_null(buf);
     cr_assert(strstr(buf, "<NULL>") != NULL);
     free(buf);
     unlink(path);
     assert_balanced();
-}
-
-/* Test helper: read whole file, returns malloc'ed buf; NULL if missing */
-static char *read_file(const char *path, size_t *out_len) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    if (sz < 0) { fclose(f); return NULL; }
-    rewind(f);
-    char *buf = malloc((size_t)sz + 1);
-    if (!buf) { fclose(f); return NULL; }
-    size_t rd = fread(buf, 1, (size_t)sz, f);
-    fclose(f);
-    buf[rd] = '\0';
-    if (out_len) *out_len = rd;
-    return buf;
 }
 
 /* =========================================================================
