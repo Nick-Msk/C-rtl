@@ -2,7 +2,6 @@
 
 #include "test_fs2.h"
 #include "fs2_api.h"
-#include <locale.h>
 
 TestSuite(fs2_api_modificators, .init = test_setup, .fini = test_teardown);
 
@@ -6627,14 +6626,6 @@ Test(fs2_api_modificators, zfill_new_null_aborts, .signal = SIGABRT) {
     fs2_zfill_new(NULL, 5);
 }
 
-#include <criterion/criterion.h>
-
-#include "test_fs2.h"
-#include "fs2_api.h"
-#include <locale.h>
-
-TestSuite(fs2_api_modificators, .init = test_setup, .fini = test_teardown);
-
 /* =========================================================================
  * fs2_translate — nominal / PG-documented examples
  * ========================================================================= */
@@ -6905,4 +6896,127 @@ Test(fs2_api_modificators, translate_str_null_to_deletes) {
 
     fs2_free(&s);
     assert_balanced();
+}
+
+/* ---- Нормальные случаи (положительный n) ---- */
+
+Test(fs2_api_modificators, split_part_basic) {
+    fs2 s = fs2_fromstr("a,b,c");
+    fs2 d = fs2_fromstr(",");
+    fs2 r = fs2_split_part(&s, &d, 1);
+    CHECK_STR_EQ("a", r.v, "a");
+    fs2_free(&r);
+
+    r = fs2_split_part(&s, &d, 2);
+    CHECK_STR_EQ("b", r.v, "b");
+    fs2_free(&r);
+
+    r = fs2_split_part(&s, &d, 3);
+    CHECK_STR_EQ("c", r.v, "c");
+    fs2_free(&r);
+
+    fs2_free(&s); fs2_free(&d);
+}
+
+Test(fs2_api_modificators, split_part_multi_char_delim) {
+    fs2 s = fs2_fromstr("hello::world::!");
+    fs2 d = fs2_fromstr("::");
+    fs2 r = fs2_split_part(&s, &d, 2);
+    CHECK_STR_EQ("world", r.v, "world");
+    fs2_free(&r);
+    fs2_free(&s); fs2_free(&d);
+}
+
+/* ---- n == 0 ---- */
+
+Test(fs2_api_modificators, split_part_n_zero_empty) {
+    fs2 s = fs2_fromstr("a,b");
+    fs2 d = fs2_fromstr(",");
+    fs2 r = fs2_split_part(&s, &d, 0);
+    CHECK_TRUE("empty", fs2_is_empty(&r));
+    fs2_free(&r);
+    fs2_free(&s); fs2_free(&d);
+}
+
+/* ---- Отрицательный n (PG semantics) ---- */
+
+Test(fs2_api_modificators, split_part_negative_n) {
+    fs2 s = fs2_fromstr("a@b@c@d");
+    fs2 d = fs2_fromstr("@");
+    
+    // -1 последняя, -2 предпоследняя
+    fs2 r = fs2_split_part(&s, &d, -1);
+    CHECK_STR_EQ("d", r.v, "d");
+    fs2_free(&r);
+
+    r = fs2_split_part(&s, &d, -2);
+    CHECK_STR_EQ("c", r.v, "c");   // PG: split_part('a@b@c@d', -2) -> 'c'
+    fs2_free(&r);
+
+    // Слишком отрицательный -> пустая строка
+    r = fs2_split_part(&s, &d, -5);
+    CHECK_TRUE("too negative", fs2_is_empty(&r));
+    fs2_free(&r);
+
+    fs2_free(&s); fs2_free(&d);
+}
+
+/* ---- Пустой разделитель ---- */
+
+Test(fs2_api_modificators, split_part_empty_delim) {
+    fs2 s = fs2_fromstr("whole string");
+    fs2 e = FS2EMPTY;
+    
+    fs2 r = fs2_split_part(&s, &e, 1);
+    CHECK_STR_EQ("whole string", r.v, "whole string"); // delimiter "" -> одна часть
+    fs2_free(&r);
+
+    r = fs2_split_part(&s, &e, 2);
+    CHECK_TRUE("no part 2", fs2_is_empty(&r));
+    fs2_free(&r);
+
+    fs2_free(&s);
+}
+
+/* ---- Выход за пределы ---- */
+
+Test(fs2_api_modificators, split_part_out_of_range) {
+    fs2 s = fs2_fromstr("a,b,c");
+    fs2 d = fs2_fromstr(",");
+    fs2 r = fs2_split_part(&s, &d, 5);
+    CHECK_TRUE("out of range", fs2_is_empty(&r));
+    fs2_free(&r);
+    fs2_free(&s); fs2_free(&d);
+}
+
+/* ---- Пустая строка ---- */
+
+Test(fs2_api_modificators, split_part_empty_input) {
+    fs2 s = FS2EMPTY;
+    fs2 d = fs2_fromstr(",");
+    fs2 r = fs2_split_part(&s, &d, 1);
+    CHECK_TRUE("empty", fs2_is_empty(&r));
+    fs2_free(&r);
+    fs2_free(&d);
+}
+
+/* ---- Пустые части ---- */
+
+Test(fs2_api_modificators, split_part_empty_fields) {
+    fs2 s = fs2_fromstr("a,,b");
+    fs2 d = fs2_fromstr(",");
+    fs2 r = fs2_split_part(&s, &d, 2);
+    CHECK_TRUE("empty middle part", fs2_is_empty(&r)); // часть 2 пустая
+    fs2_free(&r);
+    fs2_free(&s); fs2_free(&d);
+}
+
+/* ---- C-string обёртка ---- */
+
+Test(fs2_api_modificators, split_part_str_basic) {
+    fs2 s = fs2_fromstr("a,b");
+    fs2 r = fs2_split_part_str(&s, ",", 2);
+    CHECK_STR_EQ("b", r.v, "b");
+    fs2_free(&r);
+    fs2_free(&s);
 }
