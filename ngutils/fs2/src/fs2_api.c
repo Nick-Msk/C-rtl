@@ -1368,6 +1368,33 @@ fs2_zfill(fs2 *restrict s, size_t width) {
 }
 
 fs2 *
+fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to) {
+    invfatal(ERR_NULL_INPUT, from != NULL && to != NULL, 
+        "Null pointers %p %p", from, to);
+
+    if (fs2_cant_mutate(s))
+        return s;
+
+    /* map[c] = 'to' for c in from, identity otherwise, '\0' = delete.
+     * NUL-sentinel safe: fs2 has no embedded NUL (validate invariant). */
+    char map[256];
+    for (int i = 0; i < 256; i++)
+        map[i] = (char)i;
+
+    /* Reverse iteration → FIRST occurrence in `from` wins (PG semantics). */
+    for (size_t i = from->len; i-- > 0; )
+        map[(unsigned char) from->v[i]] = (i < to->len) ? to->v[i] : '\0';
+
+    /* In-place compaction: out <= i always, no allocation, no growth. */
+    size_t out = 0;
+    for (size_t i = 0; i < s->len; i++) {
+        char m = map[(unsigned char) s->v[i]];
+        if (m) s->v[out++] = m;
+    }
+    return fs2_setlen(s, out);
+}
+
+fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars) {
     invfatal(ERR_NULL_INPUT, chars != NULL,  "Null pointer");
 

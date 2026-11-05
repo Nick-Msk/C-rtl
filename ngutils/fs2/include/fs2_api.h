@@ -2181,6 +2181,16 @@ fs2_zfill_new(const fs2 *s, size_t width) {
     return *fs2_zfill(&res, width);
 }
 
+extern fs2 *
+fs2_translate(fs2 *restrict s, const fs2 *restrict from, const fs2 *restrict to);
+
+static inline fs2 *
+fs2_translate_str(fs2 *restrict s, const char *restrict from, const char *restrict to) {
+    fs2 tf = _fs2_wrap(from);
+    fs2 tt = _fs2_wrap(to);
+    return fs2_translate(s, &tf, &tt);
+}
+
 /**
  * @brief Remove all occurrences of any byte from @p chars.
  *
