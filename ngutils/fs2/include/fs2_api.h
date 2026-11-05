@@ -2153,6 +2153,11 @@ fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
  *       In C locale (the recommended default) behavior is ASCII-only,
  *       matching PostgreSQL with a C-locale database. In other locales
  *       (UTF-8, Latin-1) results may differ.
+ *      
+ *        Uses the process-wide locale (C setlocale). Not safe if
+ *        another thread calls setlocale concurrently. For
+ *        per-thread locale use, these need POSIX uselocale()
+ *        variants (out of scope for this library).
  */
 extern fs2 *
 fs2_initcap(fs2 *restrict s);

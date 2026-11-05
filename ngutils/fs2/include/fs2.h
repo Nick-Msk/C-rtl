@@ -14,11 +14,11 @@
  * Plus two state flags, orthogonal to both:
  *   CONST    — reserved
  *
- * Preconditions (NOT checked here — see cfs2.h for a guarded wrapper):
- *   - No NULL pointers where a valid fs2 is expected.
- *   - len < sz.
- *   - No arithmetic overflow in size_t computations.
- *   - No use after fs2_free / fs2_movefrom on a heap value.
+ * @note Thread safety: fs2 objects are NOT internally synchronized.
+ * Concurrent read-only access to the same fs2 is safe (const).
+ * Concurrent read+write on the same fs2 requires external
+ * locking (e.g. pthread_mutex). The library's internal counters
+ * (alloc/free) are atomic and safe across threads.
  */
 
 #ifndef FS2_H
@@ -1254,6 +1254,10 @@ extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str
  * @param s     fs2 to print (may be NULL).
  * @param name  Label printed before the values.
  * @return      Number of characters written (0 if @p out is NULL).
+ * 
+ * @note  Not thread-safe if multiple threads share the same @p out.
+ *        The caller must serialize writes (e.g. mutex around the
+ *        entire call).
  */
 extern long                fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
