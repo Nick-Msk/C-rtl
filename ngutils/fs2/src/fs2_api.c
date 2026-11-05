@@ -1364,3 +1364,28 @@ fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars) {
     fs2_setlen(&res, out);  // even if FS2EMPTY
     return res;
 }
+
+fs2 *
+fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src) {
+    if (fs2_cant_realloc(dst) || src == NULL)
+        return dst;     // unable to write, static non-empty or nothing to do (src is null)
+    
+    const fs2 * const *iter = src;
+    size_t             total = 0UL, delimlenth = fs2_orempty(delim)->len;
+    // cacl total length
+    while (*iter) {   // TODO: rewite via fs2array function iterator
+        total += (*iter)->len;
+        if (delim && iter != src)
+            total += delimlenth;
+        iter++;
+    }
+    fs2_reserve(dst, total + dst->len + 1);
+    iter = src;     // recharge
+    while (*iter) {   // TODO: rewite via fs2array function iterator
+        if (delim && iter != src)
+            fs2_cat(dst, delim);
+        fs2_cat(dst, *iter);
+        iter++;
+    }
+    return dst;
+}

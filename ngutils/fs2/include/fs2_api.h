@@ -2194,4 +2194,12 @@ fs2_removeall_new_str(const fs2 *restrict s, const char *restrict chars) {
     return fs2_removeall_new(s, &tmp);
 }
 
+// null-ended src
+extern fs2 *
+fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src);
+
+// macro support
+#define FS2CONCAT(dst, delim, ...) \
+    fs2_concatall( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
+
 #endif /* !FS2_API_H */
