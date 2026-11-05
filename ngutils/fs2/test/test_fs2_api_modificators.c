@@ -6626,3 +6626,283 @@ Test(fs2_api_modificators, zfill_new_width_noop_clone) {
 Test(fs2_api_modificators, zfill_new_null_aborts, .signal = SIGABRT) {
     fs2_zfill_new(NULL, 5);
 }
+
+#include <criterion/criterion.h>
+
+#include "test_fs2.h"
+#include "fs2_api.h"
+#include <locale.h>
+
+TestSuite(fs2_api_modificators, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * fs2_translate — nominal / PG-documented examples
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_pg_example) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    fs2 f = fs2_fromstr("143");
+    fs2 t = fs2_fromstr("ax");
+
+    fs2 *r = fs2_translate(&s, &f, &t);
+
+    /* PG: translate('12345', '143', 'ax') = 'a2x5' */
+    CHECK_STR_EQ("a2x5", s.v, "a2x5");
+    CHECK_PTR_EQ("chain", r, &s);
+    CHECK_FS2VALID(1, &s);
+    CHECK_FS2VALID(2, &f);
+    CHECK_FS2VALID(3, &t);
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_same_length_from_to) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello");
+    fs2 f = fs2_fromstr("lo");
+    fs2 t = fs2_fromstr("01");
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_STR_EQ("he001", s.v, "he001");
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+/* to longer than from: extra ignored, no deletion */
+Test(fs2_api_modificators, translate_to_longer_extra_ignored) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("12345");
+    fs2 f = fs2_fromstr("123");
+    fs2 t = fs2_fromstr("axzq");
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_STR_EQ("axz45", s.v, "axz45");
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * delete path: to shorter than from
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_delete_extra_from) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbXc");
+    fs2 f = fs2_fromstr("X");
+    fs2 t = FS2EMPTY;
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s); fs2_free(&f);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_delete_vowels) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("hello world");
+    fs2 f = fs2_fromstr("aeiou");
+    fs2 t = FS2EMPTY;
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_STR_EQ("hll wrld", s.v, "hll wrld");
+
+    fs2_free(&s); fs2_free(&f);
+    assert_balanced();
+}
+
+/* partial mapping + delete: "143" -> "ax" */
+Test(fs2_api_modificators, translate_mixed_map_and_delete) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("41233");
+    fs2 f = fs2_fromstr("143");
+    fs2 t = fs2_fromstr("ax");
+
+    fs2_translate(&s, &f, &t);
+
+    /* '4'->x, '1'->a, '2' unchanged, '3' deleted */
+    CHECK_STR_EQ("xa2", s.v, "xa2");
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * duplicate in from: FIRST wins
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_duplicate_in_from_first_wins) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("a");
+    fs2 f = fs2_fromstr("aa");
+    fs2 t = fs2_fromstr("xy");
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_STR_EQ("x", s.v, "x");   /* not "y" */
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * no-op cases
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_empty_from_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 f = FS2EMPTY;
+    fs2 t = fs2_fromstr("XYZ");
+    void *orig = s.v;
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("abc",              s.v, "abc");
+
+    fs2_free(&s); fs2_free(&t);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_no_match_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+    fs2 f = fs2_fromstr("XYZ");
+    fs2 t = fs2_fromstr("qrs");
+    void *orig = s.v;
+
+    fs2_translate(&s, &f, &t);
+
+    CHECK_PTR_EQ("buffer untouched", s.v, orig);
+    CHECK_STR_EQ("abc",              s.v, "abc");
+
+    fs2_free(&s); fs2_free(&f); fs2_free(&t);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_empty_src_all_flavors) {
+    __fs2_checkreset();
+    fs2 f = fs2_fromstr("abc");
+    fs2 t = fs2_fromstr("XYZ");
+
+    fs2 canon = FS2();
+    fs2 empty = FS2EMPTY;
+    fs2 lit   = FS2LITERAL("");
+
+    fs2_translate(&canon, &f, &t);
+    fs2_translate(&empty, &f, &t);
+    fs2_translate(&lit,   &f, &t);
+
+    CHECK_TRUE("canon canon", fs2_is_canon(&canon));
+    CHECK_TRUE("empty empty", fs2_eq_empty(&empty));
+    CHECK_EQ  ("lit len",     lit.len, 0);
+
+    fs2_free(&canon);
+    fs2_free(&f);
+    fs2_free(&t);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * guards (eager, like other mutators)
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_null_s_aborts, .signal = SIGABRT) {
+    fs2 f = fs2_fromstr("a");
+    fs2 t = fs2_fromstr("b");
+    fs2_translate(NULL, &f, &t);
+    fs2_free(&f); fs2_free(&t);
+}
+
+Test(fs2_api_modificators, translate_null_from_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2 t = fs2_fromstr("b");
+    fs2_translate(&s, NULL, &t);
+    fs2_free(&s); fs2_free(&t);
+}
+
+Test(fs2_api_modificators, translate_null_to_aborts, .signal = SIGABRT) {
+    fs2 s = fs2_fromstr("abc");
+    fs2 f = fs2_fromstr("a");
+    fs2_translate(&s, &f, NULL);
+    fs2_free(&s); fs2_free(&f);
+}
+
+Test(fs2_api_modificators, translate_static_nonempty_aborts, .signal = SIGABRT) {
+    fs2 s = FS2LITERAL("hello");
+    fs2 f = fs2_fromstr("lo");
+    fs2 t = fs2_fromstr("01");
+    fs2_translate(&s, &f, &t);
+    fs2_free(&f); fs2_free(&t);
+}
+
+/* =========================================================================
+ * LOCAL — never grows, always works
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_local) {
+    __fs2_checkreset();
+    FS2LOCAL(buf, 16);
+    fs2_memcpy_str(&buf, 0, "hello", 5);
+    fs2_setlen(&buf, 5);
+    fs2 f = fs2_fromstr("aeiou");
+    fs2 t = FS2EMPTY;
+
+    fs2_translate(&buf, &f, &t);
+
+    CHECK_STR_EQ("hll",       buf.v, "hll");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2_free(&f);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * str wrapper — NULL args lenient via _fs2_wrap
+ * ========================================================================= */
+
+Test(fs2_api_modificators, translate_str_basic) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_translate_str(&s, "ac", "XY");
+
+    CHECK_STR_EQ("XbY", s.v, "XbY");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_str_null_from_noop) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("abc");
+
+    fs2_translate_str(&s, NULL, "XY");   /* from=NULL → FS2EMPTY → no-op */
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2_api_modificators, translate_str_null_to_deletes) {
+    __fs2_checkreset();
+    fs2 s = fs2_fromstr("aXbXc");
+
+    fs2_translate_str(&s, "X", NULL);    /* to=NULL → FS2EMPTY → delete */
+
+    CHECK_STR_EQ("abc", s.v, "abc");
+
+    fs2_free(&s);
+    assert_balanced();
+}
