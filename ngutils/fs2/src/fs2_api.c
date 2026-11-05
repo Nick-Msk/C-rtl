@@ -1372,6 +1372,7 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
     
     const fs2 * const *iter = src;
     size_t             total = 0UL, delimlenth = fs2_orempty(delim)->len;
+    bool               wrote_any = (dst->len > 0);   // TODO: skeleton can be here!
     // cacl total length
     while (*iter) {   // TODO: rewite via fs2array function iterator
         total += (*iter)->len;
@@ -1382,10 +1383,10 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
     fs2_reserve(dst, total + dst->len + 1);
     iter = src;     // recharge
     while (*iter) {   // TODO: rewite via fs2array function iterator
-        if (delim && iter != src)
+        if (delim && wrote_any)
             fs2_cat(dst, delim);
         fs2_cat(dst, *iter);
-        iter++;
+        iter++, wrote_any = true;
     }
     return dst;
 }
@@ -1397,11 +1398,13 @@ fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *rest
         return dst;     // unable to write, static non-empty or nothing to do (src is null)
     
     const char * const *iter = src;
+    bool wrote_any = (dst->len > 0);    // TODO: skeleton can be here!
+
     while (*iter) {   // TODO: rewite via fs2array function iterator
-        if (delim && iter != src)
+        if (delim && wrote_any)
             fs2_catstr(dst, delim);
         fs2_catstr(dst, *iter);
-        iter++;
+        iter++, wrote_any = true;;
     }
     return dst;
 }
