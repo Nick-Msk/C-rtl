@@ -2188,4 +2188,10 @@ fs2_removeal_str(fs2 *restrict s, const char *restrict chars) {
 extern fs2
 fs2_removeall_new(const fs2 *restrict s, const fs2 *restrict chars); 
 
+static inline fs2
+fs2_removeall_new_str(const fs2 *restrict s, const char *restrict chars) {
+    fs2     tmp = _fs2_wrap(chars);
+    return fs2_removeall_new(s, &tmp);
+}
+
 #endif /* !FS2_API_H */
