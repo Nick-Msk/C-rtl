@@ -1520,3 +1520,26 @@ fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *rest
     }
     return dst;
 }
+
+fs2 *
+fs2_normalize_whitespace(fs2 *restrict s) {
+    if (fs2_cant_mutate(s))
+        return s;
+
+    size_t out = 0;
+    bool   pending_space = false;
+
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char) s->v[i];
+        if (isspace(c)) {
+            pending_space = true;              /* not flushed yet — trailing-safe */
+        } else {
+            if (pending_space && out > 0)      /* out > 0 => not leading */
+                s->v[out++] = ' ';
+            s->v[out++] = (char)c;
+            pending_space = false;
+        }
+    }
+    return fs2_setlen(s, out);                 /* pending trailing dropped */
+}
+

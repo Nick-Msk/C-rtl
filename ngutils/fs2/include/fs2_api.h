@@ -2335,5 +2335,18 @@ fs2_isascii(const fs2 *restrict s) {
     return true;
 }
 
+/**
+ * @note Uses isspace() from <ctype.h>: locale-dependent. In C locale
+ *       (recommended), only " \t\n\r\v\f" count as whitespace.
+ *       Matches Python's str.split() with no separator argument.
+ */
+extern fs2 *
+fs2_normalize_whitespace(fs2 *restrict s);
+
+static inline fs2
+fs2_normalize_whitespace_new(const fs2 *restrict s) {
+    fs2 res = fs2_clone(s);
+    return *fs2_normalize_whitespace(&res);
+}
 
 #endif /* !FS2_API_H */
