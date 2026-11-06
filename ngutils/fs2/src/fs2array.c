@@ -126,7 +126,7 @@ fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
 
 // TODO: refactor to be in common with fs2arr_attach_sp
 fs2 *
-fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx) {
+fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
     if (*src == NULL)
         return NULL;

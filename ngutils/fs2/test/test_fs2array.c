@@ -837,7 +837,7 @@ Test(fs2_array, attach_bp_heap_null_and_free) {
     fs2array a = fs2arr_init(2);
     fs2 *p = fs2_heap_fromstr("heap");
 
-    fs2 *slot = fs2arr_attach_bp(&a, &p, 0);
+    fs2 *slot = fs2arr_attach_dp(&a, &p, 0);
 
     CHECK_PTR_EQ("p nulled",    NULL, p);
     CHECK_PTR_EQ("slot ptr",    &a.arr[0], slot);
@@ -858,7 +858,7 @@ Test(fs2_array, attach_bp_null_src_returns_null) {
     fs2array a = fs2arr_init(2);
     fs2 *p = NULL;
 
-    fs2 *slot = fs2arr_attach_bp(&a, &p, 0);
+    fs2 *slot = fs2arr_attach_dp(&a, &p, 0);
 
     CHECK_PTR_EQ("return NULL",     NULL, slot);
     CHECK_PTR_EQ("p still NULL",    NULL, p);
@@ -877,7 +877,7 @@ Test(fs2_array, attach_bp_stack_source_also_works) {
     fs2  v  = fs2_fromstr("stack");
     fs2 *p  = &v;
 
-    fs2arr_attach_bp(&a, &p, 0);
+    fs2arr_attach_dp(&a, &p, 0);
 
     CHECK_PTR_EQ("p nulled",        NULL, p);
     CHECK_STR_EQ("[0]", "stack",   a.arr[0].v);
@@ -898,7 +898,7 @@ Test(fs2_array, attach_bp_bad_idx_raises_preserves_pointer) {
     fs2 *p = fs2_heap_fromstr("orphan");
 
     TRY() {
-        fs2arr_attach_bp(&a, &p, 100);        /* idx >= size → raise */
+        fs2arr_attach_dp(&a, &p, 100);        /* idx >= size → raise */
         cr_assert_fail("expected raise");
     } else {
         /* caught — validation raised BEFORE nulling; p still valid */
@@ -931,7 +931,7 @@ Test(fs2_array, attach_bp_fills_hole) {
     /* hole at 1, hwm=3, count=2 */
 
     fs2 *p = fs2_heap_fromstr("X");
-    fs2arr_attach_bp(&a, &p, 1);
+    fs2arr_attach_dp(&a, &p, 1);
 
     CHECK_PTR_EQ("p nulled",       NULL, p);
     CHECK_EQ   ("hwm unchanged",   3, a.hwm);
@@ -954,7 +954,7 @@ Test(fs2_array, attach_bp_over_nonempty_raise) {
     fs2 *p = fs2_heap_fromstr("X");
 
     TRY() {
-        fs2arr_attach_bp(&a, &p, 0);    /* slot not hole → raise */
+        fs2arr_attach_dp(&a, &p, 0);    /* slot not hole → raise */
         cr_assert_fail("expected raise");
     } else {
         /* caught — p nulled first, struct freed in wrapper? no: wrapper
@@ -982,7 +982,7 @@ Test(fs2_array, push_bp_heap_appends_and_nulls) {
     fs2array a = fs2arr_init(4);
     fs2 *p = fs2_heap_fromstr("heap");
 
-    fs2 *slot = fs2arr_push_bp(&a, &p);
+    fs2 *slot = fs2arr_push_dp(&a, &p);
 
     CHECK_PTR_EQ("slot",         &a.arr[0], slot);
     CHECK_PTR_EQ("p nulled",     NULL, p);
@@ -1002,7 +1002,7 @@ Test(fs2_array, push_bp_sequential_extends_hwm) {
 
     for (int i = 0; i < 5; i++) {
         fs2 *p = fs2_heap_from(i);
-        fs2arr_push_bp(&a, &p);
+        fs2arr_push_dp(&a, &p);
         CHECK_PTR_EQ("nulled", NULL, p);
         CHECK_EQ("hwm",   (size_t)(i + 1), a.hwm);
         CHECK_EQ("count", (size_t)(i + 1), a.count);
@@ -1020,7 +1020,7 @@ Test(fs2_array, push_bp_null_src_returns_null) {
     fs2array a = fs2arr_init(4);
     fs2 *p = NULL;
 
-    fs2 *slot = fs2arr_push_bp(&a, &p);
+    fs2 *slot = fs2arr_push_dp(&a, &p);
 
     CHECK_PTR_EQ("return NULL",    NULL, slot);
     CHECK_EQ   ("hwm unchanged",   0, a.hwm);
@@ -1036,7 +1036,7 @@ Test(fs2_array, push_bp_stack_source_also_works) {
     fs2  v = fs2_fromstr("stack");
     fs2 *p = &v;
 
-    fs2arr_push_bp(&a, &p);
+    fs2arr_push_dp(&a, &p);
 
     CHECK_PTR_EQ("p nulled",   NULL, p);
     CHECK_STR_EQ("[0]", "stack", a.arr[0].v);
@@ -1049,12 +1049,107 @@ Test(fs2_array, push_bp_stack_source_also_works) {
 
 Test(fs2_array, push_bp_null_arr_aborts, .signal = SIGABRT) {
     fs2 *p = fs2_heap_fromstr("x");
-    fs2arr_push_bp(NULL, &p);
+    fs2arr_push_dp(NULL, &p);
     fs2_free(p);
 }
 
 Test(fs2_array, push_bp_null_src_ptr_aborts, .signal = SIGABRT) {
     fs2array a = fs2arr_init(4);
-    fs2arr_push_bp(&a, NULL);
+    fs2arr_push_dp(&a, NULL);
     fs2arr_free(&a);
 }
+
+/* =========================================================================
+ * fs2arr_attach — _Generic dispatch
+ * ========================================================================= */
+
+Test(fs2_array, attach_generic_stack_dispatches_to_sp) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 s = fs2_fromstr("stack");
+
+    fs2arr_attach(&a, &s, 0);               /* &s → fs2* → _sp */
+
+    CHECK_STR_EQ("[0]", "stack",  a.arr[0].v);
+    CHECK_TRUE ("s FS2EMPTY",     fs2_eq_empty(&s));     /* no auto-null */
+    CHECK_FALSE("s not ALLOC",    fs2_is_alloc(&s));
+    CHECK_EQ   ("count", 1, a.count);
+
+    fs2_free(&s);                            /* no-op */
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, attach_generic_heap_dispatches_to_dp) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 *p = fs2_heap_fromstr("heap");
+
+    fs2arr_attach(&a, &p, 0);               /* &p → fs2** → _dp */
+
+    CHECK_PTR_EQ("p nulled", NULL, p);       /* auto-null */
+    CHECK_STR_EQ("[0]", "heap", a.arr[0].v);
+    CHECK_EQ   ("count", 1, a.count);
+
+    /* no fs2_free(p) — _dp freed the struct */
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, attach_generic_single_ptr_heap_keeps_shell) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 *p = fs2_heap_fromstr("heap");
+
+    fs2arr_attach(&a, p, 0);                /* p → fs2* → _sp */
+
+    CHECK_STR_EQ("[0]", "heap", a.arr[0].v);
+    CHECK_FALSE("p not nulled", p == NULL); /* p is still valid */
+    CHECK_TRUE ("p shell FS2EMPTY", fs2_is_empty(p));
+    CHECK_TRUE ("p shell BODYALLOC", fs2_is_bodyalloc(p));
+
+    fs2_free(p);                             /* caller must free shell */
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_push — _Generic dispatch
+ * ========================================================================= */
+
+Test(fs2_array, push_generic_stack_dispatches_to_sp) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(0);
+    fs2 s = fs2_fromstr("x");
+
+    fs2arr_push(&a, &s);                    /* &s → fs2* → _sp */
+
+    CHECK_EQ  ("hwm", 1, a.hwm);
+    CHECK_TRUE("s FS2EMPTY", fs2_eq_empty(&s));
+
+    fs2_free(&s);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_generic_heap_dispatches_to_dp) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(0);
+    fs2 *p = fs2_heap_fromstr("x");
+
+    fs2arr_push(&a, &p);                    /* &p → fs2** → _dp */
+
+    CHECK_PTR_EQ("p nulled", NULL, p);
+    CHECK_STR_EQ("[0]", "x", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Compile-time rejection (uncomment to verify via manual build)
+ *
+ * fs2 s = fs2_fromstr("x");
+ * fs2arr_attach(&a, s, 0);          // fs2 (by value) — no _Generic match → error
+ * fs2arr_attach(&a, NULL, 0);       // NULL — no match → error (needs cast)
+ * ========================================================================= */

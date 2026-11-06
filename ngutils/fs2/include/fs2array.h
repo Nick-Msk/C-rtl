@@ -92,7 +92,7 @@ fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx);
  * @warning `invfatal` (SIGABRT) if a/src NULL.
  */
 extern fs2 *
-fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
+fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
 
 /**
  * @brief Generic attach — dispatches on `_Generic` static type of @p src.
@@ -138,11 +138,11 @@ fs2arr_push_sp(fs2array *a, fs2 *src) {
 }
 
 static inline fs2 *
-fs2arr_push_bp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
+fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
     if (a->hwm == a->size)
         fs2arr_reserve(a, a->hwm + 1);
-    return fs2arr_attach_bp(a, src, a->hwm);
+    return fs2arr_attach_dp(a, src, a->hwm);
 }
 
 #define fs2arr_push(a, src)                                               \
