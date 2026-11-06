@@ -61,7 +61,7 @@ static inline void fs2_freebody(fs2 *s);
  *               - true:  exponential growth via calcnewsize (amortized O(1)).
  *               - false: exact resize to @p newsz.
  *
- * In both modes the result is clamped to at least FS_MIN_ALLOC (16) bytes.
+ * In both modes the result is clamped to at least FS2_MIN_ALLOC (16) bytes.
  * Realloc is called only if the target exceeds current capacity (init mode)
  * or unconditionally (exact mode).
  *
@@ -80,8 +80,8 @@ increasesize(fs2 *s, size_t newsz, bool init) {
     if (fs2_is_alloc(s) ) {
         if (init)
             newsz = calcnewsize(SIZE_POWER2, newsz);    // with increase type
-        if (init && newsz < FS_MIN_ALLOC)              // if !init -> mostly shrink
-            newsz = FS_MIN_ALLOC;
+        if (init && newsz < FS2_MIN_ALLOC)              // if !init -> mostly shrink
+            newsz = FS2_MIN_ALLOC;
         if (!init || newsz > s->sz) {                   // !init -> realloc ANYWAY
                 char *v = realloc(s->v, newsz);
                 if (!v)
@@ -447,12 +447,12 @@ fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
 /**
  * @brief Shrink the heap buffer to fit the current content exactly.
  *
- * Reallocates to exactly len+1 bytes (no FS_MIN_ALLOC floor — that
+ * Reallocates to exactly len+1 bytes (no FS2_MIN_ALLOC floor — that
  * applies only to growth via init=true). No-op for STATIC/LOCAL or
  * if the buffer already fits.
  *
- * Note: if len+1 < FS_MIN_ALLOC, a subsequent growth will reallocate
- * again to at least FS_MIN_ALLOC. This is the price of exact-fit
+ * Note: if len+1 < FS2_MIN_ALLOC, a subsequent growth will reallocate
+ * again to at least FS2_MIN_ALLOC. This is the price of exact-fit
  * shrinking — `shrink` is a hint, not a guarantee against regrowth.
  *
  * @param s  Non-NULL fs2.

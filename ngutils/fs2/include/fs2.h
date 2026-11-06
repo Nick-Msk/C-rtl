@@ -67,7 +67,7 @@ extern const char           *fs2_version(void);
  */
 extern const char    *const *fs2_versions(void);
 
-static const size_t             FS_MIN_ALLOC = 16;
+static const size_t             FS2_MIN_ALLOC = 16;
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Flags
@@ -609,11 +609,11 @@ fs2_setsize(fs2 *s, size_t need)
 /**
  * @brief Shrink the heap buffer to fit the current content exactly.
  *
- * Reallocates to exactly len+1 bytes (no FS_MIN_ALLOC floor — that
+ * Reallocates to exactly len+1 bytes (no FS2_MIN_ALLOC floor — that
  * applies only to growth via init=true). No-op for STATIC/LOCAL.
  *
- * Note: if len+1 < FS_MIN_ALLOC, a subsequent growth reallocates
- * again to at least FS_MIN_ALLOC. This is the price of exact-fit
+ * Note: if len+1 < FS2_MIN_ALLOC, a subsequent growth reallocates
+ * again to at least FS2_MIN_ALLOC. This is the price of exact-fit
  * shrinking — `shrink` is a hint, not a guarantee against regrowth.
  *
  * For ALLOC: reallocs to exact fit if current sz > len+1.

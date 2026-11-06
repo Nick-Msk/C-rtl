@@ -89,7 +89,7 @@ the call site, not as silent memory corruption downstream. The future bare
   `fs2_repeat_str_new`.
 - **Slice:** `fs2_slice(s, from, len)` — zero-copy `STATIC` view.
 - **Capacity management:** `fs2_setsize` (exact grow, no rounding,
-  no `FS_MIN_ALLOC` floor), `fs2_shrink` (exact `len+1`, no-op for
+  no `FS2_MIN_ALLOC` floor), `fs2_shrink` (exact `len+1`, no-op for
   STATIC/LOCAL — capacity hint). `fs2_reserve` and `fs2_setsize` are
   grow-only; `shrink` is the only shrinker.
 - **`fs2_promote_empty(s)`** — internal: canonical `FS2()` (`v==NULL`) →
@@ -153,7 +153,7 @@ the call site, not as silent memory corruption downstream. The future bare
   `fs2_repeat_new` (`n==0`), etc. — all `FS2EMPTY`, not `FS2()`.
 - **`fs2_fromstrf_va`:** returns `FS2EMPTY` when `sz == 0` (previously
   returned an `ALLOC` empty).
-- **`fs2_setsize`:** exact grow, no `FS_MIN_ALLOC` floor, no power-of-2
+- **`fs2_setsize`:** exact grow, no `FS2_MIN_ALLOC` floor, no power-of-2
   rounding. Use `fs2_reserve` for amortized growth, `fs2_shrink` for shrink.
 - **`fs2_shrink`:** no longer aborts on non-empty STATIC/LOCAL — silent
   no-op (capacity hint, like `std::string::shrink_to_fit`). Only `NULL`
