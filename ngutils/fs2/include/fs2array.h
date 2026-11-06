@@ -74,7 +74,7 @@ fs2arr_find_tillhwm(const fs2array *a);
  *                         release the shell struct (buffer is in the slot).
  *
  * attach does NOT free the source struct. This is symmetric with
- * fs2_move and with fs2arr_push — caller always owns the shell.
+ * fs2_move and with fs2arr_push_sp — caller always owns the shell.
  *
  * @warning Do NOT pass `&a->arr[i]` — if attach triggers realloc via
  *          push, `src` becomes dangling.
@@ -95,6 +95,22 @@ extern fs2 *
 fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
 
 /**
+ * @brief Generic attach — dispatches on `_Generic` static type of @p src.
+ *
+ *   fs2 s = ...;            fs2arr_attach(&a, &s, idx);   // → attach_sp
+ *   fs2 *p = fs2_heap_…();  fs2arr_attach(&a, &p, idx);   // → attach_dp
+ *
+ * Const-qualified sources are rejected at compile time (can't move from
+ * const).
+ */
+#define fs2arr_attach(a, src, idx)                                        \
+    _Generic((src),                                                       \
+        fs2  *:  fs2arr_attach_sp,                                        \
+        fs2 **:  fs2arr_attach_dp                                         \
+    )((a), (src), (idx))
+
+
+/**
  * @brief Append a value to the end of the array.
  *
  * Source may be stack, field, or heap (BODYALLOC). Value is moved into
@@ -112,7 +128,7 @@ fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
  *       becomes dangling.
  */
 static inline fs2 *
-fs2arr_push(fs2array *a, fs2 *src) {
+fs2arr_push_sp(fs2array *a, fs2 *src) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
         "Null pointers %p %p", a, src);
 

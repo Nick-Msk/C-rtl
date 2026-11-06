@@ -141,7 +141,7 @@ Test(fs2_array, push_sequential_hwm_eq_count) {
     fs2array a = fs2arr_init(0);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);
+        fs2arr_push_sp(&a, &v);
         CHECK_EQ("hwm",   (size_t)(i + 1), a.hwm);
         CHECK_EQ("count", (size_t)(i + 1), a.count);
     }
@@ -156,7 +156,7 @@ Test(fs2_array, attach_in_hole_keeps_hwm) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 3; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);                /* hwm=3, count=3, slot[1] live */
+        fs2arr_push_sp(&a, &v);                /* hwm=3, count=3, slot[1] live */
     }
     /* force hole at slot[1] */
     fs2_free(&a.arr[1]);
@@ -200,7 +200,7 @@ Test(fs2_array, attach_beyond_hwm_extends_with_holes) {
 Test(fs2_array, attach_over_nonempty_raise, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("live");
-    fs2arr_push(&a, &v);                    /* slot[0] live */
+    fs2arr_push_sp(&a, &v);                    /* slot[0] live */
 
     fs2 w = fs2_fromstr("x");
     fs2arr_attach_sp(&a, &w, 0);               /* slot[0] not empty → userraise */
@@ -225,7 +225,7 @@ Test(fs2_array, find_free_pos_no_hole_returns_neg1) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);                /* packed: hwm=5, count=5 */
+        fs2arr_push_sp(&a, &v);                /* packed: hwm=5, count=5 */
     }
     CHECK_EQ("no hole", -1, fs2arr_find_tillhwm(&a));
     fs2arr_free(&a);
@@ -237,7 +237,7 @@ Test(fs2_array, find_free_pos_returns_first_hole) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);
+        fs2arr_push_sp(&a, &v);
     }
     fs2_free(&a.arr[2]);
     fs2arr_set_hole(&a.arr[2]);
@@ -266,7 +266,7 @@ Test(fs2_array, clean_resets_hwm_count) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);
+        fs2arr_push_sp(&a, &v);
     }
     size_t cap = a.size;
 
@@ -288,7 +288,7 @@ Test(fs2_array, push_bodyalloc_slot_loses_bodyalloc) {
     fs2array a = fs2arr_init(2);
     fs2 *p = fs2_heap_fromstr("heap");
 
-    fs2arr_push(&a, p);
+    fs2arr_push_sp(&a, p);
 
     CHECK_STR_EQ ("slot", "heap", a.arr[0].v);
     CHECK_TRUE  ("slot ALLOC",       fs2_is_alloc(&a.arr[0]));
@@ -306,7 +306,7 @@ Test(fs2_array, find_tillhwm_no_hole_returns_neg1) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);                /* packed: hwm=5, count=5 */
+        fs2arr_push_sp(&a, &v);                /* packed: hwm=5, count=5 */
     }
     CHECK_EQ("no hole", -1, fs2arr_find_tillhwm(&a));
     fs2arr_free(&a);
@@ -318,7 +318,7 @@ Test(fs2_array, find_tillhwm_returns_first_hole) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 5; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);
+        fs2arr_push_sp(&a, &v);
     }
     fs2_free(&a.arr[2]);
     fs2arr_set_hole(&a.arr[2]);
@@ -347,9 +347,9 @@ Test(fs2_array, detachto_stack_leaves_hole) {
     fs2 v1 = fs2_fromstr("A");
     fs2 v2 = fs2_fromstr("B");
     fs2 v3 = fs2_fromstr("C");
-    fs2arr_push(&a, &v1);
-    fs2arr_push(&a, &v2);
-    fs2arr_push(&a, &v3);
+    fs2arr_push_sp(&a, &v1);
+    fs2arr_push_sp(&a, &v2);
+    fs2arr_push_sp(&a, &v3);
     /* hwm=3, count=3 */
 
     fs2 tmp = FS2();
@@ -377,7 +377,7 @@ Test(fs2_array, detachto_heap_dst) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("X");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 *p = fs2_heap();
     fs2arr_detachto(&a, 0, p);
@@ -400,7 +400,7 @@ Test(fs2_array, detachto_into_dst_with_old_content) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(2);
     fs2 v = fs2_fromstr("new");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 tmp = fs2_fromstr("old");        /* own ALLOC buffer */
     fs2arr_detachto(&a, 0, &tmp);
@@ -425,7 +425,7 @@ Test(fs2_array, detachto_idx_ge_hwm_returns_false) {
 Test(fs2_array, detachto_already_empty_returns_false) {
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("live");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
     fs2 tmp1 = FS2();
     cr_assert(fs2arr_detachto(&a, 0, &tmp1));
     fs2_free(&tmp1);
@@ -452,7 +452,7 @@ Test(fs2_array, detach_new_returns_stack) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("val");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 tmp = fs2arr_detach_new(&a, 0);
 
@@ -473,7 +473,7 @@ Test(fs2_array, heap_detach_returns_heap) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("val");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 *p = fs2arr_heap_detach(&a, 0);
 
@@ -497,7 +497,7 @@ Test(fs2_array, detach_then_attach_reuses_hole) {
     fs2array a = fs2arr_init(16);
     for (int i = 0; i < 3; i++) {
         fs2 v = fs2_from_new(i);
-        fs2arr_push(&a, &v);
+        fs2arr_push_sp(&a, &v);
     }
     /* hwm=3, count=3 */
 
@@ -584,7 +584,7 @@ Test(fs2_array, push_fs2empty_as_value) {
     fs2array a = fs2arr_init(4);
     fs2 empty = FS2EMPTY;
 
-    fs2arr_push(&a, &empty);
+    fs2arr_push_sp(&a, &empty);
 
     CHECK_EQ  ("hwm",   1, a.hwm);
     CHECK_EQ  ("count", 1, a.count);       /* live value, not hole */
@@ -603,7 +603,7 @@ Test(fs2_array, push_fs2_canonical_as_value) {
     fs2array a = fs2arr_init(4);
     fs2 canon = FS2();
 
-    fs2arr_push(&a, &canon);
+    fs2arr_push_sp(&a, &canon);
 
     CHECK_EQ  ("hwm",   1, a.hwm);
     CHECK_EQ  ("count", 1, a.count);
@@ -626,9 +626,9 @@ Test(fs2_array, full_cycle_push_detach_attach_detach) {
     fs2 vA = fs2_fromstr("A");
     fs2 vB = fs2_fromstr("B");
     fs2 vC = fs2_fromstr("C");
-    fs2arr_push(&a, &vA);
-    fs2arr_push(&a, &vB);
-    fs2arr_push(&a, &vC);
+    fs2arr_push_sp(&a, &vA);
+    fs2arr_push_sp(&a, &vB);
+    fs2arr_push_sp(&a, &vC);
     CHECK_EQ("hwm",   3, a.hwm);
     CHECK_EQ("count", 3, a.count);
 
@@ -661,7 +661,7 @@ Test(fs2_array, full_cycle_push_detach_attach_detach) {
 
     /* 6. push appends at hwm, not into hole */
     fs2 vD = fs2_fromstr("D");
-    fs2arr_push(&a, &vD);
+    fs2arr_push_sp(&a, &vD);
     CHECK_EQ   ("hwm",   4, a.hwm);            /* hwm grew (push appends) */
     CHECK_EQ   ("count", 3, a.count);
     CHECK_STR_EQ("[3]", "D", a.arr[3].v);
@@ -685,7 +685,7 @@ Test(fs2_array, empty_value_vs_hole_after_detach) {
     fs2array a = fs2arr_init(4);
 
     fs2 empty = FS2EMPTY;
-    fs2arr_push(&a, &empty);           /* live FS2EMPTY */
+    fs2arr_push_sp(&a, &empty);           /* live FS2EMPTY */
     CHECK_TRUE("live empty", !fs2arr_is_hole(&a.arr[0]));
 
     fs2 out = fs2arr_detach_new(&a, 0);
@@ -706,7 +706,7 @@ Test(fs2_array, detach_hole_returns_false) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("x");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 t1 = fs2arr_detach_new(&a, 0);
     fs2_free(&t1);
@@ -727,7 +727,7 @@ Test(fs2_array, heap_detach_then_heap_attach) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("heap");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 *p = fs2arr_heap_detach(&a, 0);
     CHECK_STR_EQ("value", "heap", p->v);
@@ -752,7 +752,7 @@ Test(fs2_array, detach_leaves_hole_sentinel) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("x");
-    fs2arr_push(&a, &v);
+    fs2arr_push_sp(&a, &v);
 
     fs2 t = fs2arr_detach_new(&a, 0);
 
@@ -773,7 +773,7 @@ Test(fs2_array, push_fs2_canonical_value_is_live_not_hole) {
     fs2 canon = FS2();
     cr_assert(fs2_is_canon(&canon));
 
-    fs2arr_push(&a, &canon);
+    fs2arr_push_sp(&a, &canon);
 
     CHECK_EQ  ("hwm",   1, a.hwm);
     CHECK_EQ  ("count", 1, a.count);       /* live! */
@@ -922,9 +922,9 @@ Test(fs2_array, attach_bp_fills_hole) {
     fs2 v1 = fs2_fromstr("A");
     fs2 v2 = fs2_fromstr("B");
     fs2 v3 = fs2_fromstr("C");
-    fs2arr_push(&a, &v1);
-    fs2arr_push(&a, &v2);
-    fs2arr_push(&a, &v3);
+    fs2arr_push_sp(&a, &v1);
+    fs2arr_push_sp(&a, &v2);
+    fs2arr_push_sp(&a, &v3);
 
     fs2 took = fs2arr_detach_new(&a, 1);
     fs2_free(&took);
@@ -949,7 +949,7 @@ Test(fs2_array, attach_bp_over_nonempty_raise) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("live");
-    fs2arr_push(&a, &v);                /* slot 0 live */
+    fs2arr_push_sp(&a, &v);                /* slot 0 live */
 
     fs2 *p = fs2_heap_fromstr("X");
 
