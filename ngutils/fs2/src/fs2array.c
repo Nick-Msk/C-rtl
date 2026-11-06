@@ -6,10 +6,11 @@
 // utilities
 
 // formatting and setup length, assumption - [0 - from) already formatted
-static inline void fs2arr_initempty(fs2array *a, size_t from, size_t to) {
-    if (to > a->sz)
+static void 
+fs2arr_initempty(fs2array *a, size_t from, size_t to) {
+    if (to > a->size)
         userraise(false, ERR_OUT_OF_RANGE, "Position %zu exceed %zu",
-            to, a->sz);
+            to, a->size);
     for (size_t i = from; i < to; i++)
         a->arr[i] = FS2EMPTY;    // we CAN'T free here!! User MUST exec preperly!
 } 
@@ -30,9 +31,9 @@ fs2 *
 fs2arr_reserve(fs2array *a, size_t need) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
 
-    if (need <= a->sz)
+    if (need <= a->size)
         return logsimpleret(a->arr, 
-            "No need to realloc %zu > %zu", a->sz, need);
+            "No need to realloc %zu > %zu", a->size, need);
 
     size_t newsz = need < FS2_MIN_ALLOC? FS2_MIN_ALLOC: need;
 
@@ -41,14 +42,14 @@ fs2arr_reserve(fs2array *a, size_t need) {
         sysraise(NULL, "fs2arr_reserve: %zu bytes overflow", newsz);
 
     newsz = calcnewsize(SIZE_POWER2, newsz);
-    size_t oldsz = a->sz;
+    size_t oldsz = a->size;
     fs2 *p = realloc(a->arr, newsz * sizeof(fs2));
     if (!p)
         sysraise(NULL, "fs2arr_reserve: cannot grow to %zu elements", 
             newsz);
 
-    a->arr = p;
-    a->sz  = newsz; // newsz >= need!!!!!
+    a->arr  = p;
+    a->size = newsz; // newsz >= need!!!!!
     fs2arr_initempty(a, oldsz, newsz); // ALL new physical slots, not [len, need)
     
     return a->arr;
@@ -64,7 +65,7 @@ fs2arr_init(size_t cnt) {
 
     fs2arr_reserve(&a, cnt);    // allocation
      
-    logsimple("Allocated %zu/%zu", a.len, a.sz);
+    logsimple("Allocated %zu/%zu", a.hwm, a.size);
     return a;
 }
 
@@ -72,12 +73,12 @@ void
 fs2arr_clean(fs2array *a) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
 
-    for (size_t i = 0; i < a->len; i++) {
+    for (size_t i = 0; i < a->hwm; i++) {
         fs2_free(a->arr + i);
         a->arr[i] = FS2EMPTY;
     }
-    logsimple("cleaned %zu elements", a->len);
-    a->len = 0UL;
+    logsimple("cleaned %zu elements", a->hwm);
+    a->hwm = 0UL;   // reset hwm
 }
 
 // NULL safe method!
@@ -89,3 +90,42 @@ fs2arr_free(fs2array *a) {
     free(a->arr);
     *a = FS2ARR();        // note - can't free(arr), can be in stack
 }
+
+ptrdiff_t
+fs2arr_find_free_pos(const fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a && a->arr, 
+        "Nullable fs2array %p", a);
+
+    for (size_t i = 0; i < a->size; i++)
+        if (fs2_is_empty(&a->arr[i]))
+            return i;
+    return -1;
+}
+
+fs2 *
+fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
+    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
+        "Null pointers %p %p", a, src);
+    if (idx >= a->size)
+        userraise(NULL, ERR_OUT_OF_RANGE, 
+            "Index %zu >= szie %zu", idx, src->sz);
+
+    a->count++;
+    fs2_move(&a->arr[idx], src);             /* value in slot, p = FS2EMPTY|(body) */
+    fs2_free(src);                           /* no-op for stack; frees struct for BODYALLOC */
+    return a->arr + idx;
+}
+
+bool
+fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
+    invfatal(ERR_NULL_INPUT, a != NULL && dst != NULL, "Null pointers");
+    invfatal(ERR_OUT_OF_RANGE, idx < a->hwm,
+             "fs2arr_detachto: idx %zu >= len %zu", idx, a->hwm);
+
+    fs2_move(dst, &a->arr[idx]);           /* slot → FS2EMPTY, dst gets value */
+
+    a->count--;
+    a->arr[a->hwm] = FS2EMPTY;
+    return true;
+}
+
