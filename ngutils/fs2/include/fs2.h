@@ -80,10 +80,13 @@ typedef enum {
 } fs2_flags;
 
 /**
- * @brief Convert a flag value to a human-readable string.
+ * @brief Convert a flag value (or combination) to a human-readable string.
  *
- * @param fl  A single flag value (exactly one bit set).
- * @return   Static string like `"FS2_ALLOC"`; `"UNKNOWN"` for compound/zero values.
+ * Handles single flags (e.g. `FS2_ALLOC`) and known combinations
+ * (e.g. `FS2_ALLOC|FS2_BODYALLOC`).
+ *
+ * @param fl  A flag value or a combination of flags.
+ * @return   Static string like `"FS2_ALLOC"`; `"UNKNOWN"` for unrecognised combinations.
  */
 static inline const char *
 fs2_flag_name(fs2_flags fl) {
@@ -378,6 +381,18 @@ fs2_prepare_growth(fs2 *restrict s, size_t need) {
     return true;
 }
 
+/**
+ * @brief Normalize a canonical-empty ALLOC (v==NULL) to FS2EMPTY.
+ *
+ * If `s->v` is already non-NULL, this is a no-op. Otherwise the value
+ * is replaced with FS2EMPTY (len=0, sz=1, v="", STATIC), preserving
+ * the BODYALLOC bit.
+ *
+ * Called internally after move/growth to ensure `s->v` is always a
+ * valid readable pointer (never NULL) in the resulting state.
+ *
+ * @param s  Non-NULL fs2.
+ */
 static inline void
 fs2_promote_empty(fs2 *s) {
     if (s->v) return;
@@ -881,11 +896,11 @@ extern fs2        *fs2_heap_movefromstr(const char **from, fs2_flags fl);
  *
  * @note        fs2_move(x, x) is a no-op that returns @p to.
  * @warning     `invfatal` if either pointer is NULL or either side is FS2LOCAL.
- * 
- * Both sides end up safe-empty if they were empty**: dst.v and src.v
- * are guaranteed readable after move (v="" not NULL), even when the
- * source was canonical FS2() (v=NULL). Canonical empty is normalized
- * to FS2EMPTY shape, preserving BODYALLOC on each side.
+ *
+ * @note        Both sides end up safe-empty if they were empty: dst.v and src.v
+ *              are guaranteed readable after move (v="" not NULL), even when the
+ *              source was canonical FS2() (v=NULL). Canonical empty is normalized
+ *              to FS2EMPTY shape, preserving BODYALLOC on each side.
  */
 extern fs2         *fs2_move(fs2 *to, fs2 *from);
 
@@ -995,7 +1010,7 @@ fs2_selfmove(fs2 *dst, size_t to, size_t from, size_t len) {
  * @param b  Second fs2. Same constraints.
  *
  * @note     fs2_exch(a, a) is a no-op.
- * @warning  `userraise` if either pointer is NULL or either side is FS2LOCAL.
+ * @warning  `invfatal` (SIGABRT) if either pointer is NULL or either side is FS2LOCAL.
  */
 void        fs2_exch(fs2 *a, fs2 *b);
 

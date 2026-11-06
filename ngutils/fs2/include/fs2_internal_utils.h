@@ -33,7 +33,6 @@ _fs2_wrap(const char *str) {
 }
 
 /**
- * 
  * @brief Wrap a not-null C-string as an fs2 view (STATIC, zero-copy).
  *
  * @param str  NUL-terminated string (non-NULL).

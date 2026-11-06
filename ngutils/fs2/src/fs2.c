@@ -163,12 +163,12 @@ fs2_fromraw(char *buf, size_t len, fs2_flags flag)
 /**
  * @brief Create a growable fs2 as a deep copy of a C string.
  *
- * Measures @p src via `strlen`, then delegates to `copymem`.
+ * Wraps @p src as a STATIC view via _fs2_wrap (NULL → FS2EMPTY),
+ * then delegates to fs2_clone for the deep copy.
  *
- * @param src  Non-NULL NUL-terminated source.
+ * @param src  NUL-terminated string, or NULL (treated as "" → returns FS2EMPTY).
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
- *
- * @warning    `invfatal` if @p src is NULL.
+ * @note       NULL is not an error — consistent with _fs2_wrap.
  */
 fs2
 fs2_fromstr (const char *src) {
@@ -359,10 +359,10 @@ fs2_heap_clone    (const fs2 *src) {
 /**
  * @brief Heap-allocate an fs2 as a deep copy of a C string.
  *
- * @param src  Non-NULL NUL-terminated source.
+ * @param src  NUL-terminated string, or NULL (treated as "" → returns
+ *             a heap-allocated empty fs2 with BODYALLOC | ALLOC).
  * @return     Heap-allocated fs2* (BODYALLOC | ALLOC) with a heap copy.
- *
- * @warning    `invraise` if @p src is NULL.
+ * @note       NULL is not an error — consistent with fs2_fromstr.
  */
 fs2 *
 fs2_heap_fromstr(const char *src) {
@@ -415,6 +415,25 @@ fs2_heap_movefromstr(const char **from, fs2_flags fl) {
     return res;
 }
 
+/**
+ * @brief Ensure capacity for at least @p need bytes (internal helper).
+ *
+ * Shared implementation behind fs2_reserve and fs2_setsize.
+ *
+ * - Prepares the fs2 for growth via fs2_prepare_growth (handles
+ *   FS2EMPTY to FS2() auto-promote, raises on NULL / non-ALLOC).
+ * - If the buffer was NULL before growth (canonical empty or freshly
+ *   promoted), NUL-terminates it after the realloc via fs2_clear.
+ *
+ * @param s             Non-NULL fs2.
+ * @param need          Desired minimum capacity in bytes (including NUL).
+ * @param useallocator  true  -- round up to next power of two (amortised).
+ *                      false -- exact resize to @p need.
+ * @return              @p s for chaining.
+ *
+ * @warning            `invfatal` if @p s is NULL or non-growable.
+ * @warning            `sysraise` (OOM) if realloc fails.
+ */
 fs2 *
 fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
     if (!fs2_prepare_growth(s, need))
@@ -430,8 +449,13 @@ fs2_sizehelper(fs2 *s, size_t need, bool useallocator) {
 /**
  * @brief Shrink the heap buffer to fit the current content exactly.
  *
- * Reallocates to len+1 bytes (minimum FS_MIN_ALLOC). No-op for
- * STATIC/LOCAL.
+ * Reallocates to exactly len+1 bytes (no FS_MIN_ALLOC floor — that
+ * applies only to growth via init=true). No-op for STATIC/LOCAL or
+ * if the buffer already fits.
+ *
+ * Note: if len+1 < FS_MIN_ALLOC, a subsequent growth will reallocate
+ * again to at least FS_MIN_ALLOC. This is the price of exact-fit
+ * shrinking — `shrink` is a hint, not a guarantee against regrowth.
  *
  * @param s  Non-NULL fs2.
  * @return   @p s for chaining.
@@ -508,16 +532,18 @@ fs2_move(fs2 *dst, fs2 *src) {
 /**
  * @brief Exchange the string values of two fs2 objects.
  *
- * Both sides must be FS2_ALLOC — exchanging with STATIC or LOCAL would
- * leave the ALLOC side pointing at a buffer it does not own (and the
- * STATIC/LOCAL side pointing at a buffer fs2_free would skip, leaking
- * it). The BODYALLOC flag of each side is preserved.
+ * Implements a three-way swap via fs2_move (ALLOC temp). Flags
+ * (STATIC / ALLOC) travel with the value, so the resulting kinds on
+ * each side swap too. The BODYALLOC flag of each side is preserved.
  *
- * @param a  First fs2. Must not be NULL, must be FS2_ALLOC.
+ * **LOCAL is forbidden** on either side — a caller-owned buffer cannot
+ * be transferred through a temp without leaking or aliasing it.
+ *
+ * @param a  First fs2. Must not be NULL, must not be FS2LOCAL.
  * @param b  Second fs2. Same constraints.
  *
  * @note     fs2_exch(a, a) is a no-op.
- * @warning  `userraise`(SIGINT) if either side is not FS2_ALLOC.
+ * @warning  `invfatal` (SIGABRT) if either pointer is NULL or either side is FS2LOCAL.
  */
 void
 fs2_exch(fs2 *a, fs2 *b)
