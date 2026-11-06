@@ -47,7 +47,7 @@ fs2arr_clean(fs2array *a);
  *       that's push territory, not reuse.
  */
 extern ptrdiff_t
-fs2arr_find_free_pos(const fs2array *a);
+fs2arr_find_tillhwm(const fs2array *a);
 
 extern fs2 *
 fs2arr_attach(fs2array *a, fs2 *src, size_t idx);
@@ -77,7 +77,7 @@ fs2arr_push(fs2array *a, fs2 *src) {
 
     if (a->hwm == a->size)
         fs2arr_reserve(a, a->hwm + 1);
-    return fs2arr_attach(a, src, a->hwm++);
+    return fs2arr_attach(a, src, a->hwm);
 }
 
 

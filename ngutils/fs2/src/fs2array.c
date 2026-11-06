@@ -91,12 +91,13 @@ fs2arr_free(fs2array *a) {
     *a = FS2ARR();        // note - can't free(arr), can be in stack
 }
 
+// search till HWM!!!
 ptrdiff_t
-fs2arr_find_free_pos(const fs2array *a) {
-    invfatal(ERR_NULL_INPUT, a && a->arr, 
-        "Nullable fs2array %p", a);
+fs2arr_find_tillhwm(const fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, 
+        "fs2array is null %p", a);
 
-    for (size_t i = 0; i < a->size; i++)
+    for (size_t i = 0; i < a->hwm; i++)
         if (fs2_is_empty(&a->arr[i]))
             return i;
     return -1;
@@ -109,6 +110,11 @@ fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
     if (idx >= a->size)
         userraise(NULL, ERR_OUT_OF_RANGE, 
             "Index %zu >= szie %zu", idx, src->sz);
+    if (!fs2_eq_empty(&a->arr[idx]))
+        userraise(NULL, ERR_OUT_OF_RANGE, 
+            " slot[%zu] not empty", idx);
+    if (idx >= a->hwm)
+        a->hwm = idx + 1;
 
     a->count++;
     fs2_move(&a->arr[idx], src);             /* value in slot, p = FS2EMPTY|(body) */
