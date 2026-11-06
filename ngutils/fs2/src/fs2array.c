@@ -78,7 +78,7 @@ fs2arr_clean(fs2array *a) {
         a->arr[i] = FS2EMPTY;
     }
     logsimple("cleaned %zu elements", a->hwm);
-    a->hwm = 0UL;   // reset hwm
+    a->hwm = a->count = 0UL;   // reset hwm and count
 }
 
 // NULL safe method!
