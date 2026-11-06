@@ -64,9 +64,26 @@ fs2arr_clean(fs2array *a);
 extern ptrdiff_t
 fs2arr_find_tillhwm(const fs2array *a);
 
+/**
+ * @brief Move @p src into slot @p idx.
+ *
+ * Source becomes FS2EMPTY-shaped after the move (via fs2_move):
+ *   - Stack / field fs2:  `*src` = FS2EMPTY, safe to fs2_free (no-op)
+ *   - Heap (BODYALLOC):   `*src` = FS2EMPTY|BODYALLOC (shell alive);
+ *                         caller must `fs2_free(src)` afterwards to
+ *                         release the shell struct (buffer is in the slot).
+ *
+ * attach does NOT free the source struct. This is symmetric with
+ * fs2_move and with fs2arr_push — caller always owns the shell.
+ *
+ * @warning Do NOT pass `&a->arr[i]` — if attach triggers realloc via
+ *          push, `src` becomes dangling.
+ */
 extern fs2 *
 fs2arr_attach(fs2array *a, fs2 *src, size_t idx);
 
+extern fs2 *
+fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
 
 /**
  * @brief Append a value to the end of the array.
@@ -93,6 +110,14 @@ fs2arr_push(fs2array *a, fs2 *src) {
     if (a->hwm == a->size)
         fs2arr_reserve(a, a->hwm + 1);
     return fs2arr_attach(a, src, a->hwm);
+}
+
+static inline fs2 *
+fs2arr_push_bp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
+    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
+    if (a->hwm == a->size)
+        fs2arr_reserve(a, a->hwm + 1);
+    return fs2arr_attach_bp(a, src, a->hwm);
 }
 
 /**

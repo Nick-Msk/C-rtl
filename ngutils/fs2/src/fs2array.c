@@ -74,6 +74,8 @@ fs2arr_clean(fs2array *a) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
 
     for (size_t i = 0; i < a->hwm; i++) {
+        if (fs2arr_is_hole(&a->arr[i]))
+            continue;  
         fs2_free(a->arr + i);
         fs2arr_set_hole(a->arr + i);
     }
@@ -107,10 +109,11 @@ fs2 *
 fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
         "Null pointers %p %p", a, src);
+
     if (idx >= a->size)
         userraise(NULL, ERR_OUT_OF_RANGE, 
-            "Index %zu >= szie %zu", idx, src->sz);
-    if (!fs2_eq_empty(&a->arr[idx]))
+            "Index %zu >= szie %zu", idx, a->size);
+    if (!fs2arr_is_hole(&a->arr[idx]))
         userraise(NULL, ERR_OUT_OF_RANGE, 
             " slot[%zu] not a null marker", idx);
     if (idx >= a->hwm)
@@ -118,7 +121,29 @@ fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
 
     a->count++;
     fs2_move(&a->arr[idx], src);             /* value in slot, p = FS2EMPTY|(body) */
-    fs2_free(src);                           /* no-op for stack; frees struct for BODYALLOC */
+    return a->arr + idx;
+}
+
+// TODO: refactor to be in common with fs2arr_attach
+fs2 *
+fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx) {
+    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
+    if (*src == NULL)
+        return NULL;
+
+    fs2 *p = *src;
+    *src = NULL;                          /* null FIRST — safe on raise */
+
+    if (idx >= a->size)
+        userraise(NULL, ERR_OUT_OF_RANGE, "idx %zu >= size %zu", idx, a->size);
+    if (!fs2arr_is_hole(&a->arr[idx]))
+        userraise(NULL, ERR_OUT_OF_RANGE, "slot[%zu] not a hole", idx);
+    if (idx >= a->hwm)
+        a->hwm = idx + 1;
+
+    a->count++;
+    fs2_move(&a->arr[idx], p);
+    fs2_free(p);                          /* frees struct if BODYALLOC, no-op otherwise */
     return a->arr + idx;
 }
 

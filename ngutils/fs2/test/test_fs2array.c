@@ -27,7 +27,7 @@ Test(fs2_array, init_5_is_capacity_not_len) {
     CHECK_EQ   ("len", 0, a.hwm);           /* NO live elements */
     CHECK_TRUE ("sz >= 5", a.size >= 5);      /* capacity for 5 */
     for (size_t i = 0; i < a.size; i++)
-        CHECK_TRUE("slot FS2EMPTY", fs2_eq_empty(&a.arr[i]));
+        CHECK_TRUE("slot FS2EMPTY", fs2arr_is_hole(&a.arr[i]));
 
     fs2arr_free(&a);
 }
@@ -48,7 +48,7 @@ Test(fs2_array, reserve_initializes_all_new_slots) {
     cr_assert_eq(a.hwm, 0);                 /* reserve never sets len */
 
     for (size_t i = 0; i < a.size; i++)
-        CHECK_TRUE("slot [i] FS2EMPTY", fs2_eq_empty(&a.arr[i]));   /* padding included */
+        CHECK_TRUE("slot [i] FS2EMPTY", fs2arr_is_hole(&a.arr[i]));   /* padding included */
     fs2arr_free(&a);
 }
 
@@ -77,7 +77,7 @@ Test(fs2_array, clean_resets_len_and_slots) {
 
     CHECK_EQ("len", 0, a.hwm);
     for (size_t i = 0; i < a.size; i++)
-        CHECK_TRUE("slot FS2EMPTY", fs2_eq_empty(&a.arr[i]));
+        CHECK_TRUE("slot FS2EMPTY", fs2arr_is_hole(&a.arr[i]));
 
     fs2arr_clean(&a);                       /* idempotent */
     CHECK_EQ("len still 0", 0, a.hwm);
@@ -121,7 +121,7 @@ Test(fs2_array, init_5_shape) {
     CHECK_TRUE ("size >= 5", a.size >= 5);
     CHECK_EQ   ("count", 0, a.count);
     for (size_t i = 0; i < a.size; i++)
-        CHECK_TRUE("slot FS2EMPTY", fs2_eq_empty(&a.arr[i]));
+        CHECK_TRUE("slot FS2EMPTY", fs2arr_is_hole(&a.arr[i]));
     fs2arr_free(&a);
 }
 
@@ -160,7 +160,7 @@ Test(fs2_array, attach_in_hole_keeps_hwm) {
     }
     /* force hole at slot[1] */
     fs2_free(&a.arr[1]);
-    a.arr[1] = FS2EMPTY;
+    fs2arr_set_hole(&a.arr[1]);
     a.count--;                              /* simulate proper bookkeeping */
     /* hwm=3, count=2, one hole */
 
@@ -189,7 +189,7 @@ Test(fs2_array, attach_beyond_hwm_extends_with_holes) {
     CHECK_EQ("count", 1, a.count);
     CHECK_STR_EQ("[5]", "X", a.arr[5].v);
     for (size_t i = 0; i < 5; i++)
-        CHECK_TRUE("hole [i]", fs2_eq_empty(&a.arr[i]));
+        CHECK_TRUE("hole [i]", fs2arr_is_hole(&a.arr[i]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -240,7 +240,7 @@ Test(fs2_array, find_free_pos_returns_first_hole) {
         fs2arr_push(&a, &v);
     }
     fs2_free(&a.arr[2]);
-    a.arr[2] = FS2EMPTY;
+    fs2arr_set_hole(&a.arr[2]);
     a.count--;
 
     CHECK_EQ("first hole", 2, fs2arr_find_tillhwm(&a));
@@ -296,6 +296,7 @@ Test(fs2_array, push_bodyalloc_slot_loses_bodyalloc) {
     /* p is dangling — struct freed, buffer moved to a.arr[0] */
 
     fs2arr_free(&a);
+    fs2_free(p);
     assert_balanced();
 }
 
@@ -320,7 +321,7 @@ Test(fs2_array, find_tillhwm_returns_first_hole) {
         fs2arr_push(&a, &v);
     }
     fs2_free(&a.arr[2]);
-    a.arr[2] = FS2EMPTY;
+    fs2arr_set_hole(&a.arr[2]);
     a.count--;
 
     CHECK_EQ("first hole", 2, fs2arr_find_tillhwm(&a));
@@ -358,7 +359,7 @@ Test(fs2_array, detachto_stack_leaves_hole) {
     CHECK_FALSE("not BODYALLOC", fs2_is_bodyalloc(&tmp));
     CHECK_EQ   ("hwm unchanged", 3, a.hwm);   /* NO shift */
     CHECK_EQ   ("count",         2, a.count);
-    CHECK_TRUE ("[1] hole", fs2_eq_empty(&a.arr[1]));
+    CHECK_TRUE ("[1] hole", fs2arr_is_hole(&a.arr[1]));
     CHECK_STR_EQ("[0]", "A", a.arr[0].v);     /* untouched */
     CHECK_STR_EQ("[2]", "C", a.arr[2].v);     /* NOT shifted */
 
@@ -386,7 +387,7 @@ Test(fs2_array, detachto_heap_dst) {
     CHECK_TRUE ("ALLOC",        fs2_is_alloc(p));
     CHECK_EQ   ("hwm unchanged", 1, a.hwm);
     CHECK_EQ   ("count",         0, a.count);
-    CHECK_TRUE ("[0] hole",     fs2_eq_empty(&a.arr[0]));
+    CHECK_TRUE ("[0] hole",     fs2arr_is_hole(&a.arr[0]));
 
     fs2_free(p);
     fs2arr_free(&a);
@@ -460,7 +461,7 @@ Test(fs2_array, detach_new_returns_stack) {
     CHECK_TRUE ("ALLOC",          fs2_is_alloc(&tmp));
     CHECK_EQ   ("hwm",            1, a.hwm);
     CHECK_EQ   ("count",          0, a.count);
-    CHECK_TRUE ("[0] hole",       fs2_eq_empty(&a.arr[0]));
+    CHECK_TRUE ("[0] hole",       fs2arr_is_hole(&a.arr[0]));
     CHECK_FS2VALID(1, &tmp);
 
     fs2_free(&tmp);
@@ -481,7 +482,7 @@ Test(fs2_array, heap_detach_returns_heap) {
     CHECK_TRUE ("BODYALLOC",    fs2_is_bodyalloc(p));
     CHECK_TRUE ("ALLOC",        fs2_is_alloc(p));
     CHECK_EQ   ("count",        0, a.count);
-    CHECK_TRUE ("[0] hole",     fs2_eq_empty(&a.arr[0]));
+    CHECK_TRUE ("[0] hole",     fs2arr_is_hole(&a.arr[0]));
     CHECK_FS2VALID(1, p);
 
     fs2_free(p);
@@ -549,6 +550,274 @@ Test(fs2_array, detach_new_invalid_idx_raises_and_no_leak) {
     }
     err_resetenv();
 
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_is_hole / set_hole — sentinel semantics
+ * ========================================================================= */
+
+Test(fs2_array, is_hole_distinguishes_empty_value_from_hole) {
+    fs2 hole = {0};                          /* flags = 0 */
+    fs2 empty_val = FS2EMPTY;                /* STATIC */
+    fs2 canon = FS2();                       /* ALLOC */
+    fs2 live = fs2_fromstr("x");             /* ALLOC */
+
+    CHECK_FALSE("FS2EMPTY",   fs2arr_is_hole(&empty_val));
+    CHECK_FALSE("FS2()",      fs2arr_is_hole(&canon));
+    CHECK_FALSE("live",       fs2arr_is_hole(&live));
+
+    CHECK_TRUE("fs2_is_empty on hole", fs2_is_empty(&hole));
+    CHECK_TRUE("fs2_is_empty on empty_val", fs2_is_empty(&empty_val));
+
+    fs2_free(&canon);
+    fs2_free(&live);
+}
+
+/* =========================================================================
+ * push empty FS2EMPTY as a live value
+ * ========================================================================= */
+
+Test(fs2_array, push_fs2empty_as_value) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 empty = FS2EMPTY;
+
+    fs2arr_push(&a, &empty);
+
+    CHECK_EQ  ("hwm",   1, a.hwm);
+    CHECK_EQ  ("count", 1, a.count);       /* live value, not hole */
+    CHECK_TRUE("slot not hole", !fs2arr_is_hole(&a.arr[0]));
+    CHECK_TRUE("slot is FS2EMPTY", fs2_eq_empty(&a.arr[0]));
+
+    /* find_tillhwm sees NO hole */
+    CHECK_EQ("no hole", -1, fs2arr_find_tillhwm(&a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_fs2_canonical_as_value) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 canon = FS2();
+
+    fs2arr_push(&a, &canon);
+
+    CHECK_EQ  ("hwm",   1, a.hwm);
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_TRUE("slot not hole", !fs2arr_is_hole(&a.arr[0]));
+    CHECK_TRUE("slot safe-empty", fs2_eq_empty(&a.arr[0]));   /* promoted by fs2_move */
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FULL CYCLE: push → detach → find hole → attach → detach
+ * ========================================================================= */
+
+Test(fs2_array, full_cycle_push_detach_attach_detach) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+
+    /* 1. push three live elements */
+    fs2 vA = fs2_fromstr("A");
+    fs2 vB = fs2_fromstr("B");
+    fs2 vC = fs2_fromstr("C");
+    fs2arr_push(&a, &vA);
+    fs2arr_push(&a, &vB);
+    fs2arr_push(&a, &vC);
+    CHECK_EQ("hwm",   3, a.hwm);
+    CHECK_EQ("count", 3, a.count);
+
+    /* 2. detach middle — creates hole */
+    fs2 taken = fs2arr_detach_new(&a, 1);
+    CHECK_STR_EQ("detached", "B", taken.v);
+    CHECK_EQ   ("hwm",   3, a.hwm);            /* unchanged */
+    CHECK_EQ   ("count", 2, a.count);
+    CHECK_TRUE ("[1] is hole", fs2arr_is_hole(&a.arr[1]));
+    fs2_free(&taken);
+
+    /* 3. find hole */
+    ptrdiff_t hole = fs2arr_find_tillhwm(&a);
+    CHECK_EQ("hole at 1", 1, hole);
+
+    /* 4. attach into hole */
+    fs2 vX = fs2_fromstr("X");
+    fs2arr_attach(&a, &vX, (size_t)hole);
+    CHECK_EQ   ("hwm still 3", 3, a.hwm);
+    CHECK_EQ   ("count",       3, a.count);
+    CHECK_TRUE ("[1] not hole", !fs2arr_is_hole(&a.arr[1]));
+    CHECK_STR_EQ("[1]",        "X", a.arr[1].v);
+
+    /* 5. detach again (same slot) */
+    fs2 taken2 = fs2arr_detach_new(&a, 1);
+    CHECK_STR_EQ("detached X", "X", taken2.v);
+    CHECK_EQ   ("count",       2, a.count);
+    CHECK_TRUE ("[1] hole again", fs2arr_is_hole(&a.arr[1]));
+    fs2_free(&taken2);
+
+    /* 6. push appends at hwm, not into hole */
+    fs2 vD = fs2_fromstr("D");
+    fs2arr_push(&a, &vD);
+    CHECK_EQ   ("hwm",   4, a.hwm);            /* hwm grew (push appends) */
+    CHECK_EQ   ("count", 3, a.count);
+    CHECK_STR_EQ("[3]", "D", a.arr[3].v);
+    CHECK_TRUE ("[1] still hole", fs2arr_is_hole(&a.arr[1]));
+
+    /* 7. final: slot[1] hole, slots 0,2,3 live */
+    CHECK_STR_EQ("[0]", "A", a.arr[0].v);
+    CHECK_STR_EQ("[2]", "C", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "D", a.arr[3].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * push empty FS2EMPTY + detach: hole distinguishable from live empty
+ * ========================================================================= */
+
+Test(fs2_array, empty_value_vs_hole_after_detach) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+
+    fs2 empty = FS2EMPTY;
+    fs2arr_push(&a, &empty);           /* live FS2EMPTY */
+    CHECK_TRUE("live empty", !fs2arr_is_hole(&a.arr[0]));
+
+    fs2 out = fs2arr_detach_new(&a, 0);
+    CHECK_TRUE("returned empty", fs2_is_empty(&out));
+    CHECK_TRUE("slot now hole",  fs2arr_is_hole(&a.arr[0]));
+    CHECK_EQ  ("count", 0, a.count);
+
+    fs2_free(&out);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * detach guard: hole cannot be detached
+ * ========================================================================= */
+
+Test(fs2_array, detach_hole_returns_false) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+
+    fs2 t1 = fs2arr_detach_new(&a, 0);
+    fs2_free(&t1);
+
+    /* slot 0 is hole now */
+    fs2 t2 = FS2();
+    cr_assert_not(fs2arr_detachto(&a, 0, &t2));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * detach_new / heap_detach cycle — pool of stack/heap values
+ * ========================================================================= */
+
+Test(fs2_array, heap_detach_then_heap_attach) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("heap");
+    fs2arr_push(&a, &v);
+
+    fs2 *p = fs2arr_heap_detach(&a, 0);
+    CHECK_STR_EQ("value", "heap", p->v);
+    CHECK_TRUE ("BODYALLOC", fs2_is_bodyalloc(p));
+    CHECK_TRUE ("[0] hole", fs2arr_is_hole(&a.arr[0]));
+
+    /* re-attach via attach (fs2 ** for auto-null) */
+    fs2arr_attach(&a, p, 0);
+    /* p is NOT nulled — shell alive, caller must free it */
+    CHECK_STR_EQ("shell empty", "", p->v);   /* FS2EMPTY after move */
+    CHECK_TRUE ("shell BODYALLOC", fs2_is_bodyalloc(p));
+    CHECK_TRUE ("shell STATIC",    fs2_is_static(p));
+    CHECK_STR_EQ("[0]", "heap", a.arr[0].v);
+    CHECK_EQ   ("count", 1, a.count);
+
+    fs2_free(p);    // !!!!!
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, detach_leaves_hole_sentinel) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+
+    fs2 t = fs2arr_detach_new(&a, 0);
+
+    CHECK_TRUE ("slot is hole",          fs2arr_is_hole(&a.arr[0]));
+    CHECK_EQ   ("flags", FS2_NULL_ARRAY_ELEMENT, a.arr[0].flags);
+    CHECK_PTR_EQ("v", NULL,              a.arr[0].v);
+    CHECK_EQ   ("len", 0,                a.arr[0].len);
+    CHECK_EQ   ("sz",  0,                a.arr[0].sz);
+
+    fs2_free(&t);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_fs2_canonical_value_is_live_not_hole) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 canon = FS2();
+    cr_assert(fs2_is_canon(&canon));
+
+    fs2arr_push(&a, &canon);
+
+    CHECK_EQ  ("hwm",   1, a.hwm);
+    CHECK_EQ  ("count", 1, a.count);       /* live! */
+    CHECK_FALSE("not hole",  fs2arr_is_hole(&a.arr[0]));
+    CHECK_TRUE ("safe-empty (promoted by fs2_move)", fs2_eq_empty(&a.arr[0]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, hole_and_fs2_canonical_distinct) {
+    fs2 canon = FS2();
+    fs2 hole;
+    fs2arr_set_hole(&hole);
+
+    CHECK_TRUE ("canon is canon",  fs2_is_canon(&canon));
+    CHECK_TRUE ("hole is hole",    fs2arr_is_hole(&hole));
+    CHECK_FALSE("canon not hole",  fs2arr_is_hole(&canon));
+    CHECK_FALSE("hole not canon",  fs2_is_canon(&hole));
+
+    CHECK_EQ("canon.flags = ALLOC",          FS2_ALLOC,              canon.flags);
+    CHECK_EQ("hole.flags = NULL_ARRAY_ELEMENT", FS2_NULL_ARRAY_ELEMENT, hole.flags);
+
+    fs2_free(&canon);
+    /* hole: fs2_free no-op, safe */
+    fs2_free(&hole);
+}
+
+Test(fs2_array, attach_stack_source_symmetric_with_heap) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 v = fs2_fromstr("stack");
+
+    fs2arr_attach(&a, &v, 0);
+    /* v → FS2EMPTY (STATIC), safe */
+    CHECK_TRUE ("v FS2EMPTY",     fs2_eq_empty(&v));
+    CHECK_FALSE("v not ALLOC",    fs2_is_alloc(&v));
+    CHECK_EQ   ("v len",          0, v.len);
+    /* v is a valid FS2EMPTY, caller can fs2_free(&v) — no-op */
+
+    CHECK_STR_EQ("[0]", "stack", a.arr[0].v);
+    CHECK_EQ   ("count", 1, a.count);
+
+    fs2_free(&v);                 /* no-op */
     fs2arr_free(&a);
     assert_balanced();
 }
