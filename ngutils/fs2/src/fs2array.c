@@ -106,7 +106,7 @@ fs2arr_find_tillhwm(const fs2array *a) {
 }
 
 fs2 *
-fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
+fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
         "Null pointers %p %p", a, src);
 
@@ -124,7 +124,7 @@ fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
     return a->arr + idx;
 }
 
-// TODO: refactor to be in common with fs2arr_attach
+// TODO: refactor to be in common with fs2arr_attach_sp
 fs2 *
 fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");

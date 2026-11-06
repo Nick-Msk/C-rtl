@@ -165,7 +165,7 @@ Test(fs2_array, attach_in_hole_keeps_hwm) {
     /* hwm=3, count=2, one hole */
 
     fs2 v = fs2_fromstr("fill");
-    fs2arr_attach(&a, &v, 1);
+    fs2arr_attach_sp(&a, &v, 1);
 
     CHECK_EQ  ("hwm unchanged",   3, a.hwm);
     CHECK_EQ  ("count restored",  3, a.count);
@@ -183,7 +183,7 @@ Test(fs2_array, attach_beyond_hwm_extends_with_holes) {
     /* start empty */
 
     fs2 v = fs2_fromstr("X");
-    fs2arr_attach(&a, &v, 5);               /* hwm = 6, count = 1, slots 0-4 holes */
+    fs2arr_attach_sp(&a, &v, 5);               /* hwm = 6, count = 1, slots 0-4 holes */
 
     CHECK_EQ("hwm",   6, a.hwm);
     CHECK_EQ("count", 1, a.count);
@@ -203,7 +203,7 @@ Test(fs2_array, attach_over_nonempty_raise, .signal = SIGINT) {
     fs2arr_push(&a, &v);                    /* slot[0] live */
 
     fs2 w = fs2_fromstr("x");
-    fs2arr_attach(&a, &w, 0);               /* slot[0] not empty → userraise */
+    fs2arr_attach_sp(&a, &w, 0);               /* slot[0] not empty → userraise */
     fs2_free(&w);
     fs2arr_free(&a);
 }
@@ -213,7 +213,7 @@ Test(fs2_array, attach_over_nonempty_raise, .signal = SIGINT) {
 Test(fs2_array, attach_idx_ge_size_raise, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);            /* size >= 4 */
     fs2 v = fs2_fromstr("x");               /* src->sz may be 16 */
-    fs2arr_attach(&a, &v, 100);             /* 100 >= a->size → userraise */
+    fs2arr_attach_sp(&a, &v, 100);             /* 100 >= a->size → userraise */
     fs2_free(&v);
     fs2arr_free(&a);
 }
@@ -509,7 +509,7 @@ Test(fs2_array, detach_then_attach_reuses_hole) {
     cr_assert_eq(hole, 1);
 
     fs2 v = fs2_fromstr("fill");
-    fs2arr_attach(&a, &v, (size_t)hole);
+    fs2arr_attach_sp(&a, &v, (size_t)hole);
 
     CHECK_EQ  ("hwm unchanged", 3, a.hwm);
     CHECK_EQ  ("count",         3, a.count);
@@ -646,7 +646,7 @@ Test(fs2_array, full_cycle_push_detach_attach_detach) {
 
     /* 4. attach into hole */
     fs2 vX = fs2_fromstr("X");
-    fs2arr_attach(&a, &vX, (size_t)hole);
+    fs2arr_attach_sp(&a, &vX, (size_t)hole);
     CHECK_EQ   ("hwm still 3", 3, a.hwm);
     CHECK_EQ   ("count",       3, a.count);
     CHECK_TRUE ("[1] not hole", !fs2arr_is_hole(&a.arr[1]));
@@ -735,7 +735,7 @@ Test(fs2_array, heap_detach_then_heap_attach) {
     CHECK_TRUE ("[0] hole", fs2arr_is_hole(&a.arr[0]));
 
     /* re-attach via attach (fs2 ** for auto-null) */
-    fs2arr_attach(&a, p, 0);
+    fs2arr_attach_sp(&a, p, 0);
     /* p is NOT nulled — shell alive, caller must free it */
     CHECK_STR_EQ("shell empty", "", p->v);   /* FS2EMPTY after move */
     CHECK_TRUE ("shell BODYALLOC", fs2_is_bodyalloc(p));
@@ -807,7 +807,7 @@ Test(fs2_array, attach_stack_source_symmetric_with_heap) {
     fs2array a = fs2arr_init(2);
     fs2 v = fs2_fromstr("stack");
 
-    fs2arr_attach(&a, &v, 0);
+    fs2arr_attach_sp(&a, &v, 0);
     /* v → FS2EMPTY (STATIC), safe */
     CHECK_TRUE ("v FS2EMPTY",     fs2_eq_empty(&v));
     CHECK_FALSE("v not ALLOC",    fs2_is_alloc(&v));

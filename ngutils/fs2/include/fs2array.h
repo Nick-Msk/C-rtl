@@ -80,8 +80,17 @@ fs2arr_find_tillhwm(const fs2array *a);
  *          push, `src` becomes dangling.
  */
 extern fs2 *
-fs2arr_attach(fs2array *a, fs2 *src, size_t idx);
+fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx);
 
+/**
+ * @brief Move @p *src into slot @p idx (double-pointer — heap, auto-null).
+ *
+ * Validation runs BEFORE nulling, so on `userraise` (bad idx / non-hole
+ * slot) `*src` is preserved. On success: `*src = NULL`, struct freed if
+ * BODYALLOC.
+ *
+ * @warning `invfatal` (SIGABRT) if a/src NULL.
+ */
 extern fs2 *
 fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
 
@@ -97,7 +106,7 @@ fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
  *
  * @note For BODYALLOC sources, the caller owns the shell afterwards and
  *       must call `fs2_free(val)` (frees just the struct; buffer already
- *       moved into the array). Use `fs2arr_attach(&a, &p)` for automatic
+ *       moved into the array). Use `fs2arr_attach_sp(&a, &p)` for automatic
  *       shell cleanup + pointer nulling.
  * @note Do not pass `&a->arr[i]` — if `push` triggers realloc, `val`
  *       becomes dangling.
@@ -109,7 +118,7 @@ fs2arr_push(fs2array *a, fs2 *src) {
 
     if (a->hwm == a->size)
         fs2arr_reserve(a, a->hwm + 1);
-    return fs2arr_attach(a, src, a->hwm);
+    return fs2arr_attach_sp(a, src, a->hwm);
 }
 
 static inline fs2 *
@@ -125,7 +134,7 @@ fs2arr_push_bp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
  *
  * Slot @p idx becomes FS2EMPTY (hole in [0, hwm)). No shift, no compaction.
  * `hwm` unchanged, `count` decremented. The hole can be reused later by
- * `fs2arr_attach(a, val, idx)` or found by `fs2arr_find_tillhwm`.
+ * `fs2arr_attach_sp(a, val, idx)` or found by `fs2arr_find_tillhwm`.
  *
  * @param a    Non-NULL fs2array.
  * @param idx  Slot index, 0 <= idx < a->hwm.
