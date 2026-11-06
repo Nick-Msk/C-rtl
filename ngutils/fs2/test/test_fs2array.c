@@ -972,3 +972,89 @@ Test(fs2_array, attach_bp_over_nonempty_raise) {
     /* assert_balanced will FAIL if struct leaked — that's a real bug. */
     /* assert_balanced(); */
 }
+
+/* =========================================================================
+ * push_bp — heap source, append at hwm, auto-null
+ * ========================================================================= */
+
+Test(fs2_array, push_bp_heap_appends_and_nulls) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 *p = fs2_heap_fromstr("heap");
+
+    fs2 *slot = fs2arr_push_bp(&a, &p);
+
+    CHECK_PTR_EQ("slot",         &a.arr[0], slot);
+    CHECK_PTR_EQ("p nulled",     NULL, p);
+    CHECK_STR_EQ("[0]",          "heap", a.arr[0].v);
+    CHECK_FALSE("slot not shell", fs2_is_bodyalloc(&a.arr[0]));
+    CHECK_EQ   ("hwm",           1, a.hwm);
+    CHECK_EQ   ("count",         1, a.count);
+
+    /* No fs2_free(p) — struct freed by _bp */
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_bp_sequential_extends_hwm) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(0);              /* start empty, forces reserve */
+
+    for (int i = 0; i < 5; i++) {
+        fs2 *p = fs2_heap_from(i);
+        fs2arr_push_bp(&a, &p);
+        CHECK_PTR_EQ("nulled", NULL, p);
+        CHECK_EQ("hwm",   (size_t)(i + 1), a.hwm);
+        CHECK_EQ("count", (size_t)(i + 1), a.count);
+    }
+    CHECK_TRUE("size >= 5", a.size >= 5);
+    CHECK_STR_EQ("[0]", "0", a.arr[0].v);
+    CHECK_STR_EQ("[4]", "4", a.arr[4].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_bp_null_src_returns_null) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 *p = NULL;
+
+    fs2 *slot = fs2arr_push_bp(&a, &p);
+
+    CHECK_PTR_EQ("return NULL",    NULL, slot);
+    CHECK_EQ   ("hwm unchanged",   0, a.hwm);
+    CHECK_EQ   ("count unchanged", 0, a.count);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_bp_stack_source_also_works) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2  v = fs2_fromstr("stack");
+    fs2 *p = &v;
+
+    fs2arr_push_bp(&a, &p);
+
+    CHECK_PTR_EQ("p nulled",   NULL, p);
+    CHECK_STR_EQ("[0]", "stack", a.arr[0].v);
+    CHECK_TRUE ("v FS2EMPTY",  fs2_eq_empty(&v));   /* fs2_move normalized v */
+
+    fs2_free(&v);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, push_bp_null_arr_aborts, .signal = SIGABRT) {
+    fs2 *p = fs2_heap_fromstr("x");
+    fs2arr_push_bp(NULL, &p);
+    fs2_free(p);
+}
+
+Test(fs2_array, push_bp_null_src_ptr_aborts, .signal = SIGABRT) {
+    fs2array a = fs2arr_init(4);
+    fs2arr_push_bp(&a, NULL);
+    fs2arr_free(&a);
+}
