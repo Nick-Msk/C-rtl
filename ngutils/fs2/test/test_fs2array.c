@@ -197,7 +197,7 @@ Test(fs2_array, attach_beyond_hwm_extends_with_holes) {
 
 /* ---- attach to non-empty slot: SIGINT ---- */
 
-Test(fs2_array, attach_over_nonempty_aborts, .signal = SIGINT) {
+Test(fs2_array, attach_over_nonempty_raise, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("live");
     fs2arr_push(&a, &v);                    /* slot[0] live */
@@ -210,7 +210,7 @@ Test(fs2_array, attach_over_nonempty_aborts, .signal = SIGINT) {
 
 /* ---- attach idx >= size: SIGINT (not src->sz) ---- */
 
-Test(fs2_array, attach_idx_ge_size_aborts, .signal = SIGINT) {
+Test(fs2_array, attach_idx_ge_size_raise, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);            /* size >= 4 */
     fs2 v = fs2_fromstr("x");               /* src->sz may be 16 */
     fs2arr_attach(&a, &v, 100);             /* 100 >= a->size → userraise */
