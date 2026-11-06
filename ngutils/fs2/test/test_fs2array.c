@@ -957,10 +957,7 @@ Test(fs2_array, attach_bp_over_nonempty_raise) {
         fs2arr_attach_dp(&a, &p, 0);    /* slot not hole → raise */
         cr_assert_fail("expected raise");
     } else {
-        /* caught — p nulled first, struct freed in wrapper? no: wrapper
-         * nulls first, then calls attach which raises before fs2_free.
-         * So the STRUCT leaked → we own *p still. p is NULL though
-         * (nulled at entry). Let's check the leak after free-a. */
+        fs2_free(p); 
     }
     err_resetenv();
 
