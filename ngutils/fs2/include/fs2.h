@@ -67,6 +67,8 @@ extern const char           *fs2_version(void);
  */
 extern const char    *const *fs2_versions(void);
 
+static const size_t             FS_MIN_ALLOC = 16;
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Flags
  * ───────────────────────────────────────────────────────────────────────── */

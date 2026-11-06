@@ -20,8 +20,6 @@ static const char *const        versions[] = {
     NULL 
 };
 
-static const size_t             FS_MIN_ALLOC            = 16;
-
 /**
  * @brief Return a NULL-terminated array of version strings.
  *
