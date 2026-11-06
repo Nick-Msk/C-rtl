@@ -195,25 +195,25 @@ Test(fs2_array, attach_beyond_hwm_extends_with_holes) {
     assert_balanced();
 }
 
-/* ---- attach to non-empty slot: SIGABRT ---- */
+/* ---- attach to non-empty slot: SIGINT ---- */
 
-Test(fs2_array, attach_over_nonempty_aborts, .signal = SIGABRT) {
+Test(fs2_array, attach_over_nonempty_aborts, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("live");
     fs2arr_push(&a, &v);                    /* slot[0] live */
 
     fs2 w = fs2_fromstr("x");
-    fs2arr_attach(&a, &w, 0);               /* slot[0] not empty → abort */
+    fs2arr_attach(&a, &w, 0);               /* slot[0] not empty → userraise */
     fs2_free(&w);
     fs2arr_free(&a);
 }
 
-/* ---- attach idx >= size: SIGABRT (not src->sz) ---- */
+/* ---- attach idx >= size: SIGINT (not src->sz) ---- */
 
-Test(fs2_array, attach_idx_ge_size_aborts, .signal = SIGABRT) {
+Test(fs2_array, attach_idx_ge_size_aborts, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);            /* size >= 4 */
     fs2 v = fs2_fromstr("x");               /* src->sz may be 16 */
-    fs2arr_attach(&a, &v, 100);             /* 100 >= a->size → abort */
+    fs2arr_attach(&a, &v, 100);             /* 100 >= a->size → userraise */
     fs2_free(&v);
     fs2arr_free(&a);
 }
