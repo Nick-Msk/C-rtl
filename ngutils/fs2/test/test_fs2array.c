@@ -337,3 +337,218 @@ Test(fs2_array, find_tillhwm_empty_returns_neg1) {
 Test(fs2_array, find_tillhwm_null_aborts, .signal = SIGABRT) {
     fs2arr_find_tillhwm(NULL);
 }
+
+/* ---- detachto: stack dst, leaves hole ---- */
+
+Test(fs2_array, detachto_stack_leaves_hole) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v1 = fs2_fromstr("A");
+    fs2 v2 = fs2_fromstr("B");
+    fs2 v3 = fs2_fromstr("C");
+    fs2arr_push(&a, &v1);
+    fs2arr_push(&a, &v2);
+    fs2arr_push(&a, &v3);
+    /* hwm=3, count=3 */
+
+    fs2 tmp = FS2();
+    fs2arr_detachto(&a, 1, &tmp);
+
+    CHECK_STR_EQ("detached", "B", tmp.v);
+    CHECK_FALSE("not BODYALLOC", fs2_is_bodyalloc(&tmp));
+    CHECK_EQ   ("hwm unchanged", 3, a.hwm);   /* NO shift */
+    CHECK_EQ   ("count",         2, a.count);
+    CHECK_TRUE ("[1] hole", fs2_eq_empty(&a.arr[1]));
+    CHECK_STR_EQ("[0]", "A", a.arr[0].v);     /* untouched */
+    CHECK_STR_EQ("[2]", "C", a.arr[2].v);     /* NOT shifted */
+
+    /* find_tillhwm detects the hole */
+    CHECK_EQ("first hole", 1, fs2arr_find_tillhwm(&a));
+
+    fs2_free(&tmp);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- detachto: heap dst ---- */
+
+Test(fs2_array, detachto_heap_dst) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("X");
+    fs2arr_push(&a, &v);
+
+    fs2 *p = fs2_heap();
+    fs2arr_detachto(&a, 0, p);
+
+    CHECK_STR_EQ("value",       "X", p->v);
+    CHECK_TRUE ("BODYALLOC",    fs2_is_bodyalloc(p));
+    CHECK_TRUE ("ALLOC",        fs2_is_alloc(p));
+    CHECK_EQ   ("hwm unchanged", 1, a.hwm);
+    CHECK_EQ   ("count",         0, a.count);
+    CHECK_TRUE ("[0] hole",     fs2_eq_empty(&a.arr[0]));
+
+    fs2_free(p);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- detachto into dst with existing buffer ---- */
+
+Test(fs2_array, detachto_into_dst_with_old_content) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 v = fs2_fromstr("new");
+    fs2arr_push(&a, &v);
+
+    fs2 tmp = fs2_fromstr("old");        /* own ALLOC buffer */
+    fs2arr_detachto(&a, 0, &tmp);
+
+    CHECK_STR_EQ("replaced", "new", tmp.v);   /* old buffer freed by fs2_move */
+    CHECK_FS2VALID(1, &tmp);
+
+    fs2_free(&tmp);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- detachto guards ---- */
+
+Test(fs2_array, detachto_idx_ge_hwm_returns_false) {
+    fs2array a = fs2arr_init(16);
+    fs2 tmp = FS2();
+    cr_assert_not(fs2arr_detachto(&a, 0, &tmp));   /* hwm=0 */
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, detachto_already_empty_returns_false) {
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("live");
+    fs2arr_push(&a, &v);
+    fs2 tmp1 = FS2();
+    cr_assert(fs2arr_detachto(&a, 0, &tmp1));
+    fs2_free(&tmp1);
+
+    fs2 tmp2 = FS2();
+    cr_assert_not(fs2arr_detachto(&a, 0, &tmp2));  /* already empty */
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, detachto_null_dst_aborts, .signal = SIGABRT) {
+    fs2array a = fs2arr_init(4);
+    fs2arr_detachto(&a, 0, NULL);
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, detachto_null_arr_aborts, .signal = SIGABRT) {
+    fs2 tmp = FS2();
+    fs2arr_detachto(NULL, 0, &tmp);
+}
+
+/* ---- detach_new / heap_detach wrappers ---- */
+
+Test(fs2_array, detach_new_returns_stack) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("val");
+    fs2arr_push(&a, &v);
+
+    fs2 tmp = fs2arr_detach_new(&a, 0);
+
+    CHECK_STR_EQ("value",         "val", tmp.v);
+    CHECK_FALSE("not BODYALLOC",  fs2_is_bodyalloc(&tmp));
+    CHECK_TRUE ("ALLOC",          fs2_is_alloc(&tmp));
+    CHECK_EQ   ("hwm",            1, a.hwm);
+    CHECK_EQ   ("count",          0, a.count);
+    CHECK_TRUE ("[0] hole",       fs2_eq_empty(&a.arr[0]));
+    CHECK_FS2VALID(1, &tmp);
+
+    fs2_free(&tmp);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, heap_detach_returns_heap) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("val");
+    fs2arr_push(&a, &v);
+
+    fs2 *p = fs2arr_heap_detach(&a, 0);
+
+    cr_assert_not_null(p);
+    CHECK_STR_EQ("value",       "val", p->v);
+    CHECK_TRUE ("BODYALLOC",    fs2_is_bodyalloc(p));
+    CHECK_TRUE ("ALLOC",        fs2_is_alloc(p));
+    CHECK_EQ   ("count",        0, a.count);
+    CHECK_TRUE ("[0] hole",     fs2_eq_empty(&a.arr[0]));
+    CHECK_FS2VALID(1, p);
+
+    fs2_free(p);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- detach then attach reuses the hole (pool cycle) ---- */
+
+Test(fs2_array, detach_then_attach_reuses_hole) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    /* hwm=3, count=3 */
+
+    fs2 tmp = fs2arr_detach_new(&a, 1);
+    fs2_free(&tmp);
+    /* hwm=3, count=2, hole@1 */
+
+    ptrdiff_t hole = fs2arr_find_tillhwm(&a);
+    cr_assert_eq(hole, 1);
+
+    fs2 v = fs2_fromstr("fill");
+    fs2arr_attach(&a, &v, (size_t)hole);
+
+    CHECK_EQ  ("hwm unchanged", 3, a.hwm);
+    CHECK_EQ  ("count",         3, a.count);
+    CHECK_STR_EQ("[1]", "fill", a.arr[1].v);
+    CHECK_EQ  ("no holes", -1, fs2arr_find_tillhwm(&a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, heap_detach_invalid_idx_raises_and_no_leak) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);           /* hwm=0 */
+
+    TRY() {
+        fs2 *p = fs2arr_heap_detach(&a, 0);   /* detachto false → raise */
+        (void)p;
+        cr_assert_fail("expected raise");
+    } else {
+        /* caught — p struct was freed by fs2_free in wrapper */
+    }
+    err_resetenv();
+
+    fs2arr_free(&a);
+    assert_balanced();                     /* leak-detected: 0 mismatch */
+}
+
+Test(fs2_array, detach_new_invalid_idx_raises_and_no_leak) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+
+    TRY() {
+        fs2 tmp = fs2arr_detach_new(&a, 0);
+        (void)tmp;
+        cr_assert_fail("expected raise");
+    } else {
+        /* caught — tmp was FS2(), nothing to free (fs2_free is no-op) */
+    }
+    err_resetenv();
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
