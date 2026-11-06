@@ -131,13 +131,15 @@ fs2arr_attach_bp(fs2array *a, fs2 **src, size_t idx) {
     if (*src == NULL)
         return NULL;
 
-    fs2 *p = *src;
-    *src = NULL;                          /* null FIRST — safe on raise */
-
+    /* Pre-validate so null-first is safe: no raise AFTER nulling. */
     if (idx >= a->size)
         userraise(NULL, ERR_OUT_OF_RANGE, "idx %zu >= size %zu", idx, a->size);
     if (!fs2arr_is_hole(&a->arr[idx]))
         userraise(NULL, ERR_OUT_OF_RANGE, "slot[%zu] not a hole", idx);
+
+    fs2 *p = *src;
+    *src = NULL;                          /* null FIRST — safe on raise */
+
     if (idx >= a->hwm)
         a->hwm = idx + 1;
 
