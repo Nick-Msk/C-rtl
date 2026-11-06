@@ -145,6 +145,12 @@ fs2arr_push_bp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
     return fs2arr_attach_bp(a, src, a->hwm);
 }
 
+#define fs2arr_push(a, src)                                               \
+    _Generic((src),                                                       \
+        fs2  *:  fs2arr_push_sp,                                          \
+        fs2 **:  fs2arr_push_dp                                           \
+    )((a), (src))
+
 /**
  * @brief Move element @p idx out into @p dst, leaving a hole.
  *
