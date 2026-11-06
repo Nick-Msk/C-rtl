@@ -12,7 +12,7 @@ fs2arr_initempty(fs2array *a, size_t from, size_t to) {
         userraise(false, ERR_OUT_OF_RANGE, "Position %zu exceed %zu",
             to, a->size);
     for (size_t i = from; i < to; i++)
-        a->arr[i] = FS2EMPTY;    // we CAN'T free here!! User MUST exec preperly!
+        fs2arr_set_hole(&a->arr[i]);   // we CAN'T free here!! User MUST exec preperly!
 } 
 
 /**
@@ -75,7 +75,7 @@ fs2arr_clean(fs2array *a) {
 
     for (size_t i = 0; i < a->hwm; i++) {
         fs2_free(a->arr + i);
-        a->arr[i] = FS2EMPTY;
+        fs2arr_set_hole(a->arr + i);
     }
     logsimple("cleaned %zu elements", a->hwm);
     a->hwm = a->count = 0UL;   // reset hwm and count
@@ -98,7 +98,7 @@ fs2arr_find_tillhwm(const fs2array *a) {
         "fs2array is null %p", a);
 
     for (size_t i = 0; i < a->hwm; i++)
-        if (fs2_is_empty(&a->arr[i]))
+        if (fs2arr_is_hole(&a->arr[i]))
             return i;
     return -1;
 }
@@ -112,7 +112,7 @@ fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
             "Index %zu >= szie %zu", idx, src->sz);
     if (!fs2_eq_empty(&a->arr[idx]))
         userraise(NULL, ERR_OUT_OF_RANGE, 
-            " slot[%zu] not empty", idx);
+            " slot[%zu] not a null marker", idx);
     if (idx >= a->hwm)
         a->hwm = idx + 1;
 
@@ -131,11 +131,12 @@ fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
         return logsimpleerr(false,
             "fs2arr_detachto: idx %zu >= hwm %zu", idx, a->hwm);
 
-    if (fs2_is_empty(&a->arr[idx]))
+    if (fs2arr_is_hole(&a->arr[idx]))
         return logsimpleerr(false, 
             "fs2arr_detachto: slot[%zu] is already empty", idx);
 
     fs2_move(dst, &a->arr[idx]);        // slot → FS2EMPTY, dst gets value 
+    fs2arr_set_hole(&a->arr[idx]);
     a->count--;                          // hwm unchanged, hole stays
     return true;
 }

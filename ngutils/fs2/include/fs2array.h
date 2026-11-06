@@ -13,6 +13,21 @@ typedef struct fs2array {
 /** Canonical empty fs2array (no allocation). */
 #define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
 
+/* A hole slot has FS2_NULL_ARRAY_ELEMENT set and nothing else.
+ * Never produced by fs2 constructors; only by fs2arr operations. */
+static inline bool
+fs2arr_is_hole(const fs2 *slot) {
+    return slot->flags == FS2_NULL_ARRAY_ELEMENT;
+}
+
+static inline void
+fs2arr_set_hole(fs2 *slot) {
+    slot->len   = 0;
+    slot->sz    = 0;
+    slot->flags = FS2_NULL_ARRAY_ELEMENT;
+    slot->v     = NULL;
+}
+
 /**
  * @brief Allocate an fs2array with capacity for @p cnt elements.
  *
