@@ -124,14 +124,18 @@ fs2arr_attach(fs2array *a, fs2 *src, size_t idx) {
 
 bool
 fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
-    invfatal(ERR_NULL_INPUT, a != NULL && dst != NULL, "Null pointers");
-    invfatal(ERR_OUT_OF_RANGE, idx < a->hwm,
-             "fs2arr_detachto: idx %zu >= len %zu", idx, a->hwm);
+    invfatal(ERR_NULL_INPUT, a != NULL && dst != NULL, 
+             "Null pointers %p %p", a, dst);
 
-    fs2_move(dst, &a->arr[idx]);           /* slot → FS2EMPTY, dst gets value */
+    if (idx >= a->hwm)
+        return logsimpleerr(false,
+            "fs2arr_detachto: idx %zu >= hwm %zu", idx, a->hwm);
 
-    a->count--;
-    a->arr[a->hwm] = FS2EMPTY;
+    if (fs2_is_empty(&a->arr[idx]))
+        return logsimpleerr(false, 
+            "fs2arr_detachto: slot[%zu] is already empty", idx);
+
+    fs2_move(dst, &a->arr[idx]);        // slot → FS2EMPTY, dst gets value 
+    a->count--;                          // hwm unchanged, hole stays
     return true;
 }
-
