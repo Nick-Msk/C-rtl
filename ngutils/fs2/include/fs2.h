@@ -74,11 +74,12 @@ static const size_t             FS2_MIN_ALLOC = 16;
  * ───────────────────────────────────────────────────────────────────────── */
 
 typedef enum {
-    FS2_CONST     = 0x01,   /**< Reserved.                              */
-    FS2_STATIC    = 0x02,   /**< v is external, read-only; not owned, not freed, not growable. */
-    FS2_LOCAL     = 0x04,   /**< v is caller-owned writable buffer.     */
-    FS2_ALLOC     = 0x08,   /**< v is heap-owned; growable via realloc. */
-    FS2_BODYALLOC = 0x10,   /**< the struct itself is heap-allocated.   */
+    FS2_CONST               = 0x01,   /**< Reserved.                              */
+    FS2_STATIC              = 0x02,   /**< v is external, read-only; not owned, not freed, not growable. */
+    FS2_LOCAL               = 0x04,   /**< v is caller-owned writable buffer.     */
+    FS2_ALLOC               = 0x08,   /**< v is heap-owned; growable via realloc. */
+    FS2_BODYALLOC           = 0x10,   /**< the struct itself is heap-allocated.   */
+    FS2_NULL_ARRAY_ELEMENT  = 0x100   /**< ← hole in fs2array; never set by fs2 itself  */
 } fs2_flags;
 
 /**
@@ -101,6 +102,7 @@ fs2_flag_name(fs2_flags fl) {
         case FS2_ALLOC | FS2_BODYALLOC:     return "FS2_ALLOC|FS2_BODYALLOC";
         case FS2_STATIC | FS2_BODYALLOC:    return "FS2_STATIC|FS2_BODYALLOC";
         case FS2_LOCAL | FS2_BODYALLOC:     return "FS2_LOCAL|FS2_BODYALLOC";
+        case FS2_NULL_ARRAY_ELEMENT:        return "FS2_NULL_ARRAY_ELEMENT";
         default:                            return "UNKNOWN";
     }
 }
@@ -681,7 +683,8 @@ fs2_init(size_t sz) {
  * @return     fs2 value (ALLOC) with a heap copy of @p src.
  * @note NULL is not an error — consistent with _fs2_wrap.
  */
-extern fs2         fs2_fromstr(const char *src);
+extern fs2         
+fs2_fromstr(const char *src);
 
 /**
  * @brief Create a growable fs2 via printf-style formatting.
@@ -691,7 +694,8 @@ extern fs2         fs2_fromstr(const char *src);
  * @return     fs2 value (ALLOC) containing the formatted result.
  * 
  */
-extern fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+extern fs2         
+fs2_fromstrf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /**
  * @brief Deep-copy any fs2 into a new growable one.
@@ -703,7 +707,8 @@ extern fs2         fs2_fromstrf(const char *fmt, ...) __attribute__((format(prin
  * @return     fs2 value (ALLOC) with a heap copy of the source content.
  * @warning    `invraise` if @p src is NULL.
  */
-extern fs2         fs2_clone   (const fs2 *src);
+extern fs2         
+fs2_clone   (const fs2 *src);
 
 /**
  * @brief Steal the buffer from @p src into a new stack fs2.
@@ -716,7 +721,8 @@ extern fs2         fs2_clone   (const fs2 *src);
  * @return     fs2 value that now owns the former src buffer.
  * @warning    `invraise` if @p src is NULL or FS2LOCAL.
  */
-extern fs2         fs2_movefrom(fs2 *src);
+extern fs2         
+fs2_movefrom(fs2 *src);
 
 /**
  * @brief Low-level constructor: build an fs2 from a raw pointer (internal).
