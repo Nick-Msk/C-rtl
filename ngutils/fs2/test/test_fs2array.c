@@ -18,8 +18,8 @@ TestSuite(fs2_array, .init = test_setup, .fini = test_teardown);
 Test(fs2_array, init_zero_canonical) {
     fs2array a = fs2arr_init(0);
     CHECK_PTR_EQ("arr", NULL, a.arr);
-    CHECK_EQ   ("len", 0, a.len);
-    CHECK_EQ   ("sz",  0, a.sz);
+    CHECK_EQ   ("len", 0, a.hwm);
+    CHECK_EQ   ("sz",  0, a.size);
     fs2arr_free(&a);
 }
 
@@ -27,9 +27,9 @@ Test(fs2_array, init_5_is_capacity_not_len) {
     fs2array a = fs2arr_init(5);
 
     CHECK_NOT_NULL("arr", a.arr);
-    CHECK_EQ   ("len", 0, a.len);           /* NO live elements */
-    CHECK_TRUE ("sz >= 5", a.sz >= 5);      /* capacity for 5 */
-    for (size_t i = 0; i < a.sz; i++)
+    CHECK_EQ   ("len", 0, a.hwm);           /* NO live elements */
+    CHECK_TRUE ("sz >= 5", a.size >= 5);      /* capacity for 5 */
+    for (size_t i = 0; i < a.size; i++)
         CHECK_TRUE("slot FS2EMPTY", fs2_eq_empty(&a.arr[i]));
 
     fs2arr_free(&a);
@@ -38,8 +38,8 @@ Test(fs2_array, init_5_is_capacity_not_len) {
 Test(fs2_array, reserve_does_not_touch_len) {
     fs2array a = fs2arr_init(0);
     fs2arr_reserve(&a, 100);
-    CHECK_EQ   ("len", 0, a.len);           /* still 0 */
-    CHECK_TRUE ("sz >= 100", a.sz >= 100);
+    CHECK_EQ   ("len", 0, a.hwm);           /* still 0 */
+    CHECK_TRUE ("sz >= 100", a.size >= 100);
     fs2arr_free(&a);
 }
 
@@ -47,10 +47,10 @@ Test(fs2_array, reserve_initializes_all_new_slots) {
     fs2array a = fs2arr_init(0);
     fs2arr_reserve(&a, 5);                  /* need=5, newsz=16 (floor) */
 
-    cr_assert(a.sz >= 5, "sz=%zu", a.sz);   /* contract, not implementation */
-    cr_assert_eq(a.len, 0);                 /* reserve never sets len */
-    
-    for (size_t i = 0; i < a.sz; i++)
+    cr_assert(a.size >= 5, "sz=%zu", a.size);   /* contract, not implementation */
+    cr_assert_eq(a.hwm, 0);                 /* reserve never sets len */
+
+    for (size_t i = 0; i < a.size; i++)
         CHECK_TRUE("slot [i] FS2EMPTY", fs2_eq_empty(&a.arr[i]));   /* padding included */
     fs2arr_free(&a);
 }
@@ -58,13 +58,13 @@ Test(fs2_array, reserve_initializes_all_new_slots) {
 Test(fs2_array, reserve_noop_when_enough) {
     fs2array a = fs2arr_init(16);
     fs2     *orig = a.arr;
-    size_t   cap  = a.sz;
-    a.len = 3;                              /* simulate some live elements */
+    size_t   cap  = a.size;
+    a.hwm = 3;                              /* simulate some live elements */
 
     fs2arr_reserve(&a, 10);
     CHECK_PTR_EQ("arr unchanged", orig, a.arr);
-    CHECK_EQ   ("sz unchanged",   cap,  a.sz);
-    CHECK_EQ   ("len unchanged",  3,    a.len);
+    CHECK_EQ   ("sz unchanged",   cap,  a.size);
+    CHECK_EQ   ("len unchanged",  3,    a.hwm);
 
     fs2arr_free(&a);
 }
@@ -74,16 +74,16 @@ Test(fs2_array, clean_resets_len_and_slots) {
     fs2array a = fs2arr_init(4);
     a.arr[0] = fs2_fromstr("one");
     a.arr[1] = fs2_fromstr("two");
-    a.len    = 2;
+    a.hwm    = 2;
 
     fs2arr_clean(&a);
 
-    CHECK_EQ("len", 0, a.len);
-    for (size_t i = 0; i < a.sz; i++)
+    CHECK_EQ("len", 0, a.hwm);
+    for (size_t i = 0; i < a.size; i++)
         CHECK_TRUE("slot FS2EMPTY", fs2_eq_empty(&a.arr[i]));
 
     fs2arr_clean(&a);                       /* idempotent */
-    CHECK_EQ("len still 0", 0, a.len);
+    CHECK_EQ("len still 0", 0, a.hwm);
 
     fs2arr_free(&a);
     assert_balanced();
@@ -93,13 +93,13 @@ Test(fs2_array, free_releases_array) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(8);
     a.arr[0] = fs2_fromstr("x");
-    a.len    = 1;
+    a.hwm    = 1;
 
     fs2arr_free(&a);
 
     CHECK_PTR_EQ("arr", NULL, a.arr);
-    CHECK_EQ   ("len", 0, a.len);
-    CHECK_EQ   ("sz",  0, a.sz);
+    CHECK_EQ   ("len", 0, a.hwm);
+    CHECK_EQ   ("sz",  0, a.size);
 
     fs2arr_free(&a);                        /* idempotent */
     CHECK_PTR_EQ("arr still NULL", NULL, a.arr);
