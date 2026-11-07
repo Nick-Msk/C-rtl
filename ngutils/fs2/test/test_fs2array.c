@@ -1248,3 +1248,98 @@ Test(fs2_array, cleanall_when_hwm_lt_size) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+Test(fs2_array, shrink_does_not_touch_hwm) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t1 = fs2arr_detach_new(&a, 4);
+    fs2 t2 = fs2arr_detach_new(&a, 3);
+    fs2_free(&t1);
+    fs2_free(&t2);
+    /* hwm=5, count=3, slots [3],[4] holes */
+
+    fs2arr_shrink(&a);
+
+    CHECK_EQ("hwm preserved",  5, a.hwm);         /* ← unchanged */
+    CHECK_EQ("size == hwm",    5, a.size);        /* trailing holes kept */
+    CHECK_EQ("count",          3, a.count);
+    CHECK_TRUE("[3] hole kept", fs2arr_is_hole(&a.arr[3]));
+    CHECK_TRUE("[4] hole kept", fs2arr_is_hole(&a.arr[4]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, shrink_after_synchwm_trims_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t1 = fs2arr_detach_new(&a, 4);
+    fs2 t2 = fs2arr_detach_new(&a, 3);
+    fs2_free(&t1);
+    fs2_free(&t2);
+    /* hwm=5, slots [3],[4] holes */
+
+    fs2arr_synchwm(&a);       /* hwm 5 → 3 */
+    fs2arr_shrink(&a);        /* size 16 → 3 */
+
+    CHECK_EQ("hwm",   3, a.hwm);
+    CHECK_EQ("size",  3, a.size);
+    CHECK_EQ("count", 3, a.count);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, shrink_after_synchwm_all_holes_canonical) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v1 = fs2_fromstr("A");
+    fs2 v2 = fs2_fromstr("B");
+    fs2arr_push(&a, &v1);
+    fs2arr_push(&a, &v2);
+    fs2 t1 = fs2arr_detach_new(&a, 1);
+    fs2 t2 = fs2arr_detach_new(&a, 0);
+    fs2_free(&t1);
+    fs2_free(&t2);
+    /* hwm=2, count=0, both slots holes */
+
+    fs2arr_synchwm(&a);       /* hwm → 0 */
+    fs2arr_shrink(&a);        /* hwm=0 → free, canonical */
+
+    CHECK_PTR_EQ("arr", NULL, a.arr);
+    CHECK_EQ   ("hwm",  0, a.hwm);
+    CHECK_EQ   ("size", 0, a.size);
+    CHECK_EQ   ("count", 0, a.count);
+
+    assert_balanced();
+}
+
+Test(fs2_array, shrink_preserves_all_holes_when_hwm_gt0) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v = fs2_fromstr("A");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* hwm=1, count=0, slot[0] hole */
+
+    fs2arr_shrink(&a);
+
+    /* shrink alone doesn't see hwm=0 (hwm=1), so it doesn't free */
+    CHECK_EQ("hwm preserved",  1, a.hwm);
+    CHECK_EQ("size == hwm",    1, a.size);
+    CHECK_EQ("count",          0, a.count);
+    CHECK_NOT_NULL("arr",     a.arr);
+    CHECK_TRUE("[0] still hole", fs2arr_is_hole(&a.arr[0]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
