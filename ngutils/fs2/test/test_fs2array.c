@@ -1602,3 +1602,100 @@ Test(fs2_array, validate_rejects_count_mismatch) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+Test(fs2_array, clone_packs_holes_and_tight) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t1 = fs2arr_detach_new(&a, 3);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1); fs2_free(&t2);
+    /* src: [live0, hole, live2, hole, live4], hwm=5, count=3 */
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_EQ  ("count", 3, c.count);
+    CHECK_EQ  ("hwm",   3, c.hwm);              /* packed */
+    CHECK_GE  ("size",  c.size, 3);             /* tight (с shrink) */
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+    CHECK_STR_EQ("[1]", "2", c.arr[1].v);
+    CHECK_STR_EQ("[2]", "4", c.arr[2].v);
+    CHECK_FS2VALID(1, &c.arr[0]);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, cloneexact_preserves_holes_and_trailing) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    /* hwm=3. Now detach last twice to create trailing holes. */
+    fs2 t1 = fs2arr_detach_new(&a, 2);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1); fs2_free(&t2);
+    /* src: [live0, hole, hole], hwm=3, count=1 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+
+    CHECK_EQ  ("count", 1, c.count);
+    CHECK_EQ  ("hwm",   3, c.hwm);              /* ← exact preserves trailing holes */
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+    CHECK_TRUE("[1] hole", fs2arr_is_hole(&c.arr[1]));
+    CHECK_TRUE("[2] hole", fs2arr_is_hole(&c.arr[2]));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_deep_independent_buffers) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("hello");
+    fs2arr_push(&a, &v);
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_TRUE("independent buffer", a.arr[0].v != c.arr[0].v);
+    /* mutate original, clone unaffected */
+    a.arr[0].v[0] = 'X';
+    CHECK_STR_EQ("clone unaffected", "hello", c.arr[0].v);
+    CHECK_STR_EQ("src mutated",      "Xello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_empty_and_canonical) {
+    fs2array canon = FS2ARR();
+    fs2array c1 = fs2arr_clone(&canon);
+    CHECK_PTR_EQ("canon arr", NULL, c1.arr);
+    CHECK_EQ   ("canon hwm", 0, c1.hwm);
+
+    fs2array empty = fs2arr_init(16);
+    fs2array c2 = fs2arr_clone(&empty);
+    CHECK_PTR_EQ("empty arr", NULL, c2.arr);    /* no elements → canonical */
+
+    fs2array c3 = fs2arr_cloneexact(&empty);
+    CHECK_PTR_EQ("empty exact", NULL, c3.arr);
+
+    fs2arr_free(&empty);
+    /* clones are canonical — no free needed */
+}
+
+Test(fs2_array, clone_null_aborts, .signal = SIGABRT) {
+    fs2arr_clone(NULL);
+}
+
+Test(fs2_array, cloneexact_null_aborts, .signal = SIGABRT) {
+    fs2arr_cloneexact(NULL);
+}
