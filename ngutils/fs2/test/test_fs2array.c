@@ -1343,3 +1343,165 @@ Test(fs2_array, shrink_preserves_all_holes_when_hwm_gt0) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+/* test_fs2_tech.c (или test_fs2array.c — где удобнее) */
+
+Test(fs2_array, techfprint_basic) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v1 = fs2_fromstr("hello");
+    fs2 v2 = fs2_fromstr("world");
+    fs2arr_push(&a, &v1);
+    fs2arr_push(&a, &v2);
+
+    FILE *f = tmpfile();
+    cr_assert_not_null(f);
+
+    long w = fs2arr_techfprint(f, &a, "test");
+    cr_assert_gt(w, 0);
+
+    rewind(f);
+    char buf[2048] = {0};
+    size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[rd] = '\0';
+
+    cr_assert(strstr(buf, "FS2ARR: test:") != NULL, "header: %s", buf);
+    cr_assert(strstr(buf, "hwm [2]")       != NULL);
+    cr_assert(strstr(buf, "count [2]")     != NULL);
+    cr_assert(strstr(buf, "[hello")        != NULL);
+    cr_assert(strstr(buf, "[world")        != NULL);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, techfprint_marks_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* slot 0 = hole, hwm=1, count=0 */
+
+    FILE *f = tmpfile();
+    fs2arr_techfprint(f, &a, "holes");
+    rewind(f);
+    char buf[1024] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    cr_assert(strstr(buf, "<hole>")    != NULL, "hole marker: %s", buf);
+    cr_assert(strstr(buf, "count [0]") != NULL);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, techfprint_null_a) {
+    FILE *f = tmpfile();
+    long w = fs2arr_techfprint(f, NULL, "null");
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[256] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "<NULL>") != NULL);
+}
+
+Test(fs2_array, techfprint_null_out_returns_zero) {
+    fs2array a = fs2arr_init(2);
+    CHECK_EQ("null out", 0, fs2arr_techfprint(NULL, &a, "x"));
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, techfprint_canonical) {
+    fs2array a = FS2ARR();
+    FILE *f = tmpfile();
+    long w = fs2arr_techfprint(f, &a, "canon");
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[512] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "hwm [0]")   != NULL);
+    cr_assert(strstr(buf, "size [0]")  != NULL);
+    cr_assert(strstr(buf, "count [0]") != NULL);
+    /* %p impl-defined: either "(nil)" or "0x..." */
+    cr_assert(strstr(buf, "arr((nil))") != NULL || strstr(buf, "arr(0x") != NULL);
+}
+
+Test(fs2_array, techfprint_notes_padding) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);            /* hwm=1, size >= 16 (likely 32) */
+
+    FILE *f = tmpfile();
+    fs2arr_techfprint(f, &a, "pad");
+    rewind(f);
+    char buf[1024] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    /* Size is impl-defined (power-of-2 rounding may give 16, 32, ...).
+     * Build expected substring from actual a.size. */
+    char expected[128];
+    snprintf(expected, sizeof expected, "padding [1, %zu)", a.size);
+    cr_assert(strstr(buf, expected) != NULL,
+              "expected '%s', got: %s", expected, buf);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, techfprint_truncates_at_limit) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(FS2ARR_TECH_PRINT_COUNT + 5);
+    for (int i = 0; i < FS2ARR_TECH_PRINT_COUNT + 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+
+    FILE *f = tmpfile();
+    fs2arr_techfprint(f, &a, "many");
+    rewind(f);
+    char buf[8192] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    cr_assert(strstr(buf, "more slots") != NULL, "got: %s", buf);
+    /* exactly FS2ARR_TECH_PRINT_COUNT slot lines shown, +5 hidden */
+    size_t slot_lines = 0;
+    for (const char *p = buf; (p = strstr(p, "  [")) != NULL; p++) slot_lines++;
+    cr_assert_eq(slot_lines, FS2ARR_TECH_PRINT_COUNT);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- macros ---- */
+
+Test(fs2_array, techfprint_macros) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("macro");
+    fs2arr_push(&a, &v);
+
+    FILE *f = tmpfile();
+    cr_assert_not_null(f);
+
+    long w = FS2ARRTECHFPRINT(f, &a);       /* name = "a" via #a */
+    cr_assert_gt(w, 0);
+
+    rewind(f);
+    char buf[1024] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    cr_assert(strstr(buf, "FS2ARR: &a:") != NULL, "macro name missing: %s", buf);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
