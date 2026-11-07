@@ -1354,7 +1354,7 @@ Test(fs2_array, techfprint_basic) {
     fs2arr_push(&a, &v1);
     fs2arr_push(&a, &v2);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     cr_assert_not_null(f);
 
     long w = fs2arr_techfprint(f, &a, "test");
@@ -1362,7 +1362,7 @@ Test(fs2_array, techfprint_basic) {
 
     rewind(f);
     char buf[2048] = {0};
-    size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    size_t rd = test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     buf[rd] = '\0';
 
@@ -1385,11 +1385,11 @@ Test(fs2_array, techfprint_marks_holes) {
     fs2_free(&t);
     /* slot 0 = hole, hwm=1, count=0 */
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     fs2arr_techfprint(f, &a, "holes");
     rewind(f);
     char buf[1024] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     cr_assert(strstr(buf, "<hole>")    != NULL, "hole marker: %s", buf);
@@ -1400,12 +1400,12 @@ Test(fs2_array, techfprint_marks_holes) {
 }
 
 Test(fs2_array, techfprint_null_a) {
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2arr_techfprint(f, NULL, "null");
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[256] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "<NULL>") != NULL);
 }
@@ -1418,12 +1418,12 @@ Test(fs2_array, techfprint_null_out_returns_zero) {
 
 Test(fs2_array, techfprint_canonical) {
     fs2array a = FS2ARR();
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2arr_techfprint(f, &a, "canon");
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[512] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "hwm [0]")   != NULL);
     cr_assert(strstr(buf, "size [0]")  != NULL);
@@ -1438,11 +1438,11 @@ Test(fs2_array, techfprint_notes_padding) {
     fs2 v = fs2_fromstr("x");
     fs2arr_push(&a, &v);            /* hwm=1, size >= 16 (likely 32) */
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     fs2arr_techfprint(f, &a, "pad");
     rewind(f);
     char buf[1024] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     /* Size is impl-defined (power-of-2 rounding may give 16, 32, ...).
@@ -1464,11 +1464,11 @@ Test(fs2_array, techfprint_truncates_at_limit) {
         fs2arr_push(&a, &v);
     }
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     fs2arr_techfprint(f, &a, "many");
     rewind(f);
     char buf[8192] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     cr_assert(strstr(buf, "more slots") != NULL, "got: %s", buf);
@@ -1489,7 +1489,7 @@ Test(fs2_array, techfprint_macros) {
     fs2 v = fs2_fromstr("macro");
     fs2arr_push(&a, &v);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     cr_assert_not_null(f);
 
     long w = FS2ARRTECHFPRINT(f, &a);       /* name = "a" via #a */
@@ -1497,7 +1497,7 @@ Test(fs2_array, techfprint_macros) {
 
     rewind(f);
     char buf[1024] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     cr_assert(strstr(buf, "FS2ARR: &a:") != NULL, "macro name missing: %s", buf);
