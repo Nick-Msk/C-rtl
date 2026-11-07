@@ -67,7 +67,8 @@ extern const char           *fs2_version(void);
  */
 extern const char    *const *fs2_versions(void);
 
-static const size_t             FS2_MIN_ALLOC = 16;
+static const size_t             FS2_MIN_ALLOC           = 16;
+static const size_t             FS2_TECH_PRINT_COUNT    = 100; // symplos to tech print
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Flags

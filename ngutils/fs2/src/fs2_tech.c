@@ -4,8 +4,7 @@
 
 #include "fs2.h"
 
-enum {FS2_DUMP_FILE_MAX_SIZE = 8192 };
-static const size_t             FS2_TECH_PRINT_COUNT     = 100; // symplos to print
+enum { FS2_DUMP_FILE_MAX_SIZE = 8192 };
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Validator
