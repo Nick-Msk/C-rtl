@@ -1505,3 +1505,98 @@ Test(fs2_array, techfprint_macros) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+// fs2arr_validate unit
+
+Test(fs2_array, validate_null_returns_false) {
+    cr_assert_not(fs2arr_validate(NULL, NULL));
+}
+
+Test(fs2_array, validate_canonical_ok) {
+    fs2array a = FS2ARR();
+    CHECK_TRUE("canonical", fs2arr_validate(NULL, &a));
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, validate_after_init_ok) {
+    fs2array a = fs2arr_init(16);
+    CHECK_TRUE("empty with capacity", fs2arr_validate(NULL, &a));
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, validate_after_push_ok) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("hello");
+    fs2arr_push(&a, &v);
+    CHECK_TRUE("one live", fs2arr_validate(NULL, &a));
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, validate_after_detach_ok) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    CHECK_TRUE("hole in [0, hwm)", fs2arr_validate(NULL, &a));
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* ---- negative tests: corrupt state, expect false ---- */
+
+Test(fs2_array, validate_rejects_count_gt_hwm) {
+    fs2array a = fs2arr_init(4);
+    a.count = 5;                          /* hwm=0, count=5 → corrupt */
+    CHECK_FALSE("count > hwm", fs2arr_validate(NULL, &a));
+    a.count = 0;                          /* restore for clean free */
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, validate_rejects_hwm_gt_size) {
+    fs2array a = fs2arr_init(4);
+    a.hwm = a.size + 1;
+    CHECK_FALSE("hwm > size", fs2arr_validate(NULL, &a));
+    a.hwm = 0;
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, validate_rejects_null_arr_nonzero) {
+    fs2array a = FS2ARR();
+    a.hwm = 3;                            /* arr=NULL but hwm=3 */
+    CHECK_FALSE("null arr with hwm", fs2arr_validate(NULL, &a));
+    a.hwm = 0;
+}
+
+Test(fs2_array, validate_rejects_padding_not_hole) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);                  /* hwm=1, size>=16 */
+
+    /* corrupt padding: put a live fs2 at [5] without touching hwm/count */
+    a.arr[5] = fs2_fromstr("ghost");
+
+    CHECK_FALSE("[5] not hole in padding", fs2arr_validate(NULL, &a));
+
+    fs2_free(&a.arr[5]);                  /* clean corrupt slot */
+    a.arr[5] = FS2EMPTY;                  /* restorable to valid padding */
+    fs2arr_set_hole(&a.arr[5]);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, validate_rejects_count_mismatch) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);                  /* hwm=1, count=1 */
+    a.count = 0;                          /* corrupt: 1 live but count=0 */
+    CHECK_FALSE("live != count", fs2arr_validate(NULL, &a));
+    a.count = 1;
+    fs2arr_free(&a);
+    assert_balanced();
+}
