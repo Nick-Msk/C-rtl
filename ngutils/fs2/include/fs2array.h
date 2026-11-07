@@ -246,6 +246,24 @@ fs2arr_get(const fs2array *a, size_t idx) {
     return &a->arr[idx];
 }
 
+/* fs2array.h */
+/**
+ * @brief Exact comparison: same hwm, same slots [0, hwm) position-by-position.
+ *
+ * Two slots match iff both are holes, or both are live and their contents
+ * are equal (fs2_cmp == 0, semantic / strcmp-style). `size` (capacity) is
+ * ignored — it's a capacity hint, not data.
+ *
+ * Empty arrays (hwm == 0) are equal regardless of arr / size (canonical
+ * vs empty-with-capacity). NULL handling: both NULL → true, one NULL → false.
+ *
+ * @param a  First array (may be NULL).
+ * @param b  Second array (may be NULL).
+ * @return   true if arrays are "exactly equal up to hwm".
+ */
+extern bool
+fs2arr_eqexact(const fs2array *a, const fs2array *b);
+
 /**
  * @brief Print a one-slot-per-line technical dump of an fs2array.
  *

@@ -265,6 +265,29 @@ fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
     return true;
 }
 
+bool
+fs2arr_eqexact(const fs2array *a, const fs2array *b) {
+    if (a == b)
+        return true;
+    if (!a || !b)
+        return false;
+
+    if (a->hwm   != b->hwm)   return false;
+    if (a->count != b->count) return false;    /* derived; defense-in-depth */
+
+    /* hwm == 0 → no data to compare, both "empty up to hwm" */
+    for (size_t i = 0; i < a->hwm; i++) {
+        bool ha = fs2arr_is_hole(&a->arr[i]);
+        bool hb = fs2arr_is_hole(&b->arr[i]);
+
+        if (ha != hb) return false;            /* hole vs live */
+        if (ha)       continue;                /* both holes */
+        if (fs2_cmp(&a->arr[i], &b->arr[i]) != 0)
+            return false;                       /* live, different content */
+    }
+    return true;
+}
+
 long
 fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *restrict name) {
     if (!out)
