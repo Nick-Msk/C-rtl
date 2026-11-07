@@ -227,7 +227,7 @@ Test(fs2_api, techdump_null_s_prints_null_marker) {
 Test(fs2_api, techdump_full_content_not_truncated) {
     __fs2_checkreset();
 
-    /* Build content > FS_TECH_PRINT_COUNT (which techfprint truncates) */
+    /* Build content > FS2_TECH_PRINT_COUNT (which techfprint truncates) */
     fs2 s = FS2();
     for (int i = 0; i < 500; i++)
         elem(s, i) = (char)('A' + (i % 26));

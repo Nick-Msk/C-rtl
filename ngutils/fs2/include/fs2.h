@@ -1297,7 +1297,7 @@ extern long                fs2_techfprint(FILE *restrict out, const fs2 *restric
 /**
  * @brief Dump the full content of @p s to a stream (no truncation).
  *
- * Unlike fs2_techfprint (which truncates to FS_TECH_PRINT_COUNT bytes),
+ * Unlike fs2_techfprint (which truncates to FS2_TECH_PRINT_COUNT bytes),
  * this writes the entire content. Format:
  *
  *     FS2: <name>: len [N], sz [M], flags [F], s(<ptr>)[

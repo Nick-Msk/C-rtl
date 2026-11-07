@@ -5,7 +5,7 @@
 #include "fs2.h"
 
 enum {FS2_DUMP_FILE_MAX_SIZE = 8192 };
-static const size_t             FS_TECH_PRINT_COUNT     = 100; // symplos to print
+static const size_t             FS2_TECH_PRINT_COUNT     = 100; // symplos to print
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Validator
@@ -108,8 +108,8 @@ fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict n
 
     if (s) {
         const char *v   = s->v ? s->v : "(nil)";
-        size_t      len = s->v ? MIN(FS_TECH_PRINT_COUNT, s->len) : 0;
-        int         ell = (s->v && FS_TECH_PRINT_COUNT < s->len) ? 1 : 0;
+        size_t      len = s->v ? MIN(FS2_TECH_PRINT_COUNT, s->len) : 0;
+        int         ell = (s->v && FS2_TECH_PRINT_COUNT < s->len) ? 1 : 0;
 
         n = snprintf(buf, sizeof buf,
                      "FS2: %s: len [%zu], sz [%zu], flags [%d], s(%p)[%.*s%s]\n",
