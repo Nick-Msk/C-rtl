@@ -10,13 +10,6 @@ enum { FS2_DUMP_FILE_MAX_SIZE = 8192 };
  * Validator
  * ───────────────────────────────────────────────────────────────────────── */
 
- // TODO: move that to common.h
-#define LOGNPRINTF(out, msg, ...) \
-({ if (out) \
-    fprintf(out, (msg), ##__VA_ARGS__); \
-  logsimpleerr(false, (msg), ##__VA_ARGS__); \
-})
-
 /**
  * @brief Validate all invariants of an fs2.
  *

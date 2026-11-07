@@ -410,4 +410,11 @@ static inline const char *str_orempty(const char *c) {
     return c ? c : "";
 }
 
+#define LOGNPRINTF(out, msg, ...) \
+({ if (out) \
+    fprintf(out, (msg), ##__VA_ARGS__); \
+  logsimpleerr(false, (msg), ##__VA_ARGS__); \
+})
+
+
 #endif /* !COMMON_H */
