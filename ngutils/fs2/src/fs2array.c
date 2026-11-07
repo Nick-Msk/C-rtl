@@ -55,8 +55,6 @@ fs2arr_reserve(fs2array *a, size_t need) {
     return a->arr;
 }
 
-// fs2 * fs2arr_shrink(fs2array *a);    SKIP FOR NOW
-
 fs2array
 fs2arr_init(size_t cnt) {
     fs2array a = FS2ARR();
@@ -69,18 +67,86 @@ fs2arr_init(size_t cnt) {
     return a;
 }
 
-void 
-fs2arr_clean(fs2array *a) {
+size_t 
+fs2arr_synchwm(fs2array *a) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
 
-    for (size_t i = 0; i < a->hwm; i++) {
+    while (a->hwm > 0 && fs2arr_is_hole(&a->arr[a->hwm - 1]))
+        a->hwm--;
+    return logsimpleret(a->hwm, "Hwn synced to %zu", a->hwm);
+}
+
+size_t
+fs2arr_clean(fs2array *a, size_t from, size_t to) {
+    invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
+
+    if (!(from <= to && to <= a->size))
+        userraise (0, ERR_OUT_OF_RANGE, 
+             "fs2arr_clean: bad range [%zu, %zu), size %zu", from, to, a->size);
+
+    size_t freed = 0;
+    for (size_t i = from; i < to; i++) {
         if (fs2arr_is_hole(&a->arr[i]))
-            continue;  
-        fs2_free(a->arr + i);
-        fs2arr_set_hole(a->arr + i);
+            continue;
+        fs2_free(&a->arr[i]);
+        fs2arr_set_hole(&a->arr[i]);
+        freed++;
     }
-    logsimple("cleaned %zu elements", a->hwm);
-    a->hwm = a->count = 0UL;   // reset hwm and count
+     /* Trim trailing holes only if the cleaned range reached the logical tail.
+     * `hwm` is unchanged during the loop, so `to >= hwm` is checked after.
+     * Middle clean (to < hwm): slots [to, hwm) may be live — don't trim. */
+    if (to >= a->hwm)
+        fs2arr_synchwm(a);
+
+    a->count -= freed;
+    logsimple("fs2arr_clean [%zu, %zu): %zu freed, hwm=%zu count=%zu", 
+        from, to, freed, a->hwm, a->count);
+    return freed;
+}
+
+/* Full clean — frees all live elements, resets hwm/count, keeps capacity. */
+void
+fs2arr_cleanall(fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
+
+    if (!a->arr)
+        return;
+    fs2arr_clean(a, 0, a->hwm);
+    a->hwm   = 0;
+    a->count = 0;
+}
+
+bool
+fs2arr_shrink(fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
+    if (!a->arr)
+        return logsimpleret(true, "Null arr, nothing to do");
+
+    /* Trim trailing holes — safe, no live element below new hwm is touched */
+    while (a->hwm > 0 && fs2arr_is_hole(&a->arr[a->hwm - 1]))
+        a->hwm--;
+
+    if (a->hwm == a->size)
+        return logsimpleret(true, 
+            "hwn equal size %zu, nothing to free", a->size);                        /* already tight */
+
+    /* hwm == 0 means all slots are holes. realloc(arr, 0) is impl-defined
+     * (may free+return NULL, or return unique 0-size ptr). Both paths
+     * break invariants — handle explicitly via canonical reset. */
+    if (a->hwm == 0) {
+        fs2arr_free(a);
+        return logsimpleret(true, "all holes, freed totally");
+    }
+
+    /* Internal holes preserved — only tail is trimmed. Shrink to exact hwm. */
+    fs2 *p = realloc(a->arr, a->hwm * sizeof(fs2));
+    if (!p)
+        return userraise(false, ERR_UNABLE_ALLOCATE, 
+            "%zu items", a->hwm);                       /* original block valid, hwm trimmed */
+
+    a->arr  = p;
+    a->size = a->hwm;
+    return logsimpleret(true, "Shrinked to %zu", a->size);
 }
 
 // NULL safe method!
@@ -88,7 +154,7 @@ void
 fs2arr_free(fs2array *a) {
     if (!a)
         return;
-    fs2arr_clean(a);
+    fs2arr_cleanall(a);
     free(a->arr);
     *a = FS2ARR();        // note - can't free(arr), can be in stack
 }

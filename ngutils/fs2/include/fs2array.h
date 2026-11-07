@@ -48,13 +48,30 @@ fs2arr_reserve(fs2array *a, size_t need);
 extern void
 fs2arr_free(fs2array *arr);
 
+/**
+ * @brief Free live elements in [from, to), reset them to holes.
+ *
+ * Range is over physical slots, bounded by `a->size` (not `hwm`) — caller
+ * may clean padding / trimmed-tail regions defensively. Live elements in
+ * the range are `fs2_free`d, `count` is decremented per freed element,
+ * `hwm`/`size` unchanged.
+ *
+ * @param a     Non-NULL fs2array.
+ * @param from  Start index (inclusive).
+ * @param to    End index (exclusive), 0 <= from <= to <= a->size.
+ * @return      Number of live elements actually freed (holes skipped).
+ * @warning     `invfatal` (SIGABRT) on NULL / bad range / count underflow.
+ */
+size_t
+fs2arr_clean(fs2array *a, size_t from, size_t to);
+
 extern void 
-fs2arr_clean(fs2array *a);
+fs2arr_cleanall(fs2array *a);
 
 /**
  * @brief Find the first FS2EMPTY slot in [0, len).
  *
- * Internal helper: holes in [0, len) can appear when a slot is manually
+ * holes in [0, len) can appear when a slot is manually
  * cleared or (in a future non-shifting detach) after an element is removed
  * without compacting. Returns SIZE_MAX if no hole.
  *
@@ -63,6 +80,12 @@ fs2arr_clean(fs2array *a);
  */
 extern ptrdiff_t
 fs2arr_find_tillhwm(const fs2array *a);
+
+size_t 
+fs2arr_synchwm(fs2array *a);
+
+bool
+fs2arr_shrink(fs2array *a);
 
 /**
  * @brief Move @p src into slot @p idx.
