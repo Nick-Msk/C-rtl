@@ -837,10 +837,11 @@ Test(fs2_array, attach_bp_heap_null_and_free) {
     fs2array a = fs2arr_init(2);
     fs2 *p = fs2_heap_fromstr("heap");
 
-    fs2 *slot = fs2arr_attach_dp(&a, &p, 0);
+    ptrdiff_t slot = fs2arr_attach_dp(&a, &p, 0);
 
+    CHECK_TRUE ("slot >= 0", slot >= 0);
     CHECK_PTR_EQ("p nulled",    NULL, p);
-    CHECK_PTR_EQ("slot ptr",    &a.arr[0], slot);
+    CHECK_PTR_EQ("slot ptr",    &a.arr[0], &a.arr[slot]);
     CHECK_STR_EQ("[0]",         "heap", a.arr[0].v);
     CHECK_TRUE ("slot ALLOC",   fs2_is_alloc(&a.arr[0]));
     CHECK_FALSE("slot not shell", fs2_is_bodyalloc(&a.arr[0]));
@@ -858,9 +859,9 @@ Test(fs2_array, attach_bp_null_src_returns_null) {
     fs2array a = fs2arr_init(2);
     fs2 *p = NULL;
 
-    fs2 *slot = fs2arr_attach_dp(&a, &p, 0);
+    ptrdiff_t slot = fs2arr_attach_dp(&a, &p, 0);
 
-    CHECK_PTR_EQ("return NULL",     NULL, slot);
+    CHECK_TRUE ("slot < 0", slot < 0);
     CHECK_PTR_EQ("p still NULL",    NULL, p);
     CHECK_EQ   ("count unchanged",  0, a.count);
     CHECK_EQ   ("hwm unchanged",    0, a.hwm);
@@ -979,9 +980,10 @@ Test(fs2_array, push_bp_heap_appends_and_nulls) {
     fs2array a = fs2arr_init(4);
     fs2 *p = fs2_heap_fromstr("heap");
 
-    fs2 *slot = fs2arr_push_dp(&a, &p);
+    ptrdiff_t slot = fs2arr_push_dp(&a, &p);
 
-    CHECK_PTR_EQ("slot",         &a.arr[0], slot);
+    CHECK_TRUE("slot >= 0",      slot >= 0); 
+    CHECK_PTR_EQ("slot",         &a.arr[0], &a.arr[slot]);
     CHECK_PTR_EQ("p nulled",     NULL, p);
     CHECK_STR_EQ("[0]",          "heap", a.arr[0].v);
     CHECK_FALSE("slot not shell", fs2_is_bodyalloc(&a.arr[0]));
@@ -1017,9 +1019,9 @@ Test(fs2_array, push_bp_null_src_returns_null) {
     fs2array a = fs2arr_init(4);
     fs2 *p = NULL;
 
-    fs2 *slot = fs2arr_push_dp(&a, &p);
+    ptrdiff_t slot = fs2arr_push_dp(&a, &p);
 
-    CHECK_PTR_EQ("return NULL",    NULL, slot);
+    CHECK_LE("stot less than 0",   slot, 0);
     CHECK_EQ   ("hwm unchanged",   0, a.hwm);
     CHECK_EQ   ("count unchanged", 0, a.count);
 
