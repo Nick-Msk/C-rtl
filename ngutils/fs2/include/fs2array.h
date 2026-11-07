@@ -46,6 +46,24 @@ enum { FS2ARR_TECH_PRINT_COUNT = 8 };
 extern fs2array
 fs2arr_init(size_t cnt);
 
+/**
+ * @brief Deep copy of an fs2array (compacted, tight).
+ *
+ * Result has hwm == size == count (no padding, no holes), elements in
+ * original relative order (holes skipped). All element buffers are
+ * freshly allocated copies — mutating the clone does not affect @p src
+ * and vice versa.
+ *
+ * @param src  fs2array to clone (NULL or canonical → returns FS2ARR()).
+ * @return     New fs2array; free with fs2arr_free.
+ * @warning    `sysraise` (OOM) if allocation fails.
+ */
+extern fs2array
+fs2arr_clone(const fs2array *src);
+
+extern fs2array
+fs2arr_cloneexact(const fs2array *src);
+
 extern fs2 *
 fs2arr_reserve(fs2array *a, size_t need);
 
@@ -204,6 +222,28 @@ fs2arr_heap_detach(fs2array *a, size_t idx) {
             "Unable to detach %zu", idx);
     }
     return p;                           /* caller frees via fs2_free */
+}
+
+/**
+ * @brief Get pointer to slot @p idx (may be a hole).
+ *
+ * Returns `&a->arr[idx]` if `idx < a->hwm`, NULL otherwise. The slot may
+ * be a hole (check `fs2arr_is_hole`) or a live element. For **compacted**
+ * arrays (after push-only or `fs2arr_compact`), all slots `[0, count)`
+ * are live — no hole-check needed.
+ *
+ * @param a    Non-NULL fs2array.
+ * @param idx  0-based slot index.
+ * @return     Pointer to slot, or NULL if idx >= hwm.
+ * @warning    `invfatal` (SIGABRT) if a is NULL.
+ */
+static inline const fs2 *
+fs2arr_get(const fs2array *a, size_t idx) {
+    invfatal(ERR_NULL_INPUT, a != NULL,
+        "Null pointers %p", a);
+    if (idx >= a->hwm)
+        return NULL;
+    return &a->arr[idx];
 }
 
 /**
