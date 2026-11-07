@@ -2215,3 +2215,170 @@ Test(fs2_array, eqexact_count_mismatch_false) {
     fs2arr_free(&b);
     assert_balanced();
 }
+
+/* =========================================================================
+ * Invariant: eqexact(a, cloneexact(a)) == true for ANY valid a
+ *
+ * cloneexact preserves hwm, hole positions, and content. So the exact
+ * clone must be eqexact-equal to the source — this is the defining
+ * property of "exact" clone. If this fails, either cloneexact or eqexact
+ * or the hole/hwm invariants are broken.
+ *
+ * Note: eqexact(a, clone(a)) is NOT an invariant — clone packs holes
+ * and tightens hwm, so positional equality may legitimately fail.
+ * ========================================================================= */
+
+Test(fs2_array, eqexact_cloneexact_invariant_packed) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    /* packed: hwm=3, no holes */
+
+    fs2array c = fs2arr_cloneexact(&a);
+    CHECK_TRUE("cloneexact of packed == source", fs2arr_eqexact(&a, &c));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_cloneexact_invariant_mid_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+    /* [0, 1, hole, 3, 4], hwm=5, count=4 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+    CHECK_TRUE("mid hole preserved", fs2arr_eqexact(&a, &c));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_cloneexact_invariant_trailing_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t1 = fs2arr_detach_new(&a, 2);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1);
+    fs2_free(&t2);
+    /* [0, hole, hole], hwm=3, count=1 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+    CHECK_EQ  ("hwm preserved", 3, c.hwm);
+    CHECK_TRUE("trailing holes preserved", fs2arr_eqexact(&a, &c));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_cloneexact_invariant_empty) {
+    fs2array canon = FS2ARR();
+    fs2array c1 = fs2arr_cloneexact(&canon);
+    CHECK_TRUE("canonical", fs2arr_eqexact(&canon, &c1));
+
+    fs2array empty = fs2arr_init(16);
+    fs2array c2 = fs2arr_cloneexact(&empty);
+    CHECK_TRUE("empty with capacity", fs2arr_eqexact(&empty, &c2));
+    fs2arr_free(&empty);
+}
+
+/* All-holes array (count==0, hwm>0) — exact clone must preserve hwm */
+Test(fs2_array, eqexact_cloneexact_invariant_all_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v = fs2_fromstr("A");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* [hole], hwm=1, count=0 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+    CHECK_EQ  ("hwm",   1, c.hwm);
+    CHECK_EQ  ("count", 0, c.count);
+    CHECK_TRUE("all holes preserved", fs2arr_eqexact(&a, &c));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+/* Source after shrink (tight) — cloneexact still exact */
+Test(fs2_array, eqexact_cloneexact_invariant_after_shrink) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2arr_shrink(&a);                          /* size == hwm == 3 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+    CHECK_TRUE("after shrink", fs2arr_eqexact(&a, &c));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+/* Iterated: cloneexact(cloneexact(a)) == cloneexact(a) semantically */
+Test(fs2_array, eqexact_cloneexact_invariant_idempotent) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+
+    fs2array c1 = fs2arr_cloneexact(&a);
+    fs2array c2 = fs2arr_cloneexact(&c1);
+
+    CHECK_TRUE("c1 == a",  fs2arr_eqexact(&a, &c1));
+    CHECK_TRUE("c2 == c1", fs2arr_eqexact(&c1, &c2));
+    CHECK_TRUE("c2 == a",  fs2arr_eqexact(&a, &c2));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c1);
+    fs2arr_free(&c2);
+    assert_balanced();
+}
+
+/* Contrast: clone is packed/tight — eqexact may legitimately fail
+ * when source had holes (hwm shrinks, positions change). */
+Test(fs2_array, eqexact_clone_NOT_invariant_with_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+    /* a: [0,1,hole,3,4], hwm=5, count=4 */
+
+    fs2array packed = fs2arr_clone(&a);
+    /* packed: [0,1,3,4], hwm=4, count=4 */
+
+    CHECK_FALSE("packed differs from source in hwm/positions",
+                fs2arr_eqexact(&a, &packed));
+
+    fs2arr_free(&a);
+    fs2arr_free(&packed);
+    assert_balanced();
+}
