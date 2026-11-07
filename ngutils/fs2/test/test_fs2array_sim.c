@@ -23,40 +23,53 @@ TestSuite(fs2_array_simulation, .init = test_setup, .fini = test_teardown);
  *
  * Crashes via cr_assert on first violation, with slot index and op label.
  */
-static void
-assert_arr_invariants(const fs2array *a, const char *op) {
-    /* Basic ordering */
-    if (a->count > a->hwm)
-        cr_assert_fail("[%s] count=%zu > hwm=%zu", op, a->count, a->hwm);
-    if (a->hwm > a->size)
-        cr_assert_fail("[%s] hwm=%zu > size=%zu", op, a->hwm, a->size);
+// static void
+// assert_arr_invariants(const fs2array *a, const char *op) {
+//     /* Basic ordering */
+//     if (a->count > a->hwm)
+//         cr_assert_fail("[%s] count=%zu > hwm=%zu", op, a->count, a->hwm);
+//     if (a->hwm > a->size)
+//         cr_assert_fail("[%s] hwm=%zu > size=%zu", op, a->hwm, a->size);
 
-    /* Canonical empty */
-    if (a->arr == NULL) {
-        if (a->hwm != 0 || a->size != 0 || a->count != 0)
-            cr_assert_fail("[%s] arr NULL but hwm=%zu size=%zu count=%zu",
-                           op, a->hwm, a->size, a->count);
+//     /* Canonical empty */
+//     if (a->arr == NULL) {
+//         if (a->hwm != 0 || a->size != 0 || a->count != 0)
+//             cr_assert_fail("[%s] arr NULL but hwm=%zu size=%zu count=%zu",
+//                            op, a->hwm, a->size, a->count);
+//         return;
+//     }
+
+//     /* [0, hwm): live count matches, each slot is hole or valid fs2 */
+//     size_t  live = 0;
+//     for (size_t i = 0; i < a->hwm; i++) {
+//         if (fs2arr_is_hole(&a->arr[i]))
+//             continue;
+//         if (!fs2_validate(NULL, &a->arr[i]))
+//             cr_assert_fail("[%s] slot[%zu] invalid fs2 (not a hole)", op, i);
+//         live++;
+//     }
+//     if (live != a->count)
+//         cr_assert_fail("[%s] live=%zu in [0,hwm) but count=%zu",
+//                        op, live, a->count);
+
+//     /* [hwm, size): all holes (padding) */
+//     for (size_t i = a->hwm; i < a->size; i++) {
+//         if (!fs2arr_is_hole(&a->arr[i]))
+//             cr_assert_fail("[%s] slot[%zu] in padding is not a hole", op, i);
+//     }
+// } 
+
+static inline void
+assert_arr_valid(const fs2array *a, const char *op) {
+    if (fs2arr_validate(NULL, a))
         return;
+    /* re-run with stderr for diagnostics */
+    if (a) {
+        fprintf(stderr, "[%s] fs2arr_validate failed:\n", op);
+        fs2arr_validate(stderr, a);
+        fs2arr_techfprint(stderr, a, op);
     }
-
-    /* [0, hwm): live count matches, each slot is hole or valid fs2 */
-    size_t  live = 0;
-    for (size_t i = 0; i < a->hwm; i++) {
-        if (fs2arr_is_hole(&a->arr[i]))
-            continue;
-        if (!fs2_validate(NULL, &a->arr[i]))
-            cr_assert_fail("[%s] slot[%zu] invalid fs2 (not a hole)", op, i);
-        live++;
-    }
-    if (live != a->count)
-        cr_assert_fail("[%s] live=%zu in [0,hwm) but count=%zu",
-                       op, live, a->count);
-
-    /* [hwm, size): all holes (padding) */
-    for (size_t i = a->hwm; i < a->size; i++) {
-        if (!fs2arr_is_hole(&a->arr[i]))
-            cr_assert_fail("[%s] slot[%zu] in padding is not a hole", op, i);
-    }
+    cr_assert_fail("[%s] fs2arr_validate failed", op);
 }
 
 /* =========================================================================
@@ -66,7 +79,7 @@ assert_arr_invariants(const fs2array *a, const char *op) {
 Test(fs2_array_simulation, push_detach_attach_cycle) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(4);
-    assert_arr_invariants(&a, "init");
+    assert_arr_valid(&a, "init");
 
     for (int round = 0; round < 20; round++) {
         /* push 5 values */
@@ -74,7 +87,7 @@ Test(fs2_array_simulation, push_detach_attach_cycle) {
             fs2 v = fs2_from_new(round * 100 + i);
             fs2arr_push(&a, &v);
         }
-        assert_arr_invariants(&a, "push5");
+        assert_arr_valid(&a, "push5");
 
         /* detach 2 (oldest) — they become holes */
         for (int i = 0; i < 2; i++) {
@@ -83,7 +96,7 @@ Test(fs2_array_simulation, push_detach_attach_cycle) {
             fs2 t = fs2arr_detach_new(&a, (size_t)hole);
             fs2_free(&t);
         }
-        assert_arr_invariants(&a, "detach2");
+        assert_arr_valid(&a, "detach2");
 
         /* attach 2 new — fills the holes */
         for (int i = 0; i < 2; i++) {
@@ -92,7 +105,7 @@ Test(fs2_array_simulation, push_detach_attach_cycle) {
             fs2 v = fs2_fromstr("refill");
             fs2arr_attach(&a, &v, (size_t)hole);
         }
-        assert_arr_invariants(&a, "attach2");
+        assert_arr_valid(&a, "attach2");
 
         /* no holes now */
         CHECK_EQ("no holes after refill", -1, fs2arr_find_tillhwm(&a));
@@ -112,11 +125,11 @@ Test(fs2_array_simulation, push_detach_attach_cycle) {
         /* hwm may be > 0 with all holes; synchwm then shrink */
         fs2arr_synchwm(&a);
         CHECK_EQ("hwm after empty", 0, a.hwm);
-        assert_arr_invariants(&a, "drained");
+        assert_arr_valid(&a, "drained");
 
         fs2arr_shrink(&a);
         CHECK_PTR_EQ("canonical after shrink", NULL, a.arr);
-        assert_arr_invariants(&a, "shrunk");
+        assert_arr_valid(&a, "shrunk");
     }
 
     fs2arr_free(&a);
@@ -136,7 +149,7 @@ Test(fs2_array_simulation, pool_reuse_by_hole) {
         fs2 v = fs2_from_new(i);
         fs2arr_push(&a, &v);
     }
-    assert_arr_invariants(&a, "filled");
+    assert_arr_valid(&a, "filled");
     cr_assert_eq(a.hwm, 8);
     cr_assert_eq(a.count, 8);
 
@@ -145,7 +158,7 @@ Test(fs2_array_simulation, pool_reuse_by_hole) {
         fs2 t = fs2arr_detach_new(&a, (size_t)i);
         fs2_free(&t);
     }
-    assert_arr_invariants(&a, "half-detached");
+    assert_arr_valid(&a, "half-detached");
     cr_assert_eq(a.hwm, 8);          /* hwm unchanged (holes not at end) */
     cr_assert_eq(a.count, 4);
 
@@ -156,7 +169,7 @@ Test(fs2_array_simulation, pool_reuse_by_hole) {
         fs2 v = fs2_fromstr("refilled");
         fs2arr_attach(&a, &v, (size_t)hole);
     }
-    assert_arr_invariants(&a, "refilled");
+    assert_arr_valid(&a, "refilled");
     cr_assert_eq(a.count, 8);
     CHECK_EQ("no holes", -1, fs2arr_find_tillhwm(&a));
 
@@ -182,7 +195,7 @@ Test(fs2_array_simulation, grow_shrink_dance) {
     for (int batch = 1; batch <= 50; batch++) {
         fs2 v = fs2_from_new(batch);
         fs2arr_push(&a, &v);
-        assert_arr_invariants(&a, "grow");
+        assert_arr_valid(&a, "grow");
         cr_assert_eq(a.count, (size_t)batch);
     }
     cr_assert_geq(a.size, 50);
@@ -193,7 +206,7 @@ Test(fs2_array_simulation, grow_shrink_dance) {
 
     /* shrink: exact to hwm */
     fs2arr_shrink(&a);
-    assert_arr_invariants(&a, "shrink");
+    assert_arr_valid(&a, "shrink");
     cr_assert_eq(a.size, a.hwm);
     cr_assert_eq(a.size, 50);
     cr_assert_lt(a.size, grown_size, "should have shrunk");
@@ -202,7 +215,7 @@ Test(fs2_array_simulation, grow_shrink_dance) {
     for (int i = 0; i < 10; i++) {
         fs2 v = fs2_from_new(1000 + i);
         fs2arr_push(&a, &v);
-        assert_arr_invariants(&a, "re-grow");
+        assert_arr_valid(&a, "re-grow");
     }
     cr_assert_eq(a.count, 60);
     cr_assert_eq(a.hwm, 60);
@@ -238,7 +251,7 @@ Test(fs2_array_simulation, tail_vs_mid_holes) {
         fs2 t = fs2arr_detach_new(&a, 9 - i);
         fs2_free(&t);
     }
-    assert_arr_invariants(&a, "tail-holes");
+    assert_arr_valid(&a, "tail-holes");
     cr_assert_eq(a.hwm,  10);
     cr_assert_eq(a.count, 7);
 
@@ -247,14 +260,14 @@ Test(fs2_array_simulation, tail_vs_mid_holes) {
     fs2_free(&t3);
     fs2 t5 = fs2arr_detach_new(&a, 5);
     fs2_free(&t5);
-    assert_arr_invariants(&a, "tail-mid-holes");
+    assert_arr_valid(&a, "tail-mid-holes");
     cr_assert_eq(a.count, 5);
 
     /* shrink WITHOUT synchwm: size == hwm == 10, all holes preserved */
     fs2arr_shrink(&a);
     cr_assert_eq(a.hwm,  10);
     cr_assert_eq(a.size, 10);
-    assert_arr_invariants(&a, "shrink-no-sync");
+    assert_arr_valid(&a, "shrink-no-sync");
     CHECK_TRUE("[3] hole preserved", fs2arr_is_hole(&a.arr[3]));
     CHECK_TRUE("[5] hole preserved", fs2arr_is_hole(&a.arr[5]));
     CHECK_TRUE("[7] hole preserved", fs2arr_is_hole(&a.arr[7]));
@@ -262,12 +275,12 @@ Test(fs2_array_simulation, tail_vs_mid_holes) {
     /* now synchwm: tail holes [7,8,9] trimmed, but mid holes [3],[5] stay */
     fs2arr_synchwm(&a);
     cr_assert_eq(a.hwm, 7);           /* last live was at index 6 */
-    assert_arr_invariants(&a, "sync");
+    assert_arr_valid(&a, "sync");
 
     /* shrink again: size → 7 */
     fs2arr_shrink(&a);
     cr_assert_eq(a.size, 7);
-    assert_arr_invariants(&a, "shrink-after-sync");
+    assert_arr_valid(&a, "shrink-after-sync");
     CHECK_TRUE("[3] mid hole survives", fs2arr_is_hole(&a.arr[3]));
     CHECK_TRUE("[5] mid hole survives", fs2arr_is_hole(&a.arr[5]));
 
@@ -314,13 +327,13 @@ Test(fs2_array_simulation, long_run_mixed_ops) {
             }
         }
 
-        assert_arr_invariants(&a, "mixed-iter");
+        assert_arr_valid(&a, "mixed-iter");
 
         /* occasionally clean tail / shrink */
         if (iter % 20 == 19) {
             fs2arr_synchwm(&a);
             fs2arr_shrink(&a);
-            assert_arr_invariants(&a, "sync-shrink");
+            assert_arr_valid(&a, "sync-shrink");
         }
     }
 
