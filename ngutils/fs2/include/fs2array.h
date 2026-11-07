@@ -91,35 +91,22 @@ fs2arr_synchwm(fs2array *a);
 bool
 fs2arr_shrink(fs2array *a);
 
+/* fs2array.h */
 /**
- * @brief Move @p src into slot @p idx.
- *
- * Source becomes FS2EMPTY-shaped after the move (via fs2_move):
- *   - Stack / field fs2:  `*src` = FS2EMPTY, safe to fs2_free (no-op)
- *   - Heap (BODYALLOC):   `*src` = FS2EMPTY|BODYALLOC (shell alive);
- *                         caller must `fs2_free(src)` afterwards to
- *                         release the shell struct (buffer is in the slot).
- *
- * attach does NOT free the source struct. This is symmetric with
- * fs2_move and with fs2arr_push_sp — caller always owns the shell.
- *
- * @warning Do NOT pass `&a->arr[i]` — if attach triggers realloc via
- *          push, `src` becomes dangling.
+ * @brief Attach stack/field source into slot @p idx.
+ * @return Index of the slot (= idx on success), or (ptrdiff_t)-1 on raise
+ *         (but raises abort — never returns -1; the sentinel exists only
+ *         for symmetry with dp variant).
  */
-extern fs2 *
+extern ptrdiff_t
 fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx);
 
 /**
- * @brief Move @p *src into slot @p idx (double-pointer — heap, auto-null).
- *
- * Validation runs BEFORE nulling, so on `userraise` (bad idx / non-hole
- * slot) `*src` is preserved. On success: `*src = NULL`, struct freed if
- * BODYALLOC.
- *
- * @warning `invfatal` (SIGABRT) if a/src NULL.
+ * @brief Attach with auto-null (heap source, validate-first).
+ * @return Index of the slot (== idx on success), or -1 if *src == NULL.
  */
-extern fs2 *
-fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
+extern ptrdiff_t
+fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx);
 
 /**
  * @brief Generic attach — dispatches on `_Generic` static type of @p src.
@@ -154,7 +141,7 @@ fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx);   // heap, auto-null
  * @note Do not pass `&a->arr[i]` — if `push` triggers realloc, `val`
  *       becomes dangling.
  */
-static inline fs2 *
+static inline ptrdiff_t
 fs2arr_push_sp(fs2array *a, fs2 *src) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
         "Null pointers %p %p", a, src);
@@ -164,7 +151,7 @@ fs2arr_push_sp(fs2array *a, fs2 *src) {
     return fs2arr_attach_sp(a, src, a->hwm);
 }
 
-static inline fs2 *
+static inline ptrdiff_t
 fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
     if (a->hwm == a->size)
