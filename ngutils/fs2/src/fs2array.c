@@ -105,17 +105,10 @@ fs2arr_find_tillhwm(const fs2array *a) {
     return -1;
 }
 
-fs2 *
-fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
-    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
-        "Null pointers %p %p", a, src);
-
-    if (idx >= a->size)
-        userraise(NULL, ERR_OUT_OF_RANGE, 
-            "Index %zu >= szie %zu", idx, a->size);
-    if (!fs2arr_is_hole(&a->arr[idx]))
-        userraise(NULL, ERR_OUT_OF_RANGE, 
-            " slot[%zu] not a null marker", idx);
+// internal plugger, no checking at all 
+// a != NULL, src != NULL, idx < a->size, slot[idx] — hole.
+static fs2 *
+fs2arr_plug(fs2array *a, fs2 *src, size_t idx) {
     if (idx >= a->hwm)
         a->hwm = idx + 1;
 
@@ -124,10 +117,25 @@ fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
     return a->arr + idx;
 }
 
-// TODO: refactor to be in common with fs2arr_attach_sp
+fs2 *
+fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
+    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, 
+        "Null pointers %p %p", a, src);
+
+    if (idx >= a->size)
+        userraise(NULL, ERR_OUT_OF_RANGE, 
+            "Index %zu >= size %zu", idx, a->size);
+    if (!fs2arr_is_hole(&a->arr[idx]))
+        userraise(NULL, ERR_OUT_OF_RANGE, 
+            " slot[%zu] not a null marker", idx);
+
+    return fs2arr_plug(a, src, idx);
+}
+
 fs2 *
 fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx) {
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
+
     if (*src == NULL)
         return NULL;
 
@@ -138,15 +146,11 @@ fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx) {
         userraise(NULL, ERR_OUT_OF_RANGE, "slot[%zu] not a hole", idx);
 
     fs2 *p = *src;
-    *src = NULL;                          /* null FIRST — safe on raise */
+    *src = NULL;                     /* All validation passed — no raise below, safe to null and consume. */
 
-    if (idx >= a->hwm)
-        a->hwm = idx + 1;
-
-    a->count++;
-    fs2_move(&a->arr[idx], p);
-    fs2_free(p);                          /* frees struct if BODYALLOC, no-op otherwise */
-    return a->arr + idx;
+    fs2 *slot = fs2arr_plug(a, p, idx);
+    fs2_free(p);                     /* ← no-op for stack; frees struct for heap */
+    return slot;
 }
 
 bool
