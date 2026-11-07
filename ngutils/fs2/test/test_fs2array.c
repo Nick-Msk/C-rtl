@@ -73,13 +73,13 @@ Test(fs2_array, clean_resets_len_and_slots) {
     a.arr[1] = fs2_fromstr("two");
     a.hwm    = 2;
 
-    fs2arr_clean(&a);
+    fs2arr_cleanall(&a);
 
     CHECK_EQ("len", 0, a.hwm);
     for (size_t i = 0; i < a.size; i++)
         CHECK_TRUE("slot FS2EMPTY", fs2arr_is_hole(&a.arr[i]));
 
-    fs2arr_clean(&a);                       /* idempotent */
+    fs2arr_cleanall(&a);                       /* idempotent */
     CHECK_EQ("len still 0", 0, a.hwm);
 
     fs2arr_free(&a);
@@ -270,7 +270,7 @@ Test(fs2_array, clean_resets_hwm_count) {
     }
     size_t cap = a.size;
 
-    fs2arr_clean(&a);
+    fs2arr_cleanall(&a);
 
     CHECK_EQ  ("hwm",   0, a.hwm);
     CHECK_EQ  ("count", 0, a.count);
@@ -1150,3 +1150,101 @@ Test(fs2_array, push_generic_heap_dispatches_to_dp) {
  * fs2arr_attach(&a, s, 0);          // fs2 (by value) — no _Generic match → error
  * fs2arr_attach(&a, NULL, 0);       // NULL — no match → error (needs cast)
  * ========================================================================= */
+
+ Test(fs2_array, clean_range_partial) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    /* hwm=5, count=5 */
+
+    size_t freed = fs2arr_clean(&a, 1, 3);      /* free slots 1, 2 */
+
+    CHECK_EQ("freed",  2, freed);
+    CHECK_EQ("hwm",    5, a.hwm);               /* unchanged */
+    CHECK_EQ("count",  3, a.count);
+    CHECK_TRUE("[1] hole", fs2arr_is_hole(&a.arr[1]));
+    CHECK_TRUE("[2] hole", fs2arr_is_hole(&a.arr[2]));
+    CHECK_STR_EQ("[0]", "0", a.arr[0].v);
+    CHECK_STR_EQ("[3]", "3", a.arr[3].v);
+    CHECK_STR_EQ("[4]", "4", a.arr[4].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, clean_range_on_holes_is_noop) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+
+    size_t freed = fs2arr_clean(&a, 1, 5);       /* all holes, no live */
+
+    CHECK_EQ("freed", 0, freed);
+    CHECK_EQ("count", 1, a.count);               /* unchanged */
+    CHECK_EQ("hwm",   1, a.hwm);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, clean_range_bad_range_raise, .signal = SIGINT) {
+    fs2array a = fs2arr_init(4);
+    fs2arr_clean(&a, 3, 2);                      /* from > to */
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, clean_range_beyond_size_raise, .signal = SIGINT) {
+    fs2array a = fs2arr_init(4);
+    fs2arr_clean(&a, 0, 100);                    /* to > size */
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, cleanall_resets_hwm_count) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+
+    fs2arr_cleanall(&a);
+
+    CHECK_EQ  ("hwm",   0, a.hwm);
+    CHECK_EQ  ("count", 0, a.count);
+    CHECK_GE  ("size", a.size, 16);              /* capacity kept */
+    CHECK_NOT_NULL("arr", a.arr);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, cleanall_when_hwm_lt_size) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+    fs2arr_shrink(&a);                 /* size=1, hwm=1 */
+
+    /* hwm == size, no gap */
+    fs2arr_cleanall(&a);
+    CHECK_EQ("hwm after cleanall",  0, a.hwm);
+
+    /* Grow again but only use 1 slot, then shrink partially */
+    fs2 v2 = fs2_fromstr("y");
+    fs2arr_push(&a, &v2);
+    fs2arr_reserve(&a, 16);            /* size >= 16, hwm=1 */
+    cr_assert(a.hwm < a.size);
+
+    fs2arr_cleanall(&a);
+
+    CHECK_EQ("hwm after cleanall (hwm < size)", 0, a.hwm);  /* ← fails с "to==size" */
+    CHECK_EQ("count", 0, a.count);
+    CHECK_EQ("size",  a.size, a.size);                       /* unchanged */
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
