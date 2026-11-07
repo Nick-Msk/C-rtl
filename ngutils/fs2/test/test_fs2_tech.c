@@ -7,14 +7,6 @@
 
 TestSuite(fs2_api_tech, .init = test_setup, .fini = test_teardown);
 
-/* Read errno (satisfies unix.Errno), reset to 0 for the next call.
- * Returns the prior value so caller can log it on failure. */
-static inline int errno_take(void) {
-    int e = errno;
-    errno = 0;
-    return e;
-}
-
 /* Read whole file; NULL on failure. No errno leaked to caller. */
 static char *read_file(const char *path, size_t *out_len) {
     FILE *f = fopen(path, "rb");
