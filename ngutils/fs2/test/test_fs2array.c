@@ -2002,3 +2002,216 @@ Test(fs2_array, clone_drops_trailing_holes) {
     fs2arr_free(&c);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_eqexact — semantic comparison up to hwm
+ * ========================================================================= */
+
+Test(fs2_array, eqexact_canonical_vs_canonical) {
+    fs2array a = FS2ARR();
+    fs2array b = FS2ARR();
+    CHECK_TRUE("both canonical", fs2arr_eqexact(&a, &b));
+}
+
+Test(fs2_array, eqexact_canonical_vs_empty_with_capacity) {
+    fs2array a = FS2ARR();
+    fs2array b = fs2arr_init(16);            /* arr != NULL, hwm=0 */
+    CHECK_TRUE("both empty up to hwm", fs2arr_eqexact(&a, &b));
+    CHECK_TRUE("symmetric",            fs2arr_eqexact(&b, &a));
+    fs2arr_free(&b);
+}
+
+Test(fs2_array, eqexact_same_content) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 va = fs2_from_new(i);
+        fs2 vb = fs2_from_new(i);
+        fs2arr_push(&a, &va);
+        fs2arr_push(&b, &vb);
+    }
+    CHECK_TRUE("same content", fs2arr_eqexact(&a, &b));
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_different_content) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    fs2 va = fs2_fromstr("hello");
+    fs2 vb = fs2_fromstr("world");
+    fs2arr_push(&a, &va);
+    fs2arr_push(&b, &vb);
+    CHECK_FALSE("different strings", fs2arr_eqexact(&a, &b));
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_different_hwm) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    fs2 va = fs2_fromstr("x");
+    fs2 vb = fs2_fromstr("x");
+    fs2arr_push(&a, &va);                    /* hwm=1 */
+    fs2arr_push(&b, &vb);
+    fs2 vc = fs2_fromstr("y");
+    fs2arr_push(&b, &vc);                    /* hwm=2 */
+    CHECK_FALSE("hwm differs", fs2arr_eqexact(&a, &b));
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_same_holes_at_same_positions) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    /* build identical arrays then detach same indices */
+    for (int i = 0; i < 4; i++) {
+        fs2 va = fs2_from_new(i);
+        fs2 vb = fs2_from_new(i);
+        fs2arr_push(&a, &va);
+        fs2arr_push(&b, &vb);
+    }
+    fs2 ta = fs2arr_detach_new(&a, 1);
+    fs2 tb = fs2arr_detach_new(&b, 1);
+    fs2_free(&ta);
+    fs2_free(&tb);
+    /* both: [0, hole, 2, 3], hwm=4, count=3 */
+
+    CHECK_TRUE("same holes", fs2arr_eqexact(&a, &b));
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_hole_mismatch) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 va = fs2_from_new(i);
+        fs2 vb = fs2_from_new(i);
+        fs2arr_push(&a, &va);
+        fs2arr_push(&b, &vb);
+    }
+    fs2 t = fs2arr_detach_new(&a, 1);        /* a: [0, hole, 2] */
+    fs2_free(&t);
+    /* b: [0, 1, 2] — no hole */
+
+    CHECK_FALSE("hole vs live at [1]", fs2arr_eqexact(&a, &b));
+    CHECK_FALSE("symmetric",           fs2arr_eqexact(&b, &a));
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_same_count_different_positions) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    /* a: [live, hole, live], b: [live, live, hole] — same count=2, hwm=3 */
+    for (int i = 0; i < 3; i++) {
+        fs2 va = fs2_from_new(i);
+        fs2 vb = fs2_from_new(i);
+        fs2arr_push(&a, &va);
+        fs2arr_push(&b, &vb);
+    }
+    fs2 ta = fs2arr_detach_new(&a, 1);
+    fs2 tb = fs2arr_detach_new(&b, 2);
+    fs2_free(&ta);
+    fs2_free(&tb);
+
+    CHECK_FALSE("different hole positions", fs2arr_eqexact(&a, &b));
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_size_ignored) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2array b = fs2arr_init(64);            /* different capacity */
+    fs2 va = fs2_fromstr("x");
+    fs2 vb = fs2_fromstr("x");
+    fs2arr_push(&a, &va);
+    fs2arr_push(&b, &vb);
+
+    CHECK_TRUE("size ignored", fs2arr_eqexact(&a, &b));
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_null_handling) {
+    fs2array a = FS2ARR();
+
+    CHECK_TRUE ("both NULL",      fs2arr_eqexact(NULL, NULL));
+    CHECK_FALSE("a NULL",         fs2arr_eqexact(NULL, &a));
+    CHECK_FALSE("b NULL",         fs2arr_eqexact(&a, NULL));
+    CHECK_TRUE ("same pointer",   fs2arr_eqexact(&a, &a));
+}
+
+Test(fs2_array, eqexact_same_pointer_short_circuit) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+
+    CHECK_TRUE("a == a fast path", fs2arr_eqexact(&a, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, eqexact_after_clone) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+    /* a: [0, 1, hole, 3, 4], hwm=5, count=4 */
+
+    fs2array c_packed = fs2arr_clone(&a);     /* packed, hwm=4 */
+    fs2array c_exact  = fs2arr_cloneexact(&a);/* preserved, hwm=5 */
+
+    CHECK_FALSE("packed differs in hwm", fs2arr_eqexact(&a, &c_packed));
+    CHECK_TRUE ("exact matches",         fs2arr_eqexact(&a, &c_exact));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c_packed);
+    fs2arr_free(&c_exact);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Negative: corrupt state visible to eqexact
+ * ========================================================================= */
+
+Test(fs2_array, eqexact_count_mismatch_false) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2array b = fs2arr_init(8);
+    fs2 va = fs2_fromstr("x");
+    fs2 vb = fs2_fromstr("x");
+    fs2arr_push(&a, &va);
+    fs2arr_push(&b, &vb);
+    /* same content, but corrupt b.count */
+    b.count = 0;
+    CHECK_FALSE("count mismatch", fs2arr_eqexact(&a, &b));
+    b.count = 1;                              /* restore for free */
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
