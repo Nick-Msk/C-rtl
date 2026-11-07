@@ -71,11 +71,7 @@ fs2array
 fs2arr_clone(const fs2array *src) {
     invfatal(ERR_NULL_INPUT, src != NULL, "Null fs2array");
 
-    fs2array a = FS2ARR();
-    if (!src->arr || src->count == 0)
-        return a;
-
-    a = fs2arr_init(src->count);  // physical count MAY BE differ!!! Logical - the same.          
+    fs2array a = fs2arr_init(src->count);  // physical count MAY BE differ!!! Logical - the same.          
 
     for (size_t i = 0; i < src->hwm; i++) {
         if (fs2arr_is_hole(&src->arr[i]))
@@ -83,7 +79,6 @@ fs2arr_clone(const fs2array *src) {
         fs2 v = fs2_clone(&src->arr[i]);    /* deep copy of one element */
         fs2arr_push(&a, &v);                /* v → FS2EMPTY, copy in slot */
     }
-
     return a;
 }
 
@@ -92,11 +87,7 @@ fs2array
 fs2arr_cloneexact(const fs2array *src) {
     invfatal(ERR_NULL_INPUT, src != NULL, "Null fs2array");
 
-    fs2array a = FS2ARR();
-    if (!src->arr || src->hwm == 0)
-        return a;
-
-    a = fs2arr_init(src->hwm);  // total copy    
+    fs2array a = fs2arr_init(src->hwm);  // total copy    
     a.hwm = src->hwm;       // to save trailer nulls    
 
     for (size_t i = 0; i < src->hwm; i++) {
@@ -105,7 +96,6 @@ fs2arr_cloneexact(const fs2array *src) {
         fs2 v = fs2_clone(&src->arr[i]);    /* deep copy of one element */
         fs2arr_attach_sp(&a, &v, i);                /* v → FS2EMPTY, copy in slot */
     }
-
     return a;
 }
 
