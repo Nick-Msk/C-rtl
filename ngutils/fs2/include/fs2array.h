@@ -246,5 +246,28 @@ fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *re
 #define FS2ARRTECHPRINT(a)         fs2arr_techfprint(stdout, (a), #a)
 #define FS2ARRTECHLOG(a)           fs2arr_techfprint(logfile, (a), #a)
 
+/**
+ * @brief Validate all invariants of an fs2array.
+ *
+ * Checks:
+ * 1. count <= hwm <= size.
+ * 2. arr == NULL only in canonical empty (hwm == size == count == 0).
+ * 3. [0, hwm): each slot is either a hole (FS2_NULL_ARRAY_ELEMENT) or a
+ *    valid fs2 (fs2_validate passes); count of live slots == count.
+ * 4. [hwm, size): every slot is a hole (padding invariant).
+ *
+ * On failure, a diagnostic is written to @p out (if non-NULL) and to the
+ * internal error log. For a slot-level failure, fs2_validate's own
+ * diagnostic is emitted first (specific reason), then a context line
+ * ("slot[N] invalid fs2").
+ *
+ * @param out  Optional output stream; NULL suppresses diagnostic to file
+ *             (still logs via logsimpleerr).
+ * @param a    fs2array to validate; NULL → reports and returns false.
+ * @return     true iff all invariants hold.
+ */
+extern bool
+fs2arr_validate(FILE *restrict out, const fs2array *restrict a);
+
 #endif /* !FS2ARRAY_H */
 

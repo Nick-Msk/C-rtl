@@ -292,3 +292,48 @@ fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *re
 
     return total;
 }
+
+bool
+fs2arr_validate(FILE *restrict out, const fs2array *restrict a)
+{
+    if (!a)
+        return LOGNPRINTF(out, "null pointer");
+
+    /* 1. Ordering. */
+    if (a->count > a->hwm)
+        return LOGNPRINTF(out, "count [%zu] > hwm [%zu]", a->count, a->hwm);
+    if (a->hwm > a->size)
+        return LOGNPRINTF(out, "hwm [%zu] > size [%zu]", a->hwm, a->size);
+
+    /* 2. Canonical empty (arr == NULL). */
+    if (!a->arr) {
+        if (a->hwm != 0 || a->size != 0 || a->count != 0)
+            return LOGNPRINTF(out,
+                "null arr but hwm=%zu, size=%zu, count=%zu",
+                a->hwm, a->size, a->count);
+        return true;
+    }
+
+    /* 3. [0, hwm): hole or valid fs2; live count == count. */
+    size_t live = 0;
+    for (size_t i = 0; i < a->hwm; i++) {
+        if (fs2arr_is_hole(&a->arr[i]))
+            continue;
+        if (!fs2_validate(out, &a->arr[i]))
+            return LOGNPRINTF(out, "slot[%zu] invalid fs2", i);
+        live++;
+    }
+    if (live != a->count)
+        return LOGNPRINTF(out,
+            "live [%zu] in [0, hwm=%zu) != count [%zu]",
+            live, a->hwm, a->count);
+
+    /* 4. [hwm, size): all holes (padding). */
+    for (size_t i = a->hwm; i < a->size; i++)
+        if (!fs2arr_is_hole(&a->arr[i]))
+            return LOGNPRINTF(out,
+                "slot[%zu] in padding [hwm=%zu, size=%zu) is not a hole",
+                i, a->hwm, a->size);
+
+    return true;
+}
