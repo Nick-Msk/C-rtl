@@ -28,6 +28,10 @@ fs2arr_set_hole(fs2 *slot) {
     slot->v     = NULL;
 }
 
+/* Content-of-slot truncation uses FS2_TECH_PRINT_COUNT (same as fs2_techfprint).
+ * Number of slots shown in array dump: FS2ARR_TECH_PRINT_COUNT. */
+enum { FS2ARR_TECH_PRINT_COUNT = 8 };
+
 /**
  * @brief Allocate an fs2array with capacity for @p cnt elements.
  *
@@ -214,6 +218,33 @@ fs2arr_heap_detach(fs2array *a, size_t idx) {
     }
     return p;                           /* caller frees via fs2_free */
 }
+
+/**
+ * @brief Print a one-slot-per-line technical dump of an fs2array.
+ *
+ * Format:
+ *   FS2ARR: <name>: hwm [N], size [M], count [K], arr(<ptr>)[
+ *     [0] len [..], sz [..], flags [0x..], v(<ptr>)[content...]
+ *     [1] <hole>
+ *     ...
+ *     ... (X more slots)
+ *     padding [hwm, size) = P holes
+ *   ]
+ *
+ * Slots [0, min(hwm, FS2ARR_TECH_PRINT_COUNT)) shown; the rest summarised.
+ * Holes rendered as "<hole>". Padding [hwm, size) always all holes — noted.
+ *
+ * @param out   Output stream (NULL → return 0, no-op).
+ * @param a     fs2array to dump (NULL → prints "<NULL>").
+ * @param name  Label (NULL → "(unnamed)").
+ * @return      Total bytes written, or -1 on I/O error.
+ */
+extern long
+fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *restrict name);
+
+#define FS2ARRTECHFPRINT(out, a)   fs2arr_techfprint((out), (a), #a)
+#define FS2ARRTECHPRINT(a)         fs2arr_techfprint(stdout, (a), #a)
+#define FS2ARRTECHLOG(a)           fs2arr_techfprint(logfile, (a), #a)
 
 #endif /* !FS2ARRAY_H */
 

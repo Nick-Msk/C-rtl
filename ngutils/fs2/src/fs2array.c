@@ -232,3 +232,63 @@ fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
     a->count--;                          // hwm unchanged, hole stays
     return true;
 }
+
+long
+fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *restrict name) {
+    if (!out)
+        return 0;
+
+    const char *n = name ? name : "(unnamed)";
+    int         w;
+    long        total = 0;
+
+    if (!a) {
+        w = fprintf(out, "FS2ARR: %s: <NULL>\n", n);
+        return w < 0 ? -1 : (long)w;
+    }
+
+    w = fprintf(out, "FS2ARR: %s: hwm [%zu], size [%zu], count [%zu], arr(%p)[\n",
+                n, a->hwm, a->size, a->count, (void *)a->arr);
+    if (w < 0) return -1;
+    total += w;
+
+    if (a->arr) {
+        size_t shown = a->hwm < FS2ARR_TECH_PRINT_COUNT
+                       ? a->hwm : FS2ARR_TECH_PRINT_COUNT;
+
+        for (size_t i = 0; i < shown; i++) {
+            const fs2 *slot = &a->arr[i];
+            if (fs2arr_is_hole(slot)) {
+                w = fprintf(out, "  [%zu] <hole>\n", i);
+            } else {
+                const char *v   = slot->v ? slot->v : "(nil)";
+                size_t      len = slot->v ? MIN(FS2_TECH_PRINT_COUNT, slot->len) : 0;
+                int         ell = (slot->v && FS2_TECH_PRINT_COUNT < slot->len) ? 1 : 0;
+                w = fprintf(out,
+                            "  [%zu] len [%zu], sz [%zu], flags [0x%x], v(%p)[%.*s%s]\n",
+                            i, slot->len, slot->sz, (unsigned)slot->flags,
+                            (void *)v, (int)len, v, ell ? "..." : "");
+            }
+            if (w < 0) return -1;
+            total += w;
+        }
+
+        if (shown < a->hwm) {
+            w = fprintf(out, "  ... (%zu more slots)\n", a->hwm - shown);
+            if (w < 0) return -1;
+            total += w;
+        }
+        if (a->hwm < a->size) {
+            w = fprintf(out, "  padding [%zu, %zu) = %zu holes\n",
+                        a->hwm, a->size, a->size - a->hwm);
+            if (w < 0) return -1;
+            total += w;
+        }
+    }
+
+    w = fprintf(out, "]\n");
+    if (w < 0) return -1;
+    total += w;
+
+    return total;
+}
