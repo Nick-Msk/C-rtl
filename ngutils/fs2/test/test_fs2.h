@@ -44,4 +44,39 @@ assert_balanced(void)
     cr_assert(ok, "counters not balanced");
 }    
 
+static inline int 
+errno_take(void) __attribute__((always_inline));
+
+/* errno_take: read errno (satisfies unix.Errno), reset to 0. */
+static inline int
+errno_take(void) {
+    int e = errno;
+    errno = 0;
+    return e;
+}
+
+/* Drop-in replacement for tmpfile() with NULL check that analyzer understands. */
+static inline FILE *
+test_tmpfile(const char *where) {
+    FILE *f = tmpfile();
+    if (!f) {
+        cr_assert_fail("%s: tmpfile() failed", where);
+        /* unreachable; the `return` tells analyzer the path exits */
+        return NULL;
+    }
+    return f;
+}
+
+/* Drop-in replacement for fread() that drains errno (unix.Errno). */
+static inline size_t
+test_fread(void *buf, size_t n, FILE *f, const char *where) {
+    errno_take();                              /* drain stale errno before fread */
+    size_t rd = fread(buf, 1, n, f);
+    int    e  = errno_take();                  /* drain fread's errno */
+    if (rd < n && ferror(f))
+        cr_assert_fail("%s: fread %zu/%zu: errno=%d (%s)",
+                       where, rd, n, e, strerror(e));
+    return rd;
+}
+
 #endif /* !TEST_FS2_H */
