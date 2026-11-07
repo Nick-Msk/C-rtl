@@ -122,20 +122,15 @@ fs2arr_shrink(fs2array *a) {
     if (!a->arr)
         return logsimpleret(true, "Null arr, nothing to do");
 
-    /* Trim trailing holes — safe, no live element below new hwm is touched */
-    while (a->hwm > 0 && fs2arr_is_hole(&a->arr[a->hwm - 1]))
-        a->hwm--;
-
     if (a->hwm == a->size)
         return logsimpleret(true, 
             "hwn equal size %zu, nothing to free", a->size);                        /* already tight */
 
-    /* hwm == 0 means all slots are holes. realloc(arr, 0) is impl-defined
-     * (may free+return NULL, or return unique 0-size ptr). Both paths
-     * break invariants — handle explicitly via canonical reset. */
+    /* hwm == 0 (no live region, or synchwm already trimmed).
+     * realloc(arr, 0) is impl-defined — free explicitly to get canonical. */
     if (a->hwm == 0) {
         fs2arr_free(a);
-        return logsimpleret(true, "all holes, freed totally");
+        return logsimpleret(true, "hwm is 0, freed totally");
     }
 
     /* Internal holes preserved — only tail is trimmed. Shrink to exact hwm. */
