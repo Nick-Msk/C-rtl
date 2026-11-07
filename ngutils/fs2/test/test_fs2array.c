@@ -1699,3 +1699,306 @@ Test(fs2_array, clone_null_aborts, .signal = SIGABRT) {
 Test(fs2_array, cloneexact_null_aborts, .signal = SIGABRT) {
     fs2arr_cloneexact(NULL);
 }
+
+/* =========================================================================
+ * fs2arr_get — read-only slot access
+ * ========================================================================= */
+
+Test(fs2_array, get_live_slot) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("live");
+    fs2arr_push(&a, &v);
+
+    const fs2 *p = fs2arr_get(&a, 0);
+
+    cr_assert_not_null(p);
+    CHECK_PTR_EQ("same slot", &a.arr[0], p);
+    CHECK_FALSE("not hole",  fs2arr_is_hole(p));
+    CHECK_STR_EQ("value",    "live", p->v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, get_hole_slot) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* hwm=1, slot[0] hole */
+
+    const fs2 *p = fs2arr_get(&a, 0);
+
+    cr_assert_not_null(p);
+    CHECK_TRUE("hole", fs2arr_is_hole(p));
+    CHECK_PTR_EQ("v", NULL, p->v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, get_out_of_hwm_returns_null) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(16);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);                       /* hwm=1, size>=16 */
+
+    CHECK_PTR_EQ("idx = hwm",   NULL, fs2arr_get(&a, 1));
+    CHECK_PTR_EQ("idx > hwm",   NULL, fs2arr_get(&a, 5));
+    CHECK_PTR_EQ("idx = 10000", NULL, fs2arr_get(&a, 10000));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, get_empty_returns_null) {
+    fs2array canon = FS2ARR();
+    CHECK_PTR_EQ("canon", NULL, fs2arr_get(&canon, 0));
+
+    fs2array empty = fs2arr_init(16);
+    CHECK_PTR_EQ("empty with cap", NULL, fs2arr_get(&empty, 0));
+    fs2arr_free(&empty);
+}
+
+Test(fs2_array, get_null_aborts, .signal = SIGABRT) {
+    fs2arr_get(NULL, 0);
+}
+
+/* =========================================================================
+ * fs2arr_clone — packed, tight, deep copy
+ * ========================================================================= */
+
+Test(fs2_array, clone_packs_and_tight) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    /* detach mid to create holes */
+    fs2 t1 = fs2arr_detach_new(&a, 3);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1); fs2_free(&t2);
+    /* src: [0, hole, 2, hole, 4], hwm=5, count=3 */
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_EQ  ("count", 3, c.count);
+    CHECK_EQ  ("hwm",   3, c.hwm);             /* packed: no holes */
+    CHECK_GE  ("size",  c.size, 3);            /* tight */
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+    CHECK_STR_EQ("[1]", "2", c.arr[1].v);      /* original [2] */
+    CHECK_STR_EQ("[2]", "4", c.arr[2].v);      /* original [4] */
+    CHECK_FALSE("[0] live", fs2arr_is_hole(&c.arr[0]));
+    CHECK_FALSE("[1] live", fs2arr_is_hole(&c.arr[1]));
+    CHECK_FALSE("[2] live", fs2arr_is_hole(&c.arr[2]));
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_deep_copy_independent) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("hello");
+    fs2arr_push(&a, &v);
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_TRUE("independent buffers", a.arr[0].v != c.arr[0].v);
+    CHECK_STR_EQ("same content", "hello", c.arr[0].v);
+
+    /* mutate original — clone unaffected */
+    a.arr[0].v[0] = 'X';
+    CHECK_STR_EQ("clone still hello", "hello", c.arr[0].v);
+    CHECK_STR_EQ("src now Xello",     "Xello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_canonical_returns_canonical) {
+    fs2array canon = FS2ARR();
+    fs2array c = fs2arr_clone(&canon);
+
+    CHECK_PTR_EQ("arr", NULL, c.arr);
+    CHECK_EQ   ("hwm",  0, c.hwm);
+    CHECK_EQ   ("size", 0, c.size);
+    CHECK_EQ   ("count",0, c.count);
+    /* canonical — no fs2arr_free needed */
+}
+
+Test(fs2_array, clone_empty_capacity_returns_canonical) {
+    fs2array empty = fs2arr_init(16);          /* arr != NULL, count=0 */
+
+    fs2array c = fs2arr_clone(&empty);
+
+    CHECK_PTR_EQ("arr", NULL, c.arr);          /* no live elements → canonical */
+    CHECK_EQ   ("count", 0, c.count);
+
+    fs2arr_free(&empty);
+    /* clone is canonical */
+}
+
+/* =========================================================================
+ * fs2arr_cloneexact — preserves hwm (holes + trailing), tight size
+ * ========================================================================= */
+
+Test(fs2_array, cloneexact_preserves_mid_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 4; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+    /* src: [0, hole, 2, 3], hwm=4, count=3 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+
+    CHECK_EQ  ("count", 3, c.count);
+    CHECK_EQ  ("hwm",   4, c.hwm);
+    CHECK_GE  ("size",  c.size, 4);
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+    CHECK_TRUE ("[1] hole", fs2arr_is_hole(&c.arr[1]));
+    CHECK_STR_EQ("[2]", "2", c.arr[2].v);
+    CHECK_STR_EQ("[3]", "3", c.arr[3].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, cloneexact_deep_independent) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("data");
+    fs2arr_push(&a, &v);
+
+    fs2array c = fs2arr_cloneexact(&a);
+
+    CHECK_TRUE("independent", a.arr[0].v != c.arr[0].v);
+    a.arr[0].v[0] = 'X';
+    CHECK_STR_EQ("clone intact", "data", c.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, cloneexact_canonical_returns_canonical) {
+    fs2array canon = FS2ARR();
+    fs2array c = fs2arr_cloneexact(&canon);
+    CHECK_PTR_EQ("arr", NULL, c.arr);
+}
+
+/* =========================================================================
+ * get + clone + cloneexact — integration
+ * ========================================================================= */
+
+Test(fs2_array, clone_then_get_all_live) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+    /* src has hole at [2] */
+
+    fs2array c = fs2arr_clone(&a);
+
+    /* clone is packed: all [0, count) live — get returns non-hole */
+    for (size_t i = 0; i < c.count; i++) {
+        const fs2 *p = fs2arr_get(&c, i);
+        cr_assert_not_null(p);
+        CHECK_FALSE("[i] live", fs2arr_is_hole(p));
+    }
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, cloneexact_then_get_preserves_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 2);
+    fs2_free(&t);
+    /* src: [0, 1, hole, 3, 4], hwm=5 */
+
+    fs2array c = fs2arr_cloneexact(&a);
+
+    /* get returns slots as-is — hole at [2] preserved */
+    const fs2 *hole = fs2arr_get(&c, 2);
+    cr_assert_not_null(hole);
+    CHECK_TRUE("hole at [2]", fs2arr_is_hole(hole));
+
+    const fs2 *live = fs2arr_get(&c, 3);
+    cr_assert_not_null(live);
+    CHECK_FALSE("live at [3]", fs2arr_is_hole(live));
+    CHECK_STR_EQ("[3] value", "3", live->v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_preserves_all_live_with_mid_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);            /* 0,1,2,3,4 */
+        fs2arr_push(&a, &v);
+    }
+    /* detach mid: holes at [1] and [3] */
+    fs2 t1 = fs2arr_detach_new(&a, 3);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1); fs2_free(&t2);
+    /* src: [0, hole, 2, hole, 4], count=3, hwm=5 */
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_EQ("count", 3, c.count);          /* ← fails without fix: 2 */
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+    CHECK_STR_EQ("[1]", "2", c.arr[1].v);   /* ← fails without fix: missing */
+    CHECK_STR_EQ("[2]", "4", c.arr[2].v);   /* ← fails without fix: missing */
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array, clone_drops_trailing_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t1 = fs2arr_detach_new(&a, 2);
+    fs2 t2 = fs2arr_detach_new(&a, 1);
+    fs2_free(&t1); fs2_free(&t2);
+    /* src: [0, hole, hole], count=1, hwm=3 */
+
+    fs2array c = fs2arr_clone(&a);
+
+    CHECK_EQ  ("count", 1, c.count);
+    CHECK_EQ  ("hwm",   1, c.hwm);           /* packed: no trailing */
+    CHECK_STR_EQ("[0]", "0", c.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&c);
+    assert_balanced();
+}
