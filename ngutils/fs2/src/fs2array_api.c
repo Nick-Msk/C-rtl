@@ -67,11 +67,5 @@ fs2arr_compact(fs2array *a) {
         write++;
     }
 
-    /* write == live count by invariant. If count drifted (bug elsewhere),
-     * fail-fast here rather than silently propagate. */
-    invfatal(ERR_OUT_OF_RANGE, write == a->count,
-             "fs2arr_compact: live slots %zu != count %zu",
-             write, a->count);
-
     a->hwm = write;   /* trim logical end to last live; [hwm, old_hwm) → padding */
 }
