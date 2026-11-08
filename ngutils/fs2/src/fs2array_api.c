@@ -272,3 +272,25 @@ fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *de
     return dst;
 }
 
+fs2array *
+fs2arr_reverse(fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
+    if (a->hwm != a->count)
+        userraise(NULL, ERR_UNSUPPORTED_TYPE,
+             "not packed (hwm=%zu count=%zu); "
+             "call fs2arr_compact() first", a->hwm, a->count);
+
+    for (size_t i = 0; i < a->count / 2; i++) {
+        fs2 tmp   = a->arr[i];
+        a->arr[i] = a->arr[a->count - 1 - i];
+        a->arr[a->count - 1 - i]  = tmp;
+    }
+    return a;
+}
+
+fs2array
+fs2arr_reverse_new(const fs2array *restrict src) {
+    invfatal(ERR_NULL_INPUT, src != NULL, "Null fs2array");
+    fs2array r = fs2arr_clone(src);            /* packed deep copy */
+    return *fs2arr_reverse(&r);
+}

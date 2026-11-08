@@ -328,4 +328,25 @@ fs2arr_join_delim_str(fs2 *restrict dst, const fs2array *restrict src, const cha
     return fs2arr_join_delim(dst, src, &d);
 }
 
+/**
+ * @brief Reverse elements in place.
+ *
+ * @pre  @p a is packed (hwm == count). Caller must fs2arr_compact if the
+ *       array may contain holes — with holes, "reverse" is ambiguous.
+ * @param a  Non-NULL fs2array, packed.
+ * @return   @p a (for chaining).
+ * @warning `invfatal` (SIGABRT) on NULL a or not-packed input.
+ */
+extern fs2array *
+fs2arr_reverse(fs2array *a);
+
+/**
+ * @brief Deep-copy @p src, then reverse the copy (packed result).
+ *
+ * @param src  Non-NULL fs2array (any state — clone packs first).
+ * @return     New fs2array; free with fs2arr_free.
+ */
+extern fs2array
+fs2arr_reverse_new(const fs2array *restrict src);
+
 #endif /* !FS2ARRAY_API_H */
