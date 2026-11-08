@@ -1073,6 +1073,64 @@ Test(fs2_array_api, compact_idempotent_eqexact) {
     assert_balanced();
 }
 
+Test(fs2_array_api, compact_idempotent_all_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v1 = fs2_fromstr("x");
+    fs2 v2 = fs2_fromstr("y");
+    fs2arr_push(&a, &v1);
+    fs2arr_push(&a, &v2);
+    fs2 t1 = fs2arr_detach_new(&a, 1);
+    fs2 t2 = fs2arr_detach_new(&a, 0);
+    fs2_free(&t1); fs2_free(&t2);
+    /* [hole, hole], hwm=2, count=0 */
+
+    fs2arr_compact(&a);
+    /* [hole, hole], hwm=0, count=0 */
+
+    fs2array snapshot = fs2arr_cloneexact(&a);
+    /* cloneexact of hwm=0 → canonical FS2ARR() (both sides empty) */
+
+    fs2arr_compact(&a);          /* idempotent — hwm=0, no-op */
+
+    CHECK_TRUE("eqexact after double compact (all holes)",
+               fs2arr_eqexact(&a, &snapshot));
+    CHECK_EQ  ("hwm",   0, a.hwm);
+    CHECK_EQ  ("count", 0, a.count);
+
+    fs2arr_free(&a);
+    fs2arr_free(&snapshot);
+    assert_balanced();
+}
+
+Test(fs2_array_api, compact_idempotent_canonical) {
+    fs2array a = FS2ARR();
+    fs2arr_compact(&a);                /* no-op */
+    fs2arr_compact(&a);                /* no-op */
+    CHECK_PTR_EQ("arr", NULL, a.arr);
+    CHECK_EQ   ("hwm",  0, a.hwm);
+    CHECK_EQ   ("count",0, a.count);
+    CHECK_EQ   ("size", 0, a.size);
+}
+
+Test(fs2_array_api, compact_idempotent_packed) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) { fs2 v = fs2_from_new(i); fs2arr_push(&a, &v); }
+    /* already packed: [0,1,2], hwm=3 */
+
+    fs2array snapshot = fs2arr_cloneexact(&a);
+
+    fs2arr_compact(&a);                /* no-op: write == hwm */
+
+    CHECK_TRUE("packed → compact == no-op",
+               fs2arr_eqexact(&a, &snapshot));
+
+    fs2arr_free(&a);
+    fs2arr_free(&snapshot);
+    assert_balanced();
+}
+
 /* =========================================================================
  * fs2arr_compact — guards
  * ========================================================================= */
