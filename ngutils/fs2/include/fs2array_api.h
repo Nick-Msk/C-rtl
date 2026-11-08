@@ -196,4 +196,31 @@ fs2arr_concat_new(const fs2array *restrict a, const fs2array *restrict b) {
     return *fs2arr_concat(&res, b);
 }
 
+/**
+ * @brief Build an fs2array by copying a NULL-terminated array of C-strings.
+ *
+ * Each `src[i]` (non-NULL by loop condition) is copied via fs2_fromstr.
+ * Empty strings `""` become live empty slots (FS2EMPTY), not holes.
+ * Result is packed and tight (hwm == size == count).
+ *
+ * @param src  NULL-terminated `const char *const[]`. `src != NULL` required
+ *             (NULL → SIGABRT). `src[0] == NULL` → canonical empty result.
+ * @return     New fs2array; free with fs2arr_free.
+ * @warning    `invfatal` (SIGABRT) if @p src is NULL.
+ * @warning    `sysraise`  (OOM) on allocation failure.
+ */
+extern fs2array
+fs2arr_fromstrarr_new(const char *const src[]);
+
+/**
+ * @brief Variadic sugar: build fs2array from C-string literals.
+ *
+ *   fs2array colors = FS2ARRFROMSTR("red", "green", "blue");
+ *   // ≡ fs2arr_fromstrarr((const char*const[]){"red","green","blue", NULL})
+ *
+ * Requires at least one argument (for zero-element, use `FS2ARR()`).
+ */
+#define FS2ARRFROMSTR(...) \
+    fs2arr_fromstrarr_new((const char *const[]){ __VA_ARGS__, NULL })
+
 #endif /* !FS2ARRAY_API_H */

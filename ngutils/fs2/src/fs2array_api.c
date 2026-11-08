@@ -148,3 +148,17 @@ fs2arr_concat(fs2array *dst, const fs2array *src) {
     }
     return dst;
 }
+
+fs2array
+fs2arr_fromstrarr_new(const char *const *src) {
+    invfatal(ERR_NULL_INPUT, src != NULL, 
+        "Null src array");
+
+    fs2array a = FS2ARR();
+    
+    while (*src) {
+        fs2 v = fs2_fromstr(*src++);
+        fs2arr_push(&a, &v);                   /* v → FS2EMPTY, copy in slot */
+    }
+    return a;
+}
