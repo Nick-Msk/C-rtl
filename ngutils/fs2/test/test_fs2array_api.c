@@ -1539,3 +1539,442 @@ Test(fs2_array_sort, sort_merge_sort_pipeline) {
     assert_balanced();
 }
 
+/* Helper: build array from string list */
+static fs2array
+mk_arr(const char *vals[], size_t n) {
+    fs2array a = fs2arr_init(n);
+    for (size_t i = 0; i < n; i++) {
+        fs2 v = fs2_fromstr(vals[i]);
+        fs2arr_push(&a, &v);
+    }
+    return a;
+}
+
+/* =========================================================================
+ * fs2arr_concat — in-place, dst += src
+ * ========================================================================= */
+
+Test(fs2_array_api, concat_basic) {
+    __fs2_checkreset();
+    fs2array dst = mk_arr((const char*[]){ "a", "b" }, 2);
+    fs2array src = mk_arr((const char*[]){ "x", "y", "z" }, 3);
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_EQ  ("hwm",   5, dst.hwm);
+    CHECK_EQ  ("count", 5, dst.count);
+    CHECK_STR_EQ("[0]", "a", dst.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", dst.arr[1].v);
+    CHECK_STR_EQ("[2]", "x", dst.arr[2].v);
+    CHECK_STR_EQ("[3]", "y", dst.arr[3].v);
+    CHECK_STR_EQ("[4]", "z", dst.arr[4].v);
+    CHECK_TRUE ("valid", fs2arr_validate(NULL, &dst));
+
+    fs2arr_free(&dst);
+    fs2arr_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_empty_src_noop) {
+    __fs2_checkreset();
+    fs2array dst = mk_arr((const char*[]){ "a" }, 1);
+    fs2array src = FS2ARR();
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_EQ  ("hwm",   1, dst.hwm);
+    CHECK_EQ  ("count", 1, dst.count);
+    CHECK_STR_EQ("[0]", "a", dst.arr[0].v);
+
+    fs2arr_free(&dst);
+}
+
+Test(fs2_array_api, concat_empty_dst_clones_src) {
+    __fs2_checkreset();
+    fs2array dst = FS2ARR();
+    fs2array src = mk_arr((const char*[]){ "x", "y" }, 2);
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_EQ  ("hwm",   2, dst.hwm);
+    CHECK_EQ  ("count", 2, dst.count);
+    CHECK_STR_EQ("[0]", "x", dst.arr[0].v);
+    CHECK_STR_EQ("[1]", "y", dst.arr[1].v);
+    /* deep copy: distinct buffers */
+    CHECK_TRUE("independent", dst.arr[0].v != src.arr[0].v);
+
+    fs2arr_free(&dst);
+    fs2arr_free(&src);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_both_empty) {
+    fs2array dst = FS2ARR();
+    fs2array src = FS2ARR();
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_PTR_EQ("arr", NULL, dst.arr);
+    CHECK_EQ   ("count", 0, dst.count);
+}
+
+/* src with holes: only live appended */
+Test(fs2_array_api, concat_skips_holes_in_src) {
+    __fs2_checkreset();
+    fs2array dst = mk_arr((const char*[]){ "d" }, 1);
+    fs2array src = fs2arr_init(8);
+    for (int i = 0; i < 4; i++) {
+        fs2 v = fs2_from_new(i);                 /* "0","1","2","3" */
+        fs2arr_push(&src, &v);
+    }
+    fs2 t = fs2arr_detach_new(&src, 1);          /* hole at [1] */
+    fs2_free(&t);
+    /* src: [0, hole, 2, 3], hwm=4, count=3 */
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_EQ  ("hwm",   4, dst.hwm);             /* 1 + 3 (holes skipped) */
+    CHECK_EQ  ("count", 4, dst.count);
+    CHECK_STR_EQ("[0]", "d", dst.arr[0].v);
+    CHECK_STR_EQ("[1]", "0", dst.arr[1].v);
+    CHECK_STR_EQ("[2]", "2", dst.arr[2].v);
+    CHECK_STR_EQ("[3]", "3", dst.arr[3].v);
+
+    fs2arr_free(&dst);
+    fs2arr_free(&src);
+    assert_balanced();
+}
+
+/* dst with holes: push goes to hwm, holes stay */
+Test(fs2_array_api, concat_preserves_holes_in_dst) {
+    __fs2_checkreset();
+    fs2array dst = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_fromstr((const char*[]){ "A", "B", "C" }[i]);
+        fs2arr_push(&dst, &v);
+    }
+    fs2 t = fs2arr_detach_new(&dst, 1);          /* hole at [1] */
+    fs2_free(&t);
+    /* dst: [A, hole, C], hwm=3, count=2 */
+
+    fs2array src = mk_arr((const char*[]){ "X" }, 1);
+
+    fs2arr_concat(&dst, &src);
+
+    CHECK_EQ  ("hwm",   4, dst.hwm);             /* push appends at hwm=3 */
+    CHECK_EQ  ("count", 3, dst.count);
+    CHECK_STR_EQ("[0]", "A", dst.arr[0].v);
+    CHECK_TRUE ("[1] hole preserved", fs2arr_is_hole(&dst.arr[1]));
+    CHECK_STR_EQ("[2]", "C", dst.arr[2].v);
+    CHECK_STR_EQ("[3]", "X", dst.arr[3].v);
+
+    fs2arr_free(&dst);
+    fs2arr_free(&src);
+    assert_balanced();
+}
+
+/* Self-concat doubles live elements, preserves holes */
+Test(fs2_array, concat_self_doubles_packed) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "a", "b", "c" }, 3);
+
+    fs2arr_concat(&a, &a);
+
+    CHECK_EQ  ("count", 6, a.count);
+    CHECK_EQ  ("hwm",   6, a.hwm);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "a", a.arr[3].v);
+    CHECK_STR_EQ("[4]", "b", a.arr[4].v);
+    CHECK_STR_EQ("[5]", "c", a.arr[5].v);
+
+    /* Deep copies: [3..5] distinct from [0..2] */
+    CHECK_TRUE("[0] != [3] buf", a.arr[0].v != a.arr[3].v);
+    CHECK_TRUE("[1] != [4] buf", a.arr[1].v != a.arr[4].v);
+    CHECK_TRUE("[2] != [5] buf", a.arr[2].v != a.arr[5].v);
+
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, concat_self_with_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 4; i++) {
+        fs2 v = fs2_fromstr((const char*[]){ "a", "b", "c", "d" }[i]);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 1);   /* hole at [1] */
+    fs2_free(&t);
+    /* [a, hole, c, d], hwm=4, count=3 */
+
+    fs2arr_concat(&a, &a);
+
+    CHECK_EQ  ("hwm",   7, a.hwm);
+    CHECK_EQ  ("count", 6, a.count);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_TRUE ("[1] hole preserved", fs2arr_is_hole(&a.arr[1]));
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "d", a.arr[3].v);
+    CHECK_STR_EQ("[4]", "a", a.arr[4].v);
+    CHECK_STR_EQ("[5]", "c", a.arr[5].v);
+    CHECK_STR_EQ("[6]", "d", a.arr[6].v);
+    CHECK_TRUE ("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* Empty self-concat is no-op */
+Test(fs2_array, concat_self_empty_noop) {
+    fs2array a = FS2ARR();
+    fs2arr_concat(&a, &a);
+    CHECK_PTR_EQ("arr", NULL, a.arr);
+    CHECK_EQ("count", 0, a.count);
+}
+
+/* Self-concat of single */
+Test(fs2_array, concat_self_single) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "x" }, 1);
+    fs2arr_concat(&a, &a);
+    CHECK_EQ  ("count", 2, a.count);
+    CHECK_STR_EQ("[0]", "x", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "x", a.arr[1].v);
+    CHECK_TRUE("[0] != [1] buf", a.arr[0].v != a.arr[1].v);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_null_dst_aborts, .signal = SIGABRT) {
+    fs2array src = FS2ARR();
+    fs2arr_concat(NULL, &src);
+}
+
+Test(fs2_array_api, concat_null_src_aborts, .signal = SIGABRT) {
+    fs2array dst = FS2ARR();
+    fs2arr_concat(&dst, NULL);
+}
+
+/* =========================================================================
+ * fs2arr_concat_new — packed, tight, deep copy
+ * ========================================================================= */
+
+Test(fs2_array_api, concat_new_basic) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "a", "b" }, 2);
+    fs2array b = mk_arr((const char*[]){ "x", "y" }, 2);
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    CHECK_EQ  ("hwm",   4, r.hwm);
+    CHECK_EQ  ("count", 4, r.count);
+    CHECK_GE  ("size",  r.size, 4);              /* tight */
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "x", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "y", r.arr[3].v);
+    CHECK_TRUE ("valid", fs2arr_validate(NULL, &r));
+
+    /* independent buffers */
+    CHECK_TRUE("a-buf independent", r.arr[0].v != a.arr[0].v);
+    CHECK_TRUE("b-buf independent", r.arr[2].v != b.arr[0].v);
+
+    fs2arr_free(&a); fs2arr_free(&b); fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_new_a_empty) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();
+    fs2array b = mk_arr((const char*[]){ "x", "y" }, 2);
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    CHECK_EQ  ("count", 2, r.count);
+    CHECK_GE  ("size",  r.size, 2);
+    CHECK_STR_EQ("[0]", "x", r.arr[0].v);
+
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_new_b_empty) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "a", "b" }, 2);
+    fs2array b = FS2ARR();
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    CHECK_EQ  ("count", 2, r.count);
+    CHECK_GE  ("size",  r.size, 2);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_new_both_empty) {
+    fs2array a = FS2ARR();
+    fs2array b = FS2ARR();
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    CHECK_PTR_EQ("arr", NULL, r.arr);
+    CHECK_EQ   ("count", 0, r.count);
+}
+
+/* holes in a → packed in result (clone drops holes) */
+Test(fs2_array_api, concat_new_packs_holes_in_a) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 4; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 1);            /* hole at [1] */
+    fs2_free(&t);
+    /* a: [0, hole, 2, 3], hwm=4, count=3 */
+
+    fs2array b = mk_arr((const char*[]){ "x" }, 1);
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    /* clone(a) packs → [0, 2, 3], then +x → [0, 2, 3, x] */
+    CHECK_EQ  ("count", 4, r.count);
+    CHECK_EQ  ("hwm",   4, r.hwm);
+    CHECK_GE  ("size",  r.size, 4);
+    CHECK_STR_EQ("[0]", "0", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "2", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "3", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "x", r.arr[3].v);
+
+    fs2arr_free(&a); fs2arr_free(&b); fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_new_skips_holes_in_b) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "a" }, 1);
+    fs2array b = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_fromstr((const char*[]){ "X", "Y", "Z" }[i]);
+        fs2arr_push(&b, &v);
+    }
+    fs2 t = fs2arr_detach_new(&b, 1);            /* hole at [1] */
+    fs2_free(&t);
+    /* b: [X, hole, Z], hwm=3, count=2 */
+
+    fs2array r = fs2arr_concat_new(&a, &b);
+
+    CHECK_EQ  ("count", 3, r.count);
+    CHECK_GE  ("size",  r.size, 3);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "X", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "Z", r.arr[2].v);
+
+    fs2arr_free(&a); fs2arr_free(&b); fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* Invariance: concat_new(a, b) ≡ concat_new(b, a) for disjoint-content inputs */
+Test(fs2_array_api, concat_new_preserves_multiset) {
+    __fs2_checkreset();
+    fs2array a = mk_arr((const char*[]){ "c", "a" }, 2);
+    fs2array b = mk_arr((const char*[]){ "b", "a" }, 2);
+
+    fs2array r1 = fs2arr_concat_new(&a, &b);
+    fs2array r2 = fs2arr_concat_new(&b, &a);
+
+    /* order differs, content multiset identical */
+    CHECK_EQ("count r1", 4, r1.count);
+    CHECK_EQ("count r2", 4, r2.count);
+
+    /* sort both, compare */
+    fs2arr_sortasc(&r1);
+    fs2arr_sortasc(&r2);
+    CHECK_TRUE("same multiset", fs2arr_eqexact(&r1, &r2));
+
+    fs2arr_free(&a); fs2arr_free(&b);
+    fs2arr_free(&r1); fs2arr_free(&r2);
+    assert_balanced();
+}
+
+Test(fs2_array_api, concat_new_null_a_aborts, .signal = SIGABRT) {
+    fs2array b = FS2ARR();
+    fs2arr_concat_new(NULL, &b);
+}
+
+Test(fs2_array_api, concat_new_null_b_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARR();
+    fs2arr_concat_new(&a, NULL);
+}
+
+/* =========================================================================
+ * Integration: split → concat → original reconstruction
+ * ========================================================================= */
+
+Test(fs2_array_api, split_concat_roundtrip) {
+    __fs2_checkreset();
+
+    fs2 src = fs2_fromstr("alpha,beta,gamma,delta");
+    fs2 comma = fs2_fromstr(",");
+
+    fs2array parts = fs2_split_toarray(&src, &comma);
+    cr_assert_eq(parts.count, 4);
+
+    /* split into two halves */
+    fs2array left = fs2arr_init(2);
+    fs2array right = fs2arr_init(2);
+    for (size_t i = 0; i < 2; i++) {
+        fs2 v = fs2_clone(&parts.arr[i]); fs2arr_push(&left, &v);
+    }
+    for (size_t i = 2; i < 4; i++) {
+        fs2 v = fs2_clone(&parts.arr[i]); fs2arr_push(&right, &v);
+    }
+
+    /* concat back */
+    fs2array recon = fs2arr_concat_new(&left, &right);
+
+    CHECK_EQ  ("count", 4, recon.count);
+    CHECK_GE  ("size",  recon.size, 4);          /* tight */
+    CHECK_TRUE("eqexact with original parts",
+               fs2arr_eqexact(&parts, &recon));
+
+    fs2_free(&src); fs2_free(&comma);
+    fs2arr_free(&parts); fs2arr_free(&left); fs2arr_free(&right);
+    fs2arr_free(&recon);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: repeated concat = incremental build
+ * ========================================================================= */
+
+Test(fs2_array_api, concat_incremental_build) {
+    __fs2_checkreset();
+
+    fs2array acc = FS2ARR();
+    for (int i = 0; i < 10; i++) {
+        fs2array chunk = fs2arr_init(2);
+        fs2 v1 = fs2_from_new(i * 2);
+        fs2 v2 = fs2_from_new(i * 2 + 1);
+        fs2arr_push(&chunk, &v1);
+        fs2arr_push(&chunk, &v2);
+
+        fs2arr_concat(&acc, &chunk);
+        fs2arr_free(&chunk);
+    }
+
+    CHECK_EQ("final count", 20, acc.count);
+    CHECK_STR_EQ("[0]",  "0",  acc.arr[0].v);
+    CHECK_STR_EQ("[19]", "19", acc.arr[19].v);
+
+    fs2arr_free(&acc);
+    assert_balanced();
+}
