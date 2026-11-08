@@ -2159,3 +2159,233 @@ Test(fs2_array_api, fromstrarr_sort_merge_pipeline) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fromarr_new — deep copy
+ * ========================================================================= */
+
+Test(fs2_array_api, fromarr_new_basic) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("a");
+    fs2 b = fs2_fromstr("b");
+    fs2 c = fs2_fromstr("c");
+    const fs2 *src[] = { &a, &b, &c };
+
+    fs2array arr = fs2arr_fromarr_new(src, 3);
+
+    CHECK_EQ  ("count", 3, arr.count);
+    CHECK_EQ  ("hwm",   3, arr.hwm);
+    CHECK_TRUE("size >= 3", arr.size >= 3);
+    CHECK_STR_EQ("[0]", "a", arr.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", arr.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", arr.arr[2].v);
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &arr));
+
+    fs2arr_free(&arr);
+    fs2_free(&a); fs2_free(&b); fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromarr_new_deep_copy) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("hello");
+    const fs2 *src[] = { &a };
+
+    fs2array arr = fs2arr_fromarr_new(src, 1);
+    cr_assert_eq(arr.count, 1);
+    CHECK_STR_EQ("[0]", "hello", arr.arr[0].v);
+
+    /* independent buffer */
+    CHECK_TRUE("[0] != src buf", arr.arr[0].v != a.v);
+
+    /* mutate source, array unaffected */
+    a.v[0] = 'X';
+    CHECK_STR_EQ("src mutated",       "Xello", a.v);
+    CHECK_STR_EQ("array still hello", "hello", arr.arr[0].v);
+
+    fs2arr_free(&arr);
+    fs2_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromarr_new_zero_cnt_canonical) {
+    const fs2 *src[] = { NULL };            /* src non-NULL, but cnt=0 */
+    fs2array arr = fs2arr_fromarr_new(src, 0);
+
+    CHECK_PTR_EQ("arr",   NULL, arr.arr);
+    CHECK_EQ   ("count", 0, arr.count);
+    CHECK_EQ   ("hwm",   0, arr.hwm);
+}
+
+Test(fs2_array_api, fromarr_new_null_src_aborts, .signal = SIGABRT) {
+    fs2arr_fromarr_new(NULL, 3);
+}
+
+Test(fs2_array_api, fromarr_new_null_entry_aborts, .signal = SIGINT) {
+    const fs2 *src[] = { NULL, NULL };
+    fs2arr_fromarr_new(src, 2);
+}
+
+/* =========================================================================
+ * fromarr_move — move, source reset
+ * ========================================================================= */
+
+Test(fs2_array_api, fromarr_move_basic) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("a");
+    fs2 b = fs2_fromstr("b");
+    fs2 c = fs2_fromstr("c");
+    fs2 *src[] = { &a, &b, &c };
+
+    fs2array arr = fs2arr_fromarr_move(src, 3);
+
+    CHECK_EQ  ("count", 3, arr.count);
+    CHECK_EQ  ("hwm",   3, arr.hwm);
+    CHECK_STR_EQ("[0]", "a", arr.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", arr.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", arr.arr[2].v);
+
+    /* Sources reset to FS2EMPTY by fs2_move */
+    CHECK_TRUE("a FS2EMPTY", fs2_eq_empty(&a));
+    CHECK_TRUE("b FS2EMPTY", fs2_eq_empty(&b));
+    CHECK_TRUE("c FS2EMPTY", fs2_eq_empty(&c));
+
+    /* fs2_free on reset sources — no-op */
+    fs2_free(&a); fs2_free(&b); fs2_free(&c);
+    fs2arr_free(&arr);
+    assert_balanced();
+}
+
+/* Source buffers moved, no copies */
+Test(fs2_array_api, fromarr_move_transfers_buffers) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("hello");
+    void *orig = a.v;
+    fs2 *src[] = { &a };
+
+    fs2array arr = fs2arr_fromarr_move(src, 1);
+
+    /* Same buffer, moved (not cloned) */
+    CHECK_PTR_EQ("buffer transferred", orig, arr.arr[0].v);
+
+    /* source reset */
+    CHECK_TRUE("a FS2EMPTY", fs2_eq_empty(&a));
+
+    fs2arr_free(&arr);
+    assert_balanced();
+}
+
+/* Heap source: struct shell stays alive, caller must free */
+Test(fs2_array_api, fromarr_move_heap_source_shell_remains) {
+    __fs2_checkreset();
+    fs2 *p = fs2_heap_fromstr("heap");
+    fs2 *src[] = { p };
+
+    fs2array arr = fs2arr_fromarr_move(src, 1);
+
+    CHECK_STR_EQ("[0]", "heap", arr.arr[0].v);
+    CHECK_FALSE("[0] not bodyalloc", fs2_is_bodyalloc(&arr.arr[0]));
+
+    /* p still points to the shell (struct alive, buffer moved) */
+    cr_assert_not_null(p);
+    CHECK_TRUE("p FS2EMPTY",    fs2_is_empty(p));
+    CHECK_TRUE("p BODYALLOC",   fs2_is_bodyalloc(p));
+
+    fs2_free(p);                            /* caller frees shell */
+    fs2arr_free(&arr);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromarr_move_zero_cnt_canonical) {
+    fs2 *src[] = { NULL };
+    fs2array arr = fs2arr_fromarr_move(src, 0);
+
+    CHECK_PTR_EQ("arr",   NULL, arr.arr);
+    CHECK_EQ   ("count", 0, arr.count);
+}
+
+Test(fs2_array_api, fromarr_move_null_src_aborts, .signal = SIGABRT) {
+    fs2arr_fromarr_move(NULL, 3);
+}
+
+Test(fs2_array_api, fromarr_move_null_entry_aborts, .signal = SIGINT) {
+    fs2 *src[] = { NULL, NULL };
+    fs2arr_fromarr_move(src, 2);
+}
+
+/* =========================================================================
+ * new vs move — difference in source state
+ * ========================================================================= */
+
+Test(fs2_array_api, fromarr_new_vs_move_source_state) {
+    __fs2_checkreset();
+    fs2 a1 = fs2_fromstr("x");
+    fs2 a2 = fs2_fromstr("x");
+
+    const fs2 *src_new[] = { &a1 };
+    fs2       *src_move[] = { &a2 };
+
+    fs2array arr_new  = fs2arr_fromarr_new(src_new, 1);
+    fs2array arr_move = fs2arr_fromarr_move(src_move, 1);
+
+    /* Both arrays hold "x" */
+    CHECK_STR_EQ("[0] new",  "x", arr_new.arr[0].v);
+    CHECK_STR_EQ("[0] move", "x", arr_move.arr[0].v);
+
+    /* new: source untouched; move: source reset */
+    CHECK_STR_EQ("a1 untouched", "x", a1.v);
+    CHECK_TRUE ("a2 reset",      fs2_eq_empty(&a2));
+
+    /* new: independent buffer (clone); move: transferred buffer */
+    CHECK_TRUE("[0] new is independent", arr_new.arr[0].v != a1.v);
+
+    fs2arr_free(&arr_new);
+    fs2arr_free(&arr_move);
+    fs2_free(&a1);
+    fs2_free(&a2);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration
+ * ========================================================================= */
+
+Test(fs2_array_api, fromarr_new_then_sort) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("c");
+    fs2 b = fs2_fromstr("a");
+    fs2 c = fs2_fromstr("b");
+    const fs2 *src[] = { &a, &b, &c };
+
+    fs2array arr = fs2arr_fromarr_new(src, 3);
+    fs2arr_sortasc(&arr);
+
+    CHECK_STR_EQ("[0]", "a", arr.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", arr.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", arr.arr[2].v);
+
+    /* sources untouched */
+    CHECK_STR_EQ("a untouched", "c", a.v);
+    CHECK_STR_EQ("b untouched", "a", b.v);
+    CHECK_STR_EQ("c untouched", "b", c.v);
+
+    fs2arr_free(&arr);
+    fs2_free(&a); fs2_free(&b); fs2_free(&c);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromarr_move_then_compact_noop) {
+    __fs2_checkreset();
+    fs2 a = fs2_fromstr("a");
+    fs2 b = fs2_fromstr("b");
+    fs2 *src[] = { &a, &b };
+
+    fs2array arr = fs2arr_fromarr_move(src, 2);
+    /* already packed */
+    fs2arr_compact(&arr);                   /* no-op */
+
+    CHECK_EQ  ("hwm",   2, arr.hwm);
+    CHECK_EQ  ("count", 2, arr.count);
+
+    fs2arr_free(&arr);
+    assert_balanced();
+}
