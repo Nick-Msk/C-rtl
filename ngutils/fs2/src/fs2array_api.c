@@ -162,3 +162,48 @@ fs2arr_fromstrarr_new(const char *const *src) {
     }
     return a;
 }
+
+/**
+ * @brief Shared implementation: build fs2array from cnt elements.
+ *
+ * @param src      Non-NULL array of mutable fs2 pointers. When @p do_move
+ *                 is false, `src` is only read (never written); when true,
+ *                 each `*src[i]` is moved out (reset to FS2EMPTY).
+ * @param cnt      Number of elements.
+ * @param do_move  true → move each (`fs2_move`); false → deep copy (`fs2_clone`).
+ *
+ * Internal: cast-safety relies on caller (do_move=false never mutates).
+ */
+static fs2array
+fs2arr_fromarr_common(fs2 **src, size_t cnt, bool do_move) {
+    invfatal(ERR_NULL_INPUT, src != NULL, "Null src array");
+
+    fs2array a = FS2ARR();
+    if (cnt == 0)
+        return a;
+
+    fs2arr_reserve(&a, cnt);
+    for (size_t i = 0; i < cnt; i++) {
+        if (src[i] != NULL)
+            userraise(false, ERR_NULL_INPUT, "src[%zu] is NULL", i);
+        if (do_move) {
+            fs2arr_push(&a, src[i]);       /* push_sp: *src[i] → FS2EMPTY */
+        } else {
+            fs2 v = fs2_clone(src[i]);     /* deep copy, src[i] untouched */
+            fs2arr_push(&a, &v);
+        }
+    }
+    return a;
+}
+
+fs2array
+fs2arr_fromarr_new(const fs2 *const *src, size_t cnt) {
+    /* Const dropped only to match the shared helper signature.
+     * do_move=false → we never write through src. */
+    return fs2arr_fromarr_common((fs2 **)src, cnt, false);
+}
+
+fs2array
+fs2arr_fromarr_move(fs2 **src, size_t cnt) {
+    return fs2arr_fromarr_common(src, cnt, true);
+}

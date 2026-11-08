@@ -223,4 +223,39 @@ fs2arr_fromstrarr_new(const char *const src[]);
 #define FS2ARRFROMSTR(...) \
     fs2arr_fromstrarr_new((const char *const[]){ __VA_ARGS__, NULL })
 
+/**
+ * @brief Build an fs2array by deep-copying @p cnt elements from @p src.
+ *
+ * Each `src[i]` is cloned into a fresh slot. Source fs2 values are
+ * untouched (const). Result is packed (hwm == count == cnt), capacity
+ * rounded (no shrink — caller may fs2arr_shrink if tightness is needed).
+ *
+ * @param src  Non-NULL array of `const fs2 *`; entries must be non-NULL
+ *             (NULL → SIGABRT with index).
+ * @param cnt  Number of elements (0 → canonical FS2ARR()).
+ * @return     New fs2array; free with fs2arr_free.
+ * @warning    `invfatal` (SIGABRT) if src is NULL, or any src[i] is NULL.
+ * @warning    `sysraise`  (OOM) on allocation failure.
+ */
+extern fs2array
+fs2arr_fromarr_new(const fs2 *const *src, size_t cnt);
+
+/**
+ * @brief Build an fs2array by MOVING @p cnt elements from @p src.
+ *
+ * Each `src[i]` is moved via fs2_move; after the call, `*src[i]` is
+ * FS2EMPTY (stack source) or shell (heap source — caller must fs2_free).
+ * Result is packed (hwm == count == cnt).
+ *
+ * @param src  Non-NULL array of `fs2 *`; entries must be non-NULL.
+ * @param cnt  Number of elements (0 → canonical FS2ARR()).
+ * @return     New fs2array; free with fs2arr_free.
+ * @warning    `invfatal` (SIGABRT) if src is NULL, or any src[i] is NULL.
+ * @warning    For heap (BODYALLOC) sources, caller retains the shell and
+ *             must fs2_free(src[i]) after the call (the fs2 struct itself
+ *             was not freed; only its buffer moved into the array).
+ */
+extern fs2array
+fs2arr_fromarr_move(fs2 **src, size_t cnt);
+
 #endif /* !FS2ARRAY_API_H */
