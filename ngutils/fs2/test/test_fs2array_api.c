@@ -1674,7 +1674,7 @@ Test(fs2_array_api, concat_preserves_holes_in_dst) {
 }
 
 /* Self-concat doubles live elements, preserves holes */
-Test(fs2_array, concat_self_doubles_packed) {
+Test(fs2_array_api, concat_self_doubles_packed) {
     __fs2_checkreset();
     fs2array a = mk_arr((const char*[]){ "a", "b", "c" }, 3);
 
@@ -1700,7 +1700,7 @@ Test(fs2_array, concat_self_doubles_packed) {
     assert_balanced();
 }
 
-Test(fs2_array, concat_self_with_holes) {
+Test(fs2_array_api, concat_self_with_holes) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(8);
     for (int i = 0; i < 4; i++) {
@@ -1729,7 +1729,7 @@ Test(fs2_array, concat_self_with_holes) {
 }
 
 /* Empty self-concat is no-op */
-Test(fs2_array, concat_self_empty_noop) {
+Test(fs2_array_api, concat_self_empty_noop) {
     fs2array a = FS2ARR();
     fs2arr_concat(&a, &a);
     CHECK_PTR_EQ("arr", NULL, a.arr);
@@ -1737,7 +1737,7 @@ Test(fs2_array, concat_self_empty_noop) {
 }
 
 /* Self-concat of single */
-Test(fs2_array, concat_self_single) {
+Test(fs2_array_api, concat_self_single) {
     __fs2_checkreset();
     fs2array a = mk_arr((const char*[]){ "x" }, 1);
     fs2arr_concat(&a, &a);
@@ -1978,3 +1978,184 @@ Test(fs2_array_api, concat_incremental_build) {
     fs2arr_free(&acc);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_fromstrarr — basic
+ * ========================================================================= */
+
+Test(fs2_array_api, fromstrarr_new_basic) {
+    __fs2_checkreset();
+    const char *const src[] = { "a", "b", "c", NULL };
+
+    fs2array a = fs2arr_fromstrarr_new(src);
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_EQ  ("hwm",   3, a.hwm);             /* packed: hwm == count */
+    CHECK_TRUE("size >= count", a.size >= a.count);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstrarr_single) {
+    __fs2_checkreset();
+    const char *const src[] = { "only", NULL };
+
+    fs2array a = fs2arr_fromstrarr_new(src);
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_GE  ("size",  a.size, 1);
+    CHECK_STR_EQ("[0]", "only", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstrarr_empty_list_canonical) {
+    const char *const src[] = { NULL };
+
+    fs2array a = fs2arr_fromstrarr_new(src);
+
+    CHECK_PTR_EQ("arr",   NULL, a.arr);
+    CHECK_EQ   ("count", 0, a.count);
+    CHECK_EQ   ("hwm",   0, a.hwm);
+    CHECK_EQ   ("size",  0, a.size);
+    /* canonical — no free needed */
+}
+
+/* Empty string "" → live FS2EMPTY (not a hole) */
+Test(fs2_array_api, fromstrarr_empty_strings_are_live) {
+    __fs2_checkreset();
+    const char *const src[] = { "", "a", "", "b", "", NULL };
+
+    fs2array a = fs2arr_fromstrarr_new(src);
+
+    CHECK_EQ  ("count", 5, a.count);
+    CHECK_EQ  ("hwm",   5, a.hwm);
+    for (size_t i = 0; i < 5; i++)
+        CHECK_FALSE("[i] not hole", fs2arr_is_hole(&a.arr[i]));
+
+    CHECK_TRUE ("[0] empty", fs2_eq_empty(&a.arr[0]));
+    CHECK_STR_EQ("[1]", "a", a.arr[1].v);
+    CHECK_TRUE ("[2] empty", fs2_eq_empty(&a.arr[2]));
+    CHECK_STR_EQ("[3]", "b", a.arr[3].v);
+    CHECK_TRUE ("[4] empty", fs2_eq_empty(&a.arr[4]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* Deep copy: result buffers are independent from src */
+Test(fs2_array_api, fromstrarr_deep_copy) {
+    __fs2_checkreset();
+    char buf[] = "hello";
+    const char *const src[] = { buf, NULL };
+
+    fs2array a = fs2arr_fromstrarr_new(src);
+    cr_assert_eq(a.count, 1);
+    CHECK_STR_EQ("[0]", "hello", a.arr[0].v);
+
+    /* mutate source */
+    buf[0] = 'X';
+    CHECK_STR_EQ("src mutated",          "Xello", buf);
+    CHECK_STR_EQ("array still original", "hello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstrarr_null_src_aborts, .signal = SIGABRT) {
+    fs2arr_fromstrarr_new(NULL);
+}
+
+/* =========================================================================
+ * FS2ARRFROMSTR macro
+ * ========================================================================= */
+
+Test(fs2_array_api, fromstr_macro_basic) {
+    __fs2_checkreset();
+
+    fs2array a = FS2ARRFROMSTR("red", "green", "blue");
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_GE  ("size",  a.size, 3);
+    CHECK_STR_EQ("[0]", "red",   a.arr[0].v);
+    CHECK_STR_EQ("[1]", "green", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "blue",  a.arr[2].v);
+    CHECK_TRUE ("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstr_macro_single) {
+    __fs2_checkreset();
+
+    fs2array a = FS2ARRFROMSTR("solo");
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_STR_EQ("[0]", "solo", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstr_macro_mixed_empty) {
+    __fs2_checkreset();
+
+    fs2array a = FS2ARRFROMSTR("", "x", "");
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_TRUE ("[0] empty", fs2_eq_empty(&a.arr[0]));
+    CHECK_STR_EQ("[1]", "x", a.arr[1].v);
+    CHECK_TRUE ("[2] empty", fs2_eq_empty(&a.arr[2]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, fromstr_macro_matches_function) {
+    __fs2_checkreset();
+    const char *const src[] = { "a", "b", "c", NULL };
+
+    fs2array via_func = fs2arr_fromstrarr_new(src);
+    fs2array via_macro = FS2ARRFROMSTR("a", "b", "c");
+
+    CHECK_TRUE("eqexact", fs2arr_eqexact(&via_func, &via_macro));
+
+    fs2arr_free(&via_func);
+    fs2arr_free(&via_macro);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: fromstrarr → sort → merge
+ * ========================================================================= */
+
+Test(fs2_array_api, fromstrarr_sort_merge_pipeline) {
+    __fs2_checkreset();
+
+    fs2array left  = FS2ARRFROMSTR("delta", "alpha", "charlie");
+    fs2array right = FS2ARRFROMSTR("echo", "bravo", "fox");
+
+    fs2arr_sortasc(&left);
+    fs2arr_sortasc(&right);
+
+    fs2array merged = fs2arr_mergesorted_new(&left, &right, fs2_cmp_wrap);
+
+    const char *expected[] = {
+        "alpha", "bravo", "charlie", "delta", "echo", "fox"
+    };
+    for (size_t i = 0; i < 6; i++)
+        CHECK_STR_EQ("merged", expected[i], merged.arr[i].v);
+
+    fs2arr_free(&left);
+    fs2arr_free(&right);
+    fs2arr_free(&merged);
+    assert_balanced();
+}
+
