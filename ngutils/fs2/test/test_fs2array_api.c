@@ -2628,3 +2628,347 @@ Test(fs2_array_api, split_sort_unique_roundtrip) {
     fs2arr_free(&parts);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_join_delim — basic
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_basic) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c");
+    fs2 dst = FS2();
+    fs2 d = fs2_fromstr("|");
+
+    fs2 *r = fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_PTR_EQ("chaining", r, &dst);
+    CHECK_STR_EQ("a|b|c",    dst.v, "a|b|c");
+    CHECK_EQ  ("len",        5, dst.len);
+    CHECK_FS2VALID(1, &dst);
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_delim_single_element_no_delim) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("solo");
+    fs2 dst = FS2();
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("solo", dst.v, "solo");   /* no separator for single */
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim — dst as first element
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_dst_as_first_element) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b");
+    fs2 dst = fs2_fromstr("x");
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("x|a|b", dst.v, "x|a|b");
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_delim_empty_dst_no_leading_delim) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b");
+    fs2 dst = FS2();                       /* empty, v == NULL */
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("a|b", dst.v, "a|b");     /* no leading | */
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim — NULL / empty delim (no separator)
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_null_no_separator) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c");
+    fs2 dst = FS2();
+
+    fs2arr_join_delim(&dst, &src, NULL);
+
+    CHECK_STR_EQ("abc", dst.v, "abc");
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_delim_empty_no_separator) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b");
+    fs2 dst = FS2();
+    fs2 d = FS2EMPTY;
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("ab", dst.v, "ab");
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim — empty live elements preserved
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_empty_strings_kept) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("", "a", "");
+    fs2 dst = FS2();
+    fs2 d = fs2_fromstr(",");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    /* Python: ",".join(["", "a", ""]) == ",a," */
+    CHECK_STR_EQ(",a,", dst.v, ",a,");
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim — holes in src skipped
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_skips_holes) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c", "d");
+    fs2 t = fs2arr_detach_new(&src, 1);   /* hole at [1] */
+    fs2_free(&t);
+    fs2 t2 = fs2arr_detach_new(&src, 2);  /* hole at [2] (was "c") */
+    fs2_free(&t2);
+    /* src: [a, hole, hole, d], hwm=4, count=2 */
+
+    fs2 dst = FS2();
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("a|d", dst.v, "a|d");     /* only live elements joined */
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim — empty / canonical src no-op
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_canonical_src_noop) {
+    __fs2_checkreset();
+    fs2array src = FS2ARR();
+    fs2 dst = fs2_fromstr("x");
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("x", dst.v, "x");
+
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_delim_all_holes_src_noop) {
+    __fs2_checkreset();
+    fs2array src = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&src, &v);
+    fs2 t = fs2arr_detach_new(&src, 0);
+    fs2_free(&t);
+    /* src: [hole], hwm=1, count=0 */
+
+    fs2 dst = fs2_fromstr("y");
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&dst, &src, &d);
+
+    CHECK_STR_EQ("y", dst.v, "y");
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join — no-delimiter wrapper
+ * ========================================================================= */
+
+Test(fs2_array_api, join_no_delim) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c");
+    fs2 dst = FS2();
+
+    fs2 *r = fs2arr_join(&dst, &src);
+
+    CHECK_PTR_EQ("chaining", r, &dst);
+    CHECK_STR_EQ("abc", dst.v, "abc");
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_no_delim_with_existing_dst) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("b", "c");
+    fs2 dst = fs2_fromstr("a");
+
+    fs2arr_join(&dst, &src);
+
+    CHECK_STR_EQ("abc", dst.v, "abc");     /* no separator */
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_join_delim_str — C-string delimiter (lenient NULL)
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_str_basic) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c");
+    fs2 dst = FS2();
+
+    fs2arr_join_delim_str(&dst, &src, ", ");
+
+    CHECK_STR_EQ("a, b, c", dst.v, "a, b, c");
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+Test(fs2_array_api, join_delim_str_null_no_sep) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b");
+    fs2 dst = FS2();
+
+    fs2arr_join_delim_str(&dst, &src, NULL);   /* NULL → empty → no sep */
+
+    CHECK_STR_EQ("ab", dst.v, "ab");
+
+    fs2arr_free(&src);
+    fs2_free(&dst);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2_array_api, join_null_dst_aborts, .signal = SIGABRT) {
+    fs2array src = FS2ARRFROMSTR("a");
+    fs2arr_join(NULL, &src);
+    fs2arr_free(&src);
+}
+
+Test(fs2_array_api, join_null_src_aborts, .signal = SIGABRT) {
+    fs2 dst = FS2();
+    fs2arr_join(&dst, NULL);
+    fs2_free(&dst);
+}
+
+/* =========================================================================
+ * Roundtrip: split → join → original
+ * ========================================================================= */
+
+Test(fs2_array_api, split_join_roundtrip) {
+    __fs2_checkreset();
+    fs2 orig = fs2_fromstr("alpha,beta,gamma");
+    fs2 comma = fs2_fromstr(",");
+
+    fs2array parts = fs2_split_toarray(&orig, &comma);
+    cr_assert_eq(parts.count, 3);
+
+    fs2 rebuilt = FS2();
+    fs2arr_join_delim(&rebuilt, &parts, &comma);
+
+    CHECK_STR_EQ("roundtrip", orig.v, rebuilt.v);
+    CHECK_FS2VALID(1, &rebuilt);
+
+    fs2_free(&orig);
+    fs2_free(&comma);
+    fs2arr_free(&parts);
+    fs2_free(&rebuilt);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: sort → unique → join (canonical set as CSV)
+ * ========================================================================= */
+
+Test(fs2_array_api, sort_unique_join_csv) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("c", "a", "b", "a", "c", "a");
+
+    fs2arr_sortasc(&src);
+    fs2arr_unique(&src, fs2_cmp_wrap);
+
+    fs2 out = FS2();
+    fs2arr_join_delim_str(&out, &src, ",");
+
+    CHECK_STR_EQ("a,b,c", out.v, "a,b,c");
+
+    fs2arr_free(&src);
+    fs2_free(&out);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * LOCAL dst — works if capacity fits
+ * ========================================================================= */
+
+Test(fs2_array_api, join_delim_local_dst) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b");
+    FS2LOCAL(buf, 32);
+    fs2 d = fs2_fromstr("|");
+
+    fs2arr_join_delim(&buf, &src, &d);
+
+    CHECK_STR_EQ("a|b",        buf.v, "a|b");
+    CHECK_TRUE ("still LOCAL", fs2_is_local(&buf));
+    CHECK_FS2VALID(1, &buf);
+
+    fs2arr_free(&src);
+    fs2_free(&d);
+    assert_balanced();
+}
