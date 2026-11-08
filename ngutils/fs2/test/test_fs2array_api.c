@@ -2389,3 +2389,242 @@ Test(fs2_array_api, fromarr_move_then_compact_noop) {
     fs2arr_free(&arr);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_unique — nominal (packed, sorted input)
+ * ========================================================================= */
+
+Test(fs2_array_api, unique_removes_adjacent_dups) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "a", "b", "b", "b", "c");
+    /* packed, sorted: [a,a,b,b,b,c] */
+
+    fs2array *r = fs2arr_unique(&a, fs2_cmp_wrap);
+
+    CHECK_PTR_EQ("chaining", r, &a);
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_EQ  ("hwm",   3, a.hwm);             /* packed: hwm == count */
+    CHECK_TRUE("size >= 3", a.size >= 3);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+
+    /* slots [3, old_count) — holes (freed) */
+    for (size_t i = 3; i < 6; i++)
+        CHECK_TRUE("[i] hole", fs2arr_is_hole(&a.arr[i]));
+
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, unique_no_duplicates_noop) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    /* write == read every step → no movement */
+
+    fs2arr_unique(&a, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_EQ  ("hwm",   3, a.hwm);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, unique_all_same) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x", "x", "x", "x");
+
+    fs2arr_unique(&a, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_EQ  ("hwm",   1, a.hwm);
+    CHECK_STR_EQ("[0]", "x", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, unique_long_run_in_middle) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "b", "b", "b", "c", "d", "d");
+
+    fs2arr_unique(&a, fs2_cmp_wrap);
+
+    CHECK_EQ("count", 4, a.count);
+    CHECK_STR_EQ("[0]", "a", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "d", a.arr[3].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_unique — edge-cases
+ * ========================================================================= */
+
+Test(fs2_array_api, unique_empty_and_single) {
+    fs2array empty = FS2ARR();
+    fs2arr_unique(&empty, fs2_cmp_wrap);
+    CHECK_PTR_EQ("arr", NULL, empty.arr);
+    CHECK_EQ   ("count", 0, empty.count);
+
+    __fs2_checkreset();
+    fs2array single = FS2ARRFROMSTR("x");
+    fs2arr_unique(&single, fs2_cmp_wrap);
+    CHECK_EQ  ("count", 1, single.count);
+    CHECK_STR_EQ("[0]", "x", single.arr[0].v);
+    fs2arr_free(&single);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_unique — custom comparator (ci: "a" and "A" are duplicates)
+ * ========================================================================= */
+
+Test(fs2_array_api, unique_ci_keeps_first_of_ci_equal) {
+    __fs2_checkreset();
+    /* Sorted with ci comparator: "A" and "a" are equal (adjacent).
+     * Sorted input: "A", "a", "B", "b" */
+    fs2array a = FS2ARRFROMSTR("A", "a", "B", "b");
+    /* Ensure ci sorting: swap test — build manually sorted-by-ci */
+    /* "A" < "a" < "B" < "b" in ASCII; ci-cmp treats A==a, B==b */
+    fs2arr_sort(&a, fs2_cmp_ci_wrap);
+    /* After ci sort — "A","a","B","b" (stable not guaranteed but equal run) */
+
+    fs2arr_unique(&a, fs2_cmp_ci_wrap);
+
+    /* Result: 2 distinct under ci — first of each run.
+     * First of run "A"/"a" — which one is "first in sorted order" depends
+     * on the sort comparator's tiebreak. With plain fs2_cmp_ci_wrap, ties
+     * keep qsort's order — non-deterministic across libc. Test only count
+     * and that result is case-insensitive-unique. */
+    CHECK_EQ("count", 2, a.count);
+    CHECK_EQ("cmp-distinct [0] vs [1]",
+             fs2_cmp_ci(&a.arr[0], &a.arr[1]) != 0, true);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_unique — precondition violation
+ * ========================================================================= */
+
+Test(fs2_array_api, unique_not_packed_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+    /* hwm=3, count=2 — has hole */
+    fs2arr_unique(&a, fs2_cmp_wrap);
+    /* unreachable */
+}
+
+Test(fs2_array_api, unique_null_arr_aborts, .signal = SIGABRT) {
+    fs2arr_unique(NULL, fs2_cmp_wrap);
+}
+
+Test(fs2_array_api, unique_null_cmp_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARRFROMSTR("a");
+    fs2arr_unique(&a, NULL);
+}
+
+/* =========================================================================
+ * fs2arr_unique_new — deep copy, src untouched
+ * ========================================================================= */
+
+Test(fs2_array_api, unique_new_src_untouched) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "a", "b");
+    void *src0 = src.arr[0].v;
+
+    fs2array r = fs2arr_unique_new(&src, fs2_cmp_wrap);
+
+    CHECK_EQ  ("r.count", 2, r.count);
+    CHECK_STR_EQ("r[0]",  "a", r.arr[0].v);
+    CHECK_STR_EQ("r[1]",  "b", r.arr[1].v);
+
+    /* src unchanged */
+    CHECK_EQ  ("src.count", 3, src.count);
+    CHECK_PTR_EQ("src[0].v unchanged", src.arr[0].v, src0);
+    CHECK_STR_EQ("src[0]", "a", src.arr[0].v);
+
+    /* independent buffers */
+    CHECK_TRUE("r[0] != src[0]", r.arr[0].v != src.arr[0].v);
+
+    fs2arr_free(&src);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, unique_new_packs_holes_in_src) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "x", "a", "b");
+    fs2arr_sortasc(&src);                       /* [a, a, b, x] */
+    fs2 t = fs2arr_detach_new(&src, 3);         /* hole at [3] */
+    fs2_free(&t);
+    /* src: [a, a, b, hole], hwm=4, count=3 — not packed */
+
+    fs2array r = fs2arr_unique_new(&src, fs2_cmp_wrap);
+
+    /* clone packs → [a, a, b], then unique → [a, b] */
+    CHECK_EQ  ("r.count", 2, r.count);
+    CHECK_STR_EQ("r[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("r[1]", "b", r.arr[1].v);
+
+    fs2arr_free(&src);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: sort → unique → expected set
+ * ========================================================================= */
+
+Test(fs2_array_api, sort_unique_pipeline) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR(
+        "cherry", "apple", "banana", "apple", "cherry", "apple");
+
+    fs2arr_sortasc(&a);
+    /* [apple, apple, apple, banana, cherry, cherry] */
+
+    fs2arr_unique(&a, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_STR_EQ("[0]", "apple",  a.arr[0].v);
+    CHECK_STR_EQ("[1]", "banana", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "cherry", a.arr[2].v);
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* split → sort → unique → concat-back gives canonical csv */
+Test(fs2_array_api, split_sort_unique_roundtrip) {
+    __fs2_checkreset();
+    fs2 csv = fs2_fromstr("a,c,a,b,c,c,a,b");
+    fs2 comma = fs2_fromstr(",");
+
+    fs2array parts = fs2_split_toarray(&csv, &comma);
+    fs2arr_sortasc(&parts);
+    fs2arr_unique(&parts, fs2_cmp_wrap);
+
+    CHECK_EQ  ("unique count", 3, parts.count);
+    CHECK_STR_EQ("[0]", "a", parts.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", parts.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", parts.arr[2].v);
+
+    fs2_free(&csv); fs2_free(&comma);
+    fs2arr_free(&parts);
+    assert_balanced();
+}
