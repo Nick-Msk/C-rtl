@@ -29,6 +29,18 @@ fs2_split_toarray(const fs2 *restrict s, const fs2 *restrict delim) {
      * For empty s → [""]. This matches Python split() and fs2_split_part. */
     fs2 tail = fs2_substr_new(s, pos, s->len - pos);
     fs2arr_push(&a, &tail);
-
+    
     return a;
 }
+
+void
+fs2arr_sort(fs2array *a, pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL, 
+        "Null fs2array or comparator (%p %p)", a, cmp);
+
+    if (!a->arr || a->count < 2)
+        return;                                /* 0 or 1 live — already sorted */
+
+    qsort(a->arr, a->count, sizeof(fs2), cmp);
+}
+
