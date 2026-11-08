@@ -2972,3 +2972,213 @@ Test(fs2_array_api, join_delim_local_dst) {
     fs2_free(&d);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_reverse — nominal
+ * ========================================================================= */
+
+Test(fs2_array_api, reverse_odd_count) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c", "d", "e");
+
+    fs2array *r = fs2arr_reverse(&a);
+
+    CHECK_PTR_EQ("chaining", r, &a);
+    CHECK_STR_EQ("[0]", "e", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "d", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "b", a.arr[3].v);
+    CHECK_STR_EQ("[4]", "a", a.arr[4].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, reverse_even_count) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c", "d");
+
+    fs2arr_reverse(&a);
+
+    CHECK_STR_EQ("[0]", "d", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "c", a.arr[1].v);
+    CHECK_STR_EQ("[2]", "b", a.arr[2].v);
+    CHECK_STR_EQ("[3]", "a", a.arr[3].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, reverse_single_and_empty) {
+    fs2array empty = FS2ARR();
+    fs2arr_reverse(&empty);                 /* no-op */
+    CHECK_PTR_EQ("arr", NULL, empty.arr);
+
+    __fs2_checkreset();
+    fs2array single = FS2ARRFROMSTR("x");
+    fs2arr_reverse(&single);
+    CHECK_STR_EQ("[0]", "x", single.arr[0].v);
+    fs2arr_free(&single);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_reverse — involution (reverse × 2 == identity)
+ * ========================================================================= */
+
+Test(fs2_array_api, reverse_involution) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c", "d", "e");
+    fs2array orig = fs2arr_cloneexact(&a);
+
+    fs2arr_reverse(&a);
+    CHECK_FALSE("reversed ≠ original", fs2arr_eqexact(&a, &orig));
+
+    fs2arr_reverse(&a);
+    CHECK_TRUE("reverse×2 == identity", fs2arr_eqexact(&a, &orig));
+
+    fs2arr_free(&a);
+    fs2arr_free(&orig);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_reverse — buffers moved, not copied
+ * ========================================================================= */
+
+Test(fs2_array_api, reverse_preserves_buffers) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b");
+    void *b0 = a.arr[0].v;
+    void *b1 = a.arr[1].v;
+
+    fs2arr_reverse(&a);
+
+    /* Pointers swapped, no new allocation */
+    CHECK_PTR_EQ("[0] holds old [1] buf", a.arr[0].v, b1);
+    CHECK_PTR_EQ("[1] holds old [0] buf", a.arr[1].v, b0);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Precondition: not packed → abort
+ * ========================================================================= */
+
+Test(fs2_array_api, reverse_not_packed_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);        /* hole at [1] */
+    fs2_free(&t);
+    fs2arr_reverse(&a);
+    /* unreachable */
+}
+
+Test(fs2_array_api, reverse_null_aborts, .signal = SIGABRT) {
+    fs2arr_reverse(NULL);
+}
+
+/* =========================================================================
+ * fs2arr_reverse_new — deep copy, src untouched
+ * ========================================================================= */
+
+Test(fs2_array_api, reverse_new_src_untouched) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "b", "c");
+
+    fs2array r = fs2arr_reverse_new(&src);
+
+    CHECK_STR_EQ("r[0]", "c", r.arr[0].v);
+    CHECK_STR_EQ("r[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("r[2]", "a", r.arr[2].v);
+
+    /* src unchanged */
+    CHECK_STR_EQ("src[0]", "a", src.arr[0].v);
+    CHECK_STR_EQ("src[2]", "c", src.arr[2].v);
+
+    /* independent buffers */
+    CHECK_TRUE("r[0] != src[0]", r.arr[0].v != src.arr[0].v);
+
+    fs2arr_free(&src);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_api, reverse_new_packs_holes_in_src) {
+    __fs2_checkreset();
+    fs2array src = FS2ARRFROMSTR("a", "x", "b", "c");
+    fs2 t = fs2arr_detach_new(&src, 1);      /* hole at [1] */
+    fs2_free(&t);
+    /* src: [a, hole, b, c], hwm=4, count=3 — not packed */
+
+    fs2array r = fs2arr_reverse_new(&src);
+
+    /* clone packs → [a, b, c]; reverse → [c, b, a] */
+    CHECK_EQ("r.count", 3, r.count);
+    CHECK_STR_EQ("r[0]", "c", r.arr[0].v);
+    CHECK_STR_EQ("r[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("r[2]", "a", r.arr[2].v);
+
+    fs2arr_free(&src);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Sort + reverse vs sortdesc (relation, not equality for duplicates)
+ * ========================================================================= */
+
+Test(fs2_array_api, sort_then_reverse_unique_elements_eq_sortdesc) {
+    __fs2_checkreset();
+    /* unique elements (no tie-break ambiguity) */
+    fs2array a = FS2ARRFROMSTR("c", "a", "e", "b", "d");
+    fs2array b = fs2arr_clone(&a);
+
+    fs2arr_sortasc(&a);
+    fs2arr_reverse(&a);                       /* sorted asc, then reversed */
+
+    fs2arr_sortdesc(&b);                      /* sorted desc */
+
+    CHECK_TRUE("unique elems: same result",
+               fs2arr_eqexact(&a, &b));
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Palindrome check via reverse + eqexact
+ * ========================================================================= */
+
+Test(fs2_array_api, palindrome_check_via_reverse) {
+    __fs2_checkreset();
+    fs2array pal  = FS2ARRFROMSTR("a", "b", "c", "b", "a");
+    fs2array nonp = FS2ARRFROMSTR("a", "b", "c", "d", "e");
+
+    fs2array rpal  = fs2arr_reverse_new(&pal);
+    fs2array rnonp = fs2arr_reverse_new(&nonp);
+
+    CHECK_TRUE ("palindrome",     fs2arr_eqexact(&pal,  &rpal));
+    CHECK_FALSE("not palindrome", fs2arr_eqexact(&nonp, &rnonp));
+
+    fs2arr_free(&pal);  fs2arr_free(&rpal);
+    fs2arr_free(&nonp); fs2arr_free(&rnonp);
+    assert_balanced();
+}
+
+Test(fs2_array_api, palindrome_empty_and_single) {
+    fs2array empty = FS2ARR();
+    fs2array rempty = fs2arr_reverse_new(&empty);
+    CHECK_TRUE("empty palindrome", fs2arr_eqexact(&empty, &rempty));
+
+    __fs2_checkreset();
+    fs2array single = FS2ARRFROMSTR("x");
+    fs2array rsingle = fs2arr_reverse_new(&single);
+    CHECK_TRUE("single palindrome", fs2arr_eqexact(&single, &rsingle));
+
+    fs2arr_free(&single);
+    fs2arr_free(&rsingle);
+    assert_balanced();
+}
