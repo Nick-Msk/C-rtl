@@ -249,3 +249,26 @@ fs2arr_unique_new(const fs2array *restrict src, pointer_comparator_t cmp) {
     fs2arr_unique(&r, cmp);
     return r;
 }
+
+fs2 *
+fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *delim) {
+    invfatal(ERR_NULL_INPUT, dst != NULL && src != NULL,
+             "Null pointers %p %p", dst, src);
+
+    if (!src->arr || src->count == 0)
+        return dst;                     /* nothing to append */
+
+    bool delim_ok  = delim && !fs2_is_empty(delim);
+    bool wrote_any = (dst->len > 0);    /* dst acts as first element */
+
+    for (size_t i = 0; i < src->hwm; i++) {
+        if (fs2arr_is_hole(&src->arr[i]))
+            continue;
+        if (delim_ok && wrote_any)
+            fs2_cat(dst, delim);
+        fs2_cat(dst, &src->arr[i]);
+        wrote_any = true;
+    }
+    return dst;
+}
+

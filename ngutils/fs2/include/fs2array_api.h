@@ -269,7 +269,7 @@ fs2arr_fromarr_move(fs2 **src, size_t cnt);
  * @param cmp  Comparator used for sorting. Adjacent elements equal
  *             (cmp == 0) are considered duplicates.
  * @return     a (for chaining).
- * @warning `invfatal` (SIGABRT) on NULL a/cmp or not-packed input.
+ * @warning    `invfatal` (SIGABRT) on NULL a/cmp or not-packed input.
  *
  * @note Only the FIRST of each equal-run is kept. Since equal elements
  *       under @p cmp may differ bytewise (e.g. case-insensitive cmp
@@ -290,5 +290,42 @@ fs2arr_unique(fs2array *a, pointer_comparator_t cmp);
  */
 extern fs2array
 fs2arr_unique_new(const fs2array *restrict src, pointer_comparator_t cmp);
+
+/**
+ * @brief Append all live elements of @p src to @p dst, separated by @p delim.
+ *
+ * Semantics match `fs2_concatall`:
+ *   - dst is treated as **first element** of the resulting sequence. If dst
+ *     is non-empty, @p delim is inserted before the first src element too.
+ *   - Holes in @p src are skipped; live empty strings (FS2EMPTY) are kept
+ *     (contributing `""` between separators).
+ *   - NULL or empty @p delim → no separator.
+ *
+ *   fs2 dst = FS2();              fs2arr_join_delim(&dst, {a,b}, "|") → "a|b"
+ *   fs2 dst = fs2_fromstr("x");   fs2arr_join_delim(&dst, {a,b}, "|") → "x|a|b"
+ *
+ * @param dst    Non-NULL fs2 (ALLOC or LOCAL); grows as needed.
+ * @param src    Non-NULL fs2array. No-op if src is canonical / count==0.
+ * @param delim  Optional; NULL or empty → no separator.
+ * @return       @p dst (for chaining).
+ *
+ * @pre dst must not point into src->arr[i] (restrict: fs2_cat(dst, dst)
+ *      is UB). Use fs2_clone to detach first.
+ * @warning `invfatal` (SIGABRT) if dst or src is NULL.
+ * @warning `sysraise`  (OOM) on allocation failure.
+ */
+extern fs2 *
+fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *delim);
+
+static inline fs2 *
+fs2arr_join(fs2 *restrict dst, const fs2array *restrict src) {
+    return fs2arr_join_delim(dst, src, NULL);
+}
+
+static inline fs2 *
+fs2arr_join_delim_str(fs2 *restrict dst, const fs2array *restrict src, const char *restrict delim) {
+    fs2 d = _fs2_wrap(delim);           /* NULL → empty → no separator */
+    return fs2arr_join_delim(dst, src, &d);
+}
 
 #endif /* !FS2ARRAY_API_H */
