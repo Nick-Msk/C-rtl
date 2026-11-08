@@ -1180,8 +1180,8 @@ fs2_ncmp_ci(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
  */
 static inline int
 fs2_cmp_nullbefore(const fs2 *restrict str1, const fs2 *restrict str2) {
-    if (!str1->v) return !str2->v ? 0 : +1;
-    if (!str2->v) return -1;
+    if (!str1->v) return !str2->v ? 0 : -1;
+    if (!str2->v) return +1;
     return fs2_cmp(str1, str2);
 }
 
@@ -1193,8 +1193,8 @@ fs2_cmp_nullbefore(const fs2 *restrict str1, const fs2 *restrict str2) {
  */
 static inline int
 fs2_cmp_nullafter(const fs2 *restrict str1, const fs2 *restrict str2) {
-    if (!str1->v) return !str2->v ? 0 : -1;
-    if (!str2->v) return +1;
+    if (!str1->v) return !str2->v ? 0 : +1;
+    if (!str2->v) return -1;
     return fs2_cmp(str1, str2);
 }
 
