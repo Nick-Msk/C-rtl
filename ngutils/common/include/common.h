@@ -298,7 +298,6 @@ static inline void              item_exch(void *v1, void *v2, size_t sz) {
  * ------------------------------------------------------------------------- */
 
 // ----------------------------------- Comparators ----------------------------
-
 static inline int               compare_char(unsigned char v1, unsigned char v2){
     if (v1 > v2)
         return 1;
@@ -368,7 +367,8 @@ static inline int               compare_ptr(const void *restrict v1, const void 
 
 // ------------------- Pointer comparators -------------------
 
-typedef int                     (*pointer_comparator)(const void *restrict s1, const void *restrict s2);
+typedef int                     (*pointer_comparator_t)(const void *restrict s1, const void *restrict s2);
+
 // simple char comparator
 extern int                      pchar_cmp(const void *restrict s1, const void *restrict s2);
 // simple char reverse comparator
