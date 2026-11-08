@@ -117,3 +117,34 @@ fs2arr_mergesorted_new(const fs2array *restrict a,
 
     return r;
 }
+
+fs2array *
+fs2arr_concat(fs2array *dst, const fs2array *src) {
+    invfatal(ERR_NULL_INPUT, dst != NULL && src != NULL,
+             "Null pointers %p %p", dst, src);
+
+    if (!src->arr || src->count == 0)
+        return logsimpleret(dst, "Nothing to concat %p %zu", src->arr, src->count);
+
+    /* Snapshot: if dst == src, dst->hwm grows as we push; we only want
+     * to process the ORIGINAL [0, hwm) slots. */
+    size_t src_hwm   = src->hwm;
+    size_t src_count = src->count;
+
+    if (src_count > SIZE_MAX - dst->hwm)
+        userraise(0, ERR_OUT_OF_RANGE,
+                  "fs2arr_concat: hwm overflow %zu + %zu",
+                  dst->hwm, src_count);
+
+    /* Reserve for the whole batch upfront. Guarantees no realloc during
+     * the loop → &src->arr[i] stays valid even when dst == src. */
+    fs2arr_reserve(dst, dst->hwm + src_count);
+
+    for (size_t i = 0; i < src_hwm; i++) {
+        if (fs2arr_is_hole(&src->arr[i]))
+            continue;
+        fs2 v = fs2_clone(&src->arr[i]);
+        fs2arr_push(dst, &v);                  /* appends at current hwm */
+    }
+    return dst;
+}

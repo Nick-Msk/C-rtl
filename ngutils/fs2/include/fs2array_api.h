@@ -156,5 +156,44 @@ fs2arr_mergesorted_new(const fs2array *restrict a,
 extern bool
 fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp);
 
+/**
+ * @brief Append all live elements of @p src to @p dst (dst += src).
+ *
+ * Elements are deep-copied (src is const, untouched). Holes in @p src are
+ * skipped — only live slots are appended. Holes in @p dst are preserved
+ * (append goes to hwm, not into holes): if dst is [A, hole, B] and
+ * src = [X], result is [A, hole, B, X].
+ *
+ * @pre  @p dst != @p src (restrict: self-concat would require clone first).
+ *
+ * @param dst  Non-NULL fs2array (grows; may have holes).
+ * @param src  Non-NULL fs2array (any state; holes skipped).
+ * @warning `invfatal` (SIGABRT) on NULL dst/src or dst == src.
+ * @warning `sysraise` (OOM) on allocation failure.
+ *
+ * @note No-op if src is canonical / empty (count == 0).
+ *       For packed result after concat, call fs2arr_compact(&dst) then
+ *       fs2arr_synchwm(&dst).
+ */
+extern fs2array *
+fs2arr_concat(fs2array *dst, const fs2array *src);
+
+/**
+ * @brief New array = @p a ++ @p b (deep copy, packed, tight).
+ *
+ * Shortcut for clone(a) + concat(clone, b) + shrink.
+ * Result is packed (hwm == count) and tight (size == count), regardless
+ * of holes in @p a or @p b.
+ *
+ * @param a  Non-NULL fs2array (any state).
+ * @param b  Non-NULL fs2array (any state).
+ * @return   New fs2array; free with fs2arr_free.
+ * @warning `invfatal` on NULL a/b; `sysraise` on OOM.
+ */
+static inline fs2array
+fs2arr_concat_new(const fs2array *restrict a, const fs2array *restrict b) {
+    fs2array res = fs2arr_clone(a);
+    return *fs2arr_concat(&res, b);
+}
 
 #endif /* !FS2ARRAY_API_H */
