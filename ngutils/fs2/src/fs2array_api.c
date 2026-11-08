@@ -40,7 +40,38 @@ fs2arr_sort(fs2array *a, pointer_comparator_t cmp) {
 
     if (!a->arr || a->count < 2)
         return;                                /* 0 or 1 live — already sorted */
-
-    qsort(a->arr, a->count, sizeof(fs2), cmp);
+    
+    /* Sort full logical range [0, hwm). If the array has holes, @p cmp must
+     * handle v==NULL (use fs2_cmp_nullbefore_wrap / fs2_cmp_nullafter_wrap).
+     * Plain fs2_cmp_wrap/fs2_cmp_desc_wrap assumes no holes in [0, hwm). */
+    qsort(a->arr, a->hwm, sizeof(fs2), cmp);
 }
 
+void
+fs2arr_compact(fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, 
+        "Null fs2array (%p)", a);
+
+    if (!a->arr)
+        return;
+
+    size_t write = 0;
+    for (size_t read = 0; read < a->hwm; read++) {
+        if (fs2arr_is_hole(&a->arr[read]))
+            continue;
+
+        if (write != read) {
+            a->arr[write] = a->arr[read];
+            fs2arr_set_hole(&a->arr[read]);
+        }
+        write++;
+    }
+
+    /* write == live count by invariant. If count drifted (bug elsewhere),
+     * fail-fast here rather than silently propagate. */
+    invfatal(ERR_OUT_OF_RANGE, write == a->count,
+             "fs2arr_compact: live slots %zu != count %zu",
+             write, a->count);
+
+    a->hwm = write;   /* trim logical end to last live; [hwm, old_hwm) → padding */
+}

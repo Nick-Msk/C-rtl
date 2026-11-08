@@ -39,19 +39,34 @@ fs2_split_toarray_str(const fs2 *restrict s, const char *restrict delim) {
 }
 
 /**
- * @brief Sort live elements ascending/in place; holes compacted to end.
+ * @brief Sort slots [0, hwm) in place.
  *
- * Pipeline: compact (holes → [count, hwm)) → qsort [0, count) with @p cmp.
- * After: [0, count) sorted, [count, hwm) all holes. hwm/size unchanged.
+ * Sorts ALL slots in [0, hwm), including holes. The comparator determines
+ * hole placement:
  *
- * @param a    Non-NULL fs2array.
- * @param cmp  qsort-compatible comparator (`fs2_cmp_wrap`, `fs2_cmp_desc_wrap`,
- *             `fs2_cmp_null_wrap`, `fs2_cmp_desc_null_wrap`, or user-defined).
- *             Null-safe variant required if the array contains a live slot
- *             with `v == NULL` (only possible via manual corruption).
- * @warning `invfatal` (SIGABRT) if a is NULL.
- * @warning `sysraise` (OOM) if internal compact needs realloc — should not
- *          happen on packed arrays.
+ *   fs2_cmp_wrap / fs2_cmp_desc_wrap
+ *       — plain lexicographic; holes have v==NULL → SEGV. Caller must
+ *         ensure hwm == count (no holes). Use after fs2arr_compact.
+ *
+ *   fs2_cmp_nullbefore_wrap / fs2_cmp_desc_nullbefore_wrap
+ *       — "null < everything"; holes sorted to logical position. In asc,
+ *         holes go to the front; in desc, to the end (== packed).
+ *
+ *   fs2_cmp_nullafter_wrap / fs2_cmp_desc_nullafter_wrap
+ *       — "null > everything"; in asc, holes go to the end (== packed);
+ *         in desc, to the front.
+ *
+ * "Packed" variants (holes at [count, hwm)) — sortasc_nullafter and
+ * sortdesc_nullbefore — act as compact + sort in one call.
+ *
+ * count, hwm, size are unchanged by sort (only positions inside [0, hwm)
+ * change). For packed-in-one-step semantics, call:
+ *
+ *   fs2arr_sortasc_nullafter(&a);   // asc order, holes at end
+ *   fs2arr_sortdesc_nullbefore(&a); // desc order, holes at end
+ *
+ * @pre cmp != NULL. If cmp is fs2_cmp_wrap/fs2_cmp_desc_wrap, additionally
+ *      hwm == count (no holes in [0, hwm)).
  */
 extern void
 fs2arr_sort(fs2array *a, pointer_comparator_t cmp);
@@ -64,6 +79,12 @@ static inline void
 fs2arr_sortdesc(fs2array *a) { 
     fs2arr_sort(a, fs2_cmp_desc_wrap);      
 }
+/**
+ * @note Only needed if you build the array MANUALLY, bypassing push/attach
+ *       (which promote canonical FS2() → FS2EMPTY via fs2_move). Under the
+ *       normal API, live slots always have v != NULL, so fs2_cmp is safe.
+ *       These comparators exist for defense against corrupted/foreign arrays.
+ */
 static inline void 
 fs2arr_sortasc_nullbefore(fs2array *a) { 
     fs2arr_sort(a, fs2_cmp_nullbefore_wrap);      
@@ -80,5 +101,26 @@ static inline void
 fs2arr_sortdesc_nullafter(fs2array *a){ 
     fs2arr_sort(a, fs2_cmp_desc_nullafter_wrap); 
 }
+
+/**
+ * @brief Pack live slots to [0, count), holes to [count, size).
+ *
+ * Stable (relative order of live slots preserved). In-place, no realloc,
+ * O(hwm). After:
+ *   - hwm = count (logical end = last live)
+ *   - [0, hwm)   — all live, in original relative order
+ *   - [hwm, size) — all holes (padding)
+ *
+ * Equivalent to "trim trailing holes + drop mid holes" in one shot.
+ * `fs2arr_synchwm` after compact is a no-op. `size` unchanged; follow
+ * with `fs2arr_shrink` to reduce capacity if desired.
+ *
+ * Canonical (`arr == NULL`) — no-op.
+ *
+ * @warning `invfatal` (SIGABRT) if a is NULL, or if internal `count`
+ *          doesn't match actual live slots (array corruption).
+ */
+extern void
+fs2arr_compact(fs2array *a);
 
 #endif /* !FS2ARRAY_API_H */
