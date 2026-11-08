@@ -4337,3 +4337,205 @@ Test(fs2, nvl_cat_s_wins) {
     assert_balanced();
 }
 
+TestSuite(fs2_comparators, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * Helper: canonical NULL source (v == NULL, valid FS2 shape)
+ * ========================================================================= */
+
+static fs2
+mk_null(void) { return FS2(); }
+static fs2
+mk(const char *s) { return fs2_fromstr(s); }
+static int 
+sign(int x) { return (x > 0) - (x < 0); }
+
+/* =========================================================================
+ * fs2_cmp_nullbefore — "NULL < non-null"
+ * ========================================================================= */
+
+Test(fs2_comparators, nullbefore_null_vs_nonnull) {
+    fs2 a = mk_null();
+    fs2 b = mk("x");
+
+    CHECK_LT("cmp(null, x)", fs2_cmp_nullbefore(&a, &b), 0);
+    CHECK_GT("cmp(x, null)", fs2_cmp_nullbefore(&b, &a), 0);
+
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2_comparators, nullbefore_null_vs_null) {
+    fs2 a = mk_null();
+    fs2 b = mk_null();
+    CHECK_EQ("cmp(null, null)", 0, fs2_cmp_nullbefore(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2_comparators, nullbefore_nonnull_vs_nonnull) {
+    fs2 a = mk("apple");
+    fs2 b = mk("banana");
+    CHECK_LT("apple < banana", fs2_cmp_nullbefore(&a, &b), 0);
+    CHECK_GT("banana > apple", fs2_cmp_nullbefore(&b, &a), 0);
+
+    fs2 c = mk("apple");   /* equal content */
+    CHECK_EQ("apple == apple", 0, fs2_cmp_nullbefore(&a, &c));
+
+    fs2_free(&a);
+    fs2_free(&b);
+    fs2_free(&c);
+}
+
+/* Anti-symmetry: cmp(a,b) == -cmp(b,a) for all inputs */
+Test(fs2_comparators, nullbefore_antisymmetric) {
+    fs2 cases[] = { mk_null(), mk("a"), mk("b"), mk("zzz"), mk_null() };
+    size_t n = sizeof cases / sizeof cases[0];
+
+    for (size_t i = 0; i < n; i++)
+        for (size_t j = 0; j < n; j++) {
+            int c_ij = fs2_cmp_nullbefore(&cases[i], &cases[j]);
+            int c_ji = fs2_cmp_nullbefore(&cases[j], &cases[i]);
+            if (c_ij != c_ji)   /* only 0 is self-symmetric; non-zero must flip */
+                CHECK_EQ("antisym", (c_ij < 0) == (c_ji > 0), true);
+        }
+    for (size_t i = 0; i < n; i++) fs2_free(&cases[i]);
+}
+
+/* =========================================================================
+ * fs2_cmp_nullafter — "NULL > non-null"
+ * ========================================================================= */
+
+Test(fs2_comparators, nullafter_null_vs_nonnull) {
+    fs2 a = mk_null();
+    fs2 b = mk("x");
+
+    CHECK_GT("cmp(null, x)", fs2_cmp_nullafter(&a, &b), 0);   /* null after */
+    CHECK_LT("cmp(x, null)", fs2_cmp_nullafter(&b, &a), 0);
+
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2_comparators, nullafter_null_vs_null) {
+    fs2 a = mk_null();
+    fs2 b = mk_null();
+    CHECK_EQ("cmp(null, null)", 0, fs2_cmp_nullafter(&a, &b));
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+Test(fs2_comparators, nullafter_nonnull_vs_nonnull) {
+    fs2 a = mk("apple");
+    fs2 b = mk("banana");
+    CHECK_LT("apple < banana", fs2_cmp_nullafter(&a, &b), 0);
+    CHECK_GT("banana > apple", fs2_cmp_nullafter(&b, &a), 0);
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+/* =========================================================================
+ * Wrappers — qsort-compatible, must match base exactly
+ * ========================================================================= */
+
+Test(fs2_comparators, wrappers_match_base) {
+    fs2 a = mk_null();
+    fs2 b = mk("x");
+
+    /* Base vs wrap → same sign */
+    CHECK_EQ("nullbefore wrap == base (null,x)",
+             sign(fs2_cmp_nullbefore_wrap(&a, &b)),
+             sign(fs2_cmp_nullbefore(&a, &b)));
+
+    CHECK_EQ("nullafter wrap == base (x,null)",
+             sign(fs2_cmp_nullafter_wrap(&b, &a)),
+             sign(fs2_cmp_nullafter(&b, &a)));
+
+    /* Desc wraps = reverse of base asc */
+    CHECK_EQ("desc_nullbefore flip",
+             sign(fs2_cmp_desc_nullbefore_wrap(&a, &b)),
+             sign(fs2_cmp_nullbefore(&b, &a)));
+
+    CHECK_EQ("desc_nullafter flip",
+             sign(fs2_cmp_desc_nullafter_wrap(&a, &b)),
+             sign(fs2_cmp_nullafter(&b, &a)));
+
+    fs2_free(&a);
+    fs2_free(&b);
+}
+
+/* =========================================================================
+ * qsort integration — the real proof that comparator is sound
+ *
+ * With broken comparator (returning 0 for null vs non-null), qsort may:
+ *   - leave elements unsorted (glibc/musl treats 0 as "equal", stable-ish)
+ *   - produce different order on different libcs
+ * After the fix — deterministic.
+ * ========================================================================= */
+
+Test(fs2_comparators, qsort_nullbefore_nulls_first) {
+    fs2 arr[] = { mk("z"), mk_null(), mk("a"), mk_null(), mk("m") };
+    size_t n = sizeof arr / sizeof arr[0];
+
+    qsort(arr, n, sizeof(fs2), fs2_cmp_nullbefore_wrap);
+
+    CHECK_TRUE("[0] null",  arr[0].v == NULL);
+    CHECK_TRUE("[1] null",  arr[1].v == NULL);
+    CHECK_STR_EQ("[2]", "a", arr[2].v);
+    CHECK_STR_EQ("[3]", "m", arr[3].v);
+    CHECK_STR_EQ("[4]", "z", arr[4].v);
+
+    for (size_t i = 0; i < n; i++) fs2_free(&arr[i]);
+}
+
+Test(fs2_comparators, qsort_nullafter_nulls_last) {
+    fs2 arr[] = { mk_null(), mk("z"), mk_null(), mk("a"), mk("m") };
+    size_t n = sizeof arr / sizeof arr[0];
+
+    qsort(arr, n, sizeof(fs2), fs2_cmp_nullafter_wrap);
+
+    CHECK_STR_EQ("[0]", "a", arr[0].v);
+    CHECK_STR_EQ("[1]", "m", arr[1].v);
+    CHECK_STR_EQ("[2]", "z", arr[2].v);
+    CHECK_TRUE ("[3] null",  arr[3].v == NULL);
+    CHECK_TRUE ("[4] null",  arr[4].v == NULL);
+
+    for (size_t i = 0; i < n; i++) fs2_free(&arr[i]);
+}
+
+Test(fs2_comparators, qsort_desc_nullbefore_nulls_first_desc) {
+    /* desc of nullbefore = nulls-first, values desc */
+    fs2 arr[] = { mk("m"), mk_null(), mk("a"), mk_null(), mk("z") };
+    size_t n = sizeof arr / sizeof arr[0];
+
+    qsort(arr, n, sizeof(fs2), fs2_cmp_desc_nullbefore_wrap);
+
+    /* In desc: null vs non-null → null still "smaller" in asc → in desc null goes last.
+     * Wait: nullbefore means null < nonnull in asc. Desc reverses → null > nonnull in desc.
+     * So nulls LAST in desc. */
+    CHECK_STR_EQ("[0]", "z", arr[0].v);
+    CHECK_STR_EQ("[1]", "m", arr[1].v);
+    CHECK_STR_EQ("[2]", "a", arr[2].v);
+    CHECK_TRUE ("[3] null",  arr[3].v == NULL);
+    CHECK_TRUE ("[4] null",  arr[4].v == NULL);
+
+    for (size_t i = 0; i < n; i++) fs2_free(&arr[i]);
+}
+
+Test(fs2_comparators, qsort_desc_nullafter_nulls_first_desc) {
+    /* desc of nullafter = nulls-first, values desc */
+    fs2 arr[] = { mk("m"), mk_null(), mk("a"), mk_null(), mk("z") };
+    size_t n = sizeof arr / sizeof arr[0];
+
+    qsort(arr, n, sizeof(fs2), fs2_cmp_desc_nullafter_wrap);
+
+    /* nullafter asc: null > nonnull → nulls last in asc.
+     * Desc: nulls first, values desc. */
+    CHECK_TRUE ("[0] null",  arr[0].v == NULL);
+    CHECK_TRUE ("[1] null",  arr[1].v == NULL);
+    CHECK_STR_EQ("[2]", "z", arr[2].v);
+    CHECK_STR_EQ("[3]", "m", arr[3].v);
+    CHECK_STR_EQ("[4]", "a", arr[4].v);
+
+    for (size_t i = 0; i < n; i++) fs2_free(&arr[i]);
+}
