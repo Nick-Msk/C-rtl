@@ -74,14 +74,11 @@ bool
 fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp) {
     invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL,
              "Null pointers %p %p", a, cmp);
-    // if (a->hwm != a->count)
-    //     userraise(false, ERR_UNSUPPORTED_TYPE,
-    //          "fs2arr not packed (hwm=%zu count=%zu)", a->hwm, a->count);
 
     if (a->count < 2)
         return true;
     size_t prev = SIZE_MAX;
-    for (size_t i = 1; i < a->hwm; i++) {
+    for (size_t i = 0; i < a->hwm; i++) {
         if (fs2arr_is_hole(&a->arr[i]))
             continue;
         if (prev != SIZE_MAX &&  cmp(&a->arr[prev], &a->arr[i]) > 0)
@@ -98,7 +95,7 @@ fs2arr_mergesorted_new(const fs2array *restrict a,
     invfatal(ERR_NULL_INPUT, a != NULL && b != NULL && cmp != NULL,
              "Null pointers %p %p %p", a, b, cmp);
 
-    if (a->hwm != a->count || b->hwm != b->count || a->count <= SIZE_MAX - b->count)
+    if (a->hwm != a->count || b->hwm != b->count || a->count > SIZE_MAX - b->count)
         userraise(0, ERR_OUT_OF_RANGE, 
             "Not packed or total overflow over %zu: a.hwm %zu a.count %zu, b.hwm %zu b.count %zu",
             SIZE_MAX, a->hwm, a->count, b->hwm, b->count);
