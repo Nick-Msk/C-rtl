@@ -123,4 +123,38 @@ fs2arr_sortdesc_nullafter(fs2array *a){
 extern void
 fs2arr_compact(fs2array *a);
 
+/**
+ * @brief Merge two sorted arrays into a new one (two-pointer merge).
+ *
+ * Stable: elements from @p a come before equal elements from @p b.
+ * Elements are deep-copied; inputs untouched, result independent.
+ *
+ * @pre  Both @p a and @p b are packed (hwm == count) and sorted by @p cmp.
+ * @pre  @p cmp is qsort-compatible.
+ *
+ * @param a    Non-NULL fs2array, packed, sorted.
+ * @param b    Non-NULL fs2array, packed, sorted.
+ * @param cmp  Non-NULL comparator.
+ * @return     New fs2array, tight (hwm == size == count == a->count + b->count).
+ *
+ * @warning `invfatal` (SIGABRT) on NULL a/b/cmp.
+ * @warning `userraise` (SIGINT) on not-packed input.
+ * @warning `sysraise`  (SIGINT)  on OOM.
+ */
+extern fs2array
+fs2arr_mergesorted_new(const fs2array *restrict a,
+                       const fs2array *restrict b,
+                       pointer_comparator_t cmp);
+
+/**
+ * @brief Check whether @p a is sorted according to @p cmp.
+ *
+ * @pre  @p a is packed (hwm == count).
+ * @return true if sorted (or count < 2).
+ * @warning `invfatal` on NULL a/cmp; `invraise` on not-packed.
+ */
+extern bool
+fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp);
+
+
 #endif /* !FS2ARRAY_API_H */

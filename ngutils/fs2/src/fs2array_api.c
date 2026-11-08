@@ -69,3 +69,54 @@ fs2arr_compact(fs2array *a) {
 
     a->hwm = write;   /* trim logical end to last live; [hwm, old_hwm) → padding */
 }
+
+bool
+fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL,
+             "Null pointers %p %p", a, cmp);
+    // if (a->hwm != a->count)
+    //     userraise(false, ERR_UNSUPPORTED_TYPE,
+    //          "fs2arr not packed (hwm=%zu count=%zu)", a->hwm, a->count);
+
+    if (a->count < 2)
+        return true;
+    size_t prev = SIZE_MAX;
+    for (size_t i = 1; i < a->hwm; i++) {
+        if (fs2arr_is_hole(&a->arr[i]))
+            continue;
+        if (prev != SIZE_MAX &&  cmp(&a->arr[prev], &a->arr[i]) > 0)
+            return false;
+        prev = i;
+    }
+    return true;
+}
+
+fs2array
+fs2arr_mergesorted_new(const fs2array *restrict a,
+                       const fs2array *restrict b,
+                       pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL && cmp != NULL,
+             "Null pointers %p %p %p", a, b, cmp);
+
+    if (a->hwm != a->count || b->hwm != b->count || a->count <= SIZE_MAX - b->count)
+        userraise(0, ERR_OUT_OF_RANGE, 
+            "Not packed or total overflow over %zu: a.hwm %zu a.count %zu, b.hwm %zu b.count %zu",
+            SIZE_MAX, a->hwm, a->count, b->hwm, b->count);
+
+    fs2array r = fs2arr_init(a->count + b->count);
+
+    size_t ia = 0, ib = 0;
+    while (ia < a->count && ib < b->count) {
+        if (cmp(&a->arr[ia], &b->arr[ib]) <= 0) {
+            fs2 v = fs2_clone(&a->arr[ia++]);
+            fs2arr_push(&r, &v);
+        } else {
+            fs2 v = fs2_clone(&b->arr[ib++]);
+            fs2arr_push(&r, &v);
+        }
+    }
+    while (ia < a->count) { fs2 v = fs2_clone(&a->arr[ia++]); fs2arr_push(&r, &v); }
+    while (ib < b->count) { fs2 v = fs2_clone(&b->arr[ib++]); fs2arr_push(&r, &v); }
+
+    return r;
+}
