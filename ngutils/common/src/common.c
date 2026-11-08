@@ -165,59 +165,90 @@ try_parse_double(const char *restrict str, double *restrict res)
 }
 
 /* -------------------------------------------------------------------------
- *  Comparators
+ * Pointer comparators
  * ------------------------------------------------------------------------- */
 
-// ------------------- Pointer comparators -------------------
-// simple char comparator
-int                             pchar_cmp(const void *restrict s1, const void *restrict s2){
-    return compare_char( *(const unsigned char *) s1, *(const unsigned char *) s2);
+int
+pchar_cmp(const void *restrict s1, const void *restrict s2)
+{
+    return compare_char(*(const unsigned char *)s1, *(const unsigned char *)s2);
 }
-// simple char reverse comparator
-int                             pchar_revcmp(const void *s1, const void *s2){
-    return -compare_char( *(const unsigned char *) s1, *(const unsigned char *) s2);
+
+int
+pchar_revcmp(const void *restrict s1, const void *restrict s2)
+{
+    return -compare_char(*(const unsigned char *)s1, *(const unsigned char *)s2);
 }
-// simple comparator pointer int
-int                             pint_cmp(const void *restrict i1, const void *restrict i2){ 
-    return compare_int( *(const int *) i1, *(const int *) i2); 
+
+int
+pint_cmp(const void *restrict i1, const void *restrict i2)
+{
+    return compare_int(*(const int *)i1, *(const int *)i2);
 }
-// simple reverse comparator pointer int
-int                             pint_revcmp(const void *i1, const void *i2){
-    return -compare_int( *(const int *) i1, *(const int *) i2); 
+
+int
+pint_revcmp(const void *restrict i1, const void *restrict i2)
+{
+    return -compare_int(*(const int *)i1, *(const int *)i2);
 }
-// simple comparator pointer long
-int                              plong_cmp(const void *l1, const void *l2){
-    return compare_long( *(const long *) l1, *(const long *) l2);
+
+int
+plong_cmp(const void *restrict l1, const void *restrict l2)
+{
+    return compare_long(*(const long *)l1, *(const long *)l2);
 }
-// simple reverse comparator pointer long
-int                             plong_revcmp(const void *l1, const void *l2){
-    return -compare_long( *(const long *) l1, *(const long *) l2);
+
+int
+plong_revcmp(const void *restrict l1, const void *restrict l2)
+{
+    return -compare_long(*(const long *)l1, *(const long *)l2);
 }
-// simple comparator pointer to pointer
-int                             pptr_cmp(const void *p1, const void *p2) {
-    const void *pa = *(const void **) p1;
-    const void *pb = *(const void **) p2;
+
+int
+pptr_cmp(const void *restrict p1, const void *restrict p2)
+{
+    const void *pa = *(const void **)p1;
+    const void *pb = *(const void **)p2;
     return compare_ptr(pa, pb);
 }
-// simple reverse comparator pointer to pointer
-int                             pptr_revcmp(const void *p1, const void *p2){
-    const void *pa = *(const void **) p1;
-    const void *pb = *(const void **) p2;
+
+int
+pptr_revcmp(const void *restrict p1, const void *restrict p2)
+{
+    const void *pa = *(const void **)p1;
+    const void *pb = *(const void **)p2;
     return -compare_ptr(pa, pb);
 }
-// item
-int                             pitem_cmp(const void *restrict p1, const void *restrict p2, size_t sz) {
+
+int
+pdbl_cmp(const void *restrict d1, const void *restrict d2)
+{
+    return compare_dbl(*(const double *)d1, *(const double *)d2);
+}
+
+int
+pdbl_revcmp(const void *restrict d1, const void *restrict d2)
+{
+    return -compare_dbl(*(const double *)d1, *(const double *)d2);
+}
+
+int
+pitem_cmp(const void *restrict p1, const void *restrict p2, size_t sz)
+{
     return memcmp(p1, p2, sz);
 }
-// c-str wrappers
-// normal
-int                             pcstr_cmp(const void *restrict s1, const void *restrict s2) {
+
+int
+pcstr_cmp(const void *restrict s1, const void *restrict s2)
+{
     const char *const *str1 = (const char *const *)s1;
     const char *const *str2 = (const char *const *)s2;
     return strcmp(*str1, *str2);
 }
-// insensitive
-int                             pcstr_icmp(const void *restrict s1, const void *restrict s2) {
+
+int
+pcstr_icmp(const void *restrict s1, const void *restrict s2)
+{
     const char *const *str1 = (const char *const *)s1;
     const char *const *str2 = (const char *const *)s2;
     return strcasecmp(*str1, *str2);
