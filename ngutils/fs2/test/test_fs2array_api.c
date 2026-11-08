@@ -1138,3 +1138,404 @@ Test(fs2_array_api, compact_idempotent_packed) {
 Test(fs2_array_api, compact_null_aborts, .signal = SIGABRT) {
     fs2arr_compact(NULL);
 }
+
+/* Helper: build sorted array from string array */
+static fs2array
+mk_sorted(const char *vals[], size_t n, pointer_comparator_t cmp) {
+    fs2array a = fs2arr_init(n);
+    for (size_t i = 0; i < n; i++) {
+        fs2 v = fs2_fromstr(vals[i]);
+        fs2arr_push(&a, &v);
+    }
+    fs2arr_sort(&a, cmp);
+    return a;
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — nominal
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_basic_interleaved) {
+    __fs2_checkreset();
+    const char *av[] = { "a", "c", "e" };
+    const char *bv[] = { "b", "d", "f" };
+    fs2array a = mk_sorted(av, 3, fs2_cmp_wrap);
+    fs2array b = mk_sorted(bv, 3, fs2_cmp_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 6, r.count);
+    CHECK_EQ  ("hwm",   6, r.hwm);              /* packed */
+    CHECK_GE  ("size",  r.size, 6);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "d", r.arr[3].v);
+    CHECK_STR_EQ("[4]", "e", r.arr[4].v);
+    CHECK_STR_EQ("[5]", "f", r.arr[5].v);
+    CHECK_TRUE ("valid", fs2arr_validate(NULL, &r));
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_sort, merge_one_empty_left) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();                      /* empty */
+    const char *bv[] = { "x", "y", "z" };
+    fs2array b = mk_sorted(bv, 3, fs2_cmp_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 3, r.count);
+    CHECK_STR_EQ("[0]", "x", r.arr[0].v);
+    CHECK_STR_EQ("[2]", "z", r.arr[2].v);
+
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_sort, merge_one_empty_right) {
+    __fs2_checkreset();
+    const char *av[] = { "x", "y" };
+    fs2array a = mk_sorted(av, 2, fs2_cmp_wrap);
+    fs2array b = FS2ARR();
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 2, r.count);
+    CHECK_STR_EQ("[0]", "x", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "y", r.arr[1].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+Test(fs2_array_sort, merge_both_empty) {
+    fs2array a = FS2ARR();
+    fs2array b = FS2ARR();
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_PTR_EQ("arr",   NULL, r.arr);
+    CHECK_EQ   ("count", 0, r.count);
+    /* canonical — no free needed */
+}
+
+Test(fs2_array_sort, merge_disjoint_ranges) {
+    __fs2_checkreset();
+    const char *av[] = { "a", "b", "c" };
+    const char *bv[] = { "x", "y", "z" };
+    fs2array a = mk_sorted(av, 3, fs2_cmp_wrap);
+    fs2array b = mk_sorted(bv, 3, fs2_cmp_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 6, r.count);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[2]", "c", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "x", r.arr[3].v);
+    CHECK_STR_EQ("[5]", "z", r.arr[5].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — stability (equal elements: a before b)
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_stable_equal_elements) {
+    __fs2_checkreset();
+    /* Both arrays contain "b" — merged result should keep a's "b" first */
+    const char *av[] = { "a", "b", "c" };
+    const char *bv[] = { "b", "b", "d" };
+    fs2array a = mk_sorted(av, 3, fs2_cmp_wrap);
+    fs2array b = mk_sorted(bv, 3, fs2_cmp_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 6, r.count);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    /* Three "b"s in positions [1..3] — order among them is not observable
+     * by value, but stability guarantees a's "b" comes before b's "b"s.
+     * Since all are "b", this test verifies only that count is right and
+     * that "d" is last, "c" is before "d". */
+    CHECK_STR_EQ("[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "b", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "b", r.arr[3].v);
+    CHECK_STR_EQ("[4]", "c", r.arr[4].v);
+    CHECK_STR_EQ("[5]", "d", r.arr[5].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* Stability with distinguishable equal-key elements: use cmp by length */
+static int cmp_len_only(const void *pa, const void *pb) {
+    const fs2 *a = pa, *b = pb;
+    return (a->len > b->len) - (a->len < b->len);
+}
+
+Test(fs2_array_sort, merge_stable_by_length_key) {
+    __fs2_checkreset();
+    /* Both sorted by length. a: [a, bb], b: [c, dd] */
+    const char *av[] = { "a", "bb" };
+    const char *bv[] = { "c", "dd" };
+    fs2array a = mk_sorted(av, 2, cmp_len_only);
+    fs2array b = mk_sorted(bv, 2, cmp_len_only);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, cmp_len_only);
+    /* Stable: equal-length elements — a's first, then b's */
+    CHECK_EQ  ("count", 4, r.count);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);   /* len 1 from a */
+    CHECK_STR_EQ("[1]", "c", r.arr[1].v);   /* len 1 from b */
+    CHECK_STR_EQ("[2]", "bb", r.arr[2].v);  /* len 2 from a */
+    CHECK_STR_EQ("[3]", "dd", r.arr[3].v);  /* len 2 from b */
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — deep copy, inputs untouched
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_deep_copy_inputs_untouched) {
+    __fs2_checkreset();
+    const char *av[] = { "a", "c" };
+    const char *bv[] = { "b", "d" };
+    fs2array a = mk_sorted(av, 2, fs2_cmp_wrap);
+    fs2array b = mk_sorted(bv, 2, fs2_cmp_wrap);
+    void *a0 = a.arr[0].v, *b0 = b.arr[0].v;
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    /* Inputs unchanged */
+    CHECK_PTR_EQ("a[0].v unchanged", a.arr[0].v, a0);
+    CHECK_PTR_EQ("b[0].v unchanged", b.arr[0].v, b0);
+    CHECK_STR_EQ("a content",        "a", a.arr[0].v);
+    CHECK_STR_EQ("b content",        "b", b.arr[0].v);
+    CHECK_EQ  ("a.count", 2, a.count);
+    CHECK_EQ  ("b.count", 2, b.count);
+
+    /* Result is independent: mutate result[0], source unaffected */
+    CHECK_TRUE("independent buffer", r.arr[0].v != a0);
+    r.arr[0].v[0] = 'X';
+    CHECK_STR_EQ("a still 'a'", "a", a.arr[0].v);
+    CHECK_STR_EQ("r is 'X'",    "X", r.arr[0].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — same pointer (a == b)
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_self_doubles_elements) {
+    __fs2_checkreset();
+    const char *av[] = { "a", "b", "c" };
+    fs2array a = mk_sorted(av, 3, fs2_cmp_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &a, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 6, r.count);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "a", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "b", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "b", r.arr[3].v);
+    CHECK_STR_EQ("[4]", "c", r.arr[4].v);
+    CHECK_STR_EQ("[5]", "c", r.arr[5].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — precondition: not packed → abort
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_a_not_packed_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v1 = fs2_fromstr("a"); fs2arr_push(&a, &v1);
+    fs2 v2 = fs2_fromstr("b"); fs2arr_push(&a, &v2);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* a: [hole, "b"], hwm=2, count=1 — NOT packed */
+
+    fs2array b = fs2arr_init(2);
+    fs2 w = fs2_fromstr("c"); fs2arr_push(&b, &w);
+
+    fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+    /* unreachable */
+}
+
+Test(fs2_array_sort, merge_b_not_packed_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(2);
+    fs2 v1 = fs2_fromstr("a"); fs2arr_push(&a, &v1);
+
+    fs2array b = fs2arr_init(8);
+    fs2 w1 = fs2_fromstr("b"); fs2arr_push(&b, &w1);
+    fs2 w2 = fs2_fromstr("c"); fs2arr_push(&b, &w2);
+    fs2 t = fs2arr_detach_new(&b, 0);
+    fs2_free(&t);
+
+    fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+    /* unreachable */
+}
+
+/* After compact, same arrays work fine */
+Test(fs2_array_sort, merge_after_compact_works) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v1 = fs2_fromstr("a"); fs2arr_push(&a, &v1);
+    fs2 v2 = fs2_fromstr("b"); fs2arr_push(&a, &v2);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    fs2arr_compact(&a);                         /* [b], hwm=count=1 */
+
+    fs2array b = fs2arr_init(2);
+    fs2 w = fs2_fromstr("c"); fs2arr_push(&b, &w);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_EQ  ("count", 2, r.count);
+    CHECK_STR_EQ("[0]", "b", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "c", r.arr[1].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — guards
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_null_a_aborts, .signal = SIGABRT) {
+    fs2array b = FS2ARR();
+    fs2arr_mergesorted_new(NULL, &b, fs2_cmp_wrap);
+}
+
+Test(fs2_array_sort, merge_null_b_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARR();
+    fs2arr_mergesorted_new(&a, NULL, fs2_cmp_wrap);
+}
+
+Test(fs2_array_sort, merge_null_cmp_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARR();
+    fs2array b = FS2ARR();
+    fs2arr_mergesorted_new(&a, &b, NULL);
+}
+
+/* =========================================================================
+ * fs2arr_mergesorted_new — desc comparator
+ * ========================================================================= */
+
+Test(fs2_array_sort, merge_desc) {
+    __fs2_checkreset();
+    const char *av[] = { "c", "a" };            /* sorted desc after mk_sorted */
+    const char *bv[] = { "d", "b" };
+    fs2array a = mk_sorted(av, 2, fs2_cmp_desc_wrap);
+    fs2array b = mk_sorted(bv, 2, fs2_cmp_desc_wrap);
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_desc_wrap);
+
+    CHECK_EQ  ("count", 4, r.count);
+    CHECK_STR_EQ("[0]", "d", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "c", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "b", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "a", r.arr[3].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_issorted — helper
+ * ========================================================================= */
+
+Test(fs2_array_sort, is_sorted_positive) {
+    __fs2_checkreset();
+    const char *vals[] = { "a", "b", "c", "c", "d" };
+    fs2array a = mk_sorted(vals, 5, fs2_cmp_wrap);
+    CHECK_TRUE("sorted", fs2arr_issorted(&a, fs2_cmp_wrap));
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_sort, is_sorted_negative) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(3);
+    fs2 v1 = fs2_fromstr("b"); fs2arr_push(&a, &v1);
+    fs2 v2 = fs2_fromstr("a"); fs2arr_push(&a, &v2);
+    fs2 v3 = fs2_fromstr("c"); fs2arr_push(&a, &v3);
+    CHECK_FALSE("b,a,c not sorted", fs2arr_issorted(&a, fs2_cmp_wrap));
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_sort, is_sorted_empty_and_single) {
+    fs2array canon = FS2ARR();
+    CHECK_TRUE("canonical sorted", fs2arr_issorted(&canon, fs2_cmp_wrap));
+
+    __fs2_checkreset();
+    fs2array single = fs2arr_init(2);
+    fs2 v = fs2_fromstr("x"); fs2arr_push(&single, &v);
+    CHECK_TRUE("single sorted", fs2arr_issorted(&single, fs2_cmp_wrap));
+    fs2arr_free(&single);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: sort → merge → sorted
+ * ========================================================================= */
+
+Test(fs2_array_sort, sort_merge_sort_pipeline) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    const char *av[] = { "e", "a", "c" };
+    for (int i = 0; i < 3; i++) { fs2 v = fs2_fromstr(av[i]); fs2arr_push(&a, &v); }
+    fs2arr_sortasc(&a);                         /* [a, c, e] */
+
+    fs2array b = fs2arr_init(8);
+    const char *bv[] = { "d", "b", "f" };
+    for (int i = 0; i < 3; i++) { fs2 v = fs2_fromstr(bv[i]); fs2arr_push(&b, &v); }
+    fs2arr_sortasc(&b);                         /* [b, d, f] */
+
+    fs2array r = fs2arr_mergesorted_new(&a, &b, fs2_cmp_wrap);
+
+    CHECK_TRUE("result sorted", fs2arr_issorted(&r, fs2_cmp_wrap));
+    CHECK_EQ  ("count", 6, r.count);
+    CHECK_STR_EQ("[0]", "a", r.arr[0].v);
+    CHECK_STR_EQ("[1]", "b", r.arr[1].v);
+    CHECK_STR_EQ("[2]", "c", r.arr[2].v);
+    CHECK_STR_EQ("[3]", "d", r.arr[3].v);
+    CHECK_STR_EQ("[4]", "e", r.arr[4].v);
+    CHECK_STR_EQ("[5]", "f", r.arr[5].v);
+
+    fs2arr_free(&a);
+    fs2arr_free(&b);
+    fs2arr_free(&r);
+    assert_balanced();
+}
+
