@@ -1168,8 +1168,37 @@ static inline int
 fs2_ncmp_ci(const fs2* restrict str1, const fs2* restrict str2, size_t len) {
     return strncasecmp(str1->v, str2->v, len);
 }
-// c-str wrappers
 
+// null-accept comparators
+
+/**
+ * @brief Ascending comparator, `v == NULL` sorts BEFORE any non-NULL.
+ *
+ * "NULL is less than everything" rule. Only needed for arrays where
+ * a live slot may have `v == NULL` (manually-inserted canonical FS2());
+ * valid fs2array live slots always have `v != NULL` (fs2_move promotes).
+ */
+static inline int
+fs2_cmp_nullbefore(const fs2 *restrict str1, const fs2 *restrict str2) {
+    if (!str1->v) return !str2->v ? 0 : +1;
+    if (!str2->v) return -1;
+    return fs2_cmp(str1, str2);
+}
+
+/**
+ * @brief Ascending, `v == NULL` sorts AFTER any non-NULL.
+ *
+ * "NULL is greater than everything" (opposite of fs2_cmp_nullbefore).
+ * Matches SQL `ORDER BY col ASC NULLS LAST`.
+ */
+static inline int
+fs2_cmp_nullafter(const fs2 *restrict str1, const fs2 *restrict str2) {
+    if (!str1->v) return !str2->v ? 0 : -1;
+    if (!str2->v) return +1;
+    return fs2_cmp(str1, str2);
+}
+
+// c-str wrappers
 /**
  * @brief Case-sensitive comparison of an fs2 against a C-string (unlimited, NOCHECK).
  *
@@ -1205,7 +1234,6 @@ static inline int
 fs2_cmp_ci_str(const fs2* restrict str1, const char *restrict str2) {
     return strcasecmp(str1->v, str2);
 }
-
 /**
  * @brief Case-insensitive comparison of an fs2 against a C-string, limited to @p len bytes (NOCHECK).
  *
@@ -1218,6 +1246,7 @@ static inline int
 fs2_ncmp_ci_str(const fs2* restrict str1, const char *restrict str2, size_t len) {
     return strncasecmp(str1->v, str2, len);
 }
+
 /**
  * @brief qsort/bsearch-compatible comparator for fs2 (case-sensitive).
  *
@@ -1227,7 +1256,16 @@ fs2_ncmp_ci_str(const fs2* restrict str1, const char *restrict str2, size_t len)
  * @param str2  Pointer to second fs2 (as `const void*`).
  * @return      < 0, 0, or > 0.
  */
-extern int                  fs2_cmp_wrap(const void *str1, const void *str2);
+extern int                  
+fs2_cmp_wrap(const void *str1, const void *str2);
+
+/**
+ * @brief Descending comparator for qsort. Non-null-safe (uses fs2_cmp).
+ *
+ * Reverses argument order — avoids negation-overflow of `-cmp()`.
+ */
+extern int
+fs2_cmp_desc_wrap(const void *str1, const void *str2);
 
 /**
  * @brief qsort/bsearch-compatible comparator for fs2 (case-insensitive).
@@ -1238,7 +1276,20 @@ extern int                  fs2_cmp_wrap(const void *str1, const void *str2);
  * @param str2  Pointer to second fs2 (as `const void*`).
  * @return      < 0, 0, or > 0.
  */
-extern int                  fs2_cmp_wrap_ci(const void *str1, const void *str2);
+extern int                  
+fs2_cmp_ci_wrap(const void *str1, const void *str2);
+
+/**
+ * @brief qsort/bsearch-compatible descending comparator for fs2 (case-insensitive).
+ *
+ * Casts the `const void*` arguments to `const fs2*` and delegates to fs2_cmp_ci.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
+extern int
+fs2_cmp_ci_desc_wrap(const void *str1, const void *str2);
 
 /**
  * @brief qsort/bsearch-compatible comparator: fs2 vs C-string (case-sensitive).
@@ -1249,7 +1300,8 @@ extern int                  fs2_cmp_wrap_ci(const void *str1, const void *str2);
  * @param str2  Pointer to C-string (as `const void*`).
  * @return      < 0, 0, or > 0.
  */
-extern int                  fs2_cmpstr_wrap(const void *str1, const void *str2);
+extern int                  
+fs2_cmpstr_wrap(const void *str1, const void *str2);
 
 /**
  * @brief qsort/bsearch-compatible comparator: fs2 vs C-string (case-insensitive).
@@ -1260,7 +1312,17 @@ extern int                  fs2_cmpstr_wrap(const void *str1, const void *str2);
  * @param str2  Pointer to C-string (as `const void*`).
  * @return      < 0, 0, or > 0.
  */
-extern int                  fs2_cmpstr_wrap_ci(const void *str1, const void *str2);
+extern int                  
+fs2_cmpstr_ci_wrap(const void *str1, const void *str2);
+
+extern int
+fs2_cmp_nullbefore_wrap(const void *str1, const void *str2);
+extern int
+fs2_cmp_desc_nullbefore_wrap(const void *str1, const void *str2);
+extern int
+fs2_cmp_nullafter_wrap(const void *str1, const void *str2);
+extern int
+fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Tech printer
