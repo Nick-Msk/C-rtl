@@ -708,17 +708,42 @@ fs2_free(fs2 *s) {
 }   
 
  /* ─────────────────────────────────────────────────────────────────────────
- * Wrapper for comparators
+ * Wrapper for comparators for qsort, bsearch, etc...
  * ───────────────────────────────────────────────────────────────────────── */
 int                  
 fs2_cmp_wrap(const void *str1, const void *str2) {
     return fs2_cmp(str1, str2);
 }
-
-int                  
-fs2_cmp_wrap_ci(const void *str1, const void *str2) {
-    return fs2_cmp_ci(str1, str2);
+int
+fs2_cmp_desc_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_wrap(str2, str1);
 }
+int                  // TODO: rename to fs2_cmp_ci_wrap
+fs2_cmp_ci_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_ci( (const fs2 *) str1, (const fs2 *) str2);
+}
+int
+fs2_cmp_ci_desc_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_ci( (const fs2 *) str2, (const fs2 *) str1);
+}
+// null-accept comparators
+int
+fs2_cmp_nullbefore_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_nullbefore( (const fs2 *) str1, (const fs2 *) str2);
+}
+int
+fs2_cmp_desc_nullbefore_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_nullbefore( (const fs2 *) str2, (const fs2 *) str1);
+}
+int
+fs2_cmp_nullafter_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_nullafter( (const fs2 *) str1, (const fs2 *) str2);
+}
+int
+fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2) {
+    return fs2_cmp_nullafter( (const fs2 *) str2, (const fs2 *) str1);
+}
+
 
  /* ─────────────────────────────────────────────────────────────────────────
  * Leak checking
