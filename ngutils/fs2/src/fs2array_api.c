@@ -258,7 +258,7 @@ fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *de
     if (!src->arr || src->count == 0)
         return dst;                     /* nothing to append */
 
-    bool delim_ok  = delim && !fs2_is_empty(delim);
+    bool delim_ok  = !fs2_is_empty(delim);
     bool wrote_any = (dst->len > 0);    /* dst acts as first element */
 
     for (size_t i = 0; i < src->hwm; i++) {
