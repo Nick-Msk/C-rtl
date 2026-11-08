@@ -1089,7 +1089,7 @@ fs2_bsearch_ci(const fs2 *restrict key, const fs2 *restrict arr, size_t n) {
     if (n == 0)
         return -1;
 
-    const fs2 *res = bsearch(findkey, arr, n, sizeof(fs2), fs2_cmp_wrap_ci);
+    const fs2 *res = bsearch(findkey, arr, n, sizeof(fs2), fs2_cmp_ci_wrap);
     return res ? (ptrdiff_t)(res - arr) : -1;
 }
 

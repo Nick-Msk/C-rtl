@@ -269,7 +269,7 @@ All return `ptrdiff_t` (offset or `-1`). Never match `'\0'`.
 ### Comparators
 - `fs2_cmp`, `fs2_ncmp`, `fs2_cmp_ci`, `fs2_ncmp_ci`
 - `fs2_cmpstr` (fs2 vs C-string)
-- `fs2_cmp_wrap`, `fs2_cmp_wrap_ci` — `void *` wrappers for `qsort`/`bsearch`
+- `fs2_cmp_wrap`, `fs2_cmp_ci_wrap` — `void *` wrappers for `qsort`/`bsearch`
 
 ### Predicates for text
 - `fs2_starts_with(s, prefix)`, `fs2_ends_with(s, suffix)` + `_str` variants

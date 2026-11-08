@@ -131,7 +131,7 @@ Test(fs2_api, bsearch_ci_found_and_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("Apple"), fs2_fromstr("Banana"), fs2_fromstr("Cherry") };
     /* CI sort for consistency with bsearch_ci */
-    qsort(arr, 3, sizeof(fs2), fs2_cmp_wrap_ci);
+    qsort(arr, 3, sizeof(fs2), fs2_cmp_ci_wrap);
 
     fs2 hit_upper = fs2_fromstr("BANANA");
     fs2 hit_lower = fs2_fromstr("cherry");
