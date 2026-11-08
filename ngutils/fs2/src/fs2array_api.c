@@ -184,7 +184,7 @@ fs2arr_fromarr_common(fs2 **src, size_t cnt, bool do_move) {
 
     fs2arr_reserve(&a, cnt);
     for (size_t i = 0; i < cnt; i++) {
-        if (src[i] != NULL)
+        if (src[i] == NULL)
             userraise(false, ERR_NULL_INPUT, "src[%zu] is NULL", i);
         if (do_move) {
             fs2arr_push(&a, src[i]);       /* push_sp: *src[i] → FS2EMPTY */
