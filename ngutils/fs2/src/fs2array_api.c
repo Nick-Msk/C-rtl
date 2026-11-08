@@ -207,3 +207,45 @@ fs2array
 fs2arr_fromarr_move(fs2 **src, size_t cnt) {
     return fs2arr_fromarr_common(src, cnt, true);
 }
+
+fs2array *
+fs2arr_unique(fs2array *a, pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL,
+             "Null pointers %p %p", a, cmp);
+
+    if (a->hwm != a->count)
+        userraise(NULL, ERR_UNSUPPORTED_TYPE,
+             "not packed (hwm=%zu count=%zu); "
+             "call fs2arr_compact() first", a->hwm, a->count);
+
+    if (a->count < 2)
+        return a;                             /* 0 or 1 — already unique */
+
+    /* write is the next free output slot; write-1 is "last kept".
+     * read walks the packed input; write <= read at every step. */
+    size_t write = 1;                         /* arr[0] always kept */
+    for (size_t read = 1; read < a->count; read++) {
+        if (cmp(&a->arr[write - 1], &a->arr[read]) == 0) {
+            /* duplicate of last kept — free and skip */
+            fs2_free(&a->arr[read]);
+            fs2arr_set_hole(&a->arr[read]);
+        } else {
+            /* distinct — keep it: transfer ownership to arr[write] */
+            if (write != read) {
+                a->arr[write] = a->arr[read];
+                fs2arr_set_hole(&a->arr[read]);
+            }
+            write++;
+        }
+    }
+    a->count = write;
+    a->hwm   = write;                          /* [write, old_hwm) now holes */
+    return a;
+}
+
+fs2array
+fs2arr_unique_new(const fs2array *restrict src, pointer_comparator_t cmp) {
+    fs2array r = fs2arr_clone(src);            /* packed deep copy */
+    fs2arr_unique(&r, cmp);
+    return r;
+}

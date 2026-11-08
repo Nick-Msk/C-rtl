@@ -258,4 +258,37 @@ fs2arr_fromarr_new(const fs2 *const *src, size_t cnt);
 extern fs2array
 fs2arr_fromarr_move(fs2 **src, size_t cnt);
 
+/**
+ * @brief Remove adjacent duplicates in place; keeps first of each run.
+ *
+ * @pre  @p a is packed (hwm == count) and sorted by @p cmp (so equal
+ *       elements are adjacent). Caller must compact + sync if holes may
+ *       exist — "adjacent" is meaningless with holes in the middle.
+ *
+ * @param a    Non-NULL fs2array, packed, sorted.
+ * @param cmp  Comparator used for sorting. Adjacent elements equal
+ *             (cmp == 0) are considered duplicates.
+ * @return     a (for chaining).
+ * @warning `invfatal` (SIGABRT) on NULL a/cmp or not-packed input.
+ *
+ * @note Only the FIRST of each equal-run is kept. Since equal elements
+ *       under @p cmp may differ bytewise (e.g. case-insensitive cmp
+ *       on "a" vs "A"), the retained one is the first in sorted order
+ *       — deterministic but not "the smallest of the run".
+ * @note Result is packed: hwm = count = number of distinct runs. Capacity
+ *       unchanged; call fs2arr_shrink if tightness is needed.
+ */
+extern fs2array *
+fs2arr_unique(fs2array *a, pointer_comparator_t cmp);
+
+/**
+ * @brief Deep-copy @p src, then apply fs2arr_unique on the copy.
+ *
+ * @param src  Non-NULL fs2array (any state — clone packs first).
+ * @param cmp  Comparator.
+ * @return     New fs2array; free with fs2arr_free.
+ */
+extern fs2array
+fs2arr_unique_new(const fs2array *restrict src, pointer_comparator_t cmp);
+
 #endif /* !FS2ARRAY_API_H */
