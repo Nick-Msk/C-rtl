@@ -2450,28 +2450,28 @@ Test(fs2_array, ispacked_true_after_compact) {
     assert_balanced();
 }
 
-// Test(fs2_array, ispacked_true_after_clone) {
-//     __fs2_checkreset();
-//     fs2array src = FS2ARR();
-//     fs2arr_pushstr(&src, "a");
-//     fs2arr_pushstr(&src, "b");
-//     fs2arr_pushstr(&src, "c");
-//     //fs2array src = FS2ARRFROMSTR("a", "b", "c");
-//     fs2 t = fs2arr_detach_new(&src, 1);         /* src has hole */
-//     fs2_free(&t);
-//     CHECK_FALSE("src not packed", fs2arr_ispacked(&src));
+Test(fs2_array, ispacked_true_after_clone) {
+    __fs2_checkreset();
+    fs2array src = FS2ARR();
+    fs2arr_pushstr(&src, "a");
+    fs2arr_pushstr(&src, "b");
+    fs2arr_pushstr(&src, "c");
+    //fs2array src = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&src, 1);         /* src has hole */
+    fs2_free(&t);
+    CHECK_FALSE("src not packed", fs2arr_ispacked(&src));
 
-//     fs2array c = fs2arr_clone(&src);            /* clone packs */
-//     CHECK_TRUE("clone packed", fs2arr_ispacked(&c));
+    fs2array c = fs2arr_clone(&src);            /* clone packs */
+    CHECK_TRUE("clone packed", fs2arr_ispacked(&c));
 
-//     fs2array ce = fs2arr_cloneexact(&src);      /* cloneexact preserves holes */
-//     CHECK_FALSE("cloneexact not packed", fs2arr_ispacked(&ce));
+    fs2array ce = fs2arr_cloneexact(&src);      /* cloneexact preserves holes */
+    CHECK_FALSE("cloneexact not packed", fs2arr_ispacked(&ce));
 
-//     fs2arr_free(&src);
-//     fs2arr_free(&c);
-//     fs2arr_free(&ce);
-//     assert_balanced();
-// }
+    fs2arr_free(&src);
+    fs2arr_free(&c);
+    fs2arr_free(&ce);
+    assert_balanced();
+}
 
 Test(fs2_array, ispacked_all_holes) {
     __fs2_checkreset();
