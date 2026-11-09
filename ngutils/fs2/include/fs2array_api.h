@@ -28,6 +28,7 @@
  *
  * @note Complexity O(|s|) amortised; no per-part allocation beyond the
  *       part buffers themselves (each fs2_substr_new allocates its own).
+ * @note This method violate the rule _new, because of historical reason.
  */
 extern fs2array
 fs2_split_toarray(const fs2 *restrict s, const fs2 *restrict delim);
@@ -410,5 +411,37 @@ extern size_t
 fs2arr_count(const fs2array *restrict a,
              const fs2 *restrict key,
              pointer_comparator_t cmp);
+
+/**
+ * @brief `fs2arr_find` with C-string key (NULL → searches for "").
+ *
+ * Zero-allocation: uses a temporary STATIC view, discarded after the call.
+ */
+static inline ptrdiff_t
+fs2arr_find_str(const fs2array *restrict a, const char *restrict key,
+                pointer_comparator_t cmp) {
+    fs2 k = _fs2_wrap(key);
+    return fs2arr_find(a, &k, cmp);
+}
+
+/**
+ * @brief `fs2arr_contains` with C-string key.
+ */
+static inline bool
+fs2arr_contains_str(const fs2array *restrict a, const char *restrict key,
+                    pointer_comparator_t cmp) {
+    fs2 k = _fs2_wrap(key);
+    return fs2arr_contains(a, &k, cmp);
+}
+
+/**
+ * @brief `fs2arr_count` with C-string key.
+ */
+static inline size_t
+fs2arr_count_str(const fs2array *restrict a, const char *restrict key,
+                 pointer_comparator_t cmp) {
+    fs2 k = _fs2_wrap(key);
+    return fs2arr_count(a, &k, cmp);
+}
 
 #endif /* !FS2ARRAY_API_H */
