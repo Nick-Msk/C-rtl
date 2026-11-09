@@ -3903,7 +3903,7 @@ Test(fs2_array_api, str_variants_null_key_safe) {
 
 // fs2arr_setat
 
-Test(fs2_array, setat_replace_live) {
+Test(fs2_array_api, setat_replace_live) {
     __fs2_checkreset();
     fs2array a = FS2ARRFROMSTR("old1", "old2", "old3");
     fs2 nv = fs2_fromstr("new");
@@ -3921,7 +3921,7 @@ Test(fs2_array, setat_replace_live) {
     assert_balanced();
 }
 
-Test(fs2_array, setat_fill_hole) {
+Test(fs2_array_api, setat_fill_hole) {
     __fs2_checkreset();
     fs2array a = FS2ARRFROMSTR("a", "b", "c");
     fs2 t = fs2arr_detach_new(&a, 1);              /* hole at [1] */
@@ -3941,7 +3941,7 @@ Test(fs2_array, setat_fill_hole) {
     assert_balanced();
 }
 
-Test(fs2_array, setat_extends_hwm) {
+Test(fs2_array_api, setat_extends_hwm) {
     __fs2_checkreset();
     fs2array a = fs2arr_init(8);
     fs2 v = fs2_fromstr("first");
@@ -3962,20 +3962,20 @@ Test(fs2_array, setat_extends_hwm) {
     assert_balanced();
 }
 
-Test(fs2_array, setat_bounds_raise, .signal = SIGINT) {
+Test(fs2_array_api, setat_bounds_raise, .signal = SIGINT) {
     fs2array a = fs2arr_init(4);
     fs2 v = fs2_fromstr("x");
     fs2arr_setat(&a, 100, &v);                      /* 100 >= size → userraise */
 }
 
-Test(fs2_array, setat_null_src_aborts, .signal = SIGABRT) {
+Test(fs2_array_api, setat_null_src_aborts, .signal = SIGABRT) {
     fs2array a = fs2arr_init(4);
     fs2arr_setat(&a, 0, NULL);
     fs2arr_free(&a);
 }
 
 /* Integration: update row in place, invariants preserved */
-Test(fs2_array, setat_update_row_in_table) {
+Test(fs2_array_api, setat_update_row_in_table) {
     __fs2_checkreset();
     fs2array a = FS2ARRFROMSTR("row0", "row1", "row2");
 
@@ -3993,5 +3993,83 @@ Test(fs2_array, setat_update_row_in_table) {
     CHECK_STR_EQ("[0]", "ROW1", a.arr[0].v);
 
     fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, setat_str_replace_live) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("old1", "old2", "old3");
+
+    ptrdiff_t r = fs2arr_setat_str(&a, 1, "new");
+
+    CHECK_EQ("idx", 1, r);
+    CHECK_EQ("count unchanged", 3, a.count);
+    CHECK_STR_EQ("[1]", "new", a.arr[1].v);
+    CHECK_TRUE("[1] ALLOC", fs2_is_alloc(&a.arr[1]));      /* owned copy */
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, setat_str_fill_hole) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+
+    fs2arr_setat_str(&a, 1, "B");
+
+    CHECK_EQ  ("count restored", 3, a.count);
+    CHECK_STR_EQ("[1]", "B", a.arr[1].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, setat_str_owned_not_view) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x");
+    char buf[] = "hello";                                  /* stack */
+
+    fs2arr_setat_str(&a, 0, buf);
+
+    CHECK_TRUE ("[0] ALLOC", !fs2_is_static(&a.arr[0]));   /* not a view */
+    CHECK_STR_EQ("hello", a.arr[0].v, "hello");
+
+    /* mutate source — array independent */
+    buf[0] = 'X';
+    CHECK_STR_EQ("still hello", "hello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, setat_str_null_value_pushes_empty) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x");
+
+    fs2arr_setat_str(&a, 0, NULL);                          /* → FS2EMPTY */
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_TRUE("[0] empty", fs2_eq_empty(&a.arr[0]));
+    CHECK_FALSE("[0] hole", fs2_is_hole(&a.arr[0]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, setat_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2array a1 = FS2ARRFROMSTR("a", "b", "c");
+    fs2array a2 = FS2ARRFROMSTR("a", "b", "c");
+
+    fs2 k = fs2_fromstr("NEW");
+    fs2arr_setat(&a1, 1, &k);                               /* fs2 version */
+    fs2arr_setat_str(&a2, 1, "NEW");                        /* _str version */
+
+    CHECK_TRUE("same result", fs2arr_equalexact(&a1, &a2));
+
+    fs2arr_free(&a1);
+    fs2arr_free(&a2);
     assert_balanced();
 }
