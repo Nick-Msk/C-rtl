@@ -3500,3 +3500,287 @@ Test(fs2_array_api, split_sort_unique_bsearch) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2arr_find
+ * ========================================================================= */
+
+Test(fs2_array_api, find_hit_first_middle_last) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c", "d", "e");
+
+    fs2 k1 = fs2_fromstr("a");
+    fs2 k3 = fs2_fromstr("c");
+    fs2 k5 = fs2_fromstr("e");
+
+    CHECK_EQ("first", 0, fs2arr_find(&a, &k1, fs2_cmp_wrap));
+    CHECK_EQ("mid",   2, fs2arr_find(&a, &k3, fs2_cmp_wrap));
+    CHECK_EQ("last",  4, fs2arr_find(&a, &k5, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k1); fs2_free(&k3); fs2_free(&k5);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_miss) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+
+    fs2 k = fs2_fromstr("z");
+    CHECK_EQ("miss", -1, fs2arr_find(&a, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_duplicates_returns_first_match) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x", "a", "x", "b", "x");
+
+    fs2 k = fs2_fromstr("x");
+    CHECK_EQ("first x at [0]", 0, fs2arr_find(&a, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_works_on_unsorted) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("c", "a", "e", "b", "d");  /* not sorted */
+
+    fs2 kb = fs2_fromstr("b");
+    CHECK_EQ("'b' at [3]", 3, fs2arr_find(&a, &kb, fs2_cmp_wrap));
+
+    fs2 kz = fs2_fromstr("z");
+    CHECK_EQ("'z' miss", -1, fs2arr_find(&a, &kz, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&kb); fs2_free(&kz);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_skips_holes) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c", "d");
+    fs2 t = fs2arr_detach_new(&a, 1);         /* hole at [1] */
+    fs2_free(&t);
+    /* [a, hole, c, d] */
+
+    fs2 kc = fs2_fromstr("c");
+    CHECK_EQ("'c' at [2]", 2, fs2arr_find(&a, &kc, fs2_cmp_wrap));
+
+    fs2 ka = fs2_fromstr("a");
+    CHECK_EQ("'a' at [0]", 0, fs2arr_find(&a, &ka, fs2_cmp_wrap));
+
+    fs2 kb = fs2_fromstr("b");                /* was at hole */
+    CHECK_EQ("'b' gone", -1, fs2arr_find(&a, &kb, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&kc); fs2_free(&ka); fs2_free(&kb);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_empty_array) {
+    fs2array canon = FS2ARR();
+    fs2 k = fs2_fromstr("a");
+    CHECK_EQ("canonical", -1, fs2arr_find(&canon, &k, fs2_cmp_wrap));
+
+    fs2array empty = fs2arr_init(16);
+    CHECK_EQ("empty+cap", -1, fs2arr_find(&empty, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&empty);
+    fs2_free(&k);
+}
+
+Test(fs2_array_api, find_canonical_key_promoted) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("", "a", "b");      /* live empty at [0] */
+
+    fs2 k = FS2();                             /* v=NULL */
+    cr_assert_null(k.v);
+    CHECK_EQ("finds empty", 0, fs2arr_find(&a, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+static int cmp_len_wrap(const void *pa, const void *pb) {
+        const fs2 *x = pa, *y = pb;
+        return (x->len > y->len) - (x->len < y->len);
+    }
+
+Test(fs2_array_api, find_custom_cmp_length) {
+    __fs2_checkreset();
+    /* find by length only */
+    fs2array a = FS2ARRFROMSTR("a", "bb", "ccc", "dddd");
+    fs2 k2 = fs2_fromstr("XY");               /* len 2 */
+
+    CHECK_EQ("len 2 at [1]", 1, fs2arr_find(&a, &k2, cmp_len_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k2);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_null_aborts, .signal = SIGABRT) {
+    fs2 k = fs2_fromstr("a");
+    fs2arr_find(NULL, &k, fs2_cmp_wrap);
+    fs2_free(&k);
+}
+
+Test(fs2_array_api, find_null_key_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARRFROMSTR("a");
+    fs2arr_find(&a, NULL, fs2_cmp_wrap);
+    fs2arr_free(&a);
+}
+
+Test(fs2_array_api, find_null_cmp_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARRFROMSTR("a");
+    fs2 k = fs2_fromstr("a");
+    fs2arr_find(&a, &k, NULL);
+    fs2_free(&k);
+    fs2arr_free(&a);
+}
+
+/* =========================================================================
+ * fs2arr_contains
+ * ========================================================================= */
+
+Test(fs2_array_api, contains_positive_negative) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("apple", "banana", "cherry");
+
+    fs2 hit  = fs2_fromstr("banana");
+    fs2 miss = fs2_fromstr("grape");
+
+    CHECK_TRUE ("banana", fs2arr_contains(&a, &hit,  fs2_cmp_wrap));
+    CHECK_FALSE("grape",  fs2arr_contains(&a, &miss, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&hit); fs2_free(&miss);
+    assert_balanced();
+}
+
+Test(fs2_array_api, contains_skips_holes) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);         /* hole at [1], "b" removed */
+    fs2_free(&t);
+
+    fs2 ka = fs2_fromstr("a");
+    fs2 kb = fs2_fromstr("b");
+
+    CHECK_TRUE ("'a' still", fs2arr_contains(&a, &ka, fs2_cmp_wrap));
+    CHECK_FALSE("'b' gone",  fs2arr_contains(&a, &kb, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&ka); fs2_free(&kb);
+    assert_balanced();
+}
+
+Test(fs2_array_api, contains_empty_array_false) {
+    fs2array a = FS2ARR();
+    fs2 k = fs2_fromstr("a");
+    CHECK_FALSE("empty", fs2arr_contains(&a, &k, fs2_cmp_wrap));
+    fs2_free(&k);
+}
+
+/* =========================================================================
+ * fs2arr_count
+ * ========================================================================= */
+
+Test(fs2_array_api, count_occurrences) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "a", "c", "a", "b");
+
+    fs2 ka = fs2_fromstr("a");
+    fs2 kb = fs2_fromstr("b");
+    fs2 kc = fs2_fromstr("c");
+    fs2 kz = fs2_fromstr("z");
+
+    CHECK_EQ("a ×3", 3, fs2arr_count(&a, &ka, fs2_cmp_wrap));
+    CHECK_EQ("b ×2", 2, fs2arr_count(&a, &kb, fs2_cmp_wrap));
+    CHECK_EQ("c ×1", 1, fs2arr_count(&a, &kc, fs2_cmp_wrap));
+    CHECK_EQ("z ×0", 0, fs2arr_count(&a, &kz, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&ka); fs2_free(&kb); fs2_free(&kc); fs2_free(&kz);
+    assert_balanced();
+}
+
+Test(fs2_array_api, count_skips_holes) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "a", "a");
+    fs2 t = fs2arr_detach_new(&a, 1);         /* hole at [1] — was "a" */
+    fs2_free(&t);
+
+    fs2 ka = fs2_fromstr("a");
+    CHECK_EQ("a ×2 after hole", 2, fs2arr_count(&a, &ka, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&ka);
+    assert_balanced();
+}
+
+Test(fs2_array_api, count_all_same) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x", "x", "x", "x", "x");
+
+    fs2 kx = fs2_fromstr("x");
+    CHECK_EQ("x ×5", 5, fs2arr_count(&a, &kx, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&kx);
+    assert_balanced();
+}
+
+Test(fs2_array_api, count_empty_array) {
+    fs2array a = FS2ARR();
+    fs2 k = fs2_fromstr("a");
+    CHECK_EQ("empty", 0, fs2arr_count(&a, &k, fs2_cmp_wrap));
+    fs2_free(&k);
+}
+
+/* =========================================================================
+ * Integration: contains/count/find after sort/unique/detach
+ * ========================================================================= */
+
+Test(fs2_array_api, find_contains_count_lifecycle) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("banana", "apple", "cherry", "apple", "banana", "date");
+
+    fs2 ka = fs2_fromstr("apple");
+    fs2 kb = fs2_fromstr("banana");
+    fs2 kz = fs2_fromstr("zebra");
+
+    /* Phase 1: unsorted */
+    CHECK_EQ   ("apple count pre-sort", 2, fs2arr_count(&a, &ka, fs2_cmp_wrap));
+    CHECK_TRUE ("apple present",           fs2arr_contains(&a, &ka, fs2_cmp_wrap));
+    ptrdiff_t p1 = fs2arr_find(&a, &kb, fs2_cmp_wrap);
+    cr_assert_geq(p1, 0);
+    CHECK_STR_EQ("find banana", "banana", a.arr[p1].v);
+
+    /* Phase 2: sort — same multiset, different positions */
+    fs2arr_sortasc(&a);
+    CHECK_EQ   ("apple count post-sort", 2, fs2arr_count(&a, &ka, fs2_cmp_wrap));
+    CHECK_TRUE ("apple still present",     fs2arr_contains(&a, &ka, fs2_cmp_wrap));
+    CHECK_EQ   ("find apple",              fs2arr_find(&a, &ka, fs2_cmp_wrap), 0);
+    CHECK_EQ   ("zebra miss",             fs2arr_find(&a, &kz, fs2_cmp_wrap), -1);
+
+    /* Phase 3: unique — 1 apple, 1 banana */
+    fs2arr_unique(&a, fs2_cmp_wrap);
+    CHECK_EQ("apple after unique",  1, fs2arr_count(&a, &ka, fs2_cmp_wrap));
+    CHECK_EQ("banana after unique", 1, fs2arr_count(&a, &kb, fs2_cmp_wrap));
+
+    /* Phase 4: detach — remove apple */
+    fs2 t = fs2arr_detach_new(&a, (size_t)fs2arr_find(&a, &ka, fs2_cmp_wrap));
+    fs2_free(&t);
+    CHECK_FALSE("apple gone", fs2arr_contains(&a, &ka, fs2_cmp_wrap));
+    CHECK_TRUE ("banana still", fs2arr_contains(&a, &kb, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&ka); fs2_free(&kb); fs2_free(&kz);
+    assert_balanced();
+}
