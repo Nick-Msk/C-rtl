@@ -47,29 +47,6 @@ fs2arr_sort(fs2array *a, pointer_comparator_t cmp) {
     qsort(a->arr, a->hwm, sizeof(fs2), cmp);
 }
 
-void
-fs2arr_compact(fs2array *a) {
-    invfatal(ERR_NULL_INPUT, a != NULL, 
-        "Null fs2array (%p)", a);
-
-    if (!a->arr)
-        return;
-
-    size_t write = 0;
-    for (size_t read = 0; read < a->hwm; read++) {
-        if (fs2_is_hole(&a->arr[read]))
-            continue;
-
-        if (write != read) {
-            a->arr[write] = a->arr[read];
-            fs2arr_set_hole(&a->arr[read]);
-        }
-        write++;
-    }
-
-    a->hwm = write;   /* trim logical end to last live; [hwm, old_hwm) → padding */
-}
-
 bool
 fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp) {
     invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL,

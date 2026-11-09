@@ -176,6 +176,29 @@ fs2arr_shrink(fs2array *a) {
     return logsimpleret(true, "Shrinked to %zu", a->size);
 }
 
+void
+fs2arr_compact(fs2array *a) {
+    invfatal(ERR_NULL_INPUT, a != NULL, 
+        "Null fs2array (%p)", a);
+
+    if (!a->arr)
+        return;
+
+    size_t write = 0;
+    for (size_t read = 0; read < a->hwm; read++) {
+        if (fs2_is_hole(&a->arr[read]))
+            continue;
+
+        if (write != read) {
+            a->arr[write] = a->arr[read];
+            fs2arr_set_hole(&a->arr[read]);
+        }
+        write++;
+    }
+
+    a->hwm = write;   /* trim logical end to last live; [hwm, old_hwm) → padding */
+}
+
 // NULL safe method!
 void
 fs2arr_free(fs2array *a) {

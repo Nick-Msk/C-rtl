@@ -103,27 +103,6 @@ fs2arr_sortdesc_nullafter(fs2array *a){
 }
 
 /**
- * @brief Pack live slots to [0, count), holes to [count, size).
- *
- * Stable (relative order of live slots preserved). In-place, no realloc,
- * O(hwm). After:
- *   - hwm = count (logical end = last live)
- *   - [0, hwm)   — all live, in original relative order
- *   - [hwm, size) — all holes (padding)
- *
- * Equivalent to "trim trailing holes + drop mid holes" in one shot.
- * `fs2arr_synchwm` after compact is a no-op. `size` unchanged; follow
- * with `fs2arr_shrink` to reduce capacity if desired.
- *
- * Canonical (`arr == NULL`) — no-op.
- *
- * @warning `invfatal` (SIGABRT) if a is NULL, or if internal `count`
- *          doesn't match actual live slots (array corruption).
- */
-extern void
-fs2arr_compact(fs2array *a);
-
-/**
  * @brief Merge two sorted arrays into a new one (two-pointer merge).
  *
  * Stable: elements from @p a come before equal elements from @p b.

@@ -26,6 +26,25 @@ fs2arr_set_hole(fs2 *slot) {
 enum { FS2ARR_TECH_PRINT_COUNT = 8 };
 
 /**
+ * @brief Check if the array is packed: no holes in [0, hwm).
+ *
+ * Packed ⟺ hwm == count (all slots in the logical range are live, holes
+ * appear only in padding [hwm, size)). True after push-only construction,
+ * clone, compact, sort, unique, merge. False after detach (until compact).
+ *
+ * Required precondition for: fs2arr_sort, fs2arr_unique, fs2arr_reverse,
+ * fs2arr_issorted, fs2arr_mergesorted_new, fs2arr_bsearch.
+ *
+ * @param a  Non-NULL fs2array.
+ * @return   a->hwm == a->count.
+ * @warning  NO null check on @p a — NULL deref like fs2_is_hole.
+ */
+static inline bool
+fs2arr_ispacked(const fs2array *a) {
+    return a->hwm == a->count;
+}
+
+/**
  * @brief Allocate an fs2array with capacity for @p cnt elements.
  *
  * Capacity is exact (`a.sz == cnt`), not rounded. `len` is 0 — no
@@ -101,6 +120,27 @@ fs2arr_synchwm(fs2array *a);
 
 bool
 fs2arr_shrink(fs2array *a);
+
+/**
+ * @brief Pack live slots to [0, count), holes to [count, size).
+ *
+ * Stable (relative order of live slots preserved). In-place, no realloc,
+ * O(hwm). After:
+ *   - hwm = count (logical end = last live)
+ *   - [0, hwm)   — all live, in original relative order
+ *   - [hwm, size) — all holes (padding)
+ *
+ * Equivalent to "trim trailing holes + drop mid holes" in one shot.
+ * `fs2arr_synchwm` after compact is a no-op. `size` unchanged; follow
+ * with `fs2arr_shrink` to reduce capacity if desired.
+ *
+ * Canonical (`arr == NULL`) — no-op.
+ *
+ * @warning `invfatal` (SIGABRT) if a is NULL, or if internal `count`
+ *          doesn't match actual live slots (array corruption).
+ */
+extern void
+fs2arr_compact(fs2array *a);
 
 /* fs2array.h */
 /**
