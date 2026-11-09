@@ -219,7 +219,7 @@ fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
 
 static inline ptrdiff_t
 fs2arr_pushstr(fs2array *restrict a, const char *restrict str) {
-    fs2 tmp = _fs2_wrap(str);
+    fs2 tmp = fs2_fromstr(str);
     return fs2arr_push(a, &tmp);
 }
 
