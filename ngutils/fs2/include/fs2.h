@@ -253,8 +253,10 @@ fs2_is_empty(const fs2 *s) {
     return s == NULL || s->len == 0;
 }
 
-/* A hole slot has FS2_NULL_ARRAY_ELEMENT set and nothing else.
- * Never produced by fs2 constructors; only by fs2arr operations. */
+/** @brief fs2array support: checking FS2_NULL_ARRAY_ELEMENT,
+ * @warning NO null safe
+ * @return if fs2 has FS2_NULL_ARRAY_ELEMENT flag
+ */
 static inline bool
 fs2_is_hole(const fs2 *slot) {
     return slot->flags == FS2_NULL_ARRAY_ELEMENT;
