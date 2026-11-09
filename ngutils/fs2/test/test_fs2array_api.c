@@ -3900,3 +3900,98 @@ Test(fs2_array_api, str_variants_null_key_safe) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+// fs2arr_setat
+
+Test(fs2_array, setat_replace_live) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("old1", "old2", "old3");
+    fs2 nv = fs2_fromstr("new");
+
+    ptrdiff_t r = fs2arr_setat(&a, 1, &nv);
+
+    CHECK_EQ("idx", 1, r);
+    CHECK_EQ("count unchanged", 3, a.count);       /* was live → replace */
+    CHECK_STR_EQ("[0]", "old1", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "new",  a.arr[1].v);
+    CHECK_STR_EQ("[2]", "old3", a.arr[2].v);
+    CHECK_TRUE("src reset", fs2_is_empty(&nv));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, setat_fill_hole) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);              /* hole at [1] */
+    fs2_free(&t);
+    cr_assert_eq(a.count, 2);
+    cr_assert_eq(a.hwm,   3);
+
+    fs2 nv = fs2_fromstr("B");
+    fs2arr_setat(&a, 1, &nv);
+
+    CHECK_EQ  ("count restored", 3, a.count);
+    CHECK_EQ  ("hwm unchanged",  3, a.hwm);
+    CHECK_STR_EQ("[1]", "B", a.arr[1].v);
+    CHECK_TRUE("slot live", !fs2_is_hole(&a.arr[1]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, setat_extends_hwm) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v = fs2_fromstr("first");
+    fs2arr_push(&a, &v);                            /* hwm=1, count=1 */
+
+    fs2 nv = fs2_fromstr("far");
+    fs2arr_setat(&a, 4, &nv);                       /* extend hwm to 5 */
+
+    CHECK_EQ  ("hwm",   5, a.hwm);
+    CHECK_EQ  ("count", 2, a.count);
+    CHECK_STR_EQ("[0]", "first", a.arr[0].v);
+    CHECK_STR_EQ("[4]", "far",   a.arr[4].v);
+    CHECK_TRUE("[1..3] holes",
+               fs2_is_hole(&a.arr[1]) && fs2_is_hole(&a.arr[2]) &&
+               fs2_is_hole(&a.arr[3]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, setat_bounds_raise, .signal = SIGINT) {
+    fs2array a = fs2arr_init(4);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_setat(&a, 100, &v);                      /* 100 >= size → userraise */
+}
+
+Test(fs2_array, setat_null_src_aborts, .signal = SIGABRT) {
+    fs2array a = fs2arr_init(4);
+    fs2arr_setat(&a, 0, NULL);
+    fs2arr_free(&a);
+}
+
+/* Integration: update row in place, invariants preserved */
+Test(fs2_array, setat_update_row_in_table) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("row0", "row1", "row2");
+
+    /* Update row 1 */
+    fs2 v = fs2_fromstr("ROW1");
+    fs2arr_setat(&a, 1, &v);
+
+    CHECK_EQ  ("count", 3, a.count);
+    CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
+    CHECK_STR_EQ("[1]", "ROW1", a.arr[1].v);
+
+    /* After sort — order reflects update */
+    fs2arr_sortasc(&a);
+    /* "ROW1" (uppercase R) sorts before "row0" (lowercase r) in ASCII */
+    CHECK_STR_EQ("[0]", "ROW1", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
