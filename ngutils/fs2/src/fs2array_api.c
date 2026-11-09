@@ -289,3 +289,23 @@ fs2arr_bsearch(const fs2array *restrict a,
                              sizeof(fs2), cmp);
     return res ? (ptrdiff_t)(res - a->arr) : -1;
 }
+
+ptrdiff_t
+fs2arr_setat(fs2array *a, size_t idx, fs2 *src) {
+    invfatal(ERR_NULL_INPUT, a != NULL && src != NULL,
+             "Null pointers %p %p", a, src);
+    if (idx >= a->size)
+        userraise(0, ERR_OUT_OF_RANGE,
+             "fs2arr_setat: idx %zu >= size %zu", idx, a->size);
+
+    bool was_hole = fs2_is_hole(&a->arr[idx]);
+    if (!was_hole) {
+        fs2_free(&a->arr[idx]);
+    } else {
+        a->count++;
+        if (idx >= a->hwm)
+            a->hwm = idx + 1;
+    }
+    fs2_move(&a->arr[idx], src);
+    return (ptrdiff_t)idx;
+}

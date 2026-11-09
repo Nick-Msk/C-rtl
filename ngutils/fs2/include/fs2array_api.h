@@ -444,4 +444,26 @@ fs2arr_count_str(const fs2array *restrict a, const char *restrict key,
     return fs2arr_count(a, &k, cmp);
 }
 
+/**
+ * @brief Set slot @p idx to @p src: replace-if-live, attach-if-hole.
+ *
+ * If slot[idx] is a hole → attach (count++, hwm = max(hwm, idx+1)).
+ * If slot[idx] is live → fs2_free the old value, then move src in
+ *                      (count unchanged).
+ *
+ * `*src` is reset to FS2EMPTY (via fs2_move). For heap BODYALLOC sources,
+ * caller retains the shell — use fs2arr_setat_dp for auto-null (if needed).
+ *
+ * @pre  idx < a->size.
+ * @param a    Non-NULL fs2array.
+ * @param idx  Slot index.
+ * @param src  Non-NULL fs2 value (any flavor).
+ * @return     Slot index (== idx), or (ptrdiff_t)-1 on raise (never
+ *             returns -1 — see userraise).
+ * @warning `invfatal` (SIGABRT) on NULL a/src.
+ * @warning `userraise` (SIGINT)  on idx >= size.
+ */
+extern ptrdiff_t
+fs2arr_setat(fs2array *a, size_t idx, fs2 *src);
+
 #endif /* !FS2ARRAY_API_H */
