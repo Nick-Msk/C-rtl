@@ -710,35 +710,107 @@ fs2_free(fs2 *s) {
  /* ─────────────────────────────────────────────────────────────────────────
  * Wrapper for comparators for qsort, bsearch, etc...
  * ───────────────────────────────────────────────────────────────────────── */
-int                  
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-sensitive, ascending).
+ *
+ * Casts `const void*` arguments to `const fs2*` and delegates to fs2_cmp.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
+int
 fs2_cmp_wrap(const void *str1, const void *str2) {
-    return fs2_cmp(str1, str2);
+    return fs2_cmp( (const fs2 *) str1, (const fs2 *) str2);
 }
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-sensitive, descending).
+ *
+ * Reverses argument order — avoids negation-overflow of `-cmp()`.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_desc_wrap(const void *str1, const void *str2) {
-    return fs2_cmp_wrap(str2, str1);
+    return fs2_cmp( (const fs2 *) str2, (const fs2 *) str1);
 }
-int                  // TODO: rename to fs2_cmp_ci_wrap
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-insensitive, ascending).
+ *
+ * Casts `const void*` arguments to `const fs2*` and delegates to fs2_cmp_ci.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
+int
 fs2_cmp_ci_wrap(const void *str1, const void *str2) {
     return fs2_cmp_ci( (const fs2 *) str1, (const fs2 *) str2);
 }
+/**
+ * @brief qsort/bsearch-compatible comparator for fs2 (case-insensitive, descending).
+ *
+ * Reverses argument order to fs2_cmp_ci.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_ci_desc_wrap(const void *str1, const void *str2) {
     return fs2_cmp_ci( (const fs2 *) str2, (const fs2 *) str1);
 }
 // null-accept comparators
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts before non-NULL (ascending).
+ *
+ * A slot with `v == NULL` is ordered before any slot with a non-NULL buffer.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_nullbefore_wrap(const void *str1, const void *str2) {
     return fs2_cmp_nullbefore( (const fs2 *) str1, (const fs2 *) str2);
 }
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts before non-NULL (descending).
+ *
+ * Reverses argument order so NULL appears at the end.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_desc_nullbefore_wrap(const void *str1, const void *str2) {
     return fs2_cmp_nullbefore( (const fs2 *) str2, (const fs2 *) str1);
 }
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts after non-NULL (ascending).
+ *
+ * A slot with `v == NULL` is ordered after any slot with a non-NULL buffer.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_nullafter_wrap(const void *str1, const void *str2) {
     return fs2_cmp_nullafter( (const fs2 *) str1, (const fs2 *) str2);
 }
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts after non-NULL (descending).
+ *
+ * Reverses argument order so NULL appears at the beginning.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 int
 fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2) {
     return fs2_cmp_nullafter( (const fs2 *) str2, (const fs2 *) str1);
