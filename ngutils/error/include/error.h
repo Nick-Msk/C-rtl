@@ -134,6 +134,10 @@ typedef enum {
 
     ERR_UNABLE_TO_EXEC_FILE     = 10300,    ///< Could not execute the specified file.
     ERR_UNABLE_TO_RUN_MAKE      = 10301,    ///< Could not invoke the build system (make).
+
+    ERR_FS2SLICE_GENERAL        = 10400,
+    ERR_FS2SLICE_ZOMBIE         = 10401,
+    ERR_FS2SLICE_UNDERFLOW      = 10402,
 } ErrorCode;
 
 /**
