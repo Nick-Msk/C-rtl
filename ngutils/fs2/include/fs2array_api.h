@@ -362,4 +362,53 @@ fs2arr_bsearch(const fs2array *restrict a,
                const fs2 *restrict key,
                pointer_comparator_t cmp);
 
+/**
+ * @brief Linear search for @p key using @p cmp.
+ *
+ * Works on any array (packed or not) — holes in [0, hwm) are skipped.
+ * First match in slot order wins (not "first in any sorted order" —
+ * find doesn't require sorted).
+ *
+ * @param a    Non-NULL fs2array.
+ * @param key  Non-NULL fs2 to search for. Canonical FS2() (v==NULL) is
+ *             promoted to FS2EMPTY before comparison — same as fs2arr_bsearch.
+ * @param cmp  Typed comparator (`fs2_cmp_wrap` / `fs2_cmp_ci_wrap` /
+ *             `fs2_cmp_desc_wrap` / custom). Any comparator works — `find`
+ *             only checks `cmp(...) == 0`.
+ * @return     0-based slot index of first match, or -1 if not found.
+ * @warning `invfatal` (SIGABRT) on NULL a/key/cmp.
+ */
+extern ptrdiff_t
+fs2arr_find(const fs2array *restrict a,
+            const fs2 *restrict key,
+            pointer_comparator_t cmp);
+
+/**
+ * @brief Convenience: `fs2arr_find(...) >= 0`.
+ *
+ * @return true iff @p key is present in @p a.
+ */
+static inline bool
+fs2arr_contains(const fs2array *restrict a,
+                const fs2 *restrict key,
+                pointer_comparator_t cmp) {
+    return fs2arr_find(a, key, cmp) >= 0;
+}
+
+/**
+ * @brief Count occurrences of @p key in @p a using @p cmp.
+ *
+ * Linear scan, holes skipped. O(hwm).
+ *
+ * @param a    Non-NULL fs2array.
+ * @param key  Non-NULL fs2 to search for (canonical promoted, see fs2arr_find).
+ * @param cmp  Typed comparator.
+ * @return     Number of slots where cmp(&slot, key) == 0 (0 if none).
+ * @warning `invfatal` (SIGABRT) on NULL a/key/cmp.
+ */
+extern size_t
+fs2arr_count(const fs2array *restrict a,
+             const fs2 *restrict key,
+             pointer_comparator_t cmp);
+
 #endif /* !FS2ARRAY_API_H */

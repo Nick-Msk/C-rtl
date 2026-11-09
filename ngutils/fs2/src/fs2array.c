@@ -415,3 +415,51 @@ fs2arr_validate(FILE *restrict out, const fs2array *restrict a)
 
     return true;
 }
+
+ptrdiff_t
+fs2arr_find(const fs2array *restrict a,
+            const fs2 *restrict key,
+            pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && key != NULL && cmp != NULL,
+             "Null pointers %p %p %p", a, key, cmp);
+
+    if (!a->arr || a->count == 0)
+        return -1;
+
+    /* Normalize canonical FS2() (v=NULL) — see fs2arr_bsearch. */
+    const fs2 *findkey = key;
+    if (fs2_is_empty(key))
+        findkey = &fs2_empty_const;
+
+    for (size_t i = 0; i < a->hwm; i++) {
+        if (fs2_is_hole(&a->arr[i]))
+            continue;
+        if (cmp(&a->arr[i], findkey) == 0)
+            return (ptrdiff_t) i;
+    }
+    return -1;
+}
+
+size_t
+fs2arr_count(const fs2array *restrict a,
+             const fs2 *restrict key,
+             pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && key != NULL && cmp != NULL,
+             "Null pointers %p %p %p", a, key, cmp);
+
+    if (!a->arr || a->count == 0)
+        return 0;
+
+    const fs2 *findkey = key;
+    if (fs2_is_empty(key))
+        findkey = &fs2_empty_const;
+
+    size_t n = 0;
+    for (size_t i = 0; i < a->hwm; i++) {
+        if (fs2_is_hole(&a->arr[i]))
+            continue;
+        if (cmp(&a->arr[i], findkey) == 0)
+            n++;
+    }
+    return n;
+}
