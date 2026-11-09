@@ -190,7 +190,7 @@ fs2arr_unique(fs2array *a, pointer_comparator_t cmp) {
     invfatal(ERR_NULL_INPUT, a != NULL && cmp != NULL,
              "Null pointers %p %p", a, cmp);
 
-    if (a->hwm != a->count)
+    if (!fs2arr_ispacked(a))
         userraise(NULL, ERR_UNSUPPORTED_TYPE,
              "not packed (hwm=%zu count=%zu); "
              "call fs2arr_compact() first", a->hwm, a->count);
@@ -252,7 +252,7 @@ fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *de
 fs2array *
 fs2arr_reverse(fs2array *a) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
-    if (a->hwm != a->count)
+    if (!fs2arr_ispacked(a))
         userraise(NULL, ERR_UNSUPPORTED_TYPE,
              "not packed (hwm=%zu count=%zu); "
              "call fs2arr_compact() first", a->hwm, a->count);
@@ -271,7 +271,7 @@ fs2arr_bsearch(const fs2array *restrict a,
                pointer_comparator_t cmp) {
     invfatal(ERR_NULL_INPUT, a != NULL && key != NULL && cmp != NULL,
              "Null pointers %p %p %p", a, key, cmp);
-    if (a->hwm != a->count)
+    if (!fs2arr_ispacked(a))
         userraise(0, ERR_UNSUPPORTED_TYPE, 
             "not packed (hwm=%zu count=%zu); "
              "call fs2arr_compact() first", a->hwm, a->count);
