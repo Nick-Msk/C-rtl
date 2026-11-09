@@ -3182,3 +3182,321 @@ Test(fs2_array_api, palindrome_empty_and_single) {
     fs2arr_free(&rsingle);
     assert_balanced();
 }
+
+/* Helper: sorted packed array from string list */
+static fs2array
+mk_sorted_arr(const char *vals[], size_t n, pointer_comparator_t cmp) {
+    fs2array a = fs2arr_init(n);
+    for (size_t i = 0; i < n; i++) {
+        fs2 v = fs2_fromstr(vals[i]);
+        fs2arr_push(&a, &v);
+    }
+    fs2arr_sort(&a, cmp);
+    return a;
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — nominal hits
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_found_first_middle_last) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "b", "c", "d", "e" }, 5, fs2_cmp_wrap);
+
+    fs2 k1 = fs2_fromstr("a");
+    fs2 k2 = fs2_fromstr("c");
+    fs2 k3 = fs2_fromstr("e");
+
+    CHECK_EQ("first", 0, fs2arr_bsearch(&a, &k1, fs2_cmp_wrap));
+    CHECK_EQ("mid",   2, fs2arr_bsearch(&a, &k2, fs2_cmp_wrap));
+    CHECK_EQ("last",  4, fs2arr_bsearch(&a, &k3, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k1); fs2_free(&k2); fs2_free(&k3);
+    assert_balanced();
+}
+
+Test(fs2_array_api, bsearch_not_found_below_above_between) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "b", "d", "f" }, 3, fs2_cmp_wrap);
+
+    fs2 below   = fs2_fromstr("a");         /* < "b" */
+    fs2 above   = fs2_fromstr("z");         /* > "f" */
+    fs2 between = fs2_fromstr("c");         /* "b" < c < "d" */
+    fs2 empty_k = FS2EMPTY;                 /* "" < "b" */
+
+    CHECK_EQ("below",   -1, fs2arr_bsearch(&a, &below,   fs2_cmp_wrap));
+    CHECK_EQ("above",   -1, fs2arr_bsearch(&a, &above,   fs2_cmp_wrap));
+    CHECK_EQ("between", -1, fs2arr_bsearch(&a, &between, fs2_cmp_wrap));
+    CHECK_EQ("empty",   -1, fs2arr_bsearch(&a, &empty_k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&below); fs2_free(&above);
+    fs2_free(&between);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — empty / single / canonical key
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_empty_array) {
+    fs2array a = FS2ARR();
+    fs2 k = fs2_fromstr("a");
+    CHECK_EQ("empty array", -1, fs2arr_bsearch(&a, &k, fs2_cmp_wrap));
+    fs2_free(&k);
+}
+
+Test(fs2_array_api, bsearch_empty_with_capacity) {
+    fs2array a = fs2arr_init(16);           /* arr != NULL, count=0 */
+    fs2 k = fs2_fromstr("a");
+    CHECK_EQ("empty+cap", -1, fs2arr_bsearch(&a, &k, fs2_cmp_wrap));
+    fs2arr_free(&a);
+    fs2_free(&k);
+}
+
+Test(fs2_array_api, bsearch_single_element) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr((const char*[]){ "x" }, 1, fs2_cmp_wrap);
+
+    fs2 k_hit  = fs2_fromstr("x");
+    fs2 k_miss = fs2_fromstr("y");
+
+    CHECK_EQ("hit",  0, fs2arr_bsearch(&a, &k_hit,  fs2_cmp_wrap));
+    CHECK_EQ("miss", -1, fs2arr_bsearch(&a, &k_miss, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k_hit); fs2_free(&k_miss);
+    assert_balanced();
+}
+
+/* Canonical FS2() key (v=NULL) — promoted, no SEGV in strcmp */
+Test(fs2_array_api, bsearch_canonical_key_promoted) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "b", "c" }, 3, fs2_cmp_wrap);
+
+    fs2 k = FS2();                          /* v=NULL, len=0 */
+    cr_assert_null(k.v);
+
+    /* "" not in array — should return -1 (not SEGV) */
+    CHECK_EQ("not found", -1, fs2arr_bsearch(&a, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+/* Canonical key when "" IS in array — should find it */
+Test(fs2_array_api, bsearch_canonical_key_finds_empty) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "", "a", "b" }, 3, fs2_cmp_wrap);
+
+    fs2 k = FS2();                          /* v=NULL, promoted to FS2EMPTY */
+    CHECK_EQ("found empty at [0]", 0, fs2arr_bsearch(&a, &k, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — duplicates (some index, not guaranteed first)
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_duplicates_returns_valid_index) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "b", "b", "b", "c" }, 5, fs2_cmp_wrap);
+
+    fs2 k = fs2_fromstr("b");
+    ptrdiff_t i = fs2arr_bsearch(&a, &k, fs2_cmp_wrap);
+
+    cr_assert_geq(i, 1, "b exists at [1..3]");
+    cr_assert_leq(i, 3, "b exists at [1..3]");
+    CHECK_STR_EQ("matched value", "b", a.arr[i].v);
+
+    fs2arr_free(&a);
+    fs2_free(&k);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — custom comparator (length-key)
+ * ========================================================================= */
+
+static int
+cmp_len(const void *pa, const void *pb) {
+    const fs2 *a = pa, *b = pb;
+    return (a->len > b->len) - (a->len < b->len);
+}
+
+Test(fs2_array_api, bsearch_by_length) {
+    __fs2_checkreset();
+    /* Sorted by length: 1, 2, 2, 3, 4 */
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "bb", "cc", "ddd", "eeee" }, 5, cmp_len);
+
+    fs2 k1 = fs2_fromstr("X");              /* len 1 */
+    fs2 k2 = fs2_fromstr("XY");             /* len 2 — hits one of [1] or [2] */
+    fs2 k5 = fs2_fromstr("XXXXX");          /* len 5 — not present */
+
+    CHECK_EQ("len 1 at 0", 0, fs2arr_bsearch(&a, &k1, cmp_len));
+
+    ptrdiff_t i2 = fs2arr_bsearch(&a, &k2, cmp_len);
+    cr_assert_geq(i2, 1);
+    cr_assert_leq(i2, 2);
+
+    CHECK_EQ("len 5 miss", -1, fs2arr_bsearch(&a, &k5, cmp_len));
+
+    fs2arr_free(&a);
+    fs2_free(&k1); fs2_free(&k2); fs2_free(&k5);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — desc comparator
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_desc) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "b", "c" }, 3, fs2_cmp_desc_wrap);
+    /* sorted desc: c, b, a */
+
+    fs2 kb = fs2_fromstr("b");
+    fs2 ka = fs2_fromstr("a");
+    fs2 kz = fs2_fromstr("z");
+
+    CHECK_EQ("'b' at 1", 1, fs2arr_bsearch(&a, &kb, fs2_cmp_desc_wrap));
+    CHECK_EQ("'a' at 2", 2, fs2arr_bsearch(&a, &ka, fs2_cmp_desc_wrap));
+    CHECK_EQ("'z' miss", -1, fs2arr_bsearch(&a, &kz, fs2_cmp_desc_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&kb); fs2_free(&ka); fs2_free(&kz);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — consistency with fs2_bsearch (same array, no holes)
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_matches_fs2_bsearch) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "alpha", "beta", "gamma", "delta", "epsilon" },
+        5, fs2_cmp_wrap);
+
+    const char *keys[] = { "alpha", "beta", "gamma", "zzz", "epsilon" };
+    for (size_t i = 0; i < 5; i++) {
+        fs2 k = fs2_fromstr(keys[i]);
+        ptrdiff_t via_arr = fs2arr_bsearch(&a, &k, fs2_cmp_wrap);
+        ptrdiff_t via_fs2 = fs2_bsearch(&k, a.arr, a.count);
+        CHECK_EQ("agree", via_arr, via_fs2);
+        fs2_free(&k);
+    }
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — precondition: not packed
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_not_packed_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2array a = mk_sorted_arr(
+        (const char*[]){ "a", "b", "c" }, 3, fs2_cmp_wrap);
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+    /* a: [a, hole, c], hwm=3, count=2 */
+
+    fs2 k = fs2_fromstr("a");
+    fs2arr_bsearch(&a, &k, fs2_cmp_wrap);
+    /* unreachable */
+}
+
+/* =========================================================================
+ * fs2arr_bsearch — guards
+ * ========================================================================= */
+
+Test(fs2_array_api, bsearch_null_a_aborts, .signal = SIGABRT) {
+    fs2 k = fs2_fromstr("a");
+    fs2arr_bsearch(NULL, &k, fs2_cmp_wrap);
+    fs2_free(&k);
+}
+
+Test(fs2_array_api, bsearch_null_key_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARR();
+    fs2arr_bsearch(&a, NULL, fs2_cmp_wrap);
+}
+
+Test(fs2_array_api, bsearch_null_cmp_aborts, .signal = SIGABRT) {
+    fs2array a = FS2ARR();
+    fs2 k = fs2_fromstr("a");
+    fs2arr_bsearch(&a, &k, NULL);
+    fs2_free(&k);
+}
+
+/* =========================================================================
+ * Integration: sort → bsearch (used in loop)
+ * ========================================================================= */
+
+Test(fs2_array_api, sort_then_bsearch_loop) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("apple", "banana", "cherry", "date", "elderberry");
+    fs2arr_sortasc(&a);
+
+    struct { const char *key; ptrdiff_t expected; } cases[] = {
+        { "apple",      0 },
+        { "banana",     1 },
+        { "cherry",     2 },
+        { "date",       3 },
+        { "elderberry", 4 },
+        { "fig",       -1 },
+        { "aaa",       -1 },
+        { "zzz",       -1 },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        fs2 k = fs2_fromstr(cases[i].key);
+        CHECK_EQ("index", cases[i].expected,
+                 fs2arr_bsearch(&a, &k, fs2_cmp_wrap));
+        fs2_free(&k);
+    }
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: split → sort → unique → bsearch (canonical lookup)
+ * ========================================================================= */
+
+Test(fs2_array_api, split_sort_unique_bsearch) {
+    __fs2_checkreset();
+    fs2 csv = fs2_fromstr("banana,apple,cherry,apple,banana");
+    fs2 comma = fs2_fromstr(",");
+
+    fs2array parts = fs2_split_toarray(&csv, &comma);
+    fs2arr_sortasc(&parts);
+    fs2arr_unique(&parts, fs2_cmp_wrap);
+    /* [apple, banana, cherry] */
+
+    fs2 ka = fs2_fromstr("apple");
+    fs2 kb = fs2_fromstr("banana");
+    fs2 kd = fs2_fromstr("date");
+
+    CHECK_EQ("apple at 0",  0, fs2arr_bsearch(&parts, &ka, fs2_cmp_wrap));
+    CHECK_EQ("banana at 1", 1, fs2arr_bsearch(&parts, &kb, fs2_cmp_wrap));
+    CHECK_EQ("date miss",  -1, fs2arr_bsearch(&parts, &kd, fs2_cmp_wrap));
+
+    fs2_free(&csv); fs2_free(&comma);
+    fs2arr_free(&parts);
+    fs2_free(&ka); fs2_free(&kb); fs2_free(&kd);
+    assert_balanced();
+}
+
