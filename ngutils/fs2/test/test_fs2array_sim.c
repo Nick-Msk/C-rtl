@@ -801,3 +801,333 @@ Test(fs2_array_simulation, repeated_cycles_invariants) {
 
     assert_balanced();
 }
+
+/* Verify: packed (hwm == count), sorted by cmp, valid. */
+static void
+assert_packed_sorted(const fs2array *a, pointer_comparator_t cmp, const char *op) {
+    if (a->hwm != a->count)
+        cr_assert_fail("[%s] not packed: hwm=%zu count=%zu", op, a->hwm, a->count);
+    if (!fs2arr_issorted(a, cmp))
+        cr_assert_fail("[%s] not sorted", op);
+    if (!fs2arr_validate(NULL, a))
+        cr_assert_fail("[%s] validate failed", op);
+}
+
+/* Independent multiset check: sort clones of both, compare via eqexact. */
+static void
+assert_multiset_eq(const fs2array *a, const fs2array *expected, const char *op) {
+    fs2array ca = fs2arr_clone(a);
+    fs2array ce = fs2arr_clone(expected);
+    fs2arr_sortasc(&ca);
+    fs2arr_sortasc(&ce);
+    if (!fs2arr_eqexact(&ca, &ce)) {
+        fs2arr_techfprint(stderr, a,        "actual");
+        fs2arr_techfprint(stderr, expected, "expected");
+        cr_assert_fail("[%s] multiset mismatch", op);
+    }
+    fs2arr_free(&ca);
+    fs2arr_free(&ce);
+}
+
+Test(fs2_array_sim, lifecycle_index) {
+    __fs2_checkreset();
+
+    /* --- 1. Empty start --- */
+    fs2array idx = FS2ARR();
+    assert_packed_sorted(&idx, fs2_cmp_wrap, "empty");
+
+    /* --- 2. Add words --- */
+    const char *batch1[] = { "cherry", "apple", "banana", "date", "fig" };
+    for (size_t i = 0; i < 5; i++) {
+        fs2 v = fs2_fromstr(batch1[i]);
+        fs2arr_push(&idx, &v);
+    }
+    CHECK_EQ("count", 5, idx.count);
+
+    /* Before sort: not necessarily sorted (these values aren't) */
+    CHECK_FALSE("batch1 not sorted", fs2arr_issorted(&idx, fs2_cmp_wrap));
+
+    /* --- 3. Sort + verify --- */
+    fs2arr_sortasc(&idx);
+    assert_packed_sorted(&idx, fs2_cmp_wrap, "after sort1");
+
+    /* --- 4. Lookup --- */
+    struct { const char *key; ptrdiff_t expected; } hits[] = {
+        { "apple",  0 }, { "banana", 1 }, { "cherry", 2 },
+        { "date",   3 }, { "fig",    4 },
+        { "aaa",   -1 }, { "grape", -1 }, { "zzz",   -1 },
+    };
+    for (size_t i = 0; i < sizeof hits / sizeof hits[0]; i++) {
+        fs2 k = fs2_fromstr(hits[i].key);
+        CHECK_EQ("lookup", hits[i].expected,
+                 fs2arr_bsearch(&idx, &k, fs2_cmp_wrap));
+        fs2_free(&k);
+    }
+
+    /* --- 5. Add more elements (breaks sortedness) --- */
+    const char *batch2[] = { "elderberry", "apple", "grape" };
+    for (size_t i = 0; i < 3; i++) {
+        fs2 v = fs2_fromstr(batch2[i]);
+        fs2arr_push(&idx, &v);
+    }
+    CHECK_EQ("count", 8, idx.count);
+    CHECK_FALSE("batch2 broke sorted", fs2arr_issorted(&idx, fs2_cmp_wrap));
+
+    /* --- 6. Re-sort + verify --- */
+    fs2arr_sortasc(&idx);
+    assert_packed_sorted(&idx, fs2_cmp_wrap, "after re-sort");
+
+    /* apple appears twice (from batch1 and batch2) — [0] and [1] */
+    fs2 ka = fs2_fromstr("apple");
+    ptrdiff_t ia = fs2arr_bsearch(&idx, &ka, fs2_cmp_wrap);
+    cr_assert_geq(ia, 0);
+    cr_assert_leq(ia, 1);
+    CHECK_STR_EQ("hit apple", "apple", idx.arr[ia].v);
+    fs2_free(&ka);
+
+    /* --- 7. Check contents after re-sort --- */
+    const char *expected_sorted[] = {
+        "apple", "apple", "banana", "cherry",
+        "date", "elderberry", "fig", "grape"
+    };
+    for (size_t i = 0; i < 8; i++)
+        CHECK_STR_EQ("content", expected_sorted[i], idx.arr[i].v);
+
+    /* --- 8. Remove some, compact, verify --- */
+    fs2 t1 = fs2arr_detach_new(&idx, 3);  /* cherry */
+    fs2 t2 = fs2arr_detach_new(&idx, 5);  /* fig */
+    fs2_free(&t1);
+    fs2_free(&t2);
+    CHECK_EQ  ("count after detach", 6, idx.count);
+    CHECK_TRUE("has holes", idx.hwm != idx.count);
+
+    fs2arr_compact(&idx);                 /* pack holes away */
+    assert_packed_sorted(&idx, fs2_cmp_wrap, "after compact");
+
+    /* --- 9. Verify remaining sorted content --- */
+    const char *remaining[] = {
+        "apple", "apple", "banana", "date", "elderberry", "grape"
+    };
+    for (size_t i = 0; i < 6; i++)
+        CHECK_STR_EQ("remaining", remaining[i], idx.arr[i].v);
+
+    /* --- 10. Still searchable --- */
+    fs2 kd = fs2_fromstr("date");
+    CHECK_EQ("date found at 3", 3, fs2arr_bsearch(&idx, &kd, fs2_cmp_wrap));
+    fs2_free(&kd);
+
+    fs2 kc = fs2_fromstr("cherry");        /* deleted */
+    CHECK_EQ("cherry gone", -1, fs2arr_bsearch(&idx, &kc, fs2_cmp_wrap));
+    fs2_free(&kc);
+
+    fs2arr_free(&idx);
+    assert_balanced();
+}
+
+Test(fs2_array_sim, batch_incremental_merge) {
+    __fs2_checkreset();
+
+    fs2array acc = FS2ARR();
+
+    /* 5 batches, each with 3 new items, then sorted & merged */
+    const char *batches[][3] = {
+        { "mango",  "apple",  "cherry" },
+        { "banana", "date",   "fig" },
+        { "grape",  "kiwi",   "lemon" },
+        { "papaya", "orange", "nut" },
+        { "quince", "rasp",   "plum" },
+    };
+
+    for (int b = 0; b < 5; b++) {
+        /* Build & sort this batch */
+        fs2array batch = fs2arr_init(3);
+        for (int j = 0; j < 3; j++) {
+            fs2 v = fs2_fromstr(batches[b][j]);
+            fs2arr_push(&batch, &v);
+        }
+        fs2arr_sortasc(&batch);
+        assert_packed_sorted(&batch, fs2_cmp_wrap, "batch");
+
+        /* Merge into accumulator */
+        fs2array merged = fs2arr_mergesorted_new(&acc, &batch, fs2_cmp_wrap);
+        fs2arr_free(&acc);
+        fs2arr_free(&batch);
+        acc = merged;
+
+        CHECK_EQ("batch count", (size_t)(3 * (b + 1)), acc.count);
+        assert_packed_sorted(&acc, fs2_cmp_wrap, "merged");
+
+        /* Lookup every element added so far — all present */
+        for (int kb = 0; kb <= b; kb++) {
+            for (int kj = 0; kj < 3; kj++) {
+                fs2 k = fs2_fromstr(batches[kb][kj]);
+                ptrdiff_t idx = fs2arr_bsearch(&acc, &k, fs2_cmp_wrap);
+                cr_assert_geq(idx, 0,
+                              "batch %d, item %s not found", kb, batches[kb][kj]);
+                fs2_free(&k);
+            }
+        }
+    }
+
+    /* Final sanity: 15 elements, sorted */
+    CHECK_EQ  ("final count", 15, acc.count);
+    CHECK_STR_EQ("[0]",  "apple",  acc.arr[0].v);
+    CHECK_STR_EQ("[14]", "quince", acc.arr[14].v);
+
+    fs2arr_free(&acc);
+    assert_balanced();
+}
+
+Test(fs2_array_sim, sorted_guard_across_ops) {
+    __fs2_checkreset();
+
+    fs2array a = FS2ARRFROMSTR("c", "a", "b");
+    /* [c, a, b] — not sorted */
+
+    CHECK_FALSE("initial not sorted", fs2arr_issorted(&a, fs2_cmp_wrap));
+
+    /* bsearch на не-sorted — компилируется, но результат мусор.
+     * Здесь только показываем, что issorted(false) → caller НЕ должен
+     * звать bsearch. */
+
+    fs2arr_sortasc(&a);
+    CHECK_TRUE("sorted after sortasc", fs2arr_issorted(&a, fs2_cmp_wrap));
+
+    /* После push — sorted гарантированно может сломаться */
+    fs2 v = fs2_fromstr("0");                 /* "0" < "a" — уйдёт в начало */
+    fs2arr_push(&a, &v);
+    CHECK_FALSE("push broke sorted", fs2arr_issorted(&a, fs2_cmp_wrap));
+
+    fs2arr_sortasc(&a);
+    CHECK_TRUE("sorted again", fs2arr_issorted(&a, fs2_cmp_wrap));
+
+    /* Detach — прекондишн bsearch сломан (hwm != count), но порядок
+     * оставшихся live сохранён */
+    fs2 t = fs2arr_detach_new(&a, 0);         /* "0" */
+    fs2_free(&t);
+    CHECK_TRUE ("holes present",   a.hwm != a.count);
+    CHECK_FALSE("issorted fails on holes (validate precondition fails)",
+                a.hwm == a.count ? fs2arr_issorted(&a, fs2_cmp_wrap) : false);
+
+    /* compact → packed → sort → снова готов */
+    fs2arr_compact(&a);
+    CHECK_EQ  ("packed", a.hwm, a.count);
+    CHECK_TRUE("still sorted after compact", fs2arr_issorted(&a, fs2_cmp_wrap));
+
+    /* bsearch безопасен */
+    fs2 kb = fs2_fromstr("b");
+    CHECK_EQ("b found", 1, fs2arr_bsearch(&a, &kb, fs2_cmp_wrap));
+    fs2_free(&kb);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_sim, multiset_across_full_cycle) {
+    __fs2_checkreset();
+
+    /* Reference multiset: tracked manually via parallel fs2array of same values */
+    fs2array arr = FS2ARR();
+    fs2array ref = FS2ARR();                  /* expected multiset, unsorted */
+
+    /* Phase 1: add 20 values */
+    for (int i = 0; i < 20; i++) {
+        char buf[16];
+        snprintf(buf, sizeof buf, "item%02d", i);
+        fs2 v = fs2_fromstr(buf);
+        fs2arr_push(&arr, &v);
+        fs2 r = fs2_fromstr(buf);
+        fs2arr_push(&ref, &r);
+    }
+    assert_multiset_eq(&arr, &ref, "after add");
+
+    /* Phase 2: sort, search all, verify present */
+    fs2arr_sortasc(&arr);
+    for (int i = 0; i < 20; i++) {
+        char buf[16];
+        snprintf(buf, sizeof buf, "item%02d", i);
+        fs2 k = fs2_fromstr(buf);
+        cr_assert_geq(fs2arr_bsearch(&arr, &k, fs2_cmp_wrap), 0);
+        fs2_free(&k);
+    }
+    assert_multiset_eq(&arr, &ref, "after sort");
+
+    /* Phase 3: detach every even position, sync in ref */
+    for (int i = 18; i >= 0; i -= 2) {
+        fs2 t = fs2arr_detach_new(&arr, (size_t)i);
+        fs2_free(&t);
+        /* also detach from ref */
+        for (size_t j = 0; j < ref.count; j++) {
+            char buf[16];
+            snprintf(buf, sizeof buf, "item%02d", i);
+            if (strcmp(ref.arr[j].v, buf) == 0) {
+                fs2 tr = fs2arr_detach_new(&ref, j);
+                fs2_free(&tr);
+                break;
+            }
+        }
+    }
+    assert_multiset_eq(&arr, &ref, "after detach");
+
+    /* Phase 4: compact + sort + bsearch — only odd items left */
+    fs2arr_compact(&arr);
+    fs2arr_sortasc(&arr);
+    assert_packed_sorted(&arr, fs2_cmp_wrap, "after compact+sort");
+
+    for (int i = 0; i < 20; i++) {
+        char buf[16];
+        snprintf(buf, sizeof buf, "item%02d", i);
+        fs2 k = fs2_fromstr(buf);
+        ptrdiff_t idx = fs2arr_bsearch(&arr, &k, fs2_cmp_wrap);
+        if (i % 2 == 0)
+            CHECK_EQ("even gone", -1, idx);
+        else
+            cr_assert_geq(idx, 0, "odd %d missing", i);
+        fs2_free(&k);
+    }
+
+    fs2arr_free(&arr);
+    fs2arr_free(&ref);
+    assert_balanced();
+}
+
+Test(fs2_array_sim, resorted_grows_efficient) {
+    __fs2_checkreset();
+
+    /* Simulate "sorted index, add 1 element, re-sort" cycle */
+    fs2array idx = FS2ARR();
+
+    for (int step = 0; step < 30; step++) {
+        /* Append one element */
+        fs2 v = fs2_from_new((step * 7) % 30);   /* pseudo-random, has dups */
+        fs2arr_push(&idx, &v);
+
+        /* Re-sort each time */
+        fs2arr_sortasc(&idx);
+        assert_packed_sorted(&idx, fs2_cmp_wrap, "re-sort");
+
+        /* Unique each time (multiset → set) */
+        fs2arr_unique(&idx, fs2_cmp_wrap);
+
+        /* After unique: count should be number of DISTINCT values seen */
+        CHECK_EQ("count", idx.count, (size_t)(step + 1));
+          /* 30 steps, %30 → каждый шаг новое значение (0..29, повторы когда
+           * step*7 % 30 циклится: 7*0=0, 7*1=7, ..., порядок 7-цикличный по 30,
+           * но step 0..29 → step*7 mod 30 пробегает все 0..29 ровно раз.
+           * Значит step+1 уникальных на шаге step. */
+    }
+
+    /* Final: 30 unique, sorted, all present */
+    CHECK_EQ("final count", 30, idx.count);
+    for (int i = 0; i < 30; i++) {
+        fs2 k = fs2_from_new(i);
+        ptrdiff_t p = fs2arr_bsearch(&idx, &k, fs2_cmp_wrap);
+        cr_assert_geq(p, 0, "%d missing", i);
+        fs2_free(&k);
+    }
+    assert_packed_sorted(&idx, fs2_cmp_wrap, "final");
+
+    fs2arr_free(&idx);
+    assert_balanced();
+}
+
