@@ -2561,7 +2561,7 @@ fs2_swapcase(fs2 *restrict s) {
  */
 static inline bool
 fs2_isalpha(const fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← only NULL-check
     
     if (s->len == 0)
         return false;  
@@ -2580,7 +2580,7 @@ fs2_isalpha(const fs2 *restrict s) {
  */
 static inline bool
 fs2_isdigit(const fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← only NULL-check
     
     if (s->len == 0)
         return false; 
@@ -2599,7 +2599,7 @@ fs2_isdigit(const fs2 *restrict s) {
  */
 static inline bool
 fs2_isalnum(const fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← only NULL-check
     
     if (s->len == 0)
         return false; 
@@ -2621,7 +2621,7 @@ fs2_isalnum(const fs2 *restrict s) {
  */
 static inline bool
 fs2_isspace(const fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← only NULL-check
     
     if (s->len == 0)
         return false; 
@@ -2641,7 +2641,7 @@ fs2_isspace(const fs2 *restrict s) {
  */
 static inline bool
 fs2_isascii(const fs2 *restrict s) {
-    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← только NULL-check
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null pointer");   // ← only NULL-check
     
     for (size_t i = 0; i < s->len; i++)
         if (!isascii((unsigned char)s->v[i])) return false;
