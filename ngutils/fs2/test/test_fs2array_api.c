@@ -3784,3 +3784,119 @@ Test(fs2_array_api, find_contains_count_lifecycle) {
     fs2_free(&ka); fs2_free(&kb); fs2_free(&kz);
     assert_balanced();
 }
+
+/* =========================================================================
+ * _str variants — zero-alloc wrappers
+ * ========================================================================= */
+
+Test(fs2_array_api, find_str_basic) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("apple", "banana", "cherry");
+
+    CHECK_EQ("apple",  0, fs2arr_find_str(&a, "apple",  fs2_cmp_wrap));
+    CHECK_EQ("cherry", 2, fs2arr_find_str(&a, "cherry", fs2_cmp_wrap));
+    CHECK_EQ("grape", -1, fs2arr_find_str(&a, "grape",  fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_str_skips_holes) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "c");
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+    /* [a, hole, c] */
+
+    CHECK_EQ("'a'",  0, fs2arr_find_str(&a, "a", fs2_cmp_wrap));
+    CHECK_EQ("'b'", -1, fs2arr_find_str(&a, "b", fs2_cmp_wrap));
+    CHECK_EQ("'c'",  2, fs2arr_find_str(&a, "c", fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_str_null_key_searches_empty) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("", "a", "b");    /* live empty at [0] */
+
+    /* _fs2_wrap(NULL) → FS2EMPTY (live empty) → matches slot [0] */
+    CHECK_EQ("finds empty", 0, fs2arr_find_str(&a, NULL, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, find_str_matches_fs2_version) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("x", "y", "z");
+    fs2 kx = fs2_fromstr("x");
+
+    CHECK_EQ("same result",
+             fs2arr_find(&a, &kx, fs2_cmp_wrap),
+             fs2arr_find_str(&a, "x", fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    fs2_free(&kx);
+    assert_balanced();
+}
+
+Test(fs2_array_api, contains_str_basic) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("apple", "banana");
+
+    CHECK_TRUE ("banana", fs2arr_contains_str(&a, "banana", fs2_cmp_wrap));
+    CHECK_FALSE("grape",  fs2arr_contains_str(&a, "grape",  fs2_cmp_wrap));
+    CHECK_FALSE("Banana (case-sensitive)", fs2arr_contains_str(&a, "Banana", fs2_cmp_wrap));
+    CHECK_TRUE ("Banana (ci)",             fs2arr_contains_str(&a, "Banana", fs2_cmp_ci_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, contains_str_empty_array) {
+    fs2array a = FS2ARR();
+    CHECK_FALSE("empty", fs2arr_contains_str(&a, "x", fs2_cmp_wrap));
+}
+
+Test(fs2_array_api, count_str_basic) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "b", "a", "c", "a");
+
+    CHECK_EQ("a ×3", 3, fs2arr_count_str(&a, "a", fs2_cmp_wrap));
+    CHECK_EQ("b ×1", 1, fs2arr_count_str(&a, "b", fs2_cmp_wrap));
+    CHECK_EQ("z ×0", 0, fs2arr_count_str(&a, "z", fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, count_str_skips_holes) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("a", "a", "a");
+    fs2 t = fs2arr_detach_new(&a, 1);         /* hole removes one "a" */
+    fs2_free(&t);
+
+    CHECK_EQ("a ×2 after hole", 2, fs2arr_count_str(&a, "a", fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array_api, count_str_empty_array) {
+    fs2array a = FS2ARR();
+    CHECK_EQ("empty", 0, fs2arr_count_str(&a, "a", fs2_cmp_wrap));
+}
+
+/* _str variants null-safe for key=NULL (via _fs2_wrap(NULL) → FS2EMPTY) */
+Test(fs2_array_api, str_variants_null_key_safe) {
+    __fs2_checkreset();
+    fs2array a = FS2ARRFROMSTR("", "x");            /* live empty at [0] */
+
+    CHECK_EQ   ("find NULL",  0, fs2arr_find_str(&a, NULL, fs2_cmp_wrap));
+    CHECK_TRUE ("contains",      fs2arr_contains_str(&a, NULL, fs2_cmp_wrap));
+    CHECK_EQ   ("count",      1, fs2arr_count_str(&a, NULL, fs2_cmp_wrap));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
