@@ -2004,20 +2004,20 @@ Test(fs2_array, clone_drops_trailing_holes) {
 }
 
 /* =========================================================================
- * fs2arr_eqexact — semantic comparison up to hwm
+ * fs2arr_equalexact — semantic comparison up to hwm
  * ========================================================================= */
 
 Test(fs2_array, eqexact_canonical_vs_canonical) {
     fs2array a = FS2ARR();
     fs2array b = FS2ARR();
-    CHECK_TRUE("both canonical", fs2arr_eqexact(&a, &b));
+    CHECK_TRUE("both canonical", fs2arr_equalexact(&a, &b));
 }
 
 Test(fs2_array, eqexact_canonical_vs_empty_with_capacity) {
     fs2array a = FS2ARR();
     fs2array b = fs2arr_init(16);            /* arr != NULL, hwm=0 */
-    CHECK_TRUE("both empty up to hwm", fs2arr_eqexact(&a, &b));
-    CHECK_TRUE("symmetric",            fs2arr_eqexact(&b, &a));
+    CHECK_TRUE("both empty up to hwm", fs2arr_equalexact(&a, &b));
+    CHECK_TRUE("symmetric",            fs2arr_equalexact(&b, &a));
     fs2arr_free(&b);
 }
 
@@ -2031,7 +2031,7 @@ Test(fs2_array, eqexact_same_content) {
         fs2arr_push(&a, &va);
         fs2arr_push(&b, &vb);
     }
-    CHECK_TRUE("same content", fs2arr_eqexact(&a, &b));
+    CHECK_TRUE("same content", fs2arr_equalexact(&a, &b));
     fs2arr_free(&a);
     fs2arr_free(&b);
     assert_balanced();
@@ -2045,7 +2045,7 @@ Test(fs2_array, eqexact_different_content) {
     fs2 vb = fs2_fromstr("world");
     fs2arr_push(&a, &va);
     fs2arr_push(&b, &vb);
-    CHECK_FALSE("different strings", fs2arr_eqexact(&a, &b));
+    CHECK_FALSE("different strings", fs2arr_equalexact(&a, &b));
     fs2arr_free(&a);
     fs2arr_free(&b);
     assert_balanced();
@@ -2061,7 +2061,7 @@ Test(fs2_array, eqexact_different_hwm) {
     fs2arr_push(&b, &vb);
     fs2 vc = fs2_fromstr("y");
     fs2arr_push(&b, &vc);                    /* hwm=2 */
-    CHECK_FALSE("hwm differs", fs2arr_eqexact(&a, &b));
+    CHECK_FALSE("hwm differs", fs2arr_equalexact(&a, &b));
     fs2arr_free(&a);
     fs2arr_free(&b);
     assert_balanced();
@@ -2084,7 +2084,7 @@ Test(fs2_array, eqexact_same_holes_at_same_positions) {
     fs2_free(&tb);
     /* both: [0, hole, 2, 3], hwm=4, count=3 */
 
-    CHECK_TRUE("same holes", fs2arr_eqexact(&a, &b));
+    CHECK_TRUE("same holes", fs2arr_equalexact(&a, &b));
     fs2arr_free(&a);
     fs2arr_free(&b);
     assert_balanced();
@@ -2104,8 +2104,8 @@ Test(fs2_array, eqexact_hole_mismatch) {
     fs2_free(&t);
     /* b: [0, 1, 2] — no hole */
 
-    CHECK_FALSE("hole vs live at [1]", fs2arr_eqexact(&a, &b));
-    CHECK_FALSE("symmetric",           fs2arr_eqexact(&b, &a));
+    CHECK_FALSE("hole vs live at [1]", fs2arr_equalexact(&a, &b));
+    CHECK_FALSE("symmetric",           fs2arr_equalexact(&b, &a));
 
     fs2arr_free(&a);
     fs2arr_free(&b);
@@ -2128,7 +2128,7 @@ Test(fs2_array, eqexact_same_count_different_positions) {
     fs2_free(&ta);
     fs2_free(&tb);
 
-    CHECK_FALSE("different hole positions", fs2arr_eqexact(&a, &b));
+    CHECK_FALSE("different hole positions", fs2arr_equalexact(&a, &b));
 
     fs2arr_free(&a);
     fs2arr_free(&b);
@@ -2144,7 +2144,7 @@ Test(fs2_array, eqexact_size_ignored) {
     fs2arr_push(&a, &va);
     fs2arr_push(&b, &vb);
 
-    CHECK_TRUE("size ignored", fs2arr_eqexact(&a, &b));
+    CHECK_TRUE("size ignored", fs2arr_equalexact(&a, &b));
 
     fs2arr_free(&a);
     fs2arr_free(&b);
@@ -2154,10 +2154,10 @@ Test(fs2_array, eqexact_size_ignored) {
 Test(fs2_array, eqexact_null_handling) {
     fs2array a = FS2ARR();
 
-    CHECK_TRUE ("both NULL",      fs2arr_eqexact(NULL, NULL));
-    CHECK_FALSE("a NULL",         fs2arr_eqexact(NULL, &a));
-    CHECK_FALSE("b NULL",         fs2arr_eqexact(&a, NULL));
-    CHECK_TRUE ("same pointer",   fs2arr_eqexact(&a, &a));
+    CHECK_TRUE ("both NULL",      fs2arr_equalexact(NULL, NULL));
+    CHECK_FALSE("a NULL",         fs2arr_equalexact(NULL, &a));
+    CHECK_FALSE("b NULL",         fs2arr_equalexact(&a, NULL));
+    CHECK_TRUE ("same pointer",   fs2arr_equalexact(&a, &a));
 }
 
 Test(fs2_array, eqexact_same_pointer_short_circuit) {
@@ -2166,7 +2166,7 @@ Test(fs2_array, eqexact_same_pointer_short_circuit) {
     fs2 v = fs2_fromstr("x");
     fs2arr_push(&a, &v);
 
-    CHECK_TRUE("a == a fast path", fs2arr_eqexact(&a, &a));
+    CHECK_TRUE("a == a fast path", fs2arr_equalexact(&a, &a));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -2186,8 +2186,8 @@ Test(fs2_array, eqexact_after_clone) {
     fs2array c_packed = fs2arr_clone(&a);     /* packed, hwm=4 */
     fs2array c_exact  = fs2arr_cloneexact(&a);/* preserved, hwm=5 */
 
-    CHECK_FALSE("packed differs in hwm", fs2arr_eqexact(&a, &c_packed));
-    CHECK_TRUE ("exact matches",         fs2arr_eqexact(&a, &c_exact));
+    CHECK_FALSE("packed differs in hwm", fs2arr_equalexact(&a, &c_packed));
+    CHECK_TRUE ("exact matches",         fs2arr_equalexact(&a, &c_exact));
 
     fs2arr_free(&a);
     fs2arr_free(&c_packed);
@@ -2209,7 +2209,7 @@ Test(fs2_array, eqexact_count_mismatch_false) {
     fs2arr_push(&b, &vb);
     /* same content, but corrupt b.count */
     b.count = 0;
-    CHECK_FALSE("count mismatch", fs2arr_eqexact(&a, &b));
+    CHECK_FALSE("count mismatch", fs2arr_equalexact(&a, &b));
     b.count = 1;                              /* restore for free */
     fs2arr_free(&a);
     fs2arr_free(&b);
@@ -2238,7 +2238,7 @@ Test(fs2_array, eqexact_cloneexact_invariant_packed) {
     /* packed: hwm=3, no holes */
 
     fs2array c = fs2arr_cloneexact(&a);
-    CHECK_TRUE("cloneexact of packed == source", fs2arr_eqexact(&a, &c));
+    CHECK_TRUE("cloneexact of packed == source", fs2arr_equalexact(&a, &c));
 
     fs2arr_free(&a);
     fs2arr_free(&c);
@@ -2257,7 +2257,7 @@ Test(fs2_array, eqexact_cloneexact_invariant_mid_holes) {
     /* [0, 1, hole, 3, 4], hwm=5, count=4 */
 
     fs2array c = fs2arr_cloneexact(&a);
-    CHECK_TRUE("mid hole preserved", fs2arr_eqexact(&a, &c));
+    CHECK_TRUE("mid hole preserved", fs2arr_equalexact(&a, &c));
 
     fs2arr_free(&a);
     fs2arr_free(&c);
@@ -2279,7 +2279,7 @@ Test(fs2_array, eqexact_cloneexact_invariant_trailing_holes) {
 
     fs2array c = fs2arr_cloneexact(&a);
     CHECK_EQ  ("hwm preserved", 3, c.hwm);
-    CHECK_TRUE("trailing holes preserved", fs2arr_eqexact(&a, &c));
+    CHECK_TRUE("trailing holes preserved", fs2arr_equalexact(&a, &c));
 
     fs2arr_free(&a);
     fs2arr_free(&c);
@@ -2289,11 +2289,11 @@ Test(fs2_array, eqexact_cloneexact_invariant_trailing_holes) {
 Test(fs2_array, eqexact_cloneexact_invariant_empty) {
     fs2array canon = FS2ARR();
     fs2array c1 = fs2arr_cloneexact(&canon);
-    CHECK_TRUE("canonical", fs2arr_eqexact(&canon, &c1));
+    CHECK_TRUE("canonical", fs2arr_equalexact(&canon, &c1));
 
     fs2array empty = fs2arr_init(16);
     fs2array c2 = fs2arr_cloneexact(&empty);
-    CHECK_TRUE("empty with capacity", fs2arr_eqexact(&empty, &c2));
+    CHECK_TRUE("empty with capacity", fs2arr_equalexact(&empty, &c2));
     fs2arr_free(&empty);
 }
 
@@ -2310,7 +2310,7 @@ Test(fs2_array, eqexact_cloneexact_invariant_all_holes) {
     fs2array c = fs2arr_cloneexact(&a);
     CHECK_EQ  ("hwm",   1, c.hwm);
     CHECK_EQ  ("count", 0, c.count);
-    CHECK_TRUE("all holes preserved", fs2arr_eqexact(&a, &c));
+    CHECK_TRUE("all holes preserved", fs2arr_equalexact(&a, &c));
 
     fs2arr_free(&a);
     fs2arr_free(&c);
@@ -2328,7 +2328,7 @@ Test(fs2_array, eqexact_cloneexact_invariant_after_shrink) {
     fs2arr_shrink(&a);                          /* size == hwm == 3 */
 
     fs2array c = fs2arr_cloneexact(&a);
-    CHECK_TRUE("after shrink", fs2arr_eqexact(&a, &c));
+    CHECK_TRUE("after shrink", fs2arr_equalexact(&a, &c));
 
     fs2arr_free(&a);
     fs2arr_free(&c);
@@ -2349,9 +2349,9 @@ Test(fs2_array, eqexact_cloneexact_invariant_idempotent) {
     fs2array c1 = fs2arr_cloneexact(&a);
     fs2array c2 = fs2arr_cloneexact(&c1);
 
-    CHECK_TRUE("c1 == a",  fs2arr_eqexact(&a, &c1));
-    CHECK_TRUE("c2 == c1", fs2arr_eqexact(&c1, &c2));
-    CHECK_TRUE("c2 == a",  fs2arr_eqexact(&a, &c2));
+    CHECK_TRUE("c1 == a",  fs2arr_equalexact(&a, &c1));
+    CHECK_TRUE("c2 == c1", fs2arr_equalexact(&c1, &c2));
+    CHECK_TRUE("c2 == a",  fs2arr_equalexact(&a, &c2));
 
     fs2arr_free(&a);
     fs2arr_free(&c1);
@@ -2376,7 +2376,7 @@ Test(fs2_array, eqexact_clone_NOT_invariant_with_holes) {
     /* packed: [0,1,3,4], hwm=4, count=4 */
 
     CHECK_FALSE("packed differs from source in hwm/positions",
-                fs2arr_eqexact(&a, &packed));
+                fs2arr_equalexact(&a, &packed));
 
     fs2arr_free(&a);
     fs2arr_free(&packed);

@@ -262,7 +262,7 @@ fs2arr_get(const fs2array *a, size_t idx) {
  * @return   true if arrays are "exactly equal up to hwm".
  */
 extern bool
-fs2arr_eqexact(const fs2array *a, const fs2array *b);
+fs2arr_equalexact(const fs2array *a, const fs2array *b);
 
 /**
  * @brief Print a one-slot-per-line technical dump of an fs2array.

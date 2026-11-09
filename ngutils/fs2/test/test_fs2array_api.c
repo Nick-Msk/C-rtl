@@ -730,7 +730,7 @@ Test(fs2_array_sort, sortasc_idempotent) {
 
     fs2arr_sortasc(&a);
 
-    CHECK_TRUE("idempotent", fs2arr_eqexact(&a, &snapshot));
+    CHECK_TRUE("idempotent", fs2arr_equalexact(&a, &snapshot));
 
     fs2arr_free(&a);
     fs2arr_free(&snapshot);
@@ -1065,7 +1065,7 @@ Test(fs2_array_api, compact_idempotent_eqexact) {
     CHECK_EQ  ("hwm",   snapshot.hwm,   a.hwm);
     CHECK_EQ  ("count", snapshot.count, a.count);
     CHECK_EQ  ("size",  snapshot.size,  a.size);
-    CHECK_TRUE("eqexact after double compact", fs2arr_eqexact(&a, &snapshot));
+    CHECK_TRUE("eqexact after double compact", fs2arr_equalexact(&a, &snapshot));
     CHECK_TRUE("validate",                      fs2arr_validate(NULL, &a));
 
     fs2arr_free(&a);
@@ -1094,7 +1094,7 @@ Test(fs2_array_api, compact_idempotent_all_holes) {
     fs2arr_compact(&a);          /* idempotent — hwm=0, no-op */
 
     CHECK_TRUE("eqexact after double compact (all holes)",
-               fs2arr_eqexact(&a, &snapshot));
+               fs2arr_equalexact(&a, &snapshot));
     CHECK_EQ  ("hwm",   0, a.hwm);
     CHECK_EQ  ("count", 0, a.count);
 
@@ -1124,7 +1124,7 @@ Test(fs2_array_api, compact_idempotent_packed) {
     fs2arr_compact(&a);                /* no-op: write == hwm */
 
     CHECK_TRUE("packed → compact == no-op",
-               fs2arr_eqexact(&a, &snapshot));
+               fs2arr_equalexact(&a, &snapshot));
 
     fs2arr_free(&a);
     fs2arr_free(&snapshot);
@@ -1898,7 +1898,7 @@ Test(fs2_array_api, concat_new_preserves_multiset) {
     /* sort both, compare */
     fs2arr_sortasc(&r1);
     fs2arr_sortasc(&r2);
-    CHECK_TRUE("same multiset", fs2arr_eqexact(&r1, &r2));
+    CHECK_TRUE("same multiset", fs2arr_equalexact(&r1, &r2));
 
     fs2arr_free(&a); fs2arr_free(&b);
     fs2arr_free(&r1); fs2arr_free(&r2);
@@ -1944,7 +1944,7 @@ Test(fs2_array_api, split_concat_roundtrip) {
     CHECK_EQ  ("count", 4, recon.count);
     CHECK_GE  ("size",  recon.size, 4);          /* tight */
     CHECK_TRUE("eqexact with original parts",
-               fs2arr_eqexact(&parts, &recon));
+               fs2arr_equalexact(&parts, &recon));
 
     fs2_free(&src); fs2_free(&comma);
     fs2arr_free(&parts); fs2arr_free(&left); fs2arr_free(&right);
@@ -2125,7 +2125,7 @@ Test(fs2_array_api, fromstr_macro_matches_function) {
     fs2array via_func = fs2arr_fromstrarr_new(src);
     fs2array via_macro = FS2ARRFROMSTR("a", "b", "c");
 
-    CHECK_TRUE("eqexact", fs2arr_eqexact(&via_func, &via_macro));
+    CHECK_TRUE("eqexact", fs2arr_equalexact(&via_func, &via_macro));
 
     fs2arr_free(&via_func);
     fs2arr_free(&via_macro);
@@ -3032,10 +3032,10 @@ Test(fs2_array_api, reverse_involution) {
     fs2array orig = fs2arr_cloneexact(&a);
 
     fs2arr_reverse(&a);
-    CHECK_FALSE("reversed ≠ original", fs2arr_eqexact(&a, &orig));
+    CHECK_FALSE("reversed ≠ original", fs2arr_equalexact(&a, &orig));
 
     fs2arr_reverse(&a);
-    CHECK_TRUE("reverse×2 == identity", fs2arr_eqexact(&a, &orig));
+    CHECK_TRUE("reverse×2 == identity", fs2arr_equalexact(&a, &orig));
 
     fs2arr_free(&a);
     fs2arr_free(&orig);
@@ -3141,7 +3141,7 @@ Test(fs2_array_api, sort_then_reverse_unique_elements_eq_sortdesc) {
     fs2arr_sortdesc(&b);                      /* sorted desc */
 
     CHECK_TRUE("unique elems: same result",
-               fs2arr_eqexact(&a, &b));
+               fs2arr_equalexact(&a, &b));
 
     fs2arr_free(&a);
     fs2arr_free(&b);
@@ -3160,8 +3160,8 @@ Test(fs2_array_api, palindrome_check_via_reverse) {
     fs2array rpal  = fs2arr_reverse_new(&pal);
     fs2array rnonp = fs2arr_reverse_new(&nonp);
 
-    CHECK_TRUE ("palindrome",     fs2arr_eqexact(&pal,  &rpal));
-    CHECK_FALSE("not palindrome", fs2arr_eqexact(&nonp, &rnonp));
+    CHECK_TRUE ("palindrome",     fs2arr_equalexact(&pal,  &rpal));
+    CHECK_FALSE("not palindrome", fs2arr_equalexact(&nonp, &rnonp));
 
     fs2arr_free(&pal);  fs2arr_free(&rpal);
     fs2arr_free(&nonp); fs2arr_free(&rnonp);
@@ -3171,12 +3171,12 @@ Test(fs2_array_api, palindrome_check_via_reverse) {
 Test(fs2_array_api, palindrome_empty_and_single) {
     fs2array empty = FS2ARR();
     fs2array rempty = fs2arr_reverse_new(&empty);
-    CHECK_TRUE("empty palindrome", fs2arr_eqexact(&empty, &rempty));
+    CHECK_TRUE("empty palindrome", fs2arr_equalexact(&empty, &rempty));
 
     __fs2_checkreset();
     fs2array single = FS2ARRFROMSTR("x");
     fs2array rsingle = fs2arr_reverse_new(&single);
-    CHECK_TRUE("single palindrome", fs2arr_eqexact(&single, &rsingle));
+    CHECK_TRUE("single palindrome", fs2arr_equalexact(&single, &rsingle));
 
     fs2arr_free(&single);
     fs2arr_free(&rsingle);

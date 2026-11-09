@@ -266,7 +266,7 @@ fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
 }
 
 bool
-fs2arr_eqexact(const fs2array *a, const fs2array *b) {
+fs2arr_equalexact(const fs2array *a, const fs2array *b) {
     if (a == b)
         return true;
     if (!a || !b)

@@ -477,7 +477,7 @@ Test(fs2_array_simulation, merge_equals_full_sort) {
     fs2array concat = sort_concat_manual(&mab2, &mcd2, fs2_cmp_wrap);
 
     CHECK_TRUE("merge == sort of concat",
-               fs2arr_eqexact(&merged, &concat));
+               fs2arr_equalexact(&merged, &concat));
 
     fs2arr_free(&a); fs2arr_free(&b); fs2arr_free(&c); fs2arr_free(&d);
     fs2arr_free(&mab); fs2arr_free(&mcd); fs2arr_free(&merged);
@@ -552,7 +552,7 @@ Test(fs2_array_simulation, split_sort_merge_roundtrip) {
 
     /* Both give identical results */
     CHECK_TRUE("sort-all == sort-halves-merge",
-               fs2arr_eqexact(&all, &via_merge));
+               fs2arr_equalexact(&all, &via_merge));
 
     /* Content check */
     const char *expected[] = {
@@ -692,7 +692,7 @@ Test(fs2_array_simulation, pairwise_many_multiset_preserved) {
     fs2arr_sort(&flat, fs2_cmp_wrap);
 
     CHECK_TRUE("merged multiset == sorted flat",
-               fs2arr_eqexact(&final, &flat));
+               fs2arr_equalexact(&final, &flat));
 
     for (int i = 0; i < 5; i++) fs2arr_free(&arr[i]);
     fs2arr_free(&m01); fs2arr_free(&m23); fs2arr_free(&m0123);
