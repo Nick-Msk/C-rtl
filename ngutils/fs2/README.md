@@ -358,6 +358,142 @@ bool fs2_cant_realloc(fs2 *s);
 - **`fs2_static()` was considered and rejected.** A compound-literal view helper would eliminate `_str` wrappers but introduces block-scope lifetime pitfalls. `FS2LITERAL("x")` covers inline use; `_str` wrappers cover runtime C-strings.
 - **CI workaround**: release build uses `-Wno-error=format-truncation` for GCC 13+ due to a false positive in `_FORTIFY_SOURCE=3` (GCC Bugzilla #102218).
 
+## fs2array — growable array of fs2
+
+`fs2array` is a dynamic array of **`fs2` values** (not pointers) with
+explicit logical length, hole-based detach, and packed invariants. Sits on
+top of `fs2.h` only — no dependency on `fs2_api.h`.
+
+```c
+typedef struct fs2array {
+    fs2    *arr;    /* heap array of fs2 values */
+    size_t  hwm;    /* high-water mark: [0, hwm) may contain holes */
+    size_t  size;   /* capacity in elements */
+    size_t  count;  /* live (non-hole) elements in [0, hwm) */
+} fs2array;
+
+#define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
+```
+
+### Two live-state types: values and holes
+
+Each slot in `[0, hwm)` is either:
+
+- **Live** — a valid `fs2` value, possibly `FS2EMPTY` (empty string).
+- **Hole** — a sentinel `FS2_NULL_ARRAY_ELEMENT` flag, `v == NULL`.
+  Never produced by `fs2` constructors — only by `fs2arr` operations
+  (after `detach`, `compact` moves, `clean`).
+
+Distinguish them with `fs2_is_hole(slot)`. **`fs2_is_empty(slot)` is
+NOT a hole check** — `FS2EMPTY` slots are live empty strings.
+
+Padding `[hwm, size)` is always holes (capacity, not logical content).
+
+### Invariants (checked by `fs2arr_validate`)
+
+- `count <= hwm <= size`
+- `[0, hwm)` contains exactly `count` live slots and `hwm - count` holes
+- `[hwm, size)` is all holes (padding)
+
+`fs2arr_ispacked(a)` checks `hwm == count` — no holes in the logical range.
+
+### API at a glance
+
+**Lifecycle** — `init`, `reserve`, `clean`, `cleanall`, `free`, `shrink`,
+`compact`, `synchwm`, `validate`.
+
+**Slots** — `get`, `find_tillhwm`, `ispacked`, `fs2_is_hole`.
+
+**Mutate** — `push`/`push_sp`/`push_dp` (`_Generic` on `fs2 *` / `fs2 **`),
+`pushstr`, `attach` (same dispatch), `setat`/`setat_str`, `detachto`,
+`detach_new`, `heap_detach`.
+
+**Construct** — `clone`, `cloneexact`, `fromstrarr_new` (+`FS2ARRFROMSTR`),
+`fromarr_new`, `fromarr_move`, `split_toarray`, `concat` / `concat_new`,
+`mergesorted_new`.
+
+**Transform** — `sort` (+`_asc`/`_desc`/`_asc_null*`/`_desc_null*`),
+`unique`/`unique_new`, `reverse`/`reverse_new`.
+
+**Query** — `issorted`, `bsearch` (+`_str`), `find` (+`_str`), `contains`
+(+`_str`), `count` (+`_str`), `eqexact`.
+
+**Join** — `join`, `join_delim` (+`_str`).
+
+**Tech** — `techfprint` (+ `FS2ARRTECHFPRINT` / `FS2ARRTECHPRINT` /
+`FS2ARRTECHLOG`).
+
+### The three `fs2array` contracts
+
+**1. `_new` constructors return packed arrays.**
+
+`clone`, `cloneexact`, `fromstrarr_new`, `fromarr_new`, `fromarr_move`,
+`split_toarray`, `concat_new`, `mergesorted_new`, `unique_new`,
+`reverse_new` — all produce `hwm == count` (no holes). Capacity may be
+larger (`reserve` rounds to power-of-2, floor 16); call `fs2arr_shrink`
+for tight fit.
+
+**2. In-place mutators abort on non-empty STATIC.**
+
+`push`, `setat`, `sort`, `unique`, `reverse`, `compact`, `clean` — same
+`fs2_cant_mutate` semantics as `fs2_toupper` / `fs2_trim`. Non-empty
+`FS2_STATIC` input → `SIGABRT`.
+
+**3. Precondition: packed before sort/unique/reverse/bsearch/merge.**
+
+The logical range `[0, count)` must be dense (no holes inside). After
+`detach`, call `fs2arr_compact(&a)` to pack holes to `[count, hwm)`. If
+you skip this, `qsort` / `bsearch` will hit a hole and `strcmp(NULL, ...)`
+→ SEGV.
+
+### Gotchas
+
+**Holes ≠ empty strings.** `FS2EMPTY` in a slot is a *live* empty string;
+a hole is a *reusable slot*. `push(FS2EMPTY)` → live empty slot, not hole.
+`detach` of a live empty → hole.
+
+**`concat` treats dst as first element.** `fs2arr_join_delim(&dst, &src, "|")`
+with non-empty `dst` inserts delimiter **before** the first src element
+(`"x" + ["a","b"]` → `"x|a|b"`, not `"xa|b"`). This matches `fs2_concatall`
+and makes loop-appends produce `"a|b|c"` without leading separators.
+
+**Hole-safe comparators for sort/unique.** `fs2_cmp_wrap` / `fs2_cmp_desc_wrap`
+assume no holes in `[0, hwm)` (would SEGV). `fs2_cmp_nullbefore_wrap` /
+`fs2_cmp_nullafter_wrap` treat `v == NULL` as a sort key — used for
+`fs2arr_sortasc_nullafter` etc., which effectively combine `compact + sort`.
+
+**Self-concat is allowed.** `fs2arr_concat(&a, &a)` doubles every live
+element (holes stay single). `restrict` removed; snapshot of `src->hwm` +
+upfront `reserve` make it safe.
+
+**`detach` leaves a hole.** Slot becomes `FS2EMPTY`-free — hole sentinel.
+`hwm` unchanged, `count--`. Follow with `compact` (packs holes away),
+`synchwm` (only if holes are trailing), or reuse via `attach(a, v, idx)`.
+
+### Example
+
+```c
+fs2array idx = FS2ARR();
+
+fs2 v1 = fs2_fromstr("cherry"), v2 = fs2_fromstr("apple");
+fs2arr_push(&idx, &v1);                    /* v1 → FS2EMPTY */
+fs2arr_push(&idx, &v2);                    /* v2 → FS2EMPTY */
+fs2arr_pushstr(&idx, "banana");            /* owned copy */
+
+fs2arr_sortasc(&idx);                      /* [apple, banana, cherry] */
+
+fs2 k = fs2_fromstr("banana");
+ptrdiff_t hit = fs2arr_bsearch(&idx, &k, fs2_cmp_wrap);   /* 1 */
+fs2_free(&k);
+
+fs2 taken = fs2arr_detach_new(&idx, 1);    /* "banana", hole at [1] */
+fs2_free(&taken);
+
+fs2arr_compact(&idx);                      /* [apple, cherry], hwm=2 */
+
+fs2arr_free(&idx);
+```
+
 ## Development
 
 Uses [Criterion](https://criterion.readthedocs.io/) for unit tests.
@@ -376,13 +512,21 @@ make analyze          # clang static analyzer
 ```text
 .
 ├── include/
-│   ├── fs2.h           struct, flags, macros, validation, capacity, move
-│   ├── fs2_api.h       higher-level operations (string manipulation, finders, parsers)
+│   ├── fs2.h                  struct, flags, macros, validation, capacity, move
+│   ├── fs2_api.h              higher-level ops: manip, finders, parsers
+│   ├── fs2array.h             fs2array core: struct, holes, push/attach/detach,
+│   │                          compact/synchwm/shrink, sort/unique/reverse,
+│   │                          bsearch/find/contains/count, join, validate, tech
+│   ├── fs2array_api.h         fs2array higher layer: FS2ARRFROMSTR macro,
+│   │                          fs2arr_fromstrarr_new, split_toarray,
+│   │                          mergesorted_new, concat/concat_new
 │   └── fs2_internal_utils.h   view wrappers (_fs2_wrap, _fs2_vsprintf_position)
 ├── src/
-│   ├── fs2.c           primitives (validate, free, move, convert, techfprint)
-│   ├── fs2_api.c       higher-level impl
-│   └── fs2_tech.c      techdump, techdump_file, techdump_emergency
+│   ├── fs2.c                  primitives (validate, free, move, convert, techfprint)
+│   ├── fs2_api.c              higher-level impl
+│   ├── fs2_tech.c             techdump, techdump_file, techdump_emergency
+│   ├── fs2array.c             fs2array core impl
+│   └── fs2array_api.c         fs2array higher impl (split/merge/concat/fromstrarr)
 ├── test/
 │   ├── test_fs2.c                      primitives tests
 │   ├── test_fs2_api.c                  core API tests
@@ -393,12 +537,39 @@ make analyze          # clang static analyzer
 │   ├── test_fs2_api_serialization.c    _Generic serializers
 │   ├── test_fs2_api_sort_search.c      bsearch / qsort wrappers
 │   ├── test_fs2_tech.c                 techdump
-│   └── test_fs2.h                      shared helpers
+│   ├── test_fs2array.c                 fs2array core tests (init/push/detach/
+│   │                                   compact/sort/bsearch/find/join/validate)
+│   ├── test_fs2array_api.c             fs2array higher tests (split_toarray,
+│   │                                   mergesorted_new, concat, fromstrarr)
+│   ├── test_fs2array_sim.c             fs2array simulation tests (multi-op
+│   │                                   lifecycles: build/sort/search/mutate)
+│   └── test_fs2.h                      shared helpers (incl. TEST_ARR)
 ├── build/              artifacts (gitignored)
 ├── logs/               test logs (gitignored, `logs/result/all.log` for consolidated)
 ├── Makefile
 └── CHANGELOG.md
 ```
+
+### Layer boundaries
+
+| Layer | Files | Depends on |
+|---|---|---|
+| **Core** | `fs2.h`, `fs2.c` | `common`, `error`, `log`, `bool`, `checker` |
+| **API** | `fs2_api.h`, `fs2_api.c`, `fs2_tech.c` | Core + `fs2_internal_utils.h` |
+| **Array core** | `fs2array.h`, `fs2array.c` | Core (`fs2.h`) + `fs2_internal_utils.h` |
+| **Array API** | `fs2array_api.h`, `fs2array_api.c` | Array core + API (`fs2_api.h`) |
+| **Tests** | `test/*.c` | All layers + Criterion + `test_fs2.h` |
+
+**Rule**: `fs2array.h` **must not** include `fs2_api.h` — array core works
+on primitive `fs2` values (sort/find/compare) without touching the string
+manipulation layer. Anything that needs `fs2_api` primitives (e.g.
+`fs2_substr_new` for `split_toarray`, `fs2_cat` for `join`) lives in
+`fs2array_api.h`.
+
+Base array tests (`test_fs2array.c`) mirror this — they only include
+`fs2array.h` and use `TEST_ARR(...)` (base-layer constructor from
+`test_fs2.h`) instead of `FS2ARRFROMSTR` (API-layer macro from
+`fs2array_api.h`).
 
 ## License
 
