@@ -466,4 +466,20 @@ fs2arr_count_str(const fs2array *restrict a, const char *restrict key,
 extern ptrdiff_t
 fs2arr_setat(fs2array *a, size_t idx, fs2 *src);
 
+/**
+ * @brief `fs2arr_setat` with C-string value: owned copy.
+ *
+ * `fs2_fromstr(str)` — copy, so array owns the buffer.
+ * NULL → `FS2EMPTY` (live empty slot, not hole).
+ *
+ * NOTE: uses copy, not view. For zero-alloc view use, pass
+ * `fs2 k = _fs2_wrap(str); fs2arr_setat(a, idx, &k);` explicitly
+ * (caller responsible for str lifetime).
+ */
+static inline ptrdiff_t
+fs2arr_setat_str(fs2array *a, size_t idx, const char *str) {
+    fs2 tmp = fs2_fromstr(str);       /* ALLOC copy; NULL → FS2EMPTY */
+    return fs2arr_setat(a, idx, &tmp);
+}
+
 #endif /* !FS2ARRAY_API_H */
