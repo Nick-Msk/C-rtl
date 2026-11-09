@@ -2491,3 +2491,76 @@ Test(fs2_array, ispacked_all_holes) {
     fs2arr_free(&a);
     assert_balanced();
 }
+
+// fs2arr_pushstr
+
+Test(fs2_array, pushstr_owned_copy) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();
+    char buf[] = "hello";                /* stack buffer */
+
+    fs2arr_pushstr(&a, buf);
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_STR_EQ("[0]", "hello", a.arr[0].v);
+    CHECK_TRUE("[0] ALLOC", fs2_is_alloc(&a.arr[0]));  /* owned copy, not STATIC */
+
+    /* mutate source — array unaffected */
+    buf[0] = 'X';
+    CHECK_STR_EQ("src mutated",       "Xello", buf);
+    CHECK_STR_EQ("array still hello", "hello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, pushstr_literal) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();
+
+    fs2arr_pushstr(&a, "foo");
+    fs2arr_pushstr(&a, "bar");
+
+    CHECK_EQ  ("count", 2, a.count);
+    CHECK_STR_EQ("[0]", "foo", a.arr[0].v);
+    CHECK_STR_EQ("[1]", "bar", a.arr[1].v);
+    CHECK_TRUE("[0] ALLOC", fs2_is_alloc(&a.arr[0]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, pushstr_null_pushes_empty) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();
+
+    fs2arr_pushstr(&a, NULL);           /* fs2_fromstr(NULL) → FS2EMPTY */
+
+    CHECK_EQ  ("count", 1, a.count);
+    CHECK_TRUE("[0] empty", fs2_eq_empty(&a.arr[0]));
+    CHECK_FALSE("[0] hole", fs2_is_hole(&a.arr[0]));
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, pushstr_null_arr_aborts, .signal = SIGABRT) {
+    fs2arr_pushstr(NULL, "x");
+}
+
+Test(fs2_array, pushstr_owned_copy_not_view) {
+    __fs2_checkreset();
+    fs2array a = FS2ARR();
+    char buf[] = "hello";
+
+    fs2arr_pushstr(&a, buf);
+
+    CHECK_TRUE("[0] ALLOC", fs2_is_alloc(&a.arr[0]));   /* ← ловит _fs2_wrap */
+    CHECK_FALSE("[0] STATIC", fs2_is_static(&a.arr[0]));
+
+    buf[0] = 'X';
+    CHECK_STR_EQ("array independent", "hello", a.arr[0].v);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
