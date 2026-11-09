@@ -7,6 +7,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — fs2array
+
+New container: `fs2array` — growable array of `fs2` **values** (not pointers),
+with hole-based detach, packed/tight invariants, and a complete set of
+build/sort/merge/search/join operations.
+
+#### Core struct
+
+```c
+typedef struct fs2array {
+    fs2    *arr;    /* heap array of fs2 values (never BODYALLOC inside) */
+    size_t  hwm;    /* high-water mark: [0, hwm) may contain holes       */
+    size_t  size;   /* capacity in elements                             */
+    size_t  count;  /* live (non-hole) elements in [0, hwm)            */
+} fs2array;
+
+#define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
+```
+
+Invariants: `count <= hwm <= size`. Holes only in `[0, hwm)`; padding
+`[hwm, size)` is always holes. `fs2arr_validate` checks all of this.
+
+#### Slots — hole sentinel
+
+`FS2_NULL_ARRAY_ELEMENT = 0x100` flag in `fs2_flags`. Never set by any `fs2`
+constructor — only by `fs2arr` operations. Distinguishes:
+
+| Slot state | `fs2_is_hole` | `fs2_is_empty` |
+|---|---|---|
+| Hole | **true** | true |
+| Live `FS2EMPTY` (empty string) | false | true |
+| Live `"..."` | false | false |
+
+New predicates:
+- `fs2_is_hole(slot)` — `slot->flags == FS2_NULL_ARRAY_ELEMENT` (moved to `fs2.h`)
+- `fs2arr_ispacked(a)` — `hwm == count` (precondition for sort/unique/reverse/bsearch/merge)
+
+#### Lifecycle
+
+`init(cnt)`, `reserve(a, need)`, `clean(a, from, to)` (range), `cleanall(a)`,
+`free(a)`, `shrink(a)`, `compact(a)`, `synchwm(a)`.
+
+- `init(n)` — capacity `>= n`, `count == 0`. No live elements.
+- `shrink` — realloc down to `hwm`; canonical reset when `hwm == 0`.
+- `compact` — pack live to `[0, count)`, holes to `[count, size)`, `hwm = count`.
+- `synchwm` — trim trailing holes only, no move.
+
+#### Build & mutate
+
+`push` (+`_sp`/`_dp` via `_Generic`), `pushstr`, `attach` (same `_Generic`),
+`setat` (+`_str`), `detachto`, `detach_new`, `heap_detach`.
+
+- `push(a, src)` — `_Generic` dispatch: `fs2 *` → `_sp` (stack, source → FS2EMPTY);
+  `fs2 **` → `_dp` (heap, source nulled, struct freed).
+- `pushstr` / `setat_str` — `fs2_fromstr` (owned copy), **not** `_fs2_wrap`.
+- `attach` — same dispatch as `push`; for filling holes; raises on non-hole slot.
+- `setat` — replace-if-live, attach-if-hole; extends `hwm` if `idx >= hwm`.
+- `detachto` / `detach_new` / `heap_detach` — move out, slot becomes hole,
+  `count--`, `hwm` unchanged.
+
+#### Constructors
+
+`clone(src)` (packed, tight), `cloneexact(src)` (preserves `hwm`, holes),
+`fromstrarr_new(cstr[])`, `fromarr_new(const fs2 *const[], cnt)` (deep copy),
+`fromarr_move(fs2 *[], cnt)` (move), `split_toarray(s, delim)`,
+`concat(a, b)` / `concat_new(a, b)`, `mergesorted_new(a, b, cmp)`.
+
+`FS2ARRFROMSTR(...)` — variadic macro for `fromstrarr_new`.
+
+#### Transform
+
+`sort(a, cmp)` / `_asc` / `_desc` / `_asc_nullbefore` / `_asc_nullafter` /
+`_desc_nullbefore` / `_desc_nullafter`, `unique(a, cmp)` (+`_new`),
+`reverse(a)` (+`_new`).
+
+Precondition for sort/unique/reverse: packed (`fs2arr_ispacked`).
+Null-variants of sort handle holes as `v == NULL` — `_asc_nullafter` and
+`_desc_nullbefore` effectively compact + sort in one call.
+
+#### Query & search
+
+`get(a, idx)`, `find_tillhwm(a)`, `issorted(a, cmp)`, `ispacked(a)`,
+`eqexact(a, b)`, `validate(out, a)`, `bsearch(a, key, cmp)` (+`_str`),
+`find(a, key, cmp)` (+`_str`), `contains`, `count`.
+
+- `get` returns the slot pointer (may be a hole — check `fs2_is_hole`).
+- `find` / `count` work on any array (holes skipped); `bsearch` requires packed.
+- `eqexact` — semantic comparison up to `hwm`, holes match holes,
+  live match live via `fs2_cmp`.
+
+#### Join / concat
+
+`join(dst, src)`, `join_delim(dst, src, delim)` (+`_str`) — append live
+elements to `fs2 dst` with optional separator. `dst` acts as first element:
+non-empty dst → delimiter before the first src element too.
+
+#### Tech
+
+`fs2arr_techfprint(out, a, name)` + macros `FS2ARRTECHFPRINT` /
+`FS2ARRTECHPRINT` / `FS2ARRTECHLOG`. Shows `hwm`/`size`/`count`, up to
+`FS2ARR_TECH_PRINT_COUNT` slot lines, `<hole>` markers, padding summary.
+
+#### Contracts summary
+
+- `_new` constructors return **packed** arrays (`hwm == count`), capacity
+  rounded to power-of-2 (floor `FS2_MIN_ALLOC`). Call `fs2arr_shrink` for tight.
+- In-place mutators on non-empty STATIC abort (`invfatal`, SIGABRT).
+- `fs2_is_empty(slot)` is **not** a hole check — `FS2EMPTY` slots are live.
+- Precondition for `sort`/`unique`/`reverse`/`bsearch`/`mergesorted_new`:
+  packed. Call `fs2arr_compact` after `detach`.
+- Hole-vs-empty-string distinction is fundamental — `eqexact` and
+  `fs2arr_validate` enforce it.
+
+#### Changed — fs2array
+
+- `fs2arr_is_hole` renamed to `fs2_is_hole`, moved to `fs2.h` (unified
+  with other `fs2_is_*` predicates; used by both `fs2array` layers).
+- `fs2arr_push` / `fs2arr_attach` return `ptrdiff_t` (slot index) instead
+  of `fs2 *`. Pointer was useless for the caller (could dangle after next
+  push); index is stable and useful for `get` / `detach`.
+- `fs2arr_concat` — `restrict` removed from parameters; self-concat
+  (`dst == src`) supported via `hwm` snapshot + upfront `reserve`.
+
+#### Fixed — fs2array
+
+- `fs2arr_compact` — `hwm = write` at end (holes fully trimmed to padding);
+  previously left holes inside `[0, hwm)`. Also `fs2_is_hole` reset on
+  source slot prevents duplicate ownership → double-free.
+- `fs2arr_mergesorted_new` — overflow-check direction fixed (was aborting
+  on safe inputs: `count <= SIZE_MAX - b->count` should trigger raise
+  when **false**).
+- `fs2arr_issorted` — off-by-one fixed (loop started at `i = 1`, skipped
+  `arr[0]` comparison → always returned true on unsorted).
+- `fs2arr_sort` — `qsort` range fixed to `[0, hwm)` (was `[0, count)`,
+  crashed with SEGV when holes present in the logical range).
+- `fs2arr_attach_sp` — bounds-check against `a->size` (was `src->sz`,
+  wrong field).
+- `fs2arr_pushstr` — uses `fs2_fromstr` (copy) instead of `_fs2_wrap`
+  (STATIC view would dangle after caller’s buffer goes out of scope, and
+  mutate through the shared buffer).
+- `fs2arr_setat_str` — same copy-vs-view fix.
+- `fs2arr_attach_dp` — missing `fs2_free(p)` after `fs2arr_plug` leaked
+  the heap struct shell. Now freed; caller’s `*src` nulled via `*src = NULL`
+  in `_dp` (with validate-before-null so raise preserves pointer).
+- `fs2_cmp_nullbefore` / `fs2_cmp_nullafter` — ternary branches used
+  `!str1->v` twice instead of `!str1->v`/`!str2->v`; comparison always
+  returned 0, violating strict-weak-ordering for `qsort` (UB).
+
 ### Architecture shift: `fs2.*` is now the Protected layer
 
 The previous plan of a separate `pfs2.h` / `cfs2.h` layer is dropped. The
