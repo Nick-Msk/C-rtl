@@ -74,7 +74,7 @@ fs2arr_clone(const fs2array *src) {
     fs2array a = fs2arr_init(src->count);  // physical count MAY BE differ!!! Logical - the same.          
 
     for (size_t i = 0; i < src->hwm; i++) {
-        if (fs2arr_is_hole(&src->arr[i]))
+        if (fs2_is_hole(&src->arr[i]))
             continue;
         fs2 v = fs2_clone(&src->arr[i]);    /* deep copy of one element */
         fs2arr_push(&a, &v);                /* v → FS2EMPTY, copy in slot */
@@ -91,7 +91,7 @@ fs2arr_cloneexact(const fs2array *src) {
     a.hwm = src->hwm;       // to save trailer nulls    
 
     for (size_t i = 0; i < src->hwm; i++) {
-        if (fs2arr_is_hole(&src->arr[i]))
+        if (fs2_is_hole(&src->arr[i]))
             continue;
         fs2 v = fs2_clone(&src->arr[i]);    /* deep copy of one element */
         fs2arr_attach_sp(&a, &v, i);                /* v → FS2EMPTY, copy in slot */
@@ -103,7 +103,7 @@ size_t
 fs2arr_synchwm(fs2array *a) {
     invfatal(ERR_NULL_INPUT, a != NULL, "Null fs2array");
 
-    while (a->hwm > 0 && fs2arr_is_hole(&a->arr[a->hwm - 1]))
+    while (a->hwm > 0 && fs2_is_hole(&a->arr[a->hwm - 1]))
         a->hwm--;
     return logsimpleret(a->hwm, "Hwn synced to %zu", a->hwm);
 }
@@ -118,7 +118,7 @@ fs2arr_clean(fs2array *a, size_t from, size_t to) {
 
     size_t freed = 0;
     for (size_t i = from; i < to; i++) {
-        if (fs2arr_is_hole(&a->arr[i]))
+        if (fs2_is_hole(&a->arr[i]))
             continue;
         fs2_free(&a->arr[i]);
         fs2arr_set_hole(&a->arr[i]);
@@ -193,7 +193,7 @@ fs2arr_find_tillhwm(const fs2array *a) {
         "fs2array is null %p", a);
 
     for (size_t i = 0; i < a->hwm; i++)
-        if (fs2arr_is_hole(&a->arr[i]))
+        if (fs2_is_hole(&a->arr[i]))
             return i;
     return -1;
 }
@@ -218,7 +218,7 @@ fs2arr_attach_sp(fs2array *a, fs2 *src, size_t idx) {
     if (idx >= a->size)
         userraise(-1, ERR_OUT_OF_RANGE, 
             "Index %zu >= size %zu", idx, a->size);
-    if (!fs2arr_is_hole(&a->arr[idx]))
+    if (!fs2_is_hole(&a->arr[idx]))
         userraise(-1, ERR_OUT_OF_RANGE, 
             " slot[%zu] not a null marker", idx);
 
@@ -235,7 +235,7 @@ fs2arr_attach_dp(fs2array *a, fs2 **src, size_t idx) {
     /* Pre-validate so null-first is safe: no raise AFTER nulling. */
     if (idx >= a->size)
         userraise(-1, ERR_OUT_OF_RANGE, "idx %zu >= size %zu", idx, a->size);
-    if (!fs2arr_is_hole(&a->arr[idx]))
+    if (!fs2_is_hole(&a->arr[idx]))
         userraise(-1, ERR_OUT_OF_RANGE, "slot[%zu] not a hole", idx);
 
     fs2 *p = *src;
@@ -255,7 +255,7 @@ fs2arr_detachto(fs2array *a, size_t idx, fs2 *dst) {
         return logsimpleerr(false,
             "fs2arr_detachto: idx %zu >= hwm %zu", idx, a->hwm);
 
-    if (fs2arr_is_hole(&a->arr[idx]))
+    if (fs2_is_hole(&a->arr[idx]))
         return logsimpleerr(false, 
             "fs2arr_detachto: slot[%zu] is already empty", idx);
 
@@ -277,8 +277,8 @@ fs2arr_equalexact(const fs2array *a, const fs2array *b) {
 
     /* hwm == 0 → no data to compare, both "empty up to hwm" */
     for (size_t i = 0; i < a->hwm; i++) {
-        bool ha = fs2arr_is_hole(&a->arr[i]);
-        bool hb = fs2arr_is_hole(&b->arr[i]);
+        bool ha = fs2_is_hole(&a->arr[i]);
+        bool hb = fs2_is_hole(&b->arr[i]);
 
         if (ha != hb) return false;            /* hole vs live */
         if (ha)       continue;                /* both holes */
@@ -313,7 +313,7 @@ fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *re
 
         for (size_t i = 0; i < shown; i++) {
             const fs2 *slot = &a->arr[i];
-            if (fs2arr_is_hole(slot)) {
+            if (fs2_is_hole(slot)) {
                 w = fprintf(out, "  [%zu] <hole>\n", i);
             } else {
                 const char *v   = slot->v ? slot->v : "(nil)";
@@ -372,7 +372,7 @@ fs2arr_validate(FILE *restrict out, const fs2array *restrict a)
     /* 3. [0, hwm): hole or valid fs2; live count == count. */
     size_t live = 0;
     for (size_t i = 0; i < a->hwm; i++) {
-        if (fs2arr_is_hole(&a->arr[i]))
+        if (fs2_is_hole(&a->arr[i]))
             continue;
         if (!fs2_validate(out, &a->arr[i]))
             return LOGNPRINTF(out, "slot[%zu] invalid fs2", i);
@@ -385,7 +385,7 @@ fs2arr_validate(FILE *restrict out, const fs2array *restrict a)
 
     /* 4. [hwm, size): all holes (padding). */
     for (size_t i = a->hwm; i < a->size; i++)
-        if (!fs2arr_is_hole(&a->arr[i]))
+        if (!fs2_is_hole(&a->arr[i]))
             return LOGNPRINTF(out,
                 "slot[%zu] in padding [hwm=%zu, size=%zu) is not a hole",
                 i, a->hwm, a->size);

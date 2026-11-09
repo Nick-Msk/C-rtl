@@ -13,13 +13,6 @@ typedef struct fs2array {
 /** Canonical empty fs2array (no allocation). */
 #define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
 
-/* A hole slot has FS2_NULL_ARRAY_ELEMENT set and nothing else.
- * Never produced by fs2 constructors; only by fs2arr operations. */
-static inline bool
-fs2arr_is_hole(const fs2 *slot) {
-    return slot->flags == FS2_NULL_ARRAY_ELEMENT;
-}
-
 static inline void
 fs2arr_set_hole(fs2 *slot) {
     slot->len   = 0;
@@ -228,7 +221,7 @@ fs2arr_heap_detach(fs2array *a, size_t idx) {
  * @brief Get pointer to slot @p idx (may be a hole).
  *
  * Returns `&a->arr[idx]` if `idx < a->hwm`, NULL otherwise. The slot may
- * be a hole (check `fs2arr_is_hole`) or a live element. For **compacted**
+ * be a hole (check `fs2_is_hole`) or a live element. For **compacted**
  * arrays (after push-only or `fs2arr_compact`), all slots `[0, count)`
  * are live — no hole-check needed.
  *

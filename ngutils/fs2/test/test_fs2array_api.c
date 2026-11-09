@@ -24,7 +24,7 @@ Test(fs2_array_api, split_basic_three_parts) {
     CHECK_STR_EQ("[0]", "a", arr.arr[0].v);
     CHECK_STR_EQ("[1]", "b", arr.arr[1].v);
     CHECK_STR_EQ("[2]", "c", arr.arr[2].v);
-    CHECK_FALSE("[0] not hole", fs2arr_is_hole(&arr.arr[0]));
+    CHECK_FALSE("[0] not hole", fs2_is_hole(&arr.arr[0]));
 
     fs2arr_free(&arr);
     fs2_free(&s);       // must free that
@@ -81,7 +81,7 @@ Test(fs2_array_api, split_consecutive_delims_empty_parts) {
     CHECK_STR_EQ("[0]", "a", arr.arr[0].v);
     CHECK_STR_EQ("[1]", "",  arr.arr[1].v);     /* empty middle */
     CHECK_STR_EQ("[2]", "b", arr.arr[2].v);
-    CHECK_FALSE("[1] not hole", fs2arr_is_hole(&arr.arr[1]));  /* live empty */
+    CHECK_FALSE("[1] not hole", fs2_is_hole(&arr.arr[1]));  /* live empty */
     CHECK_TRUE ("[1] FS2EMPTY", fs2_eq_empty(&arr.arr[1]));
 
     fs2arr_free(&arr);
@@ -465,11 +465,11 @@ Test(fs2_array_sort, sortasc_nullafter_packs_holes) {
     CHECK_STR_EQ("[1]", "b", a.arr[1].v);
     CHECK_STR_EQ("[2]", "d", a.arr[2].v);
     CHECK_STR_EQ("[3]", "e", a.arr[3].v);
-    CHECK_TRUE ("[4] hole", fs2arr_is_hole(&a.arr[4]));
+    CHECK_TRUE ("[4] hole", fs2_is_hole(&a.arr[4]));
 
     /* After: packed state ([0, count) live, [count, hwm) holes) */
     for (size_t i = 0; i < a.count; i++)
-        CHECK_FALSE("[i] live", fs2arr_is_hole(&a.arr[i]));
+        CHECK_FALSE("[i] live", fs2_is_hole(&a.arr[i]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -492,7 +492,7 @@ Test(fs2_array_sort, sortdesc_nullbefore_packs_holes) {
     CHECK_STR_EQ("[1]", "d", a.arr[1].v);
     CHECK_STR_EQ("[2]", "b", a.arr[2].v);
     CHECK_STR_EQ("[3]", "a", a.arr[3].v);
-    CHECK_TRUE ("[4] hole", fs2arr_is_hole(&a.arr[4]));
+    CHECK_TRUE ("[4] hole", fs2_is_hole(&a.arr[4]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -764,8 +764,8 @@ Test(fs2_array_api, compact_packs_live_to_front) {
     CHECK_STR_EQ("[0]", "A", a.arr[0].v);
     CHECK_STR_EQ("[1]", "C", a.arr[1].v);
     CHECK_STR_EQ("[2]", "E", a.arr[2].v);
-    CHECK_TRUE ("[3] hole", fs2arr_is_hole(&a.arr[3]));
-    CHECK_TRUE ("[4] hole", fs2arr_is_hole(&a.arr[4]));
+    CHECK_TRUE ("[3] hole", fs2_is_hole(&a.arr[3]));
+    CHECK_TRUE ("[4] hole", fs2_is_hole(&a.arr[4]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -810,8 +810,8 @@ Test(fs2_array_api, compact_all_holes) {
 
     CHECK_EQ  ("hwm",   0, a.hwm);
     CHECK_EQ  ("count", 0, a.count);
-    CHECK_TRUE("[0] hole", fs2arr_is_hole(&a.arr[0]));
-    CHECK_TRUE("[1] hole", fs2arr_is_hole(&a.arr[1]));
+    CHECK_TRUE("[0] hole", fs2_is_hole(&a.arr[0]));
+    CHECK_TRUE("[1] hole", fs2_is_hole(&a.arr[1]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -848,7 +848,7 @@ Test(fs2_array_api, compact_moves_single_live_from_end) {
 
     CHECK_EQ  ("hwm",   1, a.hwm);
     CHECK_STR_EQ("[0]", "y", a.arr[0].v);    /* live moved to front */
-    CHECK_TRUE ("[1] hole", fs2arr_is_hole(&a.arr[1]));
+    CHECK_TRUE ("[1] hole", fs2_is_hole(&a.arr[1]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -922,7 +922,7 @@ Test(fs2_array_api, compact_no_duplicate_ownership) {
         }
     }
     for (size_t i = a.count; i < a.hwm; i++)
-        CHECK_TRUE("[i] hole", fs2arr_is_hole(&a.arr[i]));
+        CHECK_TRUE("[i] hole", fs2_is_hole(&a.arr[i]));
 
     /* fs2arr_free would double-free if ownership was duplicated — the
      * absence of a crash / ASan report proves single ownership per slot. */
@@ -980,8 +980,8 @@ Test(fs2_array_api, compact_all_holes_becomes_empty) {
     CHECK_EQ   ("count", 0, a.count);
 
     /* all [0, size) holes (padding) */
-    CHECK_TRUE("[0] hole", fs2arr_is_hole(&a.arr[0]));
-    CHECK_TRUE("[1] hole", fs2arr_is_hole(&a.arr[1]));
+    CHECK_TRUE("[0] hole", fs2_is_hole(&a.arr[0]));
+    CHECK_TRUE("[1] hole", fs2_is_hole(&a.arr[1]));
     CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
 
     fs2arr_free(&a);
@@ -1664,7 +1664,7 @@ Test(fs2_array_api, concat_preserves_holes_in_dst) {
     CHECK_EQ  ("hwm",   4, dst.hwm);             /* push appends at hwm=3 */
     CHECK_EQ  ("count", 3, dst.count);
     CHECK_STR_EQ("[0]", "A", dst.arr[0].v);
-    CHECK_TRUE ("[1] hole preserved", fs2arr_is_hole(&dst.arr[1]));
+    CHECK_TRUE ("[1] hole preserved", fs2_is_hole(&dst.arr[1]));
     CHECK_STR_EQ("[2]", "C", dst.arr[2].v);
     CHECK_STR_EQ("[3]", "X", dst.arr[3].v);
 
@@ -1716,7 +1716,7 @@ Test(fs2_array_api, concat_self_with_holes) {
     CHECK_EQ  ("hwm",   7, a.hwm);
     CHECK_EQ  ("count", 6, a.count);
     CHECK_STR_EQ("[0]", "a", a.arr[0].v);
-    CHECK_TRUE ("[1] hole preserved", fs2arr_is_hole(&a.arr[1]));
+    CHECK_TRUE ("[1] hole preserved", fs2_is_hole(&a.arr[1]));
     CHECK_STR_EQ("[2]", "c", a.arr[2].v);
     CHECK_STR_EQ("[3]", "d", a.arr[3].v);
     CHECK_STR_EQ("[4]", "a", a.arr[4].v);
@@ -2037,7 +2037,7 @@ Test(fs2_array_api, fromstrarr_empty_strings_are_live) {
     CHECK_EQ  ("count", 5, a.count);
     CHECK_EQ  ("hwm",   5, a.hwm);
     for (size_t i = 0; i < 5; i++)
-        CHECK_FALSE("[i] not hole", fs2arr_is_hole(&a.arr[i]));
+        CHECK_FALSE("[i] not hole", fs2_is_hole(&a.arr[i]));
 
     CHECK_TRUE ("[0] empty", fs2_eq_empty(&a.arr[0]));
     CHECK_STR_EQ("[1]", "a", a.arr[1].v);
@@ -2411,7 +2411,7 @@ Test(fs2_array_api, unique_removes_adjacent_dups) {
 
     /* slots [3, old_count) — holes (freed) */
     for (size_t i = 3; i < 6; i++)
-        CHECK_TRUE("[i] hole", fs2arr_is_hole(&a.arr[i]));
+        CHECK_TRUE("[i] hole", fs2_is_hole(&a.arr[i]));
 
     CHECK_TRUE("valid", fs2arr_validate(NULL, &a));
 

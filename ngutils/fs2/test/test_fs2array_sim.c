@@ -42,7 +42,7 @@ TestSuite(fs2_array_simulation, .init = test_setup, .fini = test_teardown);
 //     /* [0, hwm): live count matches, each slot is hole or valid fs2 */
 //     size_t  live = 0;
 //     for (size_t i = 0; i < a->hwm; i++) {
-//         if (fs2arr_is_hole(&a->arr[i]))
+//         if (fs2_is_hole(&a->arr[i]))
 //             continue;
 //         if (!fs2_validate(NULL, &a->arr[i]))
 //             cr_assert_fail("[%s] slot[%zu] invalid fs2 (not a hole)", op, i);
@@ -54,7 +54,7 @@ TestSuite(fs2_array_simulation, .init = test_setup, .fini = test_teardown);
 
 //     /* [hwm, size): all holes (padding) */
 //     for (size_t i = a->hwm; i < a->size; i++) {
-//         if (!fs2arr_is_hole(&a->arr[i]))
+//         if (!fs2_is_hole(&a->arr[i]))
 //             cr_assert_fail("[%s] slot[%zu] in padding is not a hole", op, i);
 //     }
 // } 
@@ -175,7 +175,7 @@ Test(fs2_array_simulation, pool_reuse_by_hole) {
 
     /* All original values are gone, all "refilled" */
     for (size_t i = 0; i < a.hwm; i++) {
-        CHECK_TRUE("live slot", !fs2arr_is_hole(&a.arr[i]));
+        CHECK_TRUE("live slot", !fs2_is_hole(&a.arr[i]));
         CHECK_STR_EQ("refilled", "refilled", a.arr[i].v);
     }
 
@@ -268,9 +268,9 @@ Test(fs2_array_simulation, tail_vs_mid_holes) {
     cr_assert_eq(a.hwm,  10);
     cr_assert_eq(a.size, 10);
     assert_arr_valid(&a, "shrink-no-sync");
-    CHECK_TRUE("[3] hole preserved", fs2arr_is_hole(&a.arr[3]));
-    CHECK_TRUE("[5] hole preserved", fs2arr_is_hole(&a.arr[5]));
-    CHECK_TRUE("[7] hole preserved", fs2arr_is_hole(&a.arr[7]));
+    CHECK_TRUE("[3] hole preserved", fs2_is_hole(&a.arr[3]));
+    CHECK_TRUE("[5] hole preserved", fs2_is_hole(&a.arr[5]));
+    CHECK_TRUE("[7] hole preserved", fs2_is_hole(&a.arr[7]));
 
     /* now synchwm: tail holes [7,8,9] trimmed, but mid holes [3],[5] stay */
     fs2arr_synchwm(&a);
@@ -281,8 +281,8 @@ Test(fs2_array_simulation, tail_vs_mid_holes) {
     fs2arr_shrink(&a);
     cr_assert_eq(a.size, 7);
     assert_arr_valid(&a, "shrink-after-sync");
-    CHECK_TRUE("[3] mid hole survives", fs2arr_is_hole(&a.arr[3]));
-    CHECK_TRUE("[5] mid hole survives", fs2arr_is_hole(&a.arr[5]));
+    CHECK_TRUE("[3] mid hole survives", fs2_is_hole(&a.arr[3]));
+    CHECK_TRUE("[5] mid hole survives", fs2_is_hole(&a.arr[5]));
 
     fs2arr_free(&a);
     assert_balanced();
@@ -310,7 +310,7 @@ Test(fs2_array_simulation, long_run_mixed_ops) {
             size_t found = SIZE_MAX;
             for (size_t k = 0; k < a.hwm; k++) {
                 size_t i = (cand + k) % a.hwm;
-                if (!fs2arr_is_hole(&a.arr[i])) { found = i; break; }
+                if (!fs2_is_hole(&a.arr[i])) { found = i; break; }
             }
             cr_assert_neq(found, SIZE_MAX, "no live to detach at iter %d", iter);
             fs2 t = fs2arr_detach_new(&a, found);

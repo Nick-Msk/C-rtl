@@ -57,7 +57,7 @@ fs2arr_compact(fs2array *a) {
 
     size_t write = 0;
     for (size_t read = 0; read < a->hwm; read++) {
-        if (fs2arr_is_hole(&a->arr[read]))
+        if (fs2_is_hole(&a->arr[read]))
             continue;
 
         if (write != read) {
@@ -79,7 +79,7 @@ fs2arr_issorted(const fs2array *restrict a, pointer_comparator_t cmp) {
         return true;
     size_t prev = SIZE_MAX;
     for (size_t i = 0; i < a->hwm; i++) {
-        if (fs2arr_is_hole(&a->arr[i]))
+        if (fs2_is_hole(&a->arr[i]))
             continue;
         if (prev != SIZE_MAX &&  cmp(&a->arr[prev], &a->arr[i]) > 0)
             return false;
@@ -141,7 +141,7 @@ fs2arr_concat(fs2array *dst, const fs2array *src) {
     fs2arr_reserve(dst, dst->hwm + src_count);
 
     for (size_t i = 0; i < src_hwm; i++) {
-        if (fs2arr_is_hole(&src->arr[i]))
+        if (fs2_is_hole(&src->arr[i]))
             continue;
         fs2 v = fs2_clone(&src->arr[i]);
         fs2arr_push(dst, &v);                  /* appends at current hwm */
@@ -262,7 +262,7 @@ fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *de
     bool wrote_any = (dst->len > 0);    /* dst acts as first element */
 
     for (size_t i = 0; i < src->hwm; i++) {
-        if (fs2arr_is_hole(&src->arr[i]))
+        if (fs2_is_hole(&src->arr[i]))
             continue;
         if (delim_ok && wrote_any)
             fs2_cat(dst, delim);
