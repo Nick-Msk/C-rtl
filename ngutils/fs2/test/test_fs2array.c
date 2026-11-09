@@ -2382,3 +2382,112 @@ Test(fs2_array, eqexact_clone_NOT_invariant_with_holes) {
     fs2arr_free(&packed);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2arr_ispacked
+ * ========================================================================= */
+
+Test(fs2_array, ispacked_canonical) {
+    fs2array a = FS2ARR();
+    CHECK_TRUE("canonical 0==0", fs2arr_ispacked(&a));
+}
+
+Test(fs2_array, ispacked_empty_with_capacity) {
+    fs2array a = fs2arr_init(16);              /* hwm=0, count=0 */
+    CHECK_TRUE("empty packed", fs2arr_ispacked(&a));
+    fs2arr_free(&a);
+}
+
+Test(fs2_array, ispacked_after_push_only) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 5; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    CHECK_TRUE("push-only packed", fs2arr_ispacked(&a));
+    CHECK_EQ  ("hwm",   5, a.hwm);
+    CHECK_EQ  ("count", 5, a.count);
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, ispacked_false_after_detach) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 3; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+
+    fs2 t = fs2arr_detach_new(&a, 1);           /* hole at [1] */
+    fs2_free(&t);
+
+    CHECK_FALSE("hole breaks packed", fs2arr_ispacked(&a));
+    CHECK_EQ   ("hwm",   3, a.hwm);             /* hwm preserved */
+    CHECK_EQ   ("count", 2, a.count);           /* count decremented */
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+Test(fs2_array, ispacked_true_after_compact) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    for (int i = 0; i < 4; i++) {
+        fs2 v = fs2_from_new(i);
+        fs2arr_push(&a, &v);
+    }
+    fs2 t = fs2arr_detach_new(&a, 1);
+    fs2_free(&t);
+    CHECK_FALSE("pre-compact", fs2arr_ispacked(&a));
+
+    fs2arr_compact(&a);
+    CHECK_TRUE("post-compact", fs2arr_ispacked(&a));
+    CHECK_EQ  ("hwm == count", a.hwm, a.count);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
+
+// Test(fs2_array, ispacked_true_after_clone) {
+//     __fs2_checkreset();
+//     fs2array src = FS2ARR();
+//     fs2arr_pushstr(&src, "a");
+//     fs2arr_pushstr(&src, "b");
+//     fs2arr_pushstr(&src, "c");
+//     //fs2array src = FS2ARRFROMSTR("a", "b", "c");
+//     fs2 t = fs2arr_detach_new(&src, 1);         /* src has hole */
+//     fs2_free(&t);
+//     CHECK_FALSE("src not packed", fs2arr_ispacked(&src));
+
+//     fs2array c = fs2arr_clone(&src);            /* clone packs */
+//     CHECK_TRUE("clone packed", fs2arr_ispacked(&c));
+
+//     fs2array ce = fs2arr_cloneexact(&src);      /* cloneexact preserves holes */
+//     CHECK_FALSE("cloneexact not packed", fs2arr_ispacked(&ce));
+
+//     fs2arr_free(&src);
+//     fs2arr_free(&c);
+//     fs2arr_free(&ce);
+//     assert_balanced();
+// }
+
+Test(fs2_array, ispacked_all_holes) {
+    __fs2_checkreset();
+    fs2array a = fs2arr_init(8);
+    fs2 v = fs2_fromstr("x");
+    fs2arr_push(&a, &v);
+    fs2 t = fs2arr_detach_new(&a, 0);
+    fs2_free(&t);
+    /* hwm=1, count=0 → not packed */
+
+    CHECK_FALSE("all holes not packed", fs2arr_ispacked(&a));
+
+    fs2arr_compact(&a);                         /* hwm → 0, count=0 */
+    CHECK_TRUE("compact → 0==0", fs2arr_ispacked(&a));
+    CHECK_EQ  ("hwm",   0, a.hwm);
+
+    fs2arr_free(&a);
+    assert_balanced();
+}
