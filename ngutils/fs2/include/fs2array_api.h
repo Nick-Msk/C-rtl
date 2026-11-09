@@ -346,8 +346,12 @@ fs2arr_reverse(fs2array *a);
  * @param src  Non-NULL fs2array (any state — clone packs first).
  * @return     New fs2array; free with fs2arr_free.
  */
-extern fs2array
-fs2arr_reverse_new(const fs2array *restrict src);
+static inline fs2array
+fs2arr_reverse_new(const fs2array *restrict src) {
+    invfatal(ERR_NULL_INPUT, src != NULL, "Null fs2array");
+    fs2array r = fs2arr_clone(src);            /* packed deep copy */
+    return *fs2arr_reverse(&r);
+}
 
 /**
  * @brief Binary search in a sorted packed fs2array.

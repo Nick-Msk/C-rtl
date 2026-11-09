@@ -288,13 +288,6 @@ fs2arr_reverse(fs2array *a) {
     return a;
 }
 
-fs2array
-fs2arr_reverse_new(const fs2array *restrict src) {
-    invfatal(ERR_NULL_INPUT, src != NULL, "Null fs2array");
-    fs2array r = fs2arr_clone(src);            /* packed deep copy */
-    return *fs2arr_reverse(&r);
-}
-
 ptrdiff_t
 fs2arr_bsearch(const fs2array *restrict a,
                const fs2 *restrict key,
