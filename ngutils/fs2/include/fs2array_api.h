@@ -349,4 +349,34 @@ fs2arr_reverse(fs2array *a);
 extern fs2array
 fs2arr_reverse_new(const fs2array *restrict src);
 
+/**
+ * @brief Binary search in a sorted packed fs2array.
+ *
+ * @pre  @p a is packed (hwm == count) and sorted by @p cmp (same comparator
+ *       as used for sort). Caller must `fs2arr_compact(&a)` + `fs2arr_synchwm(&a)`
+ *       (or use `fs2arr_clone`, which packs) if the array may contain holes.
+ * @pre  @p cmp is `fs2_cmp_wrap` / `fs2_cmp_desc_wrap` / `fs2_cmp_ci_wrap`
+ *       / `fs2_cmp_desc_ci_wrap` — or any `qsort`/`bsearch`-compatible
+ *       function matching the sort order.
+ *
+ * @param a    Non-NULL fs2array, packed, sorted.
+ * @param key  Non-NULL fs2 to search for. Canonical `FS2()` (v==NULL) is
+ *             normalized to `FS2EMPTY` before comparison (so `strcmp`-based
+ *             comparators don't SEGV).
+ * @param cmp  Typed comparator used for sort.
+ * @return     0-based index of some matching element, or -1 if not found.
+ *             With duplicates, the returned index is implementation-defined
+ *             (`qsort`/`bsearch` don't guarantee "first of equal").
+ *
+ * @warning `invfatal` (SIGABRT) on NULL a/key/cmp, or not-packed input.
+ *
+ * @note For consistency with a sort that used `fs2_cmp_wrap`, pass the same
+ *       `fs2_cmp_wrap` here. Mixing asc-sorted array with desc comparator →
+ *       garbage result (undefined; bsearch assumes matching order).
+ */
+extern ptrdiff_t
+fs2arr_bsearch(const fs2array *restrict a,
+               const fs2 *restrict key,
+               pointer_comparator_t cmp);
+
 #endif /* !FS2ARRAY_API_H */

@@ -294,3 +294,28 @@ fs2arr_reverse_new(const fs2array *restrict src) {
     fs2array r = fs2arr_clone(src);            /* packed deep copy */
     return *fs2arr_reverse(&r);
 }
+
+ptrdiff_t
+fs2arr_bsearch(const fs2array *restrict a,
+               const fs2 *restrict key,
+               pointer_comparator_t cmp) {
+    invfatal(ERR_NULL_INPUT, a != NULL && key != NULL && cmp != NULL,
+             "Null pointers %p %p %p", a, key, cmp);
+    if (a->hwm != a->count)
+        userraise(0, ERR_UNSUPPORTED_TYPE, 
+            "not packed (hwm=%zu count=%zu); "
+             "call fs2arr_compact() first", a->hwm, a->count);
+
+    if (a->count == 0)
+        return logsimpleret(-1, "Nothing to search");
+
+    /* Normalize canonical FS2() (v=NULL) to FS2EMPTY (v="") so that
+     * strcmp-based comparators don't hit NULL. */
+    const fs2 *findkey = key;       // THINK: need shmg like NULL, fs2 => fs2empty
+    if (fs2_is_empty(key))
+        findkey = &fs2_empty_const;
+
+    const fs2 *res = bsearch(findkey, a->arr, a->count,
+                             sizeof(fs2), cmp);
+    return res ? (ptrdiff_t)(res - a->arr) : -1;
+}
