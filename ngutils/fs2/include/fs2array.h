@@ -2,6 +2,7 @@
 #define FS2ARRAY_H
 
 #include "fs2.h"
+#include "fs2_internal_utils.h"
 
 typedef struct fs2array {
     fs2         *arr;   // heap array of fs2 values (never BODYALLOC inside)
@@ -215,6 +216,12 @@ fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
         fs2  *:  fs2arr_push_sp,                                          \
         fs2 **:  fs2arr_push_dp                                           \
     )((a), (src))
+
+static inline ptrdiff_t
+fs2arr_pushstr(fs2array *restrict a, const char *restrict str) {
+    fs2 tmp = _fs2_wrap(str);
+    return fs2arr_push(a, &tmp);
+}
 
 /**
  * @brief Move element @p idx out into @p dst, leaving a hole.
