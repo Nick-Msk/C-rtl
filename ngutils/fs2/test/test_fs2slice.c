@@ -742,8 +742,6 @@ Test(fs2_freeze, sort_allowed_slice_sees_change) {
     fs2 parent = fs2_fromstr("12345cba56789");
     fs2slice s  = fs2slice_new(&parent, 5, 8);
 
-    FS2SLICETECHPRINT(&s);
-
     fs2_sort(&parent, true);
 
     CHECK_TRUE("slice sees sorted", slice_eq(&s, "567"));
