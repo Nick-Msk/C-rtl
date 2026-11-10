@@ -1566,7 +1566,8 @@ fs2_techcmp(const fs2 *s1, const fs2 *s2);
  * @param bodyfreed  Out: current struct free count (if mismatch).
  * @return           true if no leaks detected; false otherwise.
  */
-bool                fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
+bool                
+fs2_checkleak(int *restrict alloc, int *restrict freed, int * restrict bodyalloc, int *restrict bodyfreed);
 
 #ifdef FS2TEST
 /**
