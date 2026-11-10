@@ -1333,3 +1333,142 @@ Test(fs2slice, cmpfs2_null_s_aborts, .signal = SIGABRT) {
     fs2_free(&p);
 }
 
+/* =========================================================================
+ * fs2slice_get — nominal
+ * ========================================================================= */
+
+Test(fs2slice, get_reads_within_slice) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("0123456789");
+    fs2slice s = fs2slice_new(&parent, 2, 7);      /* "23456" */
+
+    CHECK_EQ("pos 0",    '2', *fs2slice_get(&s, 0));
+    CHECK_EQ("pos 2",    '4', *fs2slice_get(&s, 2));
+    CHECK_EQ("pos 4",    '6', *fs2slice_get(&s, 4));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, get_macro_convention) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 1, 4);      /* "ell" */
+
+    CHECK_EQ("s[0]", 'e', fs2sliceget(s, 0));
+    CHECK_EQ("s[2]", 'l', fs2sliceget(s, 2));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_get — window boundaries
+ *
+ * Slice [2, 7) of "0123456789" is "23456":
+ *   pos 0..4 → parent[2..6] = '2'..'6'     (valid)
+ *   pos 5    → parent[7]   = '7'           (outside slice → abort)
+ *   pos 10   → parent[12]  = out of range  (abort)
+ * ========================================================================= */
+
+Test(fs2slice, get_pos_at_slice_len_aborts, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("0123456789");
+    fs2slice s = fs2slice_new(&parent, 2, 7);
+    fs2slice_get(&s, 5);                            /* == slice_len */
+    fs2slice_free(&s);
+    fs2_free(&parent);
+}
+
+Test(fs2slice, get_pos_beyond_slice_len_aborts, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("0123456789");
+    fs2slice s = fs2slice_new(&parent, 2, 7);
+    fs2slice_get(&s, 100);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+}
+
+Test(fs2slice, get_pos_one_past_parent_range_aborts, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("abc");                /* len=3 */
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_get(&s, 3);                            /* == slice_len == parent_len */
+    fs2slice_free(&s);
+    fs2_free(&parent);
+}
+
+/* =========================================================================
+ * fs2slice_get — guards
+ * ========================================================================= */
+
+Test(fs2slice, get_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_get(NULL, 0);
+}
+
+Test(fs2slice, get_zombie_slice_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_get(&s, 0);                            /* s.parent == NULL */
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_get — leech: reads current parent->v after realloc/mutate
+ * ========================================================================= */
+
+Test(fs2slice, get_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    char *p_before = fs2slice_get(&s, 0);
+    CHECK_EQ("'h'", 'h', *p_before);
+
+    fs2_catstr(&parent, " world");                  /* realloc */
+    CHECK_EQ("'h' after realloc", 'h', *fs2slice_get(&s, 0));
+    CHECK_EQ("'o' after realloc", 'o', *fs2slice_get(&s, 4));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, get_sees_toupper) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    CHECK_EQ("'h'", 'h', *fs2slice_get(&s, 0));
+
+    fs2_toupper(&parent);                           /* bytes mutate, len same */
+    CHECK_EQ("'H' via leech", 'H', *fs2slice_get(&s, 0));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_get — write via pointer (read-only concern)
+ *
+ * `fs2slice_get` returns `char *` (non-const) — matches fs2_get convention.
+ * Writing through it is UB **by contract** (slice is a view, not owner).
+ * We do NOT test the write itself (UB); we just verify the API shape
+ * matches fs2_get (mutable pointer).
+ * ========================================================================= */
+
+Test(fs2slice, get_returns_mutable_ptr_for_api_symmetry) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    char *p = fs2slice_get(&s, 1);
+    /* shape check — not dereferencing for write */
+    CHECK_PTR_EQ("parent->v + from + pos",
+                 parent.v + s.range.from + 1, p);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
