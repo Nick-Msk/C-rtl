@@ -33,12 +33,6 @@ typedef struct fs2slice {
 
 #define FS2SLICE() (fs2slice){ .parent = NULL, .range = FS2SLICEVIEW() }
 
-static inline size_t
-fs2slice_len(const fs2slice *s) { return s->range.to - s->range.from; }
-
-static inline const char *
-fs2slice_data(const fs2slice *s) { return s->parent->v + s->range.from; }
-
 // leak-checking facility
 extern long
 fs2slice_inc(void);
@@ -48,6 +42,14 @@ fs2slice_dec(void);
 
 extern long 
 fs2slice_sum(void);
+
+// -----
+
+static inline size_t
+fs2slice_len(const fs2slice *s) { return s->range.to - s->range.from; }
+
+static inline const char *
+fs2slice_data(const fs2slice *s) { return s->parent->v + s->range.from; }
 
 // internal
 static inline int32_t
@@ -108,7 +110,5 @@ fs2arrslice_free(fs2arrslice *s) {
     free(s->ranges);
     *s = FS2ARRSLICE();
 }
-
-// API
 
  #endif /* !FS2SLICE_H */
