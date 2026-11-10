@@ -1051,7 +1051,8 @@ fs2_selfmove(fs2 *dst, size_t to, size_t from, size_t len) {
  * @note     fs2_exch(a, a) is a no-op.
  * @warning  `invfatal` (SIGABRT) if either pointer is NULL or either side is FS2LOCAL.
  */
-void        fs2_exch(fs2 *a, fs2 *b);
+void        
+fs2_exch(fs2 *a, fs2 *b);
 
 /**
  * @brief Convert a heap-allocated fs2 to a stack value.
@@ -1066,7 +1067,8 @@ void        fs2_exch(fs2 *a, fs2 *b);
  * @warning     `invraise` if @p psrc or `*psrc` is NULL.
  * @warning     `userraise` if the source is not BODYALLOC.
  */
-fs2         fs2_heaptostack(fs2 **psrc);
+fs2         
+fs2_heaptostack(fs2 **psrc);
 
 /**
  * @brief Convert a stack fs2 to a heap-allocated fs2.
@@ -1080,7 +1082,8 @@ fs2         fs2_heaptostack(fs2 **psrc);
  * @warning    `invraise` if @p src is NULL.
  * @warning    `userraise` if @p src is BODYALLOC or FS2LOCAL.
  */
-fs2        *fs2_stacktoheap(fs2 *src);
+fs2 *
+fs2_stacktoheap(fs2 *src);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Destructor
@@ -1102,7 +1105,8 @@ fs2        *fs2_stacktoheap(fs2 *src);
  *
  * @param s  Pointer to fs2, or NULL (no-op).
  */
-void        fs2_free(fs2 *s);
+void        
+fs2_free(fs2 *s);
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Utilities
@@ -1118,7 +1122,8 @@ void        fs2_free(fs2 *s);
  * @param pos  New logical length.
  * @return     @p s for chaining.
  */
-static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
+static inline fs2 *
+fs2_setlen(fs2 *s, size_t pos) {
     invfatal(ERR_NULL_INPUT, s != NULL, 
         "Null pointer");
 
