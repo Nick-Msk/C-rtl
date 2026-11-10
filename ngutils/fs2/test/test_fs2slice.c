@@ -546,7 +546,7 @@ Test(fs2slice, techfprint_basic) {
     fs2 parent = fs2_fromstr("hello world");
     fs2slice s = fs2slice_new(&parent, 6, 11);              /* "world" */
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     cr_assert_not_null(f);
 
     long w = fs2slice_techfprint(f, &s, "test");
@@ -554,7 +554,7 @@ Test(fs2slice, techfprint_basic) {
 
     rewind(f);
     char buf[512] = {0};
-    size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    size_t rd = test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     buf[rd] = '\0';
 
@@ -570,12 +570,12 @@ Test(fs2slice, techfprint_basic) {
 }
 
 Test(fs2slice, techfprint_null_s) {
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2slice_techfprint(f, NULL, "n");
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[128] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "<NULL>") != NULL);
 }
@@ -586,12 +586,12 @@ Test(fs2slice, techfprint_zombie) {
     fs2slice s = fs2slice_new(&parent, 0, 1);
     fs2slice_free(&s);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2slice_techfprint(f, &s, "z");
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[128] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "<zombie>") != NULL);
 
@@ -614,13 +614,13 @@ Test(fs2slice, arrslice_techfprint_basic) {
     fs2sliceview v[] = { {0,1}, {2,4}, {5,8} };
     fs2arrslice a = mk_arrslice(&parent, v, 3);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2arrslice_techfprint(f, &a, "cells");
     cr_assert_gt(w, 0);
 
     rewind(f);
     char buf[1024] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     cr_assert(strstr(buf, "FS2ARRSLICE: cells:") != NULL, "got: %s", buf);
@@ -636,12 +636,12 @@ Test(fs2slice, arrslice_techfprint_basic) {
 
 Test(fs2slice, arrslice_techfprint_canonical) {
     fs2arrslice a = FS2ARRSLICE();
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = fs2arrslice_techfprint(f, &a, "empty");
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[128] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "<empty>") != NULL);
 }
@@ -655,11 +655,11 @@ Test(fs2slice, arrslice_techfprint_truncation) {
         v[i] = (fs2sliceview){ (size_t)i, (size_t)i + 1 };
     fs2arrslice a = mk_arrslice(&parent, v, 12);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     fs2arrslice_techfprint(f, &a, "many");
     rewind(f);
     char buf[2048] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
 
     cr_assert(strstr(buf, "more") != NULL, "truncation marker: %s", buf);
@@ -681,12 +681,12 @@ Test(fs2slice, techfprint_macros) {
     fs2 parent = fs2_fromstr("hi");
     fs2slice s = fs2slice_new(&parent, 0, 2);
 
-    FILE *f = tmpfile();
+    FILE *f = test_tmpfile(__func__);
     long w = FS2SLICETECHFPRINT(f, &s);           /* name = "&s" */
     cr_assert_gt(w, 0);
     rewind(f);
     char buf[256] = {0};
-    fread(buf, 1, sizeof buf - 1, f);
+    test_fread(buf, sizeof buf - 1, f, __func__);
     fclose(f);
     cr_assert(strstr(buf, "FS2SLICE: &s:") != NULL, "got: %s", buf);
 
