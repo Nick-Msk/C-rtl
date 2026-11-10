@@ -7,7 +7,6 @@
 #define FS2_INTERNAL_UTILS
 
 #include "fs2_api.h"
-#include <locale.h>
 
 // Utilities
 
@@ -15,7 +14,7 @@ static inline size_t
 fs2_fill_table(bool *restrict tbl,  size_t cnt, const char *restrict chars) {
     size_t total = 0UL;
     for (size_t i = 0; chars[i]; i++) {
-        size_t  ind = (unsigned char)chars[i];
+        size_t  ind = (unsigned char) chars[i];
         if (ind < cnt && !tbl[ind])
             tbl[ind] = true, total++;
     }
