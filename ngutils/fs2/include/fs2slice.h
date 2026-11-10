@@ -1,8 +1,15 @@
-/*
+/** @file
  * THREAD SAFETY: fs2slice operations on the SAME parent fs2 are not
  * thread-safe. `parent->borrow` is a plain uint32_t; concurrent
  * fs2slice_new / fs2slice_free on one parent require external locking.
  * Different parents, or read-only use of independent slices — safe.
+ * 
+ * 
+ * @warning fs2slice is a RAII-like handle. Copying (`fs2slice b = a`)
+ *          does NOT increment `parent->borrow`. Freeing either copy
+ *          leaves the other dangling (parent->borrow == 0) or causes
+ *          UNDERFLOW (double free). Pass by pointer (`const fs2slice *`)
+ *          or wrap in a container that manages lifetime; never shallow-copy.
  */
 
 #ifndef FS2SLICE_H
