@@ -246,4 +246,36 @@ fs2slice_cmpstr_ci(const fs2slice *sl, const char *str) {
                             fs2slice_slice_cmp_ci);
 }
 
+/**
+ * @brief Pointer to byte at offset @p pos within the slice.
+ *
+ * @p pos is a 0-based offset **from @c slice.range.from**, not from
+ * parent. Bounds are checked against the slice length (range.to - range.from),
+ * not the parent. This is the whole point — the slice is a "window",
+ * reading past `slice.to` would silently expose parent content.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param pos  Offset in [0, slice_len).
+ * @return     @c parent->v + range.from + pos. Dereferencing when
+ *             @c pos < slice_len is safe (byte is in parent buffer).
+ * @warning `invfatal` (SIGABRT) if s is NULL/zombie, or pos >= slice_len.
+ */
+static inline char *
+fs2slice_get(const fs2slice *s, size_t pos) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null slice");
+
+    if (s->parent == NULL)
+        userraise(NULL, ERR_FS2SLICE_ZOMBIE,
+            "Zombie slice, null parent");
+
+    if (pos >= fs2slice_len(s))
+        userraise(NULL, ERR_OUT_OF_RANGE,
+             "fs2slice_get: pos %zu >= slice_len %zu",
+             pos, fs2slice_len(s));
+
+    return s->parent->v + s->range.from + pos;
+}
+
+#define fs2sliceget(s, pos) *fs2slice_get((&s), (pos))
+
  #endif /* !FS2SLICE_H */
