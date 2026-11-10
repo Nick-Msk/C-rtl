@@ -16,7 +16,7 @@ typedef struct fs2array {
 
 static inline void
 fs2arr_set_hole(fs2 *slot) {
-    *slot = FS2(.flags = FS2_NULL_ARRAY_ELEMENT);
+    *slot = FS2();
     slot->flags = FS2_NULL_ARRAY_ELEMENT;
 }
 
