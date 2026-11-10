@@ -1069,3 +1069,269 @@ Test(fs2_freeze, try_catch_preserves_error_code) {
     err_clean(true);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2slice_cmp — slice vs slice
+ * ========================================================================= */
+
+Test(fs2slice, cmp_equal_different_parents) {
+    __fs2_checkreset();
+    fs2 p1 = fs2_fromstr("hello");
+    fs2 p2 = fs2_fromstr("xhellox");
+    fs2slice a = fs2slice_new(&p1, 0, 5);   /* "hello" */
+    fs2slice b = fs2slice_new(&p2, 1, 6);   /* "hello" */
+
+    CHECK_EQ("equal content, different parents", 0, fs2slice_cmp(&a, &b));
+
+    fs2slice_free(&a); fs2slice_free(&b);
+    fs2_free(&p1);     fs2_free(&p2);
+    assert_balanced();
+}
+
+Test(fs2slice, cmp_same_parent_different_ranges) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("abcabc");
+    fs2slice a = fs2slice_new(&p, 0, 3);    /* "abc" */
+    fs2slice b = fs2slice_new(&p, 3, 6);    /* "abc" */
+
+    CHECK_EQ("same content same parent", 0, fs2slice_cmp(&a, &b));
+
+    fs2slice_free(&a); fs2slice_free(&b);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2slice, cmp_prefix_shorter_is_less) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("abcdef");
+    fs2slice short_ = fs2slice_new(&p, 0, 3);   /* "abc" */
+    fs2slice long_  = fs2slice_new(&p, 0, 6);   /* "abcdef" */
+
+    CHECK_LT("abc < abcdef", fs2slice_cmp(&short_, &long_),  0);
+    CHECK_GT("abcdef > abc", fs2slice_cmp(&long_, &short_),  0);
+
+    fs2slice_free(&short_); fs2slice_free(&long_);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2slice, cmp_byte_order) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("acb");
+    fs2slice a = fs2slice_new(&p, 0, 1);   /* "a" */
+    fs2slice b = fs2slice_new(&p, 1, 2);   /* "c" */
+    fs2slice c = fs2slice_new(&p, 2, 3);   /* "b" */
+
+    CHECK_LT("a < c", fs2slice_cmp(&a, &b), 0);
+    CHECK_LT("b < c", fs2slice_cmp(&c, &b), 0);
+    CHECK_LT("a < b", fs2slice_cmp(&a, &c), 0);
+
+    fs2slice_free(&a); fs2slice_free(&b); fs2slice_free(&c);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_cmpfs2 — slice vs fs2
+ * ========================================================================= */
+
+Test(fs2slice, cmpfs2_equal) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("xhellox");
+    fs2slice a = fs2slice_new(&p, 1, 6);       /* "hello" */
+    fs2 s = fs2_fromstr("hello");
+
+    CHECK_EQ("equal", 0, fs2slice_cmpfs2(&a, &s));
+
+    fs2slice_free(&a);
+    fs2_free(&p); fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpfs2_less_than_longer) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("abc");
+    fs2slice a = fs2slice_new(&p, 0, 2);       /* "ab" */
+    fs2 s = fs2_fromstr("abc");
+
+    CHECK_LT("ab < abc", fs2slice_cmpfs2(&a, &s), 0);
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpfs2_antisymmetric) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("abc");
+    fs2slice ab  = fs2slice_new(&p, 0, 2);     /* "ab" */
+    fs2slice abc = fs2slice_new(&p, 0, 3);     /* "abc" */
+    fs2 s_ab  = fs2_fromstr("ab");
+    fs2 s_abc = fs2_fromstr("abc");
+
+    int r1 = fs2slice_cmpfs2(&ab,  &s_abc);    /* "ab" vs "abc"  → <0 */
+    int r2 = fs2slice_cmpfs2(&abc, &s_ab);     /* "abc" vs "ab"  → >0 */
+    CHECK_LT("ab < abc", r1, 0);
+    CHECK_GT("abc > ab", r2, 0);
+
+    fs2slice_free(&ab); fs2slice_free(&abc);
+    fs2_free(&p);
+    fs2_free(&s_ab); fs2_free(&s_abc);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpfs2_vs_canonical_empty) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+    fs2 empty = FS2();                          /* len=0, v=NULL */
+
+    CHECK_GT("nonempty > canonical empty", fs2slice_cmpfs2(&a, &empty), 0);
+
+    fs2slice_free(&a);
+    fs2_free(&p); fs2_free(&empty);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpfs2_vs_fs2empty) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+    fs2 empty = FS2EMPTY;
+
+    CHECK_GT("nonempty > FS2EMPTY", fs2slice_cmpfs2(&a, &empty), 0);
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_cmpstr — slice vs c-string
+ * ========================================================================= */
+
+Test(fs2slice, cmpstr_equal) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("xhellox");
+    fs2slice a = fs2slice_new(&p, 1, 6);
+
+    CHECK_EQ("hello", 0, fs2slice_cmpstr(&a, "hello"));
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpstr_prefix_both_directions) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("abcdef");
+    fs2slice a = fs2slice_new(&p, 0, 3);        /* "abc" */
+
+    CHECK_LT("abc < abcd", fs2slice_cmpstr(&a, "abcd"), 0);
+    CHECK_GT("abc > ab",   fs2slice_cmpstr(&a, "ab"),   0);
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpstr_vs_empty_str) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+
+    CHECK_GT("nonempty > \"\"", fs2slice_cmpstr(&a, ""), 0);
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * CI variants
+ * ========================================================================= */
+
+Test(fs2slice, cmp_ci_case_insensitive) {
+    __fs2_checkreset();
+    fs2 p1 = fs2_fromstr("HELLO");
+    fs2 p2 = fs2_fromstr("hello");
+    fs2slice a = fs2slice_new(&p1, 0, 5);
+    fs2slice b = fs2slice_new(&p2, 0, 5);
+
+    CHECK_EQ("ci: HELLO == hello", 0, fs2slice_cmp_ci(&a, &b));
+    CHECK_NEQ("cs: HELLO != hello", 0, fs2slice_cmp(&a, &b));
+
+    fs2slice_free(&a); fs2slice_free(&b);
+    fs2_free(&p1);     fs2_free(&p2);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpfs2_ci) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("Hello");
+    fs2slice a = fs2slice_new(&p, 0, 5);
+    fs2 s = fs2_fromstr("HELLO");
+
+    CHECK_EQ("ci equal", 0, fs2slice_cmpfs2_ci(&a, &s));
+    CHECK_NEQ("cs differs", 0, fs2slice_cmpfs2(&a, &s));
+
+    fs2slice_free(&a);
+    fs2_free(&p); fs2_free(&s);
+    assert_balanced();
+}
+
+Test(fs2slice, cmpstr_ci) {
+    __fs2_checkreset();
+    fs2 p = fs2_fromstr("Hello");
+    fs2slice a = fs2slice_new(&p, 0, 5);
+
+    CHECK_EQ("ci", 0, fs2slice_cmpstr_ci(&a, "HELLO"));
+
+    fs2slice_free(&a);
+    fs2_free(&p);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2slice, cmp_null_a_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2slice b = fs2slice_new(&p, 0, 1);
+    fs2slice_cmp(NULL, &b);
+    fs2slice_free(&b);
+    fs2_free(&p);
+}
+
+Test(fs2slice, cmp_zombie_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+    FS2SLICETECHPRINT(&a);
+    fs2slice b = a;                        /* copy */
+    fs2slice_free(&b);                      /* b.parent = NULL */
+
+    FS2SLICETECHPRINT(&a);
+
+    fs2slice_cmp(&a, &b);
+
+    fs2_free(&p);
+}
+
+Test(fs2slice, cmpstr_null_str_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+    fs2slice_cmpstr(&a, NULL);
+    fs2slice_free(&a);
+    fs2_free(&p);
+}
+
+Test(fs2slice, cmpfs2_null_s_aborts, .signal = SIGABRT) {
+    fs2 p = fs2_fromstr("a");
+    fs2slice a = fs2slice_new(&p, 0, 1);
+    fs2slice_cmpfs2(&a, NULL);
+    fs2slice_free(&a);
+    fs2_free(&p);
+}
+
