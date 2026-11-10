@@ -510,6 +510,8 @@ fs2_move(fs2 *dst, fs2 *src) {
 
     invfatal(ERR_UNSUPPORTED_TYPE, !(fs2_is_local(src) || fs2_is_local(dst)),
              "fs2_move does not support LOCAL");
+    fs2_require_unborrowed(dst);
+    fs2_require_unborrowed(src);  
 
     fs2_flags dst_body = fs2_getbodyalloc(dst);
     fs2_flags src_body = fs2_getbodyalloc(src);
@@ -701,6 +703,7 @@ fs2_free(fs2 *s) {
 #endif /* FS2_TRACE */  
         return;
     }
+    fs2_require_unborrowed(s);  // not sure, fs2_free must not raise
     if (str)
         fs2_freestr(s);
     if (body) 
