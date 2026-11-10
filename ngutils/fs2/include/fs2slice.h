@@ -46,10 +46,18 @@ fs2slice_sum(void);
 // -----
 
 static inline size_t
-fs2slice_len(const fs2slice *s) { return s->range.to - s->range.from; }
+fs2slice_len(const fs2slice *s) { 
+    invfatal(ERR_FS2SLICE_ZOMBIE, s != NULL && s->parent != NULL,
+        "Null or Zombie %p %p", s, s ? s->parent: NULL);
+    return s->range.to - s->range.from; 
+}
 
 static inline const char *
-fs2slice_data(const fs2slice *s) { return s->parent->v + s->range.from; }
+fs2slice_data(const fs2slice *s) { 
+    invfatal(ERR_FS2SLICE_ZOMBIE, s != NULL && s->parent != NULL,
+        "Null or Zombie %p %p", s, s ? s->parent: NULL);
+    return s->parent->v + s->range.from; 
+}
 
 // internal
 static inline int32_t
