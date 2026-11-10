@@ -86,6 +86,12 @@ fs2slice_parentdec(fs2 **parent) {
     return res;
 }
 
+/**
+ * @warning fs2slice is a move-only handle. `fs2slice b = a` does NOT
+ *        increment borrow. Freeing both → underflow; freeing one →
+ *        orphaned parent (borrow == 0). Pass `const fs2slice *` for
+ *        read-only, or use fs2slice_copy() for a proper borrow copy.
+ */
 static inline fs2slice
 fs2slice_new(fs2 *parent, size_t from, size_t to) {
     invfatal(ERR_NULL_INPUT, parent != NULL, "Null parent");
