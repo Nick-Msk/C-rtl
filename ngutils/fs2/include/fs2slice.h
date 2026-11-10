@@ -111,4 +111,28 @@ fs2arrslice_free(fs2arrslice *s) {
     *s = FS2ARRSLICE();
 }
 
+enum { FS2SLICE_TECH_PRINT_COUNT = 8 };   /* ranges shown in arrslice dump */
+
+//
+extern bool
+fs2slice_validate(FILE *restrict out, const fs2slice *restrict s);
+
+extern bool
+fs2arrslice_validate(FILE *restrict out, const fs2arrslice *restrict a);
+
+extern long
+fs2slice_techfprint(FILE *restrict out, const fs2slice *restrict s, const char *restrict name);
+
+extern long
+fs2arrslice_techfprint(FILE *restrict out, const fs2arrslice *restrict a, const char *restrict name);
+
+// macro-support
+#define FS2SLICETECHFPRINT(out, s)    fs2slice_techfprint((out),    (s), #s)
+#define FS2SLICETECHPRINT(s)          fs2slice_techfprint(stdout,   (s), #s)
+#define FS2SLICETECHLOG(s)            fs2slice_techfprint(logfile,  (s), #s)
+
+#define FS2ARRSLICETECHFPRINT(out, a) fs2arrslice_techfprint((out), (a), #a)
+#define FS2ARRSLICETECHPRINT(a)       fs2arrslice_techfprint(stdout,(a), #a)
+#define FS2ARRSLICETECHLOG(a)         fs2arrslice_techfprint(logfile,(a),#a)
+
  #endif /* !FS2SLICE_H */
