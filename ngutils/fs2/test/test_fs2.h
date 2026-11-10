@@ -10,9 +10,10 @@
 #define TEST_FS2_H
 
 #include "fs2.h"
-#include "fs2_internal_utils.h"
 #include "log.h"
 #include "test_common.h"
+#include "fs2slice.h"
+#include "fs2_internal_utils.h"
 
 /**
  * @brief Validate @p s and fail the test with a numbered marker.
@@ -36,12 +37,18 @@
 static inline void
 assert_balanced(void)
 {
-    int a = -1, f = -1, ba = -1, bf = -1;
-    bool ok = fs2_checkleak(&a, &f, &ba, &bf);
-    if (!ok)
-        logsimple("FAIL %s: alloc=%d freed=%d body_alloc=%d body_freed=%d",
-                  __func__, a, f, ba, bf);
-    cr_assert(ok, "counters not balanced");
+    int     a = -1, f = -1, ba = -1, bf = -1;
+    long    borrow = fs2slice_sum();
+    bool    ok = fs2_checkleak(&a, &f, &ba, &bf);
+
+    if (!ok || borrow != 0)
+        logsimple("FAIL %s: alloc=%d freed=%d "
+                  "body_alloc=%d body_freed=%d borrow=%ld",
+                  __func__, a, f, ba, bf, borrow);
+
+    cr_expect(ok,         "counters not balanced");
+    cr_expect_eq(borrow, 0,
+                 "borrow leak (forgot fs2slice_free / fs2arrslice_free?)");
 }    
 
 static inline int 
