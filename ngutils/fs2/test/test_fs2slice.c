@@ -1308,11 +1308,9 @@ Test(fs2slice, cmp_null_a_aborts, .signal = SIGABRT) {
 Test(fs2slice, cmp_zombie_aborts, .signal = SIGABRT) {
     fs2 p = fs2_fromstr("a");
     fs2slice a = fs2slice_new(&p, 0, 1);
-    FS2SLICETECHPRINT(&a);
+
     fs2slice b = a;                        /* copy */
     fs2slice_free(&b);                      /* b.parent = NULL */
-
-    FS2SLICETECHPRINT(&a);
 
     fs2slice_cmp(&a, &b);
 
