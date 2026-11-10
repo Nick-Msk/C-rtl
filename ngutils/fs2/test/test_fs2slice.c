@@ -694,3 +694,380 @@ Test(fs2slice, techfprint_macros) {
     fs2_free(&parent);
     assert_balanced();
 }
+
+TestSuite(fs2_freeze, .init = test_setup, .fini = test_teardown);
+
+/* =========================================================================
+ * Helper: compare slice content (bounded, no NUL assumption)
+ * ========================================================================= */
+
+
+/* =========================================================================
+ * ALLOWED — len not reduced; slice sees live changes (leech)
+ * ========================================================================= */
+
+Test(fs2_freeze, toupper_allowed_slice_sees_change) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+    cr_assert_eq(parent.borrow, 1);
+
+    fs2_toupper(&parent);                       /* bytes mutate, len unchanged */
+
+    CHECK_TRUE("slice sees uppercase", slice_eq(&s, "HELLO"));
+    CHECK_EQ  ("borrow unchanged",     1, parent.borrow);
+    CHECK_TRUE("slice valid",          fs2slice_validate(NULL, &s));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, tolower_allowed) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("HELLO");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+
+    fs2_tolower(&parent);
+
+    CHECK_TRUE("slice sees lowercase", slice_eq(&s, "hello"));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, sort_allowed_slice_sees_change) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("12345cba56789");
+    fs2slice s  = fs2slice_new(&parent, 5, 8);
+
+    FS2SLICETECHPRINT(&s);
+
+    fs2_sort(&parent, true);
+
+    CHECK_TRUE("slice sees sorted", slice_eq(&s, "567"));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, partsort_allowed_slice_sees_change) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("12345cba56789");
+    fs2slice s  = fs2slice_new(&parent, 5, 8);   /* "cba" */
+
+    fs2_partialsort(&parent, 5, 8, true);          /* ← только область slice’а */
+
+    CHECK_TRUE("slice sees sorted", slice_eq(&s, "abc"));
+    CHECK_STR_EQ("prefix intact", "12345", ( (char[]) {parent.v[0], parent.v[1], parent.v[2], parent.v[3], parent.v[4],0} ) );
+    CHECK_STR_EQ("suffix intact", "56789", parent.v + 8);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, flip_allowed_slice_sees_change) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s  = fs2slice_new(&parent, 0, 3);
+
+    fs2_flip(&parent);
+
+    CHECK_TRUE("slice sees reversed", slice_eq(&s, "cba"));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, cat_grows_slice_follows_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+
+    fs2_catstr(&parent, " world");              /* may realloc */
+
+    CHECK_TRUE("slice still 'hello'", slice_eq(&s, "hello"));
+    CHECK_EQ  ("borrow",              1, parent.borrow);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, reserve_realloc_slice_follows) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");
+    fs2slice s  = fs2slice_new(&parent, 0, 2);
+
+    fs2_reserve(&parent, 1000);                 /* forced realloc */
+
+    CHECK_TRUE("slice still valid", slice_eq(&s, "hi"));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, setlen_same_len_allowed) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s  = fs2slice_new(&parent, 0, 3);
+
+    fs2_setlen(&parent, 3);                     /* no-op (pos == len) */
+
+    CHECK_TRUE("slice still 'abc'", slice_eq(&s, "abc"));
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, read_only_allowed) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+    fs2 needle  = fs2_fromstr("ll");
+
+    CHECK_EQ("chr",   fs2_chr(&parent, 'l'),       2);
+    CHECK_EQ("instr", fs2_instr(&parent, &needle), 2);
+    CHECK_EQ("cmp",   fs2_cmpstr(&parent, "hello"), 0);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    fs2_free(&needle);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * FORBIDDEN — len shrinks or parent dies; userraise → SIGINT
+ * ========================================================================= */
+
+Test(fs2_freeze, free_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_free(&parent);
+    /* unreachable */
+}
+
+Test(fs2_freeze, move_src_blocked, .signal = SIGINT) {
+    fs2 src = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&src, 0, 5);
+    (void) s;
+    fs2 dst = FS2();
+    fs2_move(&dst, &src);                       /* src borrowed → SIGINT */
+}
+
+Test(fs2_freeze, move_dst_blocked, .signal = SIGINT) {
+    fs2 dst = fs2_fromstr("world");
+    fs2slice s = fs2slice_new(&dst, 0, 5);
+    (void) s;
+    fs2 src = fs2_fromstr("hello");
+    fs2_move(&dst, &src);                       /* dst borrowed → SIGINT */
+}
+
+Test(fs2_freeze, exch_a_blocked, .signal = SIGINT) {
+    fs2 a = fs2_fromstr("aaa");
+    fs2slice s = fs2slice_new(&a, 0, 3);
+    (void) s;
+    fs2 b = fs2_fromstr("bbb");
+    fs2_exch(&a, &b);
+}
+
+Test(fs2_freeze, exch_b_blocked, .signal = SIGINT) {
+    fs2 a = fs2_fromstr("aaa");
+    fs2 b = fs2_fromstr("bbb");
+    fs2slice s = fs2slice_new(&b, 0, 3);
+    (void) s;
+    fs2_exch(&a, &b);
+}
+
+Test(fs2_freeze, movefrom_blocked, .signal = SIGINT) {
+    fs2 src = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&src, 0, 5);
+    fs2 x = fs2_movefrom(&src);                 /* src borrowed → SIGINT */
+    (void) s; (void) x;
+}
+
+Test(fs2_freeze, setlen_shrink_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_setlen(&parent, 3);                     /* shrink → SIGINT */
+}
+
+Test(fs2_freeze, clear_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_clear(&parent);                         /* setlen(0) → SIGINT */
+}
+
+Test(fs2_freeze, substr_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_substr(&parent, 1, 3);                  /* memmove shrink → SIGINT */
+}
+
+Test(fs2_freeze, left_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_left(&parent, 3);
+}
+
+Test(fs2_freeze, right_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2_right(&parent, 3);
+}
+
+Test(fs2_freeze, trim_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("  hi  ");
+    fs2slice s = fs2slice_new(&parent, 0, 6);
+    (void) s;
+    fs2 pat = fs2_fromstr(" ");
+    fs2_trim(&parent, &pat);
+    fs2_free(&pat);
+}
+
+Test(fs2_freeze, strip_prefix_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2 prefix = fs2_fromstr("he");
+    fs2_strip_prefix(&parent, &prefix);
+    fs2_free(&prefix);
+}
+
+Test(fs2_freeze, strip_suffix_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    (void) s;
+    fs2 suffix = fs2_fromstr("lo");
+    fs2_strip_suffix(&parent, &suffix);
+    fs2_free(&suffix);
+}
+
+Test(fs2_freeze, cpy_blocked, .signal = SIGINT) {
+    fs2 dst = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&dst, 0, 5);
+    (void) s;
+    fs2 src = fs2_fromstr("hi");
+    fs2_cpy(&dst, &src);                        /* clear → setlen(0) → SIGINT */
+}
+
+Test(fs2_freeze, cpystr_blocked, .signal = SIGINT) {
+    fs2 dst = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&dst, 0, 5);
+    (void) s;
+    fs2_cpystr(&dst, "hi");
+}
+
+Test(fs2_freeze, sprintf_shrink_blocked, .signal = SIGINT) {
+    fs2 parent = fs2_fromstr("hello world");    /* 11 chars */
+    fs2slice s = fs2slice_new(&parent, 0, 11);
+    (void) s;
+    fs2_sprintf(&parent, "%d", 42);             /* result "42" (2 < 11) → SIGINT */
+}
+
+/* =========================================================================
+ * TRY-catch: userraise is RECOVERABLE
+ *   Demonstrate that catch + free-slice + retry works.
+ * ========================================================================= */
+
+Test(fs2_freeze, try_free_catch_and_retry) {
+    __fs2_checkreset();
+    err_resetenv();
+
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+    bool caught = false;
+
+    TRY() {
+        fs2_free(&parent);
+        cr_assert_fail("expected userraise");
+    } else {
+        caught = true;
+    }
+    err_resetenv();
+
+    cr_assert(caught, "free should raise on borrowed fs2");
+
+    /* parent intact: guard fires BEFORE free(v) */
+    CHECK_NOT_NULL("parent alive", parent.v);
+    CHECK_EQ  ("len unchanged",   5, parent.len);
+    CHECK_EQ  ("borrow",          1, parent.borrow);
+    CHECK_TRUE("slice valid",     fs2slice_validate(NULL, &s));
+
+    /* free slices, retry succeeds */
+    fs2slice_free(&s);
+    cr_assert_eq(parent.borrow, 0);
+    fs2_free(&parent);
+
+    assert_balanced();
+}
+
+Test(fs2_freeze, try_substr_catch_and_retry) {
+    __fs2_checkreset();
+    err_resetenv();
+
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+    bool caught = false;
+
+    TRY() {
+        fs2_substr(&parent, 1, 3);              /* "ell" — shrink to 3 */
+        cr_assert_fail("expected userraise");
+    } else {
+        caught = true;
+    }
+    err_resetenv();
+
+    cr_assert(caught);
+
+    /* parent unchanged: memmove guard fires before any byte shift */
+    CHECK_STR_EQ("content intact", "hello", parent.v);
+    CHECK_EQ  ("len unchanged",    5, parent.len);
+    CHECK_TRUE("slice valid",      fs2slice_validate(NULL, &s));
+
+    fs2slice_free(&s);
+
+    /* retry succeeds */
+    fs2_substr(&parent, 1, 3);
+    CHECK_STR_EQ("ell", parent.v, "ell");
+
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2_freeze, try_catch_preserves_error_code) {
+    __fs2_checkreset();
+    err_resetenv();
+
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s  = fs2slice_new(&parent, 0, 5);
+
+    TRY() {
+        fs2_free(&parent);
+    } else {
+        /* caught */
+    }
+    err_resetenv();
+
+    ErrorInfo info = {0};
+    cr_assert(  err_last(&info), "expected error record");
+    cr_assert_eq(info.type, ERR_USER);
+    cr_assert_eq(info.code, ERR_FS2SLICE_BORROWED);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    err_clean(true);
+    assert_balanced();
+}
