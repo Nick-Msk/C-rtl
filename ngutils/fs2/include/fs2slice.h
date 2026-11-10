@@ -135,4 +135,100 @@ fs2arrslice_techfprint(FILE *restrict out, const fs2arrslice *restrict a, const 
 #define FS2ARRSLICETECHPRINT(a)       fs2arrslice_techfprint(stdout,(a), #a)
 #define FS2ARRSLICETECHLOG(a)         fs2arrslice_techfprint(logfile,(a),#a)
 
+// ----------------------------------- Comparators ------------------------------
+
+/* fs2slice.h */
+
+/* Comparator signature: length-bounded (memcmp-style).
+ * Compares at most `n` bytes; return <0 / 0 / >0.
+ * MUST NOT read past min(n, min-content-length) — no NUL lookahead. */
+typedef int (*fs2slicecmp_t)(const char *a, const char *b, size_t n);
+
+/* Common core: memcmp-style first, length tiebreak after.
+ * `cmp` must be NUL-agnostic (see above). */
+static inline int
+fs2slice_slice_cmp_core(const char *a, size_t la,
+                 const char *b, size_t lb,
+                 fs2slicecmp_t cmp) {
+    size_t n = la < lb ? la : lb;
+    int    r = cmp(a, b, n);
+    if (r != 0)
+        return r;
+    return (la > lb) - (la < lb);   /* shorter < longer */
+}
+
+/* Comparators (wrap stdlib to be proper function-pointer types;
+ * memcmp has void* args, so wrap to keep strict signature match) */
+static inline int
+fs2slice_slice_cmp_cs(const char *a, const char *b, size_t n) { 
+    return memcmp(a, b, n); 
+}
+
+static inline int
+fs2slice_slice_cmp_ci(const char *a, const char *b, size_t n) { 
+    return strncasecmp(a, b, n); 
+}
+
+/* --- CS --- */
+static inline int
+fs2slice_cmp(const fs2slice *a, const fs2slice *b) {
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL, 
+        "Null slices %p %p", a, b);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(a), fs2slice_len(a),
+                            fs2slice_data(b), fs2slice_len(b),
+                            fs2slice_slice_cmp_cs);
+}
+
+static inline int
+fs2slice_cmpfs2(const fs2slice *sl, const fs2 *s) {
+    invfatal(ERR_NULL_INPUT, sl != NULL && s != NULL,
+             "Null slice or fs2 %p %p", sl, s);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(sl), fs2slice_len(sl),
+                            s->v ? s->v : "", s->len,
+                            fs2slice_slice_cmp_cs);
+}
+
+static inline int
+fs2slice_cmpstr(const fs2slice *sl, const char *str) {
+    invfatal(ERR_NULL_INPUT, sl != NULL && str != NULL,
+             "Null slice or c-str %p %p", sl, str);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(sl), fs2slice_len(sl),
+                            str, strlen(str),
+                            fs2slice_slice_cmp_cs);
+}
+
+/* --- CI --- */
+static inline int
+fs2slice_cmp_ci(const fs2slice *a, const fs2slice *b) {
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL, 
+        "Null slices %p %p", a, b);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(a), fs2slice_len(a),
+                            fs2slice_data(b), fs2slice_len(b),
+                            fs2slice_slice_cmp_ci);
+}
+
+static inline int
+fs2slice_cmpfs2_ci(const fs2slice *sl, const fs2 *s) {
+    invfatal(ERR_NULL_INPUT, sl != NULL && s != NULL,
+             "Null slice or fs2 %p %p", sl, s);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(sl), fs2slice_len(sl),
+                            s->v ? s->v : "", s->len,
+                            fs2slice_slice_cmp_ci);
+}
+
+static inline int
+fs2slice_cmpstr_ci(const fs2slice *sl, const char *str) {
+    invfatal(ERR_NULL_INPUT, sl != NULL && str != NULL,
+             "Null slice or c-str %p %p", sl, str);
+
+    return fs2slice_slice_cmp_core(fs2slice_data(sl), fs2slice_len(sl),
+                            str, strlen(str),
+                            fs2slice_slice_cmp_ci);
+}
+
  #endif /* !FS2SLICE_H */
