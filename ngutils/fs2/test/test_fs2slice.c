@@ -397,3 +397,300 @@ Test(fs2slice, sum_arrslice_counts_one) {
     fs2_free(&parent);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2slice_validate
+ * ========================================================================= */
+
+Test(fs2slice, validate_null) {
+    cr_assert_not(fs2slice_validate(NULL, NULL));
+}
+
+Test(fs2slice, validate_canonical_is_zombie) {
+    fs2slice s = FS2SLICE();                /* parent=NULL */
+    cr_assert_not(fs2slice_validate(NULL, &s));
+}
+
+Test(fs2slice, validate_basic_ok) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 1, 4);
+    CHECK_TRUE("valid", fs2slice_validate(NULL, &s));
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, validate_zombie_after_free) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2slice_free(&s);
+    CHECK_FALSE("zombie", fs2slice_validate(NULL, &s));
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, validate_empty_range_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice bad = { .parent = &parent, .range = {2, 2} };   /* [2,2) forbidden */
+    CHECK_FALSE("empty range", fs2slice_validate(NULL, &bad));
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, validate_reversed_range_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice bad = { .parent = &parent, .range = {4, 2} };   /* reversed */
+    CHECK_FALSE("reversed", fs2slice_validate(NULL, &bad));
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, validate_out_of_parent_range_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");                         /* len=2 */
+    fs2slice bad = { .parent = &parent, .range = {0, 100} }; /* to > len */
+    CHECK_FALSE("out of range", fs2slice_validate(NULL, &bad));
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, validate_borrow_zero_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    cr_assert_eq(parent.borrow, 1);
+
+    /* Simulate corruption: forget to increment borrow */
+    parent.borrow = 0;
+    CHECK_FALSE("borrow == 0", fs2slice_validate(NULL, &s));
+
+    parent.borrow = 1;                                      /* restore for free */
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2arrslice_validate
+ * ========================================================================= */
+
+Test(fs2slice, arrslice_validate_null) {
+    cr_assert_not(fs2arrslice_validate(NULL, NULL));
+}
+
+Test(fs2slice, arrslice_validate_canonical_ok) {
+    fs2arrslice a = FS2ARRSLICE();
+    CHECK_TRUE("canonical", fs2arrslice_validate(NULL, &a));
+}
+
+Test(fs2slice, arrslice_validate_basic_ok) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("a,bb,ccc");
+    fs2sliceview v[] = { {0,1}, {2,4}, {5,8} };
+    fs2arrslice a = mk_arrslice(&parent, v, 3);
+
+    CHECK_TRUE("valid", fs2arrslice_validate(NULL, &a));
+
+    fs2arrslice_free(&a);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, arrslice_validate_null_parent_nonzero_fails) {
+    fs2arrslice bad = { .parent = NULL, .ranges = (void*)0xdeadbeef,
+                        .hwm = 1, .size = 1, .count = 1 };
+    CHECK_FALSE("bad canonical", fs2arrslice_validate(NULL, &bad));
+}
+
+Test(fs2slice, arrslice_validate_count_gt_hwm_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2sliceview v[] = { {0,3} };
+    fs2arrslice a = mk_arrslice(&parent, v, 1);
+    a.count = 5;                                            /* corrupt */
+    CHECK_FALSE("count > hwm", fs2arrslice_validate(NULL, &a));
+    a.count = 1;
+    fs2arrslice_free(&a);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, arrslice_validate_bad_range_fails) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2sliceview v[] = { {0,3}, {2, 2} };                   /* second is empty */
+    fs2arrslice a = mk_arrslice(&parent, v, 2);
+    CHECK_FALSE("empty range", fs2arrslice_validate(NULL, &a));
+
+    a.ranges[1] = (fs2sliceview){0, 100};                    /* out of range */
+    CHECK_FALSE("out of range", fs2arrslice_validate(NULL, &a));
+
+    a.ranges[1] = (fs2sliceview){1, 3};                      /* restore */
+    CHECK_TRUE("restored", fs2arrslice_validate(NULL, &a));
+
+    fs2arrslice_free(&a);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_techfprint
+ * ========================================================================= */
+
+Test(fs2slice, techfprint_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello world");
+    fs2slice s = fs2slice_new(&parent, 6, 11);              /* "world" */
+
+    FILE *f = tmpfile();
+    cr_assert_not_null(f);
+
+    long w = fs2slice_techfprint(f, &s, "test");
+    cr_assert_gt(w, 0);
+
+    rewind(f);
+    char buf[512] = {0};
+    size_t rd = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[rd] = '\0';
+
+    cr_assert(strstr(buf, "FS2SLICE: test:") != NULL, "got: %s", buf);
+    cr_assert(strstr(buf, "count[1]")        != NULL, "got: %s", buf);
+    cr_assert(strstr(buf, "size[1]")         != NULL, "got: %s", buf);
+    cr_assert(strstr(buf, "[6, 11)")         != NULL, "got: %s", buf);   /* ← убрал "range" */
+    cr_assert(strstr(buf, "[world]")         != NULL, "got: %s", buf);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, techfprint_null_s) {
+    FILE *f = tmpfile();
+    long w = fs2slice_techfprint(f, NULL, "n");
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[128] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "<NULL>") != NULL);
+}
+
+Test(fs2slice, techfprint_zombie) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("x");
+    fs2slice s = fs2slice_new(&parent, 0, 1);
+    fs2slice_free(&s);
+
+    FILE *f = tmpfile();
+    long w = fs2slice_techfprint(f, &s, "z");
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[128] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "<zombie>") != NULL);
+
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, techfprint_null_out_returns_zero) {
+    fs2slice s = FS2SLICE();
+    CHECK_EQ("null out", 0, fs2slice_techfprint(NULL, &s, "x"));
+}
+
+/* =========================================================================
+ * fs2arrslice_techfprint
+ * ========================================================================= */
+
+Test(fs2slice, arrslice_techfprint_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("a,bb,ccc");
+    fs2sliceview v[] = { {0,1}, {2,4}, {5,8} };
+    fs2arrslice a = mk_arrslice(&parent, v, 3);
+
+    FILE *f = tmpfile();
+    long w = fs2arrslice_techfprint(f, &a, "cells");
+    cr_assert_gt(w, 0);
+
+    rewind(f);
+    char buf[1024] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    cr_assert(strstr(buf, "FS2ARRSLICE: cells:") != NULL, "got: %s", buf);
+    cr_assert(strstr(buf, "count[3]")            != NULL);
+    cr_assert(strstr(buf, "[0] [0, 1) [a]")      != NULL);
+    cr_assert(strstr(buf, "[1] [2, 4) [bb]")     != NULL);
+    cr_assert(strstr(buf, "[2] [5, 8) [ccc]")    != NULL);
+
+    fs2arrslice_free(&a);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, arrslice_techfprint_canonical) {
+    fs2arrslice a = FS2ARRSLICE();
+    FILE *f = tmpfile();
+    long w = fs2arrslice_techfprint(f, &a, "empty");
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[128] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "<empty>") != NULL);
+}
+
+Test(fs2slice, arrslice_techfprint_truncation) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("0123456789ABCDEF");           /* 16 bytes */
+    /* 12 single-char ranges — more than FS2SLICE_TECH_PRINT_COUNT (8) */
+    fs2sliceview v[12];
+    for (int i = 0; i < 12; i++)
+        v[i] = (fs2sliceview){ (size_t)i, (size_t)i + 1 };
+    fs2arrslice a = mk_arrslice(&parent, v, 12);
+
+    FILE *f = tmpfile();
+    fs2arrslice_techfprint(f, &a, "many");
+    rewind(f);
+    char buf[2048] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+
+    cr_assert(strstr(buf, "more") != NULL, "truncation marker: %s", buf);
+
+    /* exactly FS2SLICE_TECH_PRINT_COUNT range lines */
+    size_t n_lines = 0;
+    for (const char *p = buf; (p = strstr(p, "  [")) != NULL; p++)
+        n_lines++;
+    cr_assert_eq(n_lines, FS2SLICE_TECH_PRINT_COUNT);
+
+    fs2arrslice_free(&a);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* macros — smoke */
+Test(fs2slice, techfprint_macros) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+
+    FILE *f = tmpfile();
+    long w = FS2SLICETECHFPRINT(f, &s);           /* name = "&s" */
+    cr_assert_gt(w, 0);
+    rewind(f);
+    char buf[256] = {0};
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    cr_assert(strstr(buf, "FS2SLICE: &s:") != NULL, "got: %s", buf);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
