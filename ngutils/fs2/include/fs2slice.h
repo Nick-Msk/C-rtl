@@ -284,4 +284,104 @@ fs2slice_get(const fs2slice *s, size_t pos) {
 
 #define fs2sliceget(s, pos) *fs2slice_get((&s), (pos))
 
+/* =========================================================================
+ * Extraction — return NEW owned fs2 from slice content.
+ * Slice is read-only; there is no in-place variant.
+ * ========================================================================= */
+
+/* Clamp [from, len) against slice_len (not parent->len). */
+/* Reads ONLY s->len. Do not add checks/reads of s->v, s->flags, s->sz,
+ * s->borrow without auditing fs2slice_substr_bounds (which passes
+ * a fake fs2 with only .len set). */
+static inline void
+fs2slice_substr_bounds(const fs2slice *sl, size_t *from, size_t *len) {
+    if (sl->parent == NULL)
+        userraise(0, ERR_FS2SLICE_ZOMBIE, "Zombie, unable to calc bounds");
+    fs2_substr_bounds(&( (fs2) { .len = fs2slice_len(sl) } ), from, len);
+}
+
+/**
+ * @brief New owned fs2 = slice content [@p from, @p from + @p len).
+ *
+ * Offsets are **relative to slice start** (`slice.range.from` in parent),
+ * NOT from parent. Bounds are clamped to `slice_len`, not `parent->len`.
+ * Parent is untouched — returns independent deep copy.
+ *
+ *   parent = "0123456789"
+ *   slice  = [3, 8)  →  "34567"
+ *   fs2slice_substr_new(&slice, 1, 3) → "456"     (parent[4..7))
+ *   fs2slice_substr_new(&slice, 0, 5) → "34567"   (whole slice)
+ *   fs2slice_substr_new(&slice, 0, 100) → "34567" (clamped)
+ *   fs2slice_substr_new(&slice, 5, 1) → ""        (from == slice_len)
+ *   fs2slice_substr_new(&slice, 100, 1) → ""      (from > slice_len)
+ *
+ * @param sl    Non-NULL, non-zombie slice.
+ * @param from  Start offset within slice.
+ * @param len   Length to extract (clamped).
+ * @return      New fs2 (ALLOC); FS2EMPTY for zero-length result.
+ * @warning `invfatal` (SIGABRT) if sl is NULL/zombie.
+ */
+static inline fs2
+fs2slice_substr_new(const fs2slice *sl, size_t from, size_t len) {
+    invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
+
+    if (sl->parent == NULL)
+        userraise(0, ERR_NULL_INPUT, "Zombie slice");
+
+    fs2slice_substr_bounds(sl, &from, &len);
+    if (len == 0)
+        return FS2EMPTY;
+
+    fs2 res = FS2();
+    fs2_memcpy_str(&res, 0,
+                   sl->parent->v + sl->range.from + from, len);
+    fs2_setlen(&res, len);
+    return res;
+}
+
+/**
+ * @brief New owned fs2 = whole slice content (deep copy).
+ *
+ * Rust-flavored alias for `.to_owned()`.
+ */
+static inline fs2
+fs2slice_to_owned(const fs2slice *sl) {
+    invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
+
+    return fs2slice_substr_new(sl, 0, fs2slice_len(sl));
+}
+
+/**
+ * @brief New owned fs2 = first @p n bytes of slice (clamped to slice_len).
+ *
+ * @p n == 0 → FS2EMPTY. @p n >= slice_len → clone of whole slice.
+ */
+static inline fs2
+fs2slice_left_new(const fs2slice *sl, size_t n) {
+    invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
+
+    return fs2slice_substr_new(sl, 0, n);
+}
+
+/**
+ * @brief New owned fs2 = last @p n bytes of slice (clamped to slice_len).
+ *
+ * @p n == 0 → FS2EMPTY. @p n >= slice_len → clone of whole slice.
+ */
+static inline fs2
+fs2slice_right_new(const fs2slice *sl, size_t n) {
+    invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
+
+    size_t sl_len = fs2slice_len(sl);
+    if (n >= sl_len)
+        return fs2slice_to_owned(sl);
+    return fs2slice_substr_new(sl, sl_len - n, n);
+}
+
+/* Rust-style alias — same as fs2slice_to_owned */
+static inline fs2
+fs2slice_clone(const fs2slice *sl) {
+    return fs2slice_to_owned(sl);
+}
+
  #endif /* !FS2SLICE_H */
