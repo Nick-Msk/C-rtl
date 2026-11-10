@@ -137,8 +137,8 @@ typedef int (*fs2_cmp_t)(const char *a, const char *b);
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** Empty growable value (stack body, ALLOC, no capacity yet). */
-#define FS2()          (fs2){ .len = 0, .sz = 0, .borrow = 0, \
-                                .flags = FS2_ALLOC,  .v = NULL }
+#define FS2(...)        (fs2){ .len = 0, .sz = 0, .borrow = 0, \
+                                .flags = FS2_ALLOC,  .v = NULL, ##__VA_ARGS__ }
 
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
 #define FS2EMPTY        (fs2){ .len = 0, .sz = 1, .borrow = 0, \
