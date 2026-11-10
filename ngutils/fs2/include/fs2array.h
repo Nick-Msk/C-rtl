@@ -16,10 +16,8 @@ typedef struct fs2array {
 
 static inline void
 fs2arr_set_hole(fs2 *slot) {
-    slot->len   = 0;
-    slot->sz    = 0;
+    *slot = FS2();
     slot->flags = FS2_NULL_ARRAY_ELEMENT;
-    slot->v     = NULL;
 }
 
 /* Content-of-slot truncation uses FS2_TECH_PRINT_COUNT (same as fs2_techfprint).
