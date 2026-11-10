@@ -116,6 +116,7 @@ typedef struct fs2 {
     size_t      len;        /**< Logical length, excluding NUL.             */
     size_t      sz;         /**< Capacity in bytes, including NUL.          */
     fs2_flags   flags;      /**< state flags                                */
+    uint32_t    borrow;     /**< Count of active slices.                    */
     char       *v;          /**< NUL-terminated;                            */
 } fs2;
 
@@ -136,17 +137,23 @@ typedef int (*fs2_cmp_t)(const char *a, const char *b);
  * ───────────────────────────────────────────────────────────────────────── */
 
 /** Empty growable value (stack body, ALLOC, no capacity yet). */
-#define FS2()          (fs2){ .len = 0, .sz = 0, \
+#define FS2()          (fs2){ .len = 0, .sz = 0, .borrow = 0, \
                                 .flags = FS2_ALLOC,  .v = NULL }
 
 /** Empty read-only value. Safe to share; fs2_free is a no-op. */
-#define FS2EMPTY        (fs2){ .len = 0, .sz = 1, \
+#define FS2EMPTY        (fs2){ .len = 0, .sz = 1, .borrow = 0, \
                                 .flags = FS2_STATIC, .v = (char *)"" }
 
 /** Literal: wraps a compile-time string. sizeof-1 gives strlen for free. */
-#define FS2LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), \
+#define FS2LITERAL(s)   (fs2){ .len = sizeof(s) - 1, .sz = sizeof(s), .borrow = 0, \
                                 .flags = FS2_STATIC, .v = (char *)(s) }                      
 
+/**
+ * @brief Thread-safe global constant for an empty read-only fs2.
+ *
+ * Equivalent to `FS2EMPTY` (len=0, sz=1, FS2_STATIC, v="").
+ * Use as a shared fallback instead of creating a new FS2EMPTY each time.
+ */
 extern const fs2 fs2_empty_const;
 
 /**
@@ -453,6 +460,17 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
     return false;
 }
 
+/* Guard: abort if any slice references this fs2. */
+static inline bool
+fs2_require_unborrowed(const fs2 *s) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null fs2");
+    if (s->borrow != 0)
+        userraise(0, ERR_FS2SLICE_BORROWED,
+             "fs2 is borrowed (%u active slice(s)); free slices first",
+             s->borrow);
+    return false;       // always
+}
+
 /**
  * @brief Declare a stack-allocated fixed-capacity fs2 (FS2LOCAL).
  *
@@ -476,6 +494,7 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
     _fs2_buf_##name[0] = '\0';                     \
     fs2 name = (fs2){ .len = 0, .sz = (n),         \
                       .flags = FS2_LOCAL,          \
+                      .borrow = 0,                 \
                       .v = _fs2_buf_##name }
 
 /**
@@ -504,6 +523,7 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
         .len   = sizeof(_fs2_internal_buf_##name) - 1,                        \
         .sz    = sizeof(_fs2_internal_buf_##name),                            \
         .flags = FS2_LOCAL,                                                   \
+        .borrow = 0,                                                          \
         .v     = _fs2_internal_buf_##name                                     \
     }
 
@@ -982,6 +1002,8 @@ fs2_memcpy_str(fs2 *restrict dst, size_t dstpos, const char *restrict src, size_
  */
 static inline fs2 *
 fs2_memmove(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len) {
+    if (len < dst->len)
+        fs2_require_unborrowed(dst);    // SIGINT if slices
 
     if (src == NULL) 
         src = dst;   /* self-move: resolve before guard */
@@ -1103,6 +1125,8 @@ static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
     if (s->v && !fs2_is_static(s)) {
         invfatal(ERR_OUT_OF_RANGE, pos < s->sz, 
             "Trying to set length %zu exceed size %zu", pos, s->sz);
+        if (pos < s->len)
+            fs2_require_unborrowed(s);    // SIGINT
         s->v[s->len = pos] = '\0';  // not for static! ex. FS2EMPTY
     } else {
         /* Read-only or NULL: only no-op allowed */
@@ -1122,7 +1146,8 @@ static inline fs2 *fs2_setlen(fs2 *s, size_t pos) {
  * @param s  Non-NULL fs2 with a non-NULL buffer.
  * @return   @p s for chaining.
  */
-static inline fs2 *fs2_clear(fs2 *s) {
+static inline fs2 *
+fs2_clear(fs2 *s) {
     return fs2_setlen(s, 0);
 }
 
@@ -1323,12 +1348,53 @@ fs2_cmpstr_wrap(const void *str1, const void *str2);
 extern int                  
 fs2_cmpstr_ci_wrap(const void *str1, const void *str2);
 
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts before non-NULL (ascending).
+ *
+ * Wraps fs2_cmp_nullbefore. A slot with `v == NULL` (manually-inserted
+ * canonical FS2()) is ordered before any slot with a non-NULL buffer.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int
 fs2_cmp_nullbefore_wrap(const void *str1, const void *str2);
+
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts before non-NULL (descending).
+ *
+ * Reverses argument order to fs2_cmp_nullbefore, so NULL appears at the end.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int
 fs2_cmp_desc_nullbefore_wrap(const void *str1, const void *str2);
+
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts after non-NULL (ascending).
+ *
+ * Wraps fs2_cmp_nullafter. A slot with `v == NULL` is ordered after any
+ * slot with a non-NULL buffer. Matches SQL `ORDER BY col ASC NULLS LAST`.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int
 fs2_cmp_nullafter_wrap(const void *str1, const void *str2);
+
+/**
+ * @brief qsort/bsearch-compatible comparator: NULL sorts after non-NULL (descending).
+ *
+ * Reverses argument order to fs2_cmp_nullafter, so NULL appears at the beginning.
+ *
+ * @param str1  Pointer to first fs2 (as `const void*`).
+ * @param str2  Pointer to second fs2 (as `const void*`).
+ * @return      < 0, 0, or > 0.
+ */
 extern int
 fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2);
 
@@ -1354,7 +1420,8 @@ fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2);
  *          because glibc maps it to one write(). For fully-buffered
  *          shared streams the caller should still serialize
  */
-extern long                fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
+extern long                
+fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
 #define  FS2TECHFPRINT(out, s) \
         fs2_techfprint( (out), (s), #s)
