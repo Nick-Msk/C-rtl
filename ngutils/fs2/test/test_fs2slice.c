@@ -380,6 +380,7 @@ Test(fs2slice, sum_starts_at_zero_or_tracks) {
 
     CHECK_EQ("sum restored", before, fs2slice_sum());
     fs2_free(&parent);
+    assert_balanced();
 }
 
 Test(fs2slice, sum_arrslice_counts_one) {
@@ -394,4 +395,5 @@ Test(fs2slice, sum_arrslice_counts_one) {
     fs2arrslice_free(&a);
     CHECK_EQ("restored", before, fs2slice_sum());
     fs2_free(&parent);
+    assert_balanced();
 }
