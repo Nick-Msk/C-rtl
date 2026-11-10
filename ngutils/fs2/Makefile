@@ -16,4 +16,3 @@ TEST_SRC_LIST = test/test_fs2.c test/test_fs2_api.c test/test_fs2_api_any_class.
 				test/test_fs2slice.c
 
 include ../Makefile.common
-
