@@ -138,6 +138,7 @@ typedef enum {
     ERR_FS2SLICE_GENERAL        = 10400,
     ERR_FS2SLICE_ZOMBIE         = 10401,
     ERR_FS2SLICE_UNDERFLOW      = 10402,
+    ERR_FS2SLICE_BORROWED       = 10403,
 } ErrorCode;
 
 /**
