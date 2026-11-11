@@ -612,6 +612,40 @@ fs2slice_get(const fs2slice *s, size_t pos) {
 }
 
 /**
+ * @internal Slice char-search core: window + guard, then delegate.
+ *
+ * All four public wrappers (`fs2slice_chr`, `_chr_ci`, `_rchr`, `_rchr_ci`)
+ * are one-liners over this. Guards live HERE, once:
+ *   - NULL slice             → SIGABRT (invfatal)
+ *   - zombie slice (v==NULL) → SIGINT  (userraise)
+ *
+ * Offset returned is SLICE-RELATIVE, bounded by [range.from, range.to).
+ * Never reads parent prefix/suffix or the parent NUL terminator.
+ */
+static inline ptrdiff_t
+fs2slice_charsearch(const fs2slice *s, char ch, fs2_chr_raw_fn fn) {
+    invfatal(ERR_NULL_INPUT, s != NULL, "Null slice");
+    if (s->parent == NULL)
+        userraise(-1, ERR_FS2SLICE_ZOMBIE, "Zombie slice, null parent");
+
+    return fn((const unsigned char *)s->parent->v + s->range.from,
+              s->range.to - s->range.from,
+              (unsigned char)ch);
+}
+
+static inline ptrdiff_t fs2slice_chr(const fs2slice *s, char ch)
+    { return fs2slice_charsearch(s, ch, __fs2_chr_raw);    }
+
+static inline ptrdiff_t fs2slice_chr_ci(const fs2slice *s, char ch)
+    { return fs2slice_charsearch(s, ch, __fs2_chr_raw_ci); }
+
+static inline ptrdiff_t fs2slice_rchr(const fs2slice *s, char ch)
+    { return fs2slice_charsearch(s, ch, __fs2_rchr_raw);   }
+
+static inline ptrdiff_t fs2slice_rchr_ci(const fs2slice *s, char ch)
+    { return fs2slice_charsearch(s, ch, __fs2_rchr_raw_ci);}
+
+/**
  * @brief Convenience macro: dereference the byte at offset @p pos.
  *
  * Equivalent to `*fs2slice_get(&s, pos)`. See `fs2slice_get` for
