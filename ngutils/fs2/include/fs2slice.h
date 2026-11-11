@@ -775,7 +775,17 @@ fs2slice_tolower_new(const fs2slice *sl) {
     return r;
 }
 
+static inline fs2
+fs2slice_rpad_new(const fs2slice *restrict sl, size_t len, const fs2 *restrict pad) {
+    fs2 r = fs2slice_to_owned(sl);
+    return *fs2_rpad(&r, len, pad);
+}
 
+static inline fs2
+fs2slice_rpadstr_new(const fs2slice *restrict sl, size_t len, const char *restrict padstr) {
+    fs2 r = fs2slice_to_owned(sl);
+    return *fs2_rpadstr(&r, len, padstr);
+}
 
  #endif /* !FS2SLICE_H */
 
