@@ -672,9 +672,6 @@ static inline fs2
 fs2slice_substr_new(const fs2slice *sl, size_t from, size_t len) {
     invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
 
-    if (sl->parent == NULL)
-        userraise(0, ERR_NULL_INPUT, "Zombie slice");
-
     fs2slice_substr_bounds(sl, &from, &len);
     if (len == 0)
         return FS2EMPTY;
@@ -693,8 +690,6 @@ fs2slice_substr_new(const fs2slice *sl, size_t from, size_t len) {
  */
 static inline fs2
 fs2slice_to_owned(const fs2slice *sl) {
-    invfatal(ERR_NULL_INPUT, sl != NULL, "Null slice");
-
     return fs2slice_substr_new(sl, 0, fs2slice_len(sl));
 }
 
@@ -779,6 +774,7 @@ fs2slice_tolower_new(const fs2slice *sl) {
     fs2_tolower(&r);
     return r;
 }
+
 
 
  #endif /* !FS2SLICE_H */
