@@ -2362,23 +2362,6 @@ Test(fs2slice, lpad_new_after_parent_realloc) {
     assert_balanced();
 }
 
-Test(fs2slice, lpad_new_respects_slice_bounds) {
-    __fs2_checkreset();
-    fs2 parent = fs2_fromstr("XXmiddleYY");
-    fs2slice s = fs2slice_new(&parent, 2, 8);        /* "middle" */
-    fs2 pad = fs2_fromstr(".");
-
-    fs2 r = fs2slice_lpad_new(&s, 9, &pad);
-
-    CHECK_STR_EQ("...middle", r.v, "...middle");     /* NOT ".XXmiddle" */
-
-    fs2_free(&r);
-    fs2_free(&pad);
-    fs2slice_free(&s);
-    fs2_free(&parent);
-    assert_balanced();
-}
-
 Test(fs2slice, lpad_new_null_slice_aborts, .signal = SIGABRT) {
     fs2 pad = fs2_fromstr("*");
     fs2slice_lpad_new(NULL, 5, &pad);
@@ -2658,3 +2641,56 @@ Test(fs2slice, lpadstr_new_truncates_when_target_lt_current) {
     fs2_free(&parent);
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2slice_lpad_new — slice-specific behaviour only.
+ *
+ * Padding/truncation semantics belong to fs2_lpad (see test_fs2_api.c).
+ * Here we verify only what the wrapper adds: range extraction,
+ * independence of the result buffer, guard propagation, leech-after-realloc.
+ * ========================================================================= */
+
+Test(fs2slice, lpad_new_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXmiddleYY");
+    fs2slice s = fs2slice_new(&parent, 2, 8);         /* "middle" */
+    fs2 pad = fs2_fromstr(".");
+
+    fs2 r = fs2slice_lpad_new(&s, 9, &pad);
+
+    /* bug class caught here: wrapper using parent->len instead of slice_len
+     * would yield ".XXmiddle" or "XXmiddle" + pad tail — never "...middle" */
+    CHECK_STR_EQ("content", "...middle", r.v);
+    CHECK_EQ  ("len",       9,          r.len);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_result_is_independent) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2 pad = fs2_fromstr("*");
+
+    fs2 r = fs2slice_lpad_new(&s, 8, &pad);
+
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    r.v[0] = 'X';                                      /* wrapper must not alias */
+    CHECK_STR_EQ("parent intact", "hello",  parent.v);
+    CHECK_STR_EQ("slice intact",  "hello",  fs2slice_data(&s)); /* not aliased */
+    CHECK_STR_EQ("result",        "X**hello", r.v);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
