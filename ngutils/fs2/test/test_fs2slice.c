@@ -1859,3 +1859,249 @@ Test(fs2slice, right_new_zero_empty) {
 //     fs2_free(&comma);
 //     assert_balanced();
 // }
+
+/* =========================================================================
+ * fs2slice_toupper_new
+ * ========================================================================= */
+
+Test(fs2slice, toupper_new_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xhellox");
+    fs2slice s = fs2slice_new(&parent, 1, 6);        /* "hello" */
+
+    fs2 r = fs2slice_toupper_new(&s);
+
+    CHECK_STR_EQ("HELLO",     r.v, "HELLO");
+    CHECK_EQ  ("len",         5, r.len);
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    /* parent + slice untouched */
+    CHECK_STR_EQ("parent intact", "xhellox", parent.v);
+    CHECK_TRUE ("slice intact",    slice_eq(&s, "hello"));
+    CHECK_FS2VALID(2, &parent);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, toupper_new_mixed_case) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("__HeLLo WoRLD__");
+    fs2slice s = fs2slice_new(&parent, 2, 13);       /* "HeLLo WoRLD" */
+
+    fs2 r = fs2slice_toupper_new(&s);
+
+    CHECK_STR_EQ("HELLO WORLD", r.v, "HELLO WORLD");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, toupper_new_already_upper_noop) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("HELLO");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    fs2 r = fs2slice_toupper_new(&s);
+
+    CHECK_STR_EQ("HELLO", r.v, "HELLO");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, toupper_new_nonletters_unchanged) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("a1b2!c3");
+    fs2slice s = fs2slice_new(&parent, 0, 7);
+
+    fs2 r = fs2slice_toupper_new(&s);
+
+    CHECK_STR_EQ("A1B2!C3", r.v, "A1B2!C3");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, toupper_new_single_char) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xax");
+    fs2slice s = fs2slice_new(&parent, 1, 2);        /* "a" */
+
+    fs2 r = fs2slice_toupper_new(&s);
+
+    CHECK_STR_EQ("A", r.v, "A");
+    CHECK_EQ  ("len", 1, r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_tolower_new
+ * ========================================================================= */
+
+Test(fs2slice, tolower_new_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xHELLOx");
+    fs2slice s = fs2slice_new(&parent, 1, 6);        /* "HELLO" */
+
+    fs2 r = fs2slice_tolower_new(&s);
+
+    CHECK_STR_EQ("hello",     r.v, "hello");
+    CHECK_EQ  ("len",         5, r.len);
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    /* parent + slice untouched */
+    CHECK_STR_EQ("parent intact", "xHELLOx", parent.v);
+    CHECK_TRUE ("slice intact",    slice_eq(&s, "HELLO"));
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, tolower_new_mixed_case) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("HeLLo WoRLD");
+    fs2slice s = fs2slice_new(&parent, 0, 11);
+
+    fs2 r = fs2slice_tolower_new(&s);
+
+    CHECK_STR_EQ("hello world", r.v, "hello world");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, tolower_new_already_lower_noop) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    fs2 r = fs2slice_tolower_new(&s);
+
+    CHECK_STR_EQ("hello", r.v, "hello");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Consistency with fs2_toupper_new / fs2_tolower_new equivalents
+ * ========================================================================= */
+
+Test(fs2slice, toupper_new_equals_owned_then_toupper) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abcdef");
+    fs2slice s = fs2slice_new(&parent, 1, 5);        /* "bcde" */
+
+    fs2 a = fs2slice_toupper_new(&s);                /* via slice helper */
+
+    fs2 tmp = fs2slice_to_owned(&s);                 /* manual chain */
+    fs2 b = tmp;
+    fs2_toupper(&b);
+
+    CHECK_STR_EQ("same content", a.v, b.v);
+    CHECK_EQ  ("same len",       a.len, b.len);
+
+    fs2_free(&a);
+    fs2_free(&tmp);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* Leech: extraction reads CURRENT parent buffer (realloc-safe) */
+Test(fs2slice, toupper_new_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    fs2_catstr(&parent, " world");                    /* realloc */
+
+    fs2 r = fs2slice_toupper_new(&s);                 /* still "HELLO" */
+
+    CHECK_STR_EQ("HELLO", r.v, "HELLO");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2slice, toupper_new_null_aborts, .signal = SIGABRT) {
+    fs2slice_toupper_new(NULL);
+}
+
+Test(fs2slice, toupper_new_zombie_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_toupper_new(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, tolower_new_null_aborts, .signal = SIGABRT) {
+    fs2slice_tolower_new(NULL);
+}
+
+Test(fs2slice, tolower_new_zombie_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_tolower_new(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Integration: split → toupper cell
+ * ========================================================================= */
+
+// Test(fs2slice, split_then_toupper_cell) {
+//     __fs2_checkreset();
+//     fs2 csv = fs2_fromstr("alpha,beta,gamma");
+//     fs2 comma = fs2_fromstr(",");
+//     fs2arrslice cells = fs2arrslice_split(&csv, &comma);
+//     cr_assert_eq(cells.count, 3);
+
+//     fs2slice cell1 = fs2arrslice_get(&cells, 1);     /* "beta" */
+//     fs2 upper = fs2slice_toupper_new(&cell1);
+
+//     CHECK_STR_EQ("BETA", upper.v, "BETA");
+//     CHECK_STR_EQ("original still lowercase", csv.v, "alpha,beta,gamma");
+
+//     fs2_free(&upper);
+//     fs2slice_free(&cell1);
+//     fs2arrslice_free(&cells);
+//     fs2_free(&csv);
+//     fs2_free(&comma);
+//     assert_balanced();
+// }
+
