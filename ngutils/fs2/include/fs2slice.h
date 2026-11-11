@@ -627,6 +627,8 @@ fs2slice_charsearch(const fs2slice *s, char ch, fs2_chr_raw_fn fn) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null slice");
     if (s->parent == NULL)
         userraise(-1, ERR_FS2SLICE_ZOMBIE, "Zombie slice, null parent");
+    if (s->parent->v == NULL)
+        return -1;
 
     return fn((const unsigned char *)s->parent->v + s->range.from,
               s->range.to - s->range.from,
@@ -644,6 +646,50 @@ static inline ptrdiff_t fs2slice_rchr(const fs2slice *s, char ch)
 
 static inline ptrdiff_t fs2slice_rchr_ci(const fs2slice *s, char ch)
     { return fs2slice_charsearch(s, ch, __fs2_rchr_raw_ci);}
+
+/**
+ * @internal Find the k-th (1-based) forward occurrence of @p ch within
+ * the slice window, optionally bounded by @p lim.
+ *
+ * Guards run BEFORE the k==0 short-circuit, so a zombie slice with k=0
+ * still raises — callers pass a non-zombie slice as precondition, and
+ * we do not want to hide a corrupted handle behind a benign k=0.
+ *
+ *   1. @p s NULL                    → SIGABRT (invfatal)
+ *   2. zombie parent (parent NULL)  → SIGINT  (userraise)
+ *   3. parent has no buffer (v NULL)
+ *      OR @p k == 0                 → -1      (defensive; the k==0 arm
+ *                                               is a contract, the v==NULL
+ *                                               arm is belt-and-braces)
+ *
+ * @p lim is clamped to slice length (never reads past range.to, even if
+ * the caller passes SIZE_MAX or a value larger than the slice). The loop
+ * advances `consumed` one byte past each hit, so total scanned bytes are
+ * ≤ k · slice_len; each inner raw call is a fresh memchr/tolower sweep
+ * over the remaining tail.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param ch   Byte to find.
+ * @param k    1-based occurrence number. 0 → -1.
+ * @param lim  Maximum bytes to examine (clamped to slice length).
+ * @param fn   Raw forward search helper (`__fs2_chr_raw` / `_ci`).
+ * @return     Slice-relative 0-based offset, or -1 if fewer than k hits.
+ */
+extern ptrdiff_t
+fs2slice_charsearch_nth(const fs2slice *s, char ch, size_t k,
+                          size_t lim, fs2_chr_raw_fn fn);
+
+static inline ptrdiff_t fs2slice_chr_nth(const fs2slice *s, char ch, size_t k)
+    { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_chr_raw); }
+
+static inline ptrdiff_t fs2slice_chr_nth_ci(const fs2slice *s, char ch, size_t k)
+    { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_chr_raw_ci); }
+
+static inline ptrdiff_t fs2slice_nchr_nth(const fs2slice *s, char ch, size_t k, size_t lim)
+    { return fs2slice_charsearch_nth(s, ch, k, lim, __fs2_chr_raw); }
+
+static inline ptrdiff_t fs2slice_nchr_nth_ci(const fs2slice *s, char ch, size_t k, size_t lim)
+    { return fs2slice_charsearch_nth(s, ch, k, lim, __fs2_chr_raw_ci); }
 
 /**
  * @brief Convenience macro: dereference the byte at offset @p pos.
