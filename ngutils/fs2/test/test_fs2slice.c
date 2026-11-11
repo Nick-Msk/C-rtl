@@ -2694,3 +2694,336 @@ Test(fs2slice, lpad_new_result_is_independent) {
     assert_balanced();
 }
 
+/* =========================================================================
+ * fs2slice_chr — nominal
+ * ========================================================================= */
+
+Test(fs2slice, chr_found) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("'l' first", fs2slice_chr(&s, 'l'), (ptrdiff_t)2);
+    CHECK_EQ("'o'",       fs2slice_chr(&s, 'o'), (ptrdiff_t)4);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_not_found) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("absent", fs2slice_chr(&s, 'Z'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: slice-relative offset, not parent-relative */
+Test(fs2slice, chr_returns_slice_relative_offset) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aXbXc");        /* 'X' at parent[1], [3] */
+    fs2slice s = fs2slice_new(&parent, 2, 5); /* "bXc" */
+
+    CHECK_EQ("slice-relative", fs2slice_chr(&s, 'X'), (ptrdiff_t)1);
+
+    ptrdiff_t pos = fs2slice_chr(&s, 'X');
+    cr_assert_neq(pos, -1);
+    CHECK_EQ("round-trip", *fs2slice_get(&s, (size_t)pos), 'X');
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: respects slice bounds, no leak into parent prefix/suffix */
+Test(fs2slice, chr_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aXbXc");
+    fs2slice s = fs2slice_new(&parent, 2, 5); /* "bXc" */
+
+    CHECK_EQ("'a' outside slice", fs2slice_chr(&s, 'a'), (ptrdiff_t)-1);
+    CHECK_EQ("'c' inside slice",  fs2slice_chr(&s, 'c'), (ptrdiff_t)2);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_bounds_does_not_leak_suffix) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abcZZZ");
+    fs2slice s = fs2slice_new(&parent, 0, 3); /* "abc" */
+
+    CHECK_EQ("'Z' not in slice", fs2slice_chr(&s, 'Z'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* Leech after realloc */
+Test(fs2slice, chr_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    CHECK_EQ("'c' before", fs2slice_chr(&s, 'c'), (ptrdiff_t)2);
+
+    fs2_catstr(&parent, "XYZ");                       /* forced realloc */
+
+    CHECK_EQ("'c' after realloc", fs2slice_chr(&s, 'c'), (ptrdiff_t)2);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* Guards */
+Test(fs2slice, chr_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_chr(NULL, 'a');
+}
+
+Test(fs2slice, chr_zombie_slice_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_chr(&s, 'a');
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_chr_ci
+ * ========================================================================= */
+
+Test(fs2slice, chr_ci_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("Hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("'h' finds 'H'", fs2slice_chr_ci(&s, 'h'), (ptrdiff_t)0);
+    CHECK_EQ("'H' finds 'H'", fs2slice_chr_ci(&s, 'H'), (ptrdiff_t)0);
+    CHECK_EQ("'O' finds 'o'", fs2slice_chr_ci(&s, 'O'), (ptrdiff_t)4);
+    CHECK_EQ("absent",        fs2slice_chr_ci(&s, 'z'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_ci_vs_cs_differ) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("Hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("cs: 'h' not found", fs2slice_chr(&s,    'h'), (ptrdiff_t)-1);
+    CHECK_EQ("ci: 'h' found",     fs2slice_chr_ci(&s, 'h'), (ptrdiff_t)0);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_ci_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("HelloWorld");
+    fs2slice s = fs2slice_new(&parent, 5, 10); /* "World" */
+
+    CHECK_EQ("'h' outside slice", fs2slice_chr_ci(&s, 'h'), (ptrdiff_t)-1);
+    CHECK_EQ("'w' in slice",      fs2slice_chr_ci(&s, 'w'), (ptrdiff_t)0);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_ci_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2_catstr(&parent, "XYZ");
+
+    CHECK_EQ("'C' finds 'c'", fs2slice_chr_ci(&s, 'C'), (ptrdiff_t)2);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, chr_ci_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_chr_ci(NULL, 'a');
+}
+
+Test(fs2slice, chr_ci_zombie_slice_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_chr_ci(&s, 'a');
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_rchr — last occurrence
+ * ========================================================================= */
+
+Test(fs2slice, rchr_picks_last) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abXcdXef");
+    fs2slice s = fs2slice_new(&parent, 2, 7); /* "XcdXe" — X at slice[0] and [3] */
+
+    CHECK_EQ("forward picks first", fs2slice_chr(&s,  'X'), (ptrdiff_t)0);
+    CHECK_EQ("reverse picks last",  fs2slice_rchr(&s, 'X'), (ptrdiff_t)3);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_only_one_occurrence) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    CHECK_EQ("'b'", fs2slice_rchr(&s, 'b'), (ptrdiff_t)1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_not_found) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("absent", fs2slice_rchr(&s, 'Z'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: rchr must not look into parent prefix */
+Test(fs2slice, rchr_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XabcX");        /* X at parent[0], [4] */
+    fs2slice s = fs2slice_new(&parent, 1, 4); /* "abc" — no X inside */
+
+    CHECK_EQ("no 'X' in slice", fs2slice_rchr(&s, 'X'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: rchr must not see parent NUL terminator */
+Test(fs2slice, rchr_bounds_does_not_see_terminator) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abXcdXef");
+    fs2slice s = fs2slice_new(&parent, 2, 7); /* "XcdXe", not "...ef" */
+
+    /* 'f' is at parent[7], OUTSIDE slice */
+    CHECK_EQ("'f' outside slice", fs2slice_rchr(&s, 'f'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2_catstr(&parent, "abc");
+
+    CHECK_EQ("'c' after realloc", fs2slice_rchr(&s, 'c'), (ptrdiff_t)2);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_rchr(NULL, 'a');
+}
+
+Test(fs2slice, rchr_zombie_slice_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_rchr(&s, 'a');
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_rchr_ci
+ * ========================================================================= */
+
+Test(fs2slice, rchr_ci_picks_last) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abXcdxef");
+    fs2slice s = fs2slice_new(&parent, 2, 7); /* "Xcdxe" — X and x */
+
+    CHECK_EQ("forward ci", fs2slice_chr_ci(&s,  'X'), (ptrdiff_t)0);
+    CHECK_EQ("reverse ci", fs2slice_rchr_ci(&s, 'X'), (ptrdiff_t)3);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_ci_not_found) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("Hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    CHECK_EQ("absent", fs2slice_rchr_ci(&s, 'z'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_ci_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XabcX");
+    fs2slice s = fs2slice_new(&parent, 1, 4); /* "abc" */
+
+    CHECK_EQ("no 'x'/'X' in slice", fs2slice_rchr_ci(&s, 'x'), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_ci_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_rchr_ci(NULL, 'a');
+}
+
+/* All four variants agree on bounds; only direction/case differ. */
+Test(fs2slice, charsearch_all_variants_share_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXabcXX");         /* X at [0],[1],[5],[6] */
+    fs2slice s = fs2slice_new(&parent, 2, 5);    /* "abc" — no X inside */
+
+    CHECK_EQ("chr  outside",      fs2slice_chr(&s,    'X'), (ptrdiff_t)-1);
+    CHECK_EQ("chr_ci outside",    fs2slice_chr_ci(&s, 'x'), (ptrdiff_t)-1);
+    CHECK_EQ("rchr outside",      fs2slice_rchr(&s,   'X'), (ptrdiff_t)-1);
+    CHECK_EQ("rchr_ci outside",   fs2slice_rchr_ci(&s,'x'), (ptrdiff_t)-1);
+
+    CHECK_EQ("chr inside",        fs2slice_chr(&s,    'b'), (ptrdiff_t)1);
+    CHECK_EQ("rchr inside",       fs2slice_rchr(&s,   'b'), (ptrdiff_t)1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
