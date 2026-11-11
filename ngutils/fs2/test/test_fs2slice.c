@@ -2105,3 +2105,556 @@ Test(fs2slice, tolower_new_zombie_aborts, .signal = SIGABRT) {
 //     assert_balanced();
 // }
 
+/* =========================================================================
+ * fs2slice_rpad_new  —  fs2-pad variant
+ * ========================================================================= */
+
+Test(fs2slice, rpad_new_single_char) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xhellox");
+    fs2slice s = fs2slice_new(&parent, 1, 6);        /* "hello" */
+    fs2 pad = fs2_fromstr("*");
+
+    fs2 r = fs2slice_rpad_new(&s, 8, &pad);
+
+    /* HONEST: hardcoded expected */
+    CHECK_STR_EQ("content",   "hello***", r.v);
+    CHECK_EQ  ("len",         8,          r.len);
+    CHECK_TRUE("sz >= len+1", r.sz >= r.len + 1);
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    /* parent/slice untouched */
+    CHECK_STR_EQ("parent intact", "xhellox", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+    CHECK_FS2VALID(2, &parent);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_multi_char_partial) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("ab");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2 r = fs2slice_rpad_new(&s, 7, &pad);           /* need 5 more */
+
+    CHECK_STR_EQ("content", "abxyxyx", r.v);          /* NOT "abxyxy" */
+    CHECK_EQ  ("len",       7,         r.len);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_3char_pattern_truncates) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2 pad = fs2_fromstr("xyz");
+
+    fs2 r = fs2slice_rpad_new(&s, 10, &pad);          /* need 7 more */
+
+    /* "xyzxyzxyz" → first 7 = "xyzxyzx" */
+    CHECK_STR_EQ("content", "abcxyzxyzx", r.v);
+    CHECK_EQ  ("len",       10,           r.len);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_pad_longer_than_needed) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+    fs2 pad = fs2_fromstr("abcd");
+
+    fs2 r = fs2slice_rpad_new(&s, 5, &pad);           /* need 3 → "abc" */
+
+    CHECK_STR_EQ("content", "hiabc", r.v);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_no_op_when_target_eq_current) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2 pad = fs2_fromstr("*");
+
+    fs2 r = fs2slice_rpad_new(&s, 5, &pad);
+
+    CHECK_STR_EQ("content", "hello", r.v);
+    CHECK_EQ  ("len",       5,       r.len);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_result_buffer_independent) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2 pad = fs2_fromstr("*");
+
+    fs2 r = fs2slice_rpad_new(&s, 8, &pad);
+    r.v[0] = 'X';                                     /* mutate result */
+
+    CHECK_STR_EQ("parent intact", "hello",     parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+    CHECK_STR_EQ("result modified", "Xello***", r.v);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2_catstr(&parent, " world");                    /* forced realloc */
+
+    fs2 pad = fs2_fromstr(".");
+    fs2 r = fs2slice_rpad_new(&s, 8, &pad);
+
+    CHECK_STR_EQ("leech + pad", "hello...", r.v);     /* still reads slice, not parent suffix */
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXmiddleYY");
+    fs2slice s = fs2slice_new(&parent, 2, 8);        /* "middle" */
+    fs2 pad = fs2_fromstr(".");
+
+    fs2 r = fs2slice_rpad_new(&s, 9, &pad);
+
+    CHECK_STR_EQ("middle...", r.v, "middle...");     /* NOT "middleYY." */
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpad_new_null_slice_aborts, .signal = SIGABRT) {
+    fs2 pad = fs2_fromstr("*");
+    fs2slice_rpad_new(NULL, 5, &pad);
+    fs2_free(&pad);
+}
+
+Test(fs2slice, rpad_new_zombie_slice_aborts, .signal = SIGABRT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2 pad = fs2_fromstr("*");
+    fs2slice_rpad_new(&s, 5, &pad);
+    fs2_free(&pad);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_lpad_new
+ * ========================================================================= */
+
+Test(fs2slice, lpad_new_single_char) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xhellox");
+    fs2slice s = fs2slice_new(&parent, 1, 6);
+    fs2 pad = fs2_fromstr("*");
+
+    fs2 r = fs2slice_lpad_new(&s, 8, &pad);
+
+    CHECK_STR_EQ("content",   "***hello", r.v);
+    CHECK_EQ  ("len",         8,          r.len);
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    CHECK_STR_EQ("parent intact", "xhellox", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_multi_char_partial) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("ab");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+    fs2 pad = fs2_fromstr("xy");
+
+    fs2 r = fs2slice_lpad_new(&s, 7, &pad);           /* → "xyxyxab" */
+
+    CHECK_STR_EQ("content", "xyxyxab", r.v);
+    CHECK_EQ  ("len",       7,         r.len);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_3char_pattern_truncates) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("end");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2 pad = fs2_fromstr("xyz");
+
+    fs2 r = fs2slice_lpad_new(&s, 10, &pad);          /* → "xyzxyzxend" */
+
+    CHECK_STR_EQ("content", "xyzxyzxend", r.v);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+    fs2_catstr(&parent, "!");                         /* forced realloc */
+
+    fs2 pad = fs2_fromstr(".");
+    fs2 r = fs2slice_lpad_new(&s, 5, &pad);
+
+    CHECK_STR_EQ("leech + pad", "...hi", r.v);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_respects_slice_bounds) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXmiddleYY");
+    fs2slice s = fs2slice_new(&parent, 2, 8);        /* "middle" */
+    fs2 pad = fs2_fromstr(".");
+
+    fs2 r = fs2slice_lpad_new(&s, 9, &pad);
+
+    CHECK_STR_EQ("...middle", r.v, "...middle");     /* NOT ".XXmiddle" */
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpad_new_null_slice_aborts, .signal = SIGABRT) {
+    fs2 pad = fs2_fromstr("*");
+    fs2slice_lpad_new(NULL, 5, &pad);
+    fs2_free(&pad);
+}
+
+/* =========================================================================
+ * fs2slice_rpadstr_new
+ * ========================================================================= */
+
+Test(fs2slice, rpadstr_new_single_char) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xhellox");
+    fs2slice s = fs2slice_new(&parent, 1, 6);        /* "hello" */
+
+    fs2 r = fs2slice_rpadstr_new(&s, 8, "*");
+
+    CHECK_STR_EQ("content",   "hello***", r.v);
+    CHECK_EQ  ("len",         8,          r.len);
+    CHECK_TRUE("ALLOC",       fs2_is_alloc(&r));
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    CHECK_STR_EQ("parent intact", "xhellox", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpadstr_new_multi_char_partial) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("ab");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+
+    fs2 r = fs2slice_rpadstr_new(&s, 7, "xy");
+
+    CHECK_STR_EQ("content", "abxyxyx", r.v);          /* NOT "abxyxy" — truncation */
+    CHECK_EQ  ("len",       7,         r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpadstr_new_3char_pattern_truncates) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    fs2 r = fs2slice_rpadstr_new(&s, 10, "xyz");
+
+    CHECK_STR_EQ("content", "abcxyzxyzx", r.v);
+    CHECK_EQ  ("len",       10,           r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpadstr_new_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hi");
+    fs2slice s = fs2slice_new(&parent, 0, 2);
+    fs2_catstr(&parent, "!!!");                       /* forced realloc */
+
+    fs2 r = fs2slice_rpadstr_new(&s, 5, ".");
+
+    CHECK_STR_EQ("hi...", r.v, "hi...");
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rpadstr_new_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_rpadstr_new(NULL, 5, "*");
+}
+
+/* =========================================================================
+ * fs2slice_lpadstr_new
+ * ========================================================================= */
+
+Test(fs2slice, lpadstr_new_single_char) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("xhellox");
+    fs2slice s = fs2slice_new(&parent, 1, 6);
+
+    fs2 r = fs2slice_lpadstr_new(&s, 8, "*");
+
+    CHECK_STR_EQ("content",   "***hello", r.v);
+    CHECK_EQ  ("len",         8,          r.len);
+    CHECK_TRUE("independent", r.v != parent.v);
+    CHECK_FS2VALID(1, &r);
+
+    CHECK_STR_EQ("parent intact", "xhellox", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpadstr_new_multi_char_partial) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("end");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    fs2 r = fs2slice_lpadstr_new(&s, 8, "ab");        /* → "ababaend" */
+
+    CHECK_STR_EQ("content", "ababaend", r.v);
+    CHECK_EQ  ("len",       8,          r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpadstr_new_3char_pattern_truncates) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("end");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    fs2 r = fs2slice_lpadstr_new(&s, 10, "xyz");      /* → "xyzxyzxend" */
+
+    CHECK_STR_EQ("content", "xyzxyzxend", r.v);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, lpadstr_new_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_lpadstr_new(NULL, 5, "*");
+}
+
+/* =========================================================================
+ * fs2slice_rpad_new — truncation (target < current)
+ * ========================================================================= */
+
+Test(fs2slice, rpad_new_truncates_when_target_lt_current) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2 pad = fs2_fromstr("*");
+
+    /* HONEST: rpad(5, 3) keeps PREFIX, drops suffix */
+    fs2 r = fs2slice_rpad_new(&s, 3, &pad);
+
+    CHECK_STR_EQ("prefix kept", "hel", r.v);
+    CHECK_EQ  ("len",           3,     r.len);
+    CHECK_TRUE("buffer still there", r.v != NULL && r.sz >= r.len + 1);
+    CHECK_FS2VALID(1, &r);
+
+    /* parent + slice untouched */
+    CHECK_STR_EQ("parent intact", "hello", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_rpad_new — stress
+ * ========================================================================= */
+
+Test(fs2slice, rpad_new_stress_long_target) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("A");
+    fs2slice s = fs2slice_new(&parent, 0, 1);
+    fs2 pad = fs2_fromstr("01");
+
+    fs2 r = fs2slice_rpad_new(&s, 100, &pad);
+
+    /* "A" + "01"*49 + "0"  →  len=100
+     *   pos 0     = 'A'          (original)
+     *   pos 1     = '0'          pad[0]
+     *   pos 2     = '1'          pad[1]
+     *   pos 97    = '1'          pad[(97-1)%2=0] → wait, (97-1)=96 even → '0'
+     * Let me recount properly:
+     *   pos k (k>=1) uses pad[(k-1) % 2]
+     *   pos 97: (97-1)%2 = 0 → '0'
+     *   pos 98: (98-1)%2 = 1 → '1'
+     *   pos 99: (99-1)%2 = 0 → '0'
+     */
+    CHECK_EQ("len",     100, r.len);
+    CHECK_EQ("v[0]",    'A', r.v[0]);
+    CHECK_EQ("v[1]",    '0', r.v[1]);
+    CHECK_EQ("v[2]",    '1', r.v[2]);
+    CHECK_EQ("v[3]",    '0', r.v[3]);
+    CHECK_EQ("v[97]",   '0', r.v[97]);
+    CHECK_EQ("v[98]",   '1', r.v[98]);
+    CHECK_EQ("v[99]",   '0', r.v[99]);   /* was '1' — off by one in paritet */
+    CHECK_FS2VALID(1, &r);
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_lpad_new — truncation
+ * ========================================================================= */
+
+Test(fs2slice, lpad_new_truncates_when_target_lt_current) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+    fs2 pad = fs2_fromstr("*");
+
+    /* lpad resize-shrink keeps PREFIX (same as rpad — fs2_setlen semantics) */
+    fs2 r = fs2slice_lpad_new(&s, 3, &pad);
+
+    CHECK_STR_EQ("prefix kept", "hel", r.v);
+    CHECK_EQ  ("len",           3,     r.len);
+    CHECK_FS2VALID(1, &r);
+
+    CHECK_STR_EQ("parent intact", "hello", parent.v);
+    CHECK_TRUE ("slice intact",   slice_eq(&s, "hello"));
+
+    fs2_free(&r);
+    fs2_free(&pad);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_rpadstr_new — truncation
+ * ========================================================================= */
+
+Test(fs2slice, rpadstr_new_truncates_when_target_lt_current) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    fs2 r = fs2slice_rpadstr_new(&s, 3, "*");
+
+    CHECK_STR_EQ("prefix kept", "hel", r.v);
+    CHECK_EQ  ("len",           3,     r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_lpadstr_new — truncation
+ * ========================================================================= */
+
+Test(fs2slice, lpadstr_new_truncates_when_target_lt_current) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("hello");
+    fs2slice s = fs2slice_new(&parent, 0, 5);
+
+    fs2 r = fs2slice_lpadstr_new(&s, 2, "*");
+
+    CHECK_STR_EQ("prefix kept", "he", r.v);
+    CHECK_EQ  ("len",           2,     r.len);
+
+    fs2_free(&r);
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
