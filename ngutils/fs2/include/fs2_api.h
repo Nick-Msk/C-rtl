@@ -22,6 +22,15 @@
 // -------------------------------- Internal helpers --------------------------------------
 
 /**
+ * @internal Signature of fs2_api.h raw char-search helpers.
+ *
+ * Both forward/reverse, cs/ci variants share it. Typedef exists so the
+ * slice core can take them as a parameter and dispatch without repeating
+ * the pointer/length math.
+ */
+typedef ptrdiff_t (*fs2_chr_raw_fn)(const unsigned char *p, size_t avail, int c);
+
+/**
  * @brief Forward search for byte @p c in @p avail bytes (internal, case-sensitive).
  *
  * Uses `memchr` — hardware-accelerated on most platforms.
