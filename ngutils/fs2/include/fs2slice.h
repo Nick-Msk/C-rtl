@@ -93,7 +93,7 @@ typedef struct fs2arrslice {
 typedef struct fs2slice {
     fs2            *parent;  /**< Non-NULL while alive; NULL after `fs2slice_free`. */
     fs2sliceview    range;   /**< [from, to) in parent byte offsets.                 */
-} fs2slice;                      
+} fs2slice;
 
 /**
  * @brief Canonical empty / zombie #fs2slice (no parent).
@@ -153,10 +153,10 @@ fs2slice_sum(void);
  * @warning  `invfatal` (SIGABRT) if @p s is NULL or `s->parent` is NULL.
  */
 static inline size_t
-fs2slice_len(const fs2slice *s) { 
+fs2slice_len(const fs2slice *s) {
     invfatal(ERR_FS2SLICE_ZOMBIE, s != NULL && s->parent != NULL,
         "Null or Zombie %p %p", s, s ? s->parent: NULL);
-    return s->range.to - s->range.from; 
+    return s->range.to - s->range.from;
 }
 
 /**
@@ -169,10 +169,10 @@ fs2slice_len(const fs2slice *s) {
  * @warning  `invfatal` (SIGABRT) if @p s is NULL or `s->parent` is NULL.
  */
 static inline const char *
-fs2slice_data(const fs2slice *s) { 
+fs2slice_data(const fs2slice *s) {
     invfatal(ERR_FS2SLICE_ZOMBIE, s != NULL && s->parent != NULL,
         "Null or Zombie %p %p", s, s ? s->parent: NULL);
-    return s->parent->v + s->range.from; 
+    return s->parent->v + s->range.from;
 }
 
 /* =========================================================================
@@ -211,7 +211,7 @@ static inline int32_t
 fs2slice_parentdec(fs2 **parent) {
     fs2 *s = *parent;
     if (s->borrow == 0)
-        userraise(false, ERR_FS2SLICE_UNDERFLOW, 
+        userraise(false, ERR_FS2SLICE_UNDERFLOW,
             "borrow underflow");
     int32_t res = --s->borrow;       // not atomic: external lock required (see header)
     *parent = NULL;
@@ -304,47 +304,131 @@ static inline void
 fs2arrslice_free(fs2arrslice *s) {
     if (!s || !s->parent)
         return;
-    
+
     fs2slice_parentdec(&s->parent);
     free(s->ranges);
     *s = FS2ARRSLICE();
 }
 
-enum { FS2SLICE_TECH_PRINT_COUNT = 8 };   /* ranges shown in arrslice dump */
+/**
+ * @brief Maximum number of ranges printed by `fs2arrslice_techfprint`.
+ *
+ * After this many, a `... (N more)` line is emitted instead of listing
+ * the remainder.
+ */
+enum { FS2SLICE_TECH_PRINT_COUNT = 8 };
 
-//
+/* =========================================================================
+ * Validation & technical dump
+ * ========================================================================= */
+
+/**
+ * @brief Validate a single slice's invariants; log and return false on failure.
+ *
+ * Checks: non-NULL pointer, non-NULL parent, non-NULL `parent->v`,
+ * `parent->borrow > 0`, `from < to`, `to <= parent->len`.
+ *
+ * @param out  Output stream for error messages.
+ * @param s    Slice to validate (may be NULL — will be reported).
+ * @return     true if all invariants hold; false otherwise.
+ */
 extern bool
 fs2slice_validate(FILE *restrict out, const fs2slice *restrict s);
 
+/**
+ * @brief Validate an array-slice's invariants; log and return false on failure.
+ *
+ * Checks: non-NULL pointer, canonical-empty consistency, `count <= hwm <= size`,
+ * `count > 0` implies `ranges != NULL`, parent invariants, and per-range bounds.
+ *
+ * @param out  Output stream for error messages.
+ * @param a    Array-slice to validate (may be NULL — will be reported).
+ * @return     true if all invariants hold; false otherwise.
+ */
 extern bool
 fs2arrslice_validate(FILE *restrict out, const fs2arrslice *restrict a);
 
+/**
+ * @brief Dump a human-readable technical representation of a single slice.
+ *
+ * Prints the parent pointer, len, borrow, and the [from, to) range with a
+ * content preview (up to 40 bytes).
+ *
+ * @param out   Output stream.
+ * @param s     Slice to dump (may be NULL or zombie — handled gracefully).
+ * @param name  Display name for the slice (NULL → "(unnamed)").
+ * @return      Number of characters written, or -1 on I/O error.
+ */
 extern long
 fs2slice_techfprint(FILE *restrict out, const fs2slice *restrict s, const char *restrict name);
 
+/**
+ * @brief Dump a human-readable technical representation of an array-slice.
+ *
+ * Prints the parent pointer, len, borrow, count/size, and up to
+ * @c FS2SLICE_TECH_PRINT_COUNT ranges with content previews.
+ *
+ * @param out   Output stream.
+ * @param a     Array-slice to dump (may be NULL or empty — handled gracefully).
+ * @param name  Display name (NULL → "(unnamed)").
+ * @return      Number of characters written, or -1 on I/O error.
+ */
 extern long
 fs2arrslice_techfprint(FILE *restrict out, const fs2arrslice *restrict a, const char *restrict name);
 
-// macro-support
+/* =========================================================================
+ * Technical-dump convenience macros
+ * ========================================================================= */
+
+/** Dump slice @p s to stream @p out, naming it `#s`. */
 #define FS2SLICETECHFPRINT(out, s)    fs2slice_techfprint((out),    (s), #s)
+/** Dump slice @p s to stdout, naming it `#s`. */
 #define FS2SLICETECHPRINT(s)          fs2slice_techfprint(stdout,   (s), #s)
+/** Dump slice @p s to `logfile`, naming it `#s`. */
 #define FS2SLICETECHLOG(s)            fs2slice_techfprint(logfile,  (s), #s)
 
+/** Dump array-slice @p a to stream @p out, naming it `#a`. */
 #define FS2ARRSLICETECHFPRINT(out, a) fs2arrslice_techfprint((out), (a), #a)
+/** Dump array-slice @p a to stdout, naming it `#a`. */
 #define FS2ARRSLICETECHPRINT(a)       fs2arrslice_techfprint(stdout,(a), #a)
+/** Dump array-slice @p a to `logfile`, naming it `#a`. */
 #define FS2ARRSLICETECHLOG(a)         fs2arrslice_techfprint(logfile,(a),#a)
 
-// ----------------------------------- Comparators ------------------------------
+/* =========================================================================
+ * Comparators
+ * =========================================================================
+ *
+ * All comparators use the **memcmp convention**: < 0, 0, > 0.
+ * When the common prefix is equal, the **shorter** content sorts first
+ * (length tiebreak). The comparison is **NUL-agnostic** — only the
+ * declared byte lengths (`la`/`lb`) determine how far to read.
+ */
 
-/* fs2slice.h */
-
-/* Comparator signature: length-bounded (memcmp-style).
- * Compares at most `n` bytes; return <0 / 0 / >0.
- * MUST NOT read past min(n, min-content-length) — no NUL lookahead. */
+/**
+ * @brief Length-bounded comparator function pointer (memcmp-style).
+ *
+ * Compares at most @p n bytes of the two buffers; returns < 0, 0, or > 0.
+ * Implementations **MUST NOT** read past `min(n, content-length)` —
+ * no NUL lookahead.
+ *
+ * @param a  First buffer (at least `n` valid bytes, or until NUL).
+ * @param b  Second buffer.
+ * @param n  Maximum number of bytes to compare.
+ * @return   Negative / zero / positive (memcmp convention).
+ */
 typedef int (*fs2slicecmp_t)(const char *a, const char *b, size_t n);
 
-/* Common core: memcmp-style first, length tiebreak after.
- * `cmp` must be NUL-agnostic (see above). */
+/**
+ * @internal Core comparison: length-bounded memcmp + length tiebreak.
+ *
+ * Calls @p cmp on `min(la, lb)` bytes. If the result is non-zero it is
+ * returned as-is. Otherwise the shorter input sorts first.
+ *
+ * @param a,la  First buffer and its length.
+ * @param b,lb  Second buffer and its length.
+ * @param cmp   NUL-agnostic comparator (e.g. `fs2slice_slice_cmp_cs`).
+ * @return      < 0, 0, or > 0.
+ */
 static inline int
 fs2slice_slice_cmp_core(const char *a, size_t la,
                  const char *b, size_t lb,
@@ -356,22 +440,41 @@ fs2slice_slice_cmp_core(const char *a, size_t la,
     return (la > lb) - (la < lb);   /* shorter < longer */
 }
 
-/* Comparators (wrap stdlib to be proper function-pointer types;
- * memcmp has void* args, so wrap to keep strict signature match) */
+/**
+ * @internal Case-sensitive comparator (wraps `memcmp`).
+ *
+ * Wraps `memcmp` to match the strict `fs2slicecmp_t` signature
+ * (the standard `memcmp` takes `const void *`).
+ */
 static inline int
-fs2slice_slice_cmp_cs(const char *a, const char *b, size_t n) { 
-    return memcmp(a, b, n); 
+fs2slice_slice_cmp_cs(const char *a, const char *b, size_t n) {
+    return memcmp(a, b, n);
 }
 
+/**
+ * @internal Case-insensitive comparator (wraps `strncasecmp`).
+ *
+ * Wraps `strncasecmp` to match the strict `fs2slicecmp_t` signature.
+ * ASCII-only in the C locale.
+ */
 static inline int
-fs2slice_slice_cmp_ci(const char *a, const char *b, size_t n) { 
-    return strncasecmp(a, b, n); 
+fs2slice_slice_cmp_ci(const char *a, const char *b, size_t n) {
+    return strncasecmp(a, b, n);
 }
 
-/* --- CS --- */
+/* --- Case-sensitive (CS) --- */
+
+/**
+ * @brief Case-sensitive comparison of two slices.
+ *
+ * @param a  Non-NULL slice.
+ * @param b  Non-NULL slice.
+ * @return   < 0, 0, or > 0 (memcmp + length tiebreak).
+ * @warning  `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmp(const fs2slice *a, const fs2slice *b) {
-    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL, 
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL,
         "Null slices %p %p", a, b);
 
     return fs2slice_slice_cmp_core(fs2slice_data(a), fs2slice_len(a),
@@ -379,6 +482,16 @@ fs2slice_cmp(const fs2slice *a, const fs2slice *b) {
                             fs2slice_slice_cmp_cs);
 }
 
+/**
+ * @brief Case-sensitive comparison of a slice against an #fs2 buffer.
+ *
+ * The `fs2` is treated as its `v`/`len` content (empty if `v` is NULL).
+ *
+ * @param sl  Non-NULL slice.
+ * @param s   Non-NULL fs2.
+ * @return    < 0, 0, or > 0.
+ * @warning   `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmpfs2(const fs2slice *sl, const fs2 *s) {
     invfatal(ERR_NULL_INPUT, sl != NULL && s != NULL,
@@ -389,6 +502,16 @@ fs2slice_cmpfs2(const fs2slice *sl, const fs2 *s) {
                             fs2slice_slice_cmp_cs);
 }
 
+/**
+ * @brief Case-sensitive comparison of a slice against a C-string.
+ *
+ * The C-string's length is `strlen(str)`; a NULL pointer is `invfatal`.
+ *
+ * @param sl   Non-NULL slice.
+ * @param str  Non-NULL NUL-terminated string.
+ * @return     < 0, 0, or > 0.
+ * @warning    `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmpstr(const fs2slice *sl, const char *str) {
     invfatal(ERR_NULL_INPUT, sl != NULL && str != NULL,
@@ -399,10 +522,22 @@ fs2slice_cmpstr(const fs2slice *sl, const char *str) {
                             fs2slice_slice_cmp_cs);
 }
 
-/* --- CI --- */
+/* --- Case-insensitive (CI) --- */
+
+/**
+ * @brief Case-insensitive comparison of two slices.
+ *
+ * Identical to `fs2slice_cmp` but using `strncasecmp` instead of `memcmp`.
+ * ASCII-only in the C locale.
+ *
+ * @param a  Non-NULL slice.
+ * @param b  Non-NULL slice.
+ * @return   < 0, 0, or > 0.
+ * @warning  `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmp_ci(const fs2slice *a, const fs2slice *b) {
-    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL, 
+    invfatal(ERR_NULL_INPUT, a != NULL && b != NULL,
         "Null slices %p %p", a, b);
 
     return fs2slice_slice_cmp_core(fs2slice_data(a), fs2slice_len(a),
@@ -410,6 +545,14 @@ fs2slice_cmp_ci(const fs2slice *a, const fs2slice *b) {
                             fs2slice_slice_cmp_ci);
 }
 
+/**
+ * @brief Case-insensitive comparison of a slice against an #fs2 buffer.
+ *
+ * @param sl  Non-NULL slice.
+ * @param s   Non-NULL fs2.
+ * @return    < 0, 0, or > 0.
+ * @warning   `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmpfs2_ci(const fs2slice *sl, const fs2 *s) {
     invfatal(ERR_NULL_INPUT, sl != NULL && s != NULL,
@@ -420,6 +563,14 @@ fs2slice_cmpfs2_ci(const fs2slice *sl, const fs2 *s) {
                             fs2slice_slice_cmp_ci);
 }
 
+/**
+ * @brief Case-insensitive comparison of a slice against a C-string.
+ *
+ * @param sl   Non-NULL slice.
+ * @param str  Non-NULL NUL-terminated string.
+ * @return     < 0, 0, or > 0.
+ * @warning    `invfatal` (SIGABRT) if either pointer is NULL.
+ */
 static inline int
 fs2slice_cmpstr_ci(const fs2slice *sl, const char *str) {
     invfatal(ERR_NULL_INPUT, sl != NULL && str != NULL,
@@ -460,6 +611,12 @@ fs2slice_get(const fs2slice *s, size_t pos) {
     return s->parent->v + s->range.from + pos;
 }
 
+/**
+ * @brief Convenience macro: dereference the byte at offset @p pos.
+ *
+ * Equivalent to `*fs2slice_get(&s, pos)`. See `fs2slice_get` for
+ * semantics and error behaviour.
+ */
 #define fs2sliceget(s, pos) *fs2slice_get((&s), (pos))
 
 /* =========================================================================
@@ -467,10 +624,22 @@ fs2slice_get(const fs2slice *s, size_t pos) {
  * Slice is read-only; there is no in-place variant.
  * ========================================================================= */
 
-/* Clamp [from, len) against slice_len (not parent->len). */
-/* Reads ONLY s->len. Do not add checks/reads of s->v, s->flags, s->sz,
- * s->borrow without auditing fs2slice_substr_bounds (which passes
- * a fake fs2 with only .len set). */
+/**
+ * @internal Clamp [from, len) to the slice's logical length.
+ *
+ * Delegates to `fs2_substr_bounds` with a throwaway `fs2` whose `.len`
+ * is set to the slice length. Clamps `*from` into [0, sl_len] and
+ * `*len` into [0, sl_len - *from].
+ *
+ * **Implementation note**: this function reads ONLY the slice length.
+ * Do not add checks/reads of `sl->parent->v`, `->flags`, `->sz`,
+ * `->borrow` without auditing (the fake fs2 has only `.len` set).
+ *
+ * @param sl    Non-NULL, non-zombie slice.
+ * @param[out] from  Clamped in place.
+ * @param[out] len   Clamped in place.
+ * @warning `userraise` (ERR_FS2SLICE_ZOMBIE) if `sl->parent` is NULL.
+ */
 static inline void
 fs2slice_substr_bounds(const fs2slice *sl, size_t *from, size_t *len) {
     if (sl->parent == NULL)
@@ -556,7 +725,15 @@ fs2slice_right_new(const fs2slice *sl, size_t n) {
     return fs2slice_substr_new(sl, sl_len - n, n);
 }
 
-/* Rust-style alias — same as fs2slice_to_owned */
+/**
+ * @brief New owned fs2 = deep copy of the whole slice content.
+ *
+ * Rust-style alias for `fs2slice_to_owned` (`.to_owned()`).
+ *
+ * @param sl  Non-NULL, non-zombie slice.
+ * @return    New owned #fs2 (ALLOC); caller frees with `fs2_free`.
+ * @warning   `invfatal` (SIGABRT) if @p sl is NULL.
+ */
 static inline fs2
 fs2slice_clone(const fs2slice *sl) {
     return fs2slice_to_owned(sl);
@@ -588,7 +765,13 @@ fs2slice_toupper_new(const fs2slice *sl) {
 /**
  * @brief New owned fs2 = slice content in lower case.
  *
- * Same contract as fs2slice_toupper_new, opposite direction.
+ * Equivalent to `fs2_tolower(fs2slice_to_owned(sl))`, expressed as
+ * one call. Parent and slice are NOT modified (read-only).
+ *
+ * @param sl  Non-NULL, non-zombie slice.
+ * @return    New fs2 (ALLOC); caller frees with fs2_free.
+ * @warning `invfatal` (SIGABRT) if sl is NULL/zombie.
+ * @note ASCII-only in C locale (same as fs2_tolower).
  */
 static inline fs2
 fs2slice_tolower_new(const fs2slice *sl) {
@@ -597,4 +780,6 @@ fs2slice_tolower_new(const fs2slice *sl) {
     return r;
 }
 
+
  #endif /* !FS2SLICE_H */
+
