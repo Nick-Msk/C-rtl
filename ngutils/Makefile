@@ -43,8 +43,8 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(addprefix lib-,$(PROJECTS)) \
 		$(addprefix librelease-,$(PROJECTS)) \
 		asan_check asan_leak \
-		qwen-check qwen-models qwen-check-file \
-        $(addprefix qwen-check-,$(PROJECTS))
+		ai-check ai-models ai-check-file ai-arch \
+        $(addprefix ai-check-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -59,10 +59,11 @@ help:
 	@echo "  make analyze          run clang static analyzer in all projects"
 	@echo "  make analyze-test     run clang static analyzer for test suite in all projects"
 	@echo ""
-	@echo "  make qwen-check       AI review of all projects (LM Studio / Qwen)"
-	@echo "  make qwen-check-<n>   AI review of one project (e.g. qwen-check-fs2)"
-	@echo "  make qwen-check-file  AI review of one file (F=log/src/log.c)"
-	@echo "  make qwen-models      list models available in LM Studio"
+	@echo "  make ai-check         AI review of all projects (LM Studio / ai)"
+	@echo "  make ai-check-<n>     AI review of one project (e.g. ai-check-fs2)"
+	@echo "  make ai-check-file    AI review of one file (F=log/src/log.c)"
+	@echo "  make ai-models        list models available in LM Studio"
+	@echo "  make ai-arch  		   pack build/ai-checker/ into ai-checker-reports.tar.zst"
 	@echo ""
 	@echo "  make clean            clean all projects"
 	@echo "  make install          install libngutils.a + headers to PREFIX"
@@ -123,8 +124,11 @@ librelease: $(addprefix librelease-,$(PROJECTS))
 	@echo "Built: $(NGUTILS_LIB_RELEASE)"
 
 clean: $(addprefix clean-,$(PROJECTS))
-	@find build -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
-	@echo "Cleaned: build"
+	@find build -mindepth 1 -maxdepth 1 \
+		! -name ai-checker \
+		! -name 'ai-checker-reports*' \
+		-exec rm -rf {} + 2>/dev/null || true
+	@echo "Cleaned: build (kept build/ai-checker*)"
 
 # Static pattern rules
 $(addprefix lib-,$(PROJECTS)): lib-%:
@@ -159,38 +163,44 @@ $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
 
-# --- AI review (LM Studio / Qwen, OpenAI-compatible API) ---
+# --- AI review (LM Studio / ai, OpenAI-compatible API) ---
 #
 # Requires: ai-checker/pyproject.toml and 'uv' on PATH.
 # Default endpoint: LM Studio on http://127.0.0.1:1234
-# Reports land in: build/qwen/<project>.md (removed by 'make clean')
+# Reports land in: build/ai/<project>.md (removed by 'make clean')
 
 AI_CHECKER    := ai-checker
 LMSTUDIO_URL ?= http://127.0.0.1:1234
 QWEN_MODEL   ?=
 
-qwen-check:
+ai-check:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python check.py --all
 
-$(addprefix qwen-check-,$(PROJECTS)): qwen-check-%:
-	@echo "==> qwen-check $*"
+$(addprefix ai-check-,$(PROJECTS)): ai-check-%:
+	@echo "==> ai-check $*"
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python check.py --project $*
 
-qwen-check-file:
-	@test -n "$(F)" || { echo "usage: make qwen-check-file F=<path>" >&2; exit 1; }
+ai-check-file:
+	@test -n "$(F)" || { echo "usage: make ai-check-file F=<path>" >&2; exit 1; }
 	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python check.py --file "$(CURDIR)/$(F)"
 
-qwen-models:
+ai-models:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" \
 		uv run python check.py --models
+
+ai-arch:
+	@test -d $(REPORTS_DIR) || { echo "nothing to archive: $(REPORTS_DIR) missing"; exit 0; }
+	@mkdir -p build
+	@tar -C build --zstd -cf "$(CURDIR)/$(REPORTS_TAR)" ai-checker
+	@echo "Archived: $(REPORTS_TAR) ($$(du -h "$(REPORTS_TAR)" | cut -f1))"
 
 # --- docs ---
 

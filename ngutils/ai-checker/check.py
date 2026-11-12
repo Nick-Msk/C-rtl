@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """AI code review for ngutils projects via LM Studio (OpenAI-compatible API)."""
 from __future__ import annotations
 
@@ -6,13 +5,13 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
-
 import requests
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-OUT_DIR = ROOT / "build" / "qwen"
+OUT_ROOT = ROOT / "build" / "ai-checker"
 
 EXCLUDE_DIRS = {"build", "bkp", "docs", "scripts", "ai-checker",
                 ".git", ".github", ".vscode"}
@@ -27,7 +26,7 @@ SYSTEM_PROMPT = """\
 3. Обработку ошибок и граничные случаи
 4. Нарушения thread-safety, если применимо
 5. Недоработки API, неудобные интерфейсы
-6. Переносимость (Linux/macOS/Windows)
+6. Переносимость (Linux/macOS x86/macOS Arm)
 7. Несоответствия стилю (если видно)
 8. Пробелы в тестах/документации
 
@@ -94,6 +93,14 @@ def build_user_prompt(project: str, chunk: list[tuple[Path, str]]) -> str:
     return f"Проект: `{project}`. Проведи ревью исходников ниже.\n" + \
            "\n".join(b for _, b in chunk)
 
+def format_usage_md(u: dict) -> str:
+    if not u.get("requests"):
+        return "_Token usage: not reported by server._"
+    p = u.get("prompt_tokens", 0)
+    c = u.get("completion_tokens", 0)
+    t = u.get("total_tokens", 0) or (p + c)
+    return (f"**Token usage:** {p:,} prompt / {c:,} completion / "
+            f"{t:,} total  ({u['requests']} request(s))")
 
 def list_models(base_url: str) -> list[str]:
     r = requests.get(f"{base_url.rstrip('/')}/v1/models", timeout=10)
@@ -108,27 +115,41 @@ def pick_model(models: list[str]) -> str:
     return models[0]
 
 
-def ask(base_url: str, model: str, messages: list[dict], stream: bool):
+def ask(base_url: str, model: str, messages: list[dict],
+        stream: bool, usage_out: dict | None = None):
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     payload = {"model": model, "messages": messages,
                "temperature": 0.2, "stream": stream}
+    if stream:
+        # OpenAI-compatible; LM Studio >= 0.3 honours this and puts
+        # the usage block into the last SSE event before [DONE].
+        payload["stream_options"] = {"include_usage": True}
     r = requests.post(url, json=payload, stream=stream, timeout=900)
     r.raise_for_status()
     if not stream:
-        yield r.json()["choices"][0]["message"]["content"]
+        data = r.json()
+        if usage_out is not None:
+            usage_out.update(data.get("usage") or {})
+        yield data["choices"][0]["message"]["content"]
         return
     r.encoding = "utf-8"
     for line in r.iter_lines(decode_unicode=True):
         if not line or not line.startswith("data:"):
             continue
-        data = line[5:].strip()
-        if data == "[DONE]":
+        chunk = line[5:].strip()
+        if chunk == "[DONE]":
             break
         try:
-            ev = json.loads(data)
+            ev = json.loads(chunk)
         except json.JSONDecodeError:
             continue
-        piece = ev["choices"][0]["delta"].get("content")
+        u = ev.get("usage")
+        if u and usage_out is not None:
+            usage_out.update(u)
+        choices = ev.get("choices") or []
+        if not choices:
+            continue
+        piece = choices[0].get("delta", {}).get("content")
         if piece:
             yield piece
 
@@ -185,7 +206,8 @@ def main() -> int:
         jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
                 for p in projects]
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     stream = not args.no_stream
 
     for name, files in jobs:
@@ -193,34 +215,58 @@ def main() -> int:
             print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
             continue
         chunks = chunk_files(files)
-        report = OUT_DIR / f"{name}.md"
+
+        if args.file:
+            sub = OUT_ROOT / "_files"
+            report = sub / f"{ts}_{name}.md"
+        else:
+            sub = OUT_ROOT / name
+            report = sub / f"{ts}.md"
+        sub.mkdir(parents=True, exist_ok=True)
+        report_rel = report.relative_to(ROOT)
+
         print(f"[ai-checker] {name}: {len(files)} files, "
-              f"{len(chunks)} chunk(s) -> {report}", file=sys.stderr)
-        with report.open("w", encoding="utf-8") as out:
-            out.write(f"# AI review: {name}\n\n_model: `{model}`_\n\n")
-            for i, chunk in enumerate(chunks, 1):
-                if len(chunks) > 1:
-                    hdr = f"## Part {i}/{len(chunks)}\n\n"
-                    out.write(hdr)
-                    print(hdr, end="")
-                user = build_user_prompt(name, chunk)
-                try:
-                    for piece in ask(
-                        args.base_url, model,
-                        [{"role": "system", "content": SYSTEM_PROMPT},
-                         {"role": "user",   "content": user}],
-                        stream=stream,
-                    ):
-                        sys.stdout.write(piece)
-                        sys.stdout.flush()
-                        out.write(piece)
-                except Exception as e:  # noqa: BLE001
-                    msg = f"\n\n[error: {e}]\n"
-                    print(msg)
-                    out.write(msg)
-                out.write("\n\n")
-                print("\n")
-        print(f"[ai-checker] done: {report}", file=sys.stderr)
+              f"{len(chunks)} chunk(s) -> {report_rel}", file=sys.stderr)
+
+        buf: list[str] = [f"# AI review: {name}\n\n_model: `{model}`_\n\n@USAGE@\n\n"]
+        usage = {"prompt_tokens": 0, "completion_tokens": 0,
+                 "total_tokens": 0, "requests": 0}
+
+        for i, chunk in enumerate(chunks, 1):
+            if len(chunks) > 1:
+                hdr = f"## Part {i}/{len(chunks)}\n\n"
+                buf.append(hdr)
+                sys.stdout.write(hdr)
+            user = build_user_prompt(name, chunk)
+            chunk_usage: dict = {}
+            try:
+                for piece in ask(args.base_url, model,
+                                 [{"role": "system", "content": SYSTEM_PROMPT},
+                                  {"role": "user",   "content": user}],
+                                 stream=stream, usage_out=chunk_usage):
+                    sys.stdout.write(piece)
+                    sys.stdout.flush()
+                    buf.append(piece)
+                for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    usage[k] += chunk_usage.get(k, 0)
+                usage["requests"] += 1
+                if chunk_usage:
+                    print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
+                          f"prompt={chunk_usage.get('prompt_tokens', 0):,} "
+                          f"completion={chunk_usage.get('completion_tokens', 0):,}",
+                          file=sys.stderr)
+            except Exception as e:  # noqa: BLE001
+                msg = f"\n\n[error: {e}]\n"
+                print(msg)
+                buf.append(msg)
+            buf.append("\n\n")
+            print()
+
+        content = "".join(buf).replace("@USAGE@", format_usage_md(usage), 1)
+        report.write_text(content, encoding="utf-8")
+        print(f"[ai-checker] done: {name} -> {report_rel}  "
+              f"[{usage['prompt_tokens']:,} in / "
+              f"{usage['completion_tokens']:,} out]", file=sys.stderr)
 
     return 0
 
