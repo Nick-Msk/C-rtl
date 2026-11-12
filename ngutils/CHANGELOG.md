@@ -8,9 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2026-10-12]
-
 ### Added
+
+- `ai-checker/fix.py` — applies only self-contained local fixes from
+  the latest report, one git commit per fix on a dedicated branch
+  `ai-checker-<label>-fix<N>`. Refuses signature changes, new
+  functions, struct layout changes, public renames, new `#include`s,
+  edits spanning more than one function body, and diffs over 20
+  lines. Requires a clean working tree. Everything that would ripple
+  through the codebase is listed as *needs human thought* with a
+  suggested direction — never auto-applied.
+- New dispatcher targets: `ai-fix`, `ai-fix-<proj>`, `ai-fix-file`,
+  controlled via `APPLY=1`, `YES=1`, `FIX_LIMIT=N`.
 
 - `ai-checker/` — a small Python tool that sends source trees to a
   locally running LM Studio instance (OpenAI-compatible API) and

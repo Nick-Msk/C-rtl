@@ -137,6 +137,106 @@ environment or on the `make` command line.
   servers work if they implement that flag, otherwise token usage
   will show as *"not reported"*.
 
+## AI fixer
+
+`fix.py` reads the latest report produced by `check.py` and applies
+only *self-contained local* fixes as **one git commit per fix** on a
+dedicated branch. Everything that would ripple through the codebase
+— parameter changes, signature changes, new helpers, struct layout,
+cross-file edits — is listed for the reviewer with a suggested
+direction and **never** auto-applied.
+
+### Usage
+
+```sh
+make ai-fix-fs2                    # dry-run: show proposed edits
+make ai-fix-fs2 APPLY=1            # apply + per-fix git commit
+make ai-fix-fs2 APPLY=1 YES=1      # apply all, no prompts
+make ai-fix-file F=log/src/log.c
+make ai-fix-fs2 FIX_LIMIT=5        # cap findings per project
+```
+
+`APPLY=1` requires a clean git working tree. The fixer refuses to run
+otherwise, so that each commit contains exactly one fix and nothing
+else.
+
+### What "local" means
+
+A fix is applied only if **all** of these hold:
+
+1. One file, one function body (or one `#include` line).
+2. **No function signature change** — adding/removing a parameter is
+   forbidden because every caller would need updating.
+3. No new function, struct, union, enum, or global variable.
+4. No struct/union/enum layout, field type, or order change.
+5. No public symbol rename or removal.
+6. No new `#include` (typo fixes in existing includes are OK).
+7. No changes required in any other file.
+8. Idempotent.
+9. Diff ≤ 20 lines (additions + deletions combined).
+
+If any of these fail — or the model is not sure — the finding goes
+into the *needs human thought* section.
+
+### Git workflow
+
+When `--apply` is used, the fixer:
+
+1. Verifies the working tree is clean.
+2. Processes findings one by one. For the first applied fix of each
+   project it creates `ai-checker-<label>-fix<N>` from the current
+   HEAD (N is auto-incremented if the branch exists).
+3. For each applied fix: writes the file, `git add`s it, and creates
+   a commit with a self-explanatory message (section, file, reason,
+   finding text, `Applied by ai-checker/fix.py` trailer).
+4. Writes a JSON log to `build/ai-checker/fixes/<ts>_<label>.json`.
+5. Returns to the original branch at the end.
+
+Reviewing what was produced:
+
+```sh
+git log --oneline master..ai-checker-fs2-fix1
+git diff master..ai-checker-fs2-fix1
+git show <sha>                          # a single fix
+```
+
+Keeping only some of the fixes:
+
+```sh
+git checkout master
+git cherry-pick <sha1> <sha3>           # keep commits 1 and 3
+git branch -D ai-checker-fs2-fix1       # drop the rest
+```
+
+Dropping everything:
+
+```sh
+git branch -D ai-checker-fs2-fix1
+```
+
+### Safety rails
+
+- **Dry-run by default.** `--apply` is required to write to disk.
+- **Clean tree required.** Untracked or modified files abort the run
+  before any fix is committed.
+- **`old_snippet` must appear exactly once** in the target file.
+- **Forbidden paths.** Only C/C++ sources, headers, and tests inside
+  a project directory. `build/`, `.github/`, `scripts/`, `docs/`,
+  `skeleton/`, `bkp/`, `ai-checker/`, `Makefile*`, `Doxyfile`,
+  `Dockerfile*`, `*.toml`, `*.md` are rejected.
+- **Same `flock(2)`** as `check.py` — `ai-check` and `ai-fix` cannot
+  run simultaneously.
+- **Rollback on commit failure.** If `git commit` fails (e.g. a
+  pre-commit hook), the file edit is reverted so the tree stays clean.
+
+### After applying
+
+1. `git log --oneline <branch>` — see all fixes.
+2. `git show <sha>` — inspect a single fix.
+3. `git cherry-pick <sha>` — keep the good ones on your working branch.
+4. `make test-<proj>` — verify.
+5. `git branch -D <branch>` — discard the rest.
+
 ## See also
 
 - `Makefile` — target definitions (`ai-check*`, `ai-checker-arch`).

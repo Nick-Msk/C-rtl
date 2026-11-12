@@ -50,3 +50,26 @@ By using these targets you acknowledge that:
 The maintainers of `ngutils` do not accept any liability for
 consequences arising from the use of AI-generated reviews.
 
+### Auto-Applied Fixes
+
+The `make ai-fix*` targets write to source files and create git
+commits. Additional terms apply:
+
+- **Only self-contained, single-function, ≤20-line edits are
+  applied.** Everything that would ripple — parameter changes,
+  signature changes, new helpers, struct changes — is listed for
+  human review. This is a *safety heuristic*, not a correctness
+  guarantee: a 20-line edit can still be wrong.
+- **A clean working tree is required.** The fixer refuses to run on a
+  dirty tree, so that every commit contains exactly one fix and
+  nothing else. Do not bypass this by stashing mid-run.
+- **Review the branch before merging.** Fixes land on
+  `ai-checker-<label>-fix<N>`, not on your working branch. Inspect
+  with `git log`, `git diff`, `git show <sha>`, then cherry-pick
+  selectively. Deleting the branch discards all of its commits.
+- **Always run `make test-<proj>`** after cherry-picking. A fix that
+  compiles can still break behaviour; tests are the only check the
+  tool cannot do for you.
+- **The maintainers accept no liability** for auto-applied changes.
+  Review, test, commit responsibly.
+
