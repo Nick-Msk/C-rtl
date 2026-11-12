@@ -371,9 +371,7 @@ def is_forbidden(rel: str) -> bool:
         return True
     if Path(rel).name in FORBIDDEN_ROOT_NAMES:
         return True
-    if Path(rel).suffix.lower() not in SRC_EXTS:
-        return True
-    return False
+    return Path(rel).suffix.lower() not in SRC_EXTS
 
 
 def diff_line_counts(old: str, new: str) -> tuple[int, int]:
@@ -657,7 +655,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
                 print(f"  {c['sha']}  {c['summary']}")
             print(f"[ai-fixer] review:  git log --oneline {base_branch}..{branch}")
             print(f"[ai-fixer] diff:    git diff {base_sha}..{branch}")
-            print(f"[ai-fixer] keep one: git cherry-pick <sha>")
+            print("[ai-fixer] keep one: git cherry-pick <sha>")
             print(f"[ai-fixer] reject:  git branch -D {branch}")
             print(f"[ai-fixer] back:    git checkout {base_branch}")
 
