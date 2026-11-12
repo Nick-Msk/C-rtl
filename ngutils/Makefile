@@ -35,17 +35,20 @@ BUILD_RELEASE  	:= build/release
 NGUTILS_LIB         := $(BUILD_DEBUG)/libngutils.a
 NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 
-.PHONY: help list listall docs \
-		build-docker test-docker clean-docker check-docker delete-docker test-docker-leak test-docker-ub test-docker-all \
-		lib librelease install install-release clean \
-        $(FORWARD_TARGETS) \
-        $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
-        $(addprefix lib-,$(PROJECTS)) \
-		$(addprefix librelease-,$(PROJECTS)) \
-		asan_check asan_leak \
-		ai-check ai-models ai-check-file ai-arch \
-        $(addprefix ai-check-,$(PROJECTS)) \
-		$(addprefix ai-check-notest-,$(PROJECTS))
+.PHONY: help list listall docs 											\
+		build-docker test-docker clean-docker check-docker 				\
+		delete-docker test-docker-leak test-docker-ub test-docker-all 	\
+		lib librelease install install-release clean 					\
+        $(FORWARD_TARGETS) 												\
+        $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) 	\
+        $(addprefix lib-,$(PROJECTS)) 									\
+		$(addprefix librelease-,$(PROJECTS)) 							\
+		asan_check asan_leak 											\
+		ai-check ai-models ai-check-file ai-arch 						\
+        $(addprefix ai-check-,$(PROJECTS)) 								\
+		$(addprefix ai-check-notest-,$(PROJECTS)) 						\
+		ai-fix ai-fix-file 												\
+        $(addprefix ai-fix-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -66,7 +69,13 @@ help:
 	@echo "  make ai-check-notest      AI review of all projects, skip test/ dirs"
 	@echo "  make ai-check-notest-<n>  AI review of one project, skip test/ dirs"
 	@echo "  make ai-models        	list models available in LM Studio"
+	@echo ""
 	@echo "  make ai-arch  		   	pack build/ai-checker/ into ai-checker-reports.tar.zst"
+	@echo "  make ai-fix            dry-run: propose local fixes for all projects"
+	@echo "  make ai-fix-<n>        same, for one project (e.g. ai-fix-fs2)"
+	@echo "  make ai-fix-file F=<p> same, for the report of one source file"
+	@echo "  make ai-fix-<n> APPLY=1          apply + commit to branch ai-checker-<n>-fix<N>"
+	@echo "  make ai-fix-<n> APPLY=1 YES=1    same, no per-fix prompts"
 	@echo ""
 	@echo "  make clean            	clean all projects"
 	@echo "  make install          	install libngutils.a + headers to PREFIX"
@@ -219,7 +228,51 @@ ai-checker-arch:
 	@mkdir -p build
 	@tar -C build --zstd -cf "$(CURDIR)/$(REPORTS_TAR)" ai-checker
 	@echo "Archived: $(REPORTS_TAR) ($$(du -h "$(REPORTS_TAR)" | cut -f1))"
-	
+
+# --- AI fix (applies only local, self-contained fixes from the latest report) ---
+#
+# Usage:
+#   make ai-fix-fs2                    dry-run, show proposed edits
+#   make ai-fix-fs2 APPLY=1            apply + per-fix git commit on
+#                                      branch ai-checker-fs2-fix<N>
+#   make ai-fix-fs2 APPLY=1 YES=1      apply all, no prompts
+#   make ai-fix-file F=log/src/log.c
+#   make ai-fix-fs2 FIX_LIMIT=5
+#
+# Refuses: cross-file edits, signature changes, new functions, struct
+# changes, public renames, new #includes, edits spanning more than one
+# function body, diffs > 20 lines. Everything else is listed as
+# "needs human thought" with a direction, never auto-applied.
+#
+# One fix = one git commit on a dedicated branch. Review with
+# 'git log <branch>', cherry-pick what you like, delete the rest:
+#   git cherry-pick <sha>
+#   git branch -D ai-checker-fs2-fix1
+
+AI_FIXER    := fix.py
+FIX_LIMIT   ?=
+
+AI_FIX_ARGS  = $(if $(APPLY),--apply,) $(if $(YES),--yes,) \
+               $(if $(FIX_LIMIT),--limit $(FIX_LIMIT),)
+
+ai-fix:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --all $(AI_FIX_ARGS)
+
+$(addprefix ai-fix-,$(PROJECTS)): ai-fix-%:
+	@echo "==> ai-fix $*"
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --project $* $(AI_FIX_ARGS)
+
+ai-fix-file:
+	@test -n "$(F)" || { echo "usage: make ai-fix-file F=<path>" >&2; exit 1; }
+	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_ARGS)
+
 # --- docs ---
 
 docs:
