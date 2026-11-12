@@ -109,6 +109,43 @@ __fs2_rchr_raw_ci(const unsigned char *p, size_t avail, int c) {
     return -1;
 }
 
+/**
+ * @internal k-th (1-based) occurrence of @p c in a raw window.
+ *
+ * Direction-agnostic: @p forward == true scans from @c p[0] upward
+ * (using `__fs2_chr_raw`/`_ci`), @p forward == false scans from
+ * @c p[avail-1] downward (using `__fs2_rchr_raw`/`_ci`).
+ *
+ * Pure byte-slice logic: knows nothing about fs2 / fs2slice, borrow
+ * counts, or zombie state. All guards and window math belong to the
+ * caller.
+ *
+ * Both directions shrink the same conceptual window `[lo, hi)`:
+ *  - forward:  advances `lo` past each hit; `hi` fixed at @p avail.
+ *  - backward: shrinks `hi` to just before each hit; `lo` fixed at 0.
+ * The `--k == 0` check fires *before* the shrink, so the k-th hit's
+ * absolute position `lo + hit` is returned exactly once.
+ *
+ * @param p        Window base. NULL → -1 (defensive; do not rely on).
+ * @param avail    Window size in bytes.
+ * @param c        Byte to find (passed as `int`, cast to `unsigned char`
+ *                 inside the raw helpers).
+ * @param k        1-based occurrence number. 0 → -1.
+ * @param fn       Raw search helper — one of `__fs2_chr_raw`,
+ *                 `__fs2_chr_raw_ci`, `__fs2_rchr_raw`, `__fs2_rchr_raw_ci`.
+ *                 Must agree with @p forward.
+ * @param forward  true → forward scan (use a `chr_raw` helper);
+ *                 false → backward scan (use an `rchr_raw` helper).
+ * @return         0-based offset from @p p, or -1 if fewer than @p k hits.
+ *
+ * @warning @p fn and @p forward must agree. Passing `__fs2_rchr_raw`
+ *          with `forward=true` yields wrong (but not UB) results, because
+ *          the advance rules assume the scan direction matches.
+ */
+extern ptrdiff_t
+fs2_chr_nth_raw(const unsigned char *p, size_t avail, int c, size_t k,
+                  fs2_chr_raw_fn fn, bool forward);
+
 // --------------------------------------- API ---------------------------------------
 
 /**
@@ -842,13 +879,13 @@ fs2_nrchr_ci(const fs2 *str, int c, size_t lim) {
 ptrdiff_t   fs2_chr_nth   (const fs2 *str, int c, size_t k);
 
 /**
- * @brief Find the k-th forward case-sensitive occurrence within [0, lim).
+ * @brief Find the k-th (1-based) forward case-sensitive occurrence of @p c.
  *
  * @param str  Non-NULL fs2.
  * @param c    Byte to find.
  * @param k    1-based occurrence number (0 → -1).
- * @param lim  Maximum bytes to examine (clamped to s->len).
- * @return     0-based offset, or -1.
+ * @param lim  Maximum bytes to examine from the start (clamped to str->len).
+ * @return     0-based offset, or -1 if fewer than k hits.
  */
 ptrdiff_t   fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim);
 
@@ -888,13 +925,17 @@ ptrdiff_t   fs2_nchr_ci_nth (const fs2 *str, int c, size_t k, size_t lim);
 ptrdiff_t   fs2_rchr_nth  (const fs2 *str, int c, size_t k);
 
 /**
- * @brief Find the k-th reverse case-sensitive occurrence within the last @p lim bytes.
+ * @brief Find the k-th (1-based) backward case-sensitive occurrence of @p c.
+ *
+ * Searches within the last @p lim bytes of @p str (k=1 → last occurrence,
+ * k=2 → second-to-last, …). Result is an absolute 0-based offset in
+ * @c str->v.
  *
  * @param str  Non-NULL fs2.
  * @param c    Byte to find.
- * @param k    1-based reverse occurrence number (0 → -1).
- * @param lim  Number of trailing bytes to examine (clamped to s->len).
- * @return     0-based offset from string start, or -1.
+ * @param k    1-based occurrence number from the end (0 → -1).
+ * @param lim  Maximum bytes to examine from the tail (clamped to str->len).
+ * @return     0-based offset, or -1 if fewer than k hits.
  */
 ptrdiff_t   fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim);
 

@@ -68,57 +68,45 @@ fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
 
 // ------------------------------------------ ONE SYMBOL, N occurence SEARCH  --------------------------------------------------------
 
-/* forward, sensitive */
-
-/**
- * @brief Find the k-th (1-based) forward occurrence of byte @p c.
- *
- * Delegates to fs2_nchr_nth with lim = str->len.
- *
- * @param str  Non-NULL fs2.
- * @param c    Byte to find.
- * @param k    1-based occurrence number (0 → -1).
- * @return     0-based offset, or -1 if fewer than k occurrences.
- */
-ptrdiff_t   
-fs2_chr_nth   (const fs2 *str, int c, size_t k) {
-    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
-
-    return fs2_nchr_nth(str, c, k, str->len);
-} 
-/**
- * @brief Find the k-th (1-based) forward occurrence of @p c within [0, lim).
- *
- * Iteratively skips past each found occurrence until the k-th is located.
- * @p k is 1-based: k=1 finds the first occurrence.
- *
- * @param str  Non-NULL fs2.
- * @param c    Byte to find (case-sensitive).
- * @param k    1-based occurrence number (0 → -1).
- * @param lim  Maximum bytes to examine (clamped to str->len).
- * @return     0-based offset from string start, or -1.
- */
+// general
 ptrdiff_t
-fs2_nchr_nth  (const fs2 *str, int c, size_t k, size_t lim) {
-    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
+fs2_chr_nth_raw(const unsigned char *p, size_t avail, int c, size_t k,
+                  fs2_chr_raw_fn fn, bool forward) {
+    if (p == NULL || k == 0)
+        return -1;
 
-    if (k == 0 || str->v == NULL) 
-        return -1;                        // 1-based
-
-    const unsigned char *base = (const unsigned char *)str->v;
-    const unsigned char *orig = base;
-    size_t avail = (lim < str->len) ? lim : str->len;
-
-    for (size_t i = 0; i < k; i++) {
-        ptrdiff_t hit = __fs2_chr_raw(base, avail, c);
+    size_t lo = 0, hi = avail;
+    while (lo < hi) {
+        ptrdiff_t hit = fn(p + lo, hi - lo, c);
         if (hit < 0)
             return -1;
-        if (i == k - 1) 
-            return (ptrdiff_t)(base - orig) + hit;
-        avail -= (size_t)hit + 1;
-        base  += hit + 1;
+        if (--k == 0)
+            return (ptrdiff_t)(lo + hit);
+        if (forward) 
+            lo += (size_t)hit + 1;
+        else        
+            hi  = lo + (size_t)hit;
     }
     return -1;
+}
+
+/* forward, sensitive */
+
+ptrdiff_t
+fs2_nchr_nth(const fs2 *str, int c, size_t k, size_t lim) {
+    invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
+    if (str->v == NULL || k == 0)
+        return -1;
+
+    size_t avail = (lim < str->len) ? lim : str->len;
+    return fs2_chr_nth_raw((const unsigned char *)str->v,
+                             avail, c, k, __fs2_chr_raw,
+                             /*forward=*/true);
+}
+
+ptrdiff_t
+fs2_chr_nth(const fs2 *str, int c, size_t k) {
+    return fs2_nchr_nth(str, c, k, (size_t)-1);
 }
 
 /* forward, insensitive */
@@ -194,39 +182,20 @@ fs2_rchr_nth  (const fs2 *str, int c, size_t k) {
     return fs2_nrchr_nth(str, c, k, str->len);
 }
 
-/**
- * @brief Find the k-th (1-based) reverse case-sensitive occurrence within the last @p lim bytes.
- *
- * Scans from the end of the window [len-lim, len) toward the start.
- * The returned offset is relative to the string start.
- *
- * @param str  Non-NULL fs2.
- * @param c    Byte to find.
- * @param k    1-based reverse occurrence number (0 → -1).
- * @param lim  Number of trailing bytes to examine (clamped to str->len).
- * @return     0-based offset from string start, or -1.
- */
 ptrdiff_t
-fs2_nrchr_nth (const fs2 *str, int c, size_t k, size_t lim) {
+fs2_nrchr_nth(const fs2 *str, int c, size_t k, size_t lim) {
     invfatal(ERR_NULL_INPUT, str != NULL, "Null pointer");
 
-    if (k == 0 || str->v == NULL)
+    if (str->v == NULL || k == 0)
         return -1;
 
     size_t avail = (lim < str->len) ? lim : str->len;
     size_t off   = str->len - avail;
-    const unsigned char *base = (const unsigned char *)str->v + off;
-    size_t end   = avail;                        // exclusive end within window
 
-    for (size_t i = 0; i < k; i++) {
-        ptrdiff_t hit = __fs2_rchr_raw(base, end, c);
-        if (hit < 0)
-            return -1;
-        if (i == k - 1)
-            return (ptrdiff_t)off + hit;
-        end = (size_t)hit;                       // search [0, hit) next
-    }
-    return -1;
+    ptrdiff_t hit = fs2_chr_nth_raw((const unsigned char *)str->v + off,
+                                      avail, c, k, __fs2_rchr_raw,
+                                      /*forward=*/false);
+    return (hit < 0) ? -1 : (ptrdiff_t)off + hit;
 }
 
 /* reverse, insensitive */
