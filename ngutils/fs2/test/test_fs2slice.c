@@ -3306,3 +3306,42 @@ Test(fs2slice, chr_nth_zombie_with_k0_still_raises, .signal = SIGINT) {
 Test(fs2slice, nchr_nth_null_slice_aborts, .signal = SIGABRT) {
     fs2slice_nchr_nth(NULL, 'a', 1, 10);
 }
+
+// additional, after refactoring to common search engine fs2_chr_nth_raw
+
+/* =========================================================================
+ * Slice refactor: forward k-th still correct
+ * ========================================================================= */
+
+Test(fs2slice, chr_nth_refactor_keeps_semantics) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXaXaX");         /* X at 0,1,3,5 */
+    fs2slice s = fs2slice_new(&parent, 2, 6);   /* "aXaX" — X at slice[1],[3] */
+
+    CHECK_EQ("k=1", fs2slice_chr_nth(&s, 'X', 1), (ptrdiff_t)1);
+    CHECK_EQ("k=2", fs2slice_chr_nth(&s, 'X', 2), (ptrdiff_t)3);
+    CHECK_EQ("k=3", fs2slice_chr_nth(&s, 'X', 3), (ptrdiff_t)-1);
+
+    CHECK_EQ("lim=2 k=2", fs2slice_nchr_nth(&s, 'X', 2, 2), (ptrdiff_t)-1);
+    CHECK_EQ("lim=4 k=2", fs2slice_nchr_nth(&s, 'X', 2, 4), (ptrdiff_t)3);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Defensive: hand-built slice with v == NULL must not UB
+ * ========================================================================= */
+
+Test(fs2slice, chr_nth_v_null_defensive) {
+    fs2 canonical = FS2();                      /* v=NULL, len=0 */
+    fs2slice s = { .parent = &canonical, .range = {0, 1} };
+
+    CHECK_EQ("k=1",  fs2slice_chr_nth(&s, 'a', 1),     (ptrdiff_t)-1);
+    CHECK_EQ("k=10", fs2slice_chr_nth(&s, 'a', 10),    (ptrdiff_t)-1);
+    CHECK_EQ("lim",  fs2slice_nchr_nth(&s, 'a', 1, 5), (ptrdiff_t)-1);
+
+    /* no fs2_free — canonical owns nothing */
+    assert_balanced();
+}

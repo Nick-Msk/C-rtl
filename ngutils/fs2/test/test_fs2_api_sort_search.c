@@ -15,7 +15,7 @@ static void sort_fs2(fs2 *arr, size_t n) {
  * fs2_bsearch — FS2() (v==NULL) key: normalization (must not crash)
  * ========================================================================= */
 
-Test(fs2_api, bsearch_canon_key_vs_nonempty_array_not_found) {
+Test(fs2_api_sort_search, bsearch_canon_key_vs_nonempty_array_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("a"), fs2_fromstr("b"), fs2_fromstr("c") };
     sort_fs2(arr, 3);
@@ -32,7 +32,7 @@ Test(fs2_api, bsearch_canon_key_vs_nonempty_array_not_found) {
 }
 
 /* Key case: empty string is in the array — must be found via FS2() */
-Test(fs2_api, bsearch_canon_key_finds_empty_in_array) {
+Test(fs2_api_sort_search, bsearch_canon_key_finds_empty_in_array) {
     __fs2_checkreset();
     /* "" < "a" < "b" in strcmp order */
     fs2 arr[] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
@@ -49,7 +49,7 @@ Test(fs2_api, bsearch_canon_key_finds_empty_in_array) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_canon_key_vs_empty_array) {
+Test(fs2_api_sort_search, bsearch_canon_key_vs_empty_array) {
     __fs2_checkreset();
     fs2 key = FS2();
     fs2 arr[] = { FS2EMPTY };   /* only empty */
@@ -61,7 +61,7 @@ Test(fs2_api, bsearch_canon_key_vs_empty_array) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_canon_key_n_zero_returns_minus1) {
+Test(fs2_api_sort_search, bsearch_canon_key_n_zero_returns_minus1) {
     __fs2_checkreset();
     fs2 key = FS2();
     fs2 dummy = fs2_fromstr("x");
@@ -75,7 +75,7 @@ Test(fs2_api, bsearch_canon_key_n_zero_returns_minus1) {
  * fs2_bsearch_ci — same for case-insensitive
  * ========================================================================= */
 
-Test(fs2_api, bsearch_ci_canon_key_vs_nonempty_array_not_found) {
+Test(fs2_api_sort_search, bsearch_ci_canon_key_vs_nonempty_array_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("A"), fs2_fromstr("B"), fs2_fromstr("C") };
     sort_fs2(arr, 3);   /* sort by cs — for arrays A,B,C the order matches ci */
@@ -90,7 +90,7 @@ Test(fs2_api, bsearch_ci_canon_key_vs_nonempty_array_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_ci_canon_key_finds_empty_in_array) {
+Test(fs2_api_sort_search, bsearch_ci_canon_key_finds_empty_in_array) {
     __fs2_checkreset();
     fs2 arr[] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
     sort_fs2(arr, 3);
@@ -107,7 +107,7 @@ Test(fs2_api, bsearch_ci_canon_key_finds_empty_in_array) {
  * Normal hits (regression: the fix didn't break the common path)
  * ========================================================================= */
 
-Test(fs2_api, bsearch_found_and_not_found) {
+Test(fs2_api_sort_search, bsearch_found_and_not_found) {
     __fs2_checkreset();
     fs2 arr[] = {
         fs2_fromstr("apple"), fs2_fromstr("banana"),
@@ -127,7 +127,7 @@ Test(fs2_api, bsearch_found_and_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_ci_found_and_not_found) {
+Test(fs2_api_sort_search, bsearch_ci_found_and_not_found) {
     __fs2_checkreset();
     fs2 arr[] = { fs2_fromstr("Apple"), fs2_fromstr("Banana"), fs2_fromstr("Cherry") };
     /* CI sort for consistency with bsearch_ci */
@@ -152,25 +152,25 @@ Test(fs2_api, bsearch_ci_found_and_not_found) {
  * Guards
  * ========================================================================= */
 
-Test(fs2_api, bsearch_null_key_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_null_key_aborts, .signal = SIGABRT) {
     fs2 arr[] = { fs2_fromstr("a") };
     fs2_bsearch(NULL, arr, 1);
     fs2_free(&arr[0]);
 }
 
-Test(fs2_api, bsearch_null_arr_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_null_arr_aborts, .signal = SIGABRT) {
     fs2 key = fs2_fromstr("a");
     fs2_bsearch(&key, NULL, 1);
     fs2_free(&key);
 }
 
-Test(fs2_api, bsearch_ci_null_key_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_ci_null_key_aborts, .signal = SIGABRT) {
     fs2 arr[] = { fs2_fromstr("a") };
     fs2_bsearch_ci(NULL, arr, 1);
     fs2_free(&arr[0]);
 }
 
-Test(fs2_api, bsearch_ci_null_arr_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_ci_null_arr_aborts, .signal = SIGABRT) {
     fs2 key = fs2_fromstr("a");
     fs2_bsearch_ci(&key, NULL, 1);
     fs2_free(&key);
@@ -184,7 +184,7 @@ Test(fs2_api, bsearch_ci_null_arr_aborts, .signal = SIGABRT) {
  * ========================================================================= */
 
 #if 0
-Test(fs2_api, bsearch_array_with_canon_element_sorted) {
+Test(fs2_api_sort_search, bsearch_array_with_canon_element_sorted) {
     __fs2_checkreset();
     /* After normalizing fs2_cmp_wrap: FS2() compares as "" */
     fs2 arr[] = { fs2_fromstr("a"), FS2(), fs2_fromstr("b") };
@@ -203,7 +203,7 @@ Test(fs2_api, bsearch_array_with_canon_element_sorted) {
  * fs2_bsearch_str — nominal
  * ========================================================================= */
 
-Test(fs2_api, bsearch_str_found_and_not_found) {
+Test(fs2_api_sort_search, bsearch_str_found_and_not_found) {
     __fs2_checkreset();
     static const char *arr[] = { "apple", "banana", "cherry", "date" };
 
@@ -220,7 +220,7 @@ Test(fs2_api, bsearch_str_found_and_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_str_first_and_last) {
+Test(fs2_api_sort_search, bsearch_str_first_and_last) {
     __fs2_checkreset();
     static const char *arr[] = { "a", "b", "c", "d", "e" };
 
@@ -235,7 +235,7 @@ Test(fs2_api, bsearch_str_first_and_last) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_str_n_zero) {
+Test(fs2_api_sort_search, bsearch_str_n_zero) {
     __fs2_checkreset();
     static const char *arr[] = { "only" };
     fs2 key = fs2_fromstr("only");
@@ -248,7 +248,7 @@ Test(fs2_api, bsearch_str_n_zero) {
  * fs2_bsearch_str — FS2() (v==NULL) key: normalization (works)
  * ========================================================================= */
 
-Test(fs2_api, bsearch_str_canon_key_not_found) {
+Test(fs2_api_sort_search, bsearch_str_canon_key_not_found) {
     __fs2_checkreset();
     static const char *arr[] = { "a", "b", "c" };
 
@@ -261,7 +261,7 @@ Test(fs2_api, bsearch_str_canon_key_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_str_canon_key_finds_empty) {
+Test(fs2_api_sort_search, bsearch_str_canon_key_finds_empty) {
     __fs2_checkreset();
     /* "" < "a" < "b" */
     static const char *arr[] = { "", "a", "b" };
@@ -276,7 +276,7 @@ Test(fs2_api, bsearch_str_canon_key_finds_empty) {
 }
 
 /* FS2EMPTY (v != NULL) — same result via the other path */
-Test(fs2_api, bsearch_str_fs2empty_key) {
+Test(fs2_api_sort_search, bsearch_str_fs2empty_key) {
     __fs2_checkreset();
     static const char *arr[] = { "", "a", "b" };
     fs2 key = FS2EMPTY;
@@ -289,12 +289,12 @@ Test(fs2_api, bsearch_str_fs2empty_key) {
  * fs2_bsearch_str — guards (catch the bug: key == NULL)
  * ========================================================================= */
 
-Test(fs2_api, bsearch_str_null_key_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_str_null_key_aborts, .signal = SIGABRT) {
     static const char *arr[] = { "a" };
     fs2_bsearch_str(NULL, arr, 1);   /* ← without the fix — SIGSEGV, with the fix — SIGABRT */
 }
 
-Test(fs2_api, bsearch_str_null_arr_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_str_null_arr_aborts, .signal = SIGABRT) {
     fs2 key = fs2_fromstr("a");
     fs2_bsearch_str(&key, NULL, 1);
     fs2_free(&key);
@@ -304,7 +304,7 @@ Test(fs2_api, bsearch_str_null_arr_aborts, .signal = SIGABRT) {
  * fs2_bsearch_ci_str — same family
  * ========================================================================= */
 
-Test(fs2_api, bsearch_ci_str_found_and_not_found) {
+Test(fs2_api_sort_search, bsearch_ci_str_found_and_not_found) {
     __fs2_checkreset();
     static const char *arr[] = { "APPLE", "Banana", "cherry", "DATE" };
     /* CI sort (in this case the order matches cs) */
@@ -323,7 +323,7 @@ Test(fs2_api, bsearch_ci_str_found_and_not_found) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_ci_str_canon_key_finds_empty) {
+Test(fs2_api_sort_search, bsearch_ci_str_canon_key_finds_empty) {
     __fs2_checkreset();
     static const char *arr[] = { "", "a", "b" };
     fs2 key = FS2();
@@ -334,7 +334,7 @@ Test(fs2_api, bsearch_ci_str_canon_key_finds_empty) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_ci_str_n_zero) {
+Test(fs2_api_sort_search, bsearch_ci_str_n_zero) {
     __fs2_checkreset();
     static const char *arr[] = { "only" };
     fs2 key = fs2_fromstr("only");
@@ -343,12 +343,12 @@ Test(fs2_api, bsearch_ci_str_n_zero) {
     assert_balanced();
 }
 
-Test(fs2_api, bsearch_ci_str_null_key_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_ci_str_null_key_aborts, .signal = SIGABRT) {
     static const char *arr[] = { "a" };
     fs2_bsearch_ci_str(NULL, arr, 1);   /* ← without the fix — SIGSEGV */
 }
 
-Test(fs2_api, bsearch_ci_str_null_arr_aborts, .signal = SIGABRT) {
+Test(fs2_api_sort_search, bsearch_ci_str_null_arr_aborts, .signal = SIGABRT) {
     fs2 key = fs2_fromstr("a");
     fs2_bsearch_ci_str(&key, NULL, 1);
     fs2_free(&key);
@@ -358,7 +358,7 @@ Test(fs2_api, bsearch_ci_str_null_arr_aborts, .signal = SIGABRT) {
  * Consistency with fs2_bsearch (fs2 vs fs2): FS2() behaves identically
  * ========================================================================= */
 
-Test(fs2_api, bsearch_str_and_fs2_agree_on_canon_key) {
+Test(fs2_api_sort_search, bsearch_str_and_fs2_agree_on_canon_key) {
     __fs2_checkreset();
     static const char *carr[] = { "", "a", "b" };
     fs2 farr[] = { FS2EMPTY, fs2_fromstr("a"), fs2_fromstr("b") };
@@ -375,5 +375,91 @@ Test(fs2_api, bsearch_str_and_fs2_agree_on_canon_key) {
     fs2_free(&key);
     fs2_free(&farr[1]);
     fs2_free(&farr[2]);
+    assert_balanced();
+}
+
+// additional, after refactoring to common search engine fs2_chr_nth_raw
+
+/* ========================================================================= 
+ * fs2_nrchr_nth — nominal (k=1 = last occurrence)
+ * ========================================================================= */
+
+Test(fs2_api_sort_search, nrchr_nth_k1_is_last) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abcabcabc");         /* 'a' at 0,3,6 */
+
+    CHECK_EQ("k=1 last 'a'", fs2_nrchr_nth(&str, 'a', 1, SIZE_MAX), (ptrdiff_t)6);
+    CHECK_EQ("k=2",          fs2_nrchr_nth(&str, 'a', 2, SIZE_MAX), (ptrdiff_t)3);
+    CHECK_EQ("k=3",          fs2_nrchr_nth(&str, 'a', 3, SIZE_MAX), (ptrdiff_t)0);
+    CHECK_EQ("k=4",          fs2_nrchr_nth(&str, 'a', 4, SIZE_MAX), (ptrdiff_t)-1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_sort_search, nrchr_nth_k0_returns_minus1) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("aaa");
+    CHECK_EQ("k=0", fs2_nrchr_nth(&str, 'a', 0, SIZE_MAX), (ptrdiff_t)-1);
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_sort_search, nrchr_nth_absent) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("hello");
+    CHECK_EQ("absent", fs2_nrchr_nth(&str, 'Z', 1, SIZE_MAX), (ptrdiff_t)-1);
+    fs2_free(&str);
+    assert_balanced();
+}
+
+/* lim clamps window to last lim bytes */
+Test(fs2_api_sort_search, nrchr_nth_lim_caps_from_tail) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("aXaXaX");            /* X at 1,3,5 */
+    /* lim=4 → window [2,6) = "aXaX" → X at abs 3,5 */
+
+    CHECK_EQ("k=1 lim=4", fs2_nrchr_nth(&str, 'X', 1, 4), (ptrdiff_t)5);
+    CHECK_EQ("k=2 lim=4", fs2_nrchr_nth(&str, 'X', 2, 4), (ptrdiff_t)3);
+    CHECK_EQ("k=3 lim=4", fs2_nrchr_nth(&str, 'X', 3, 4), (ptrdiff_t)-1);
+
+    /* lim=2 → window [4,6) = "aX" → X at abs 5 */
+    CHECK_EQ("k=1 lim=2", fs2_nrchr_nth(&str, 'X', 1, 2), (ptrdiff_t)5);
+    CHECK_EQ("k=2 lim=2", fs2_nrchr_nth(&str, 'X', 2, 2), (ptrdiff_t)-1);
+
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_sort_search, nrchr_nth_lim_zero) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abc");
+    CHECK_EQ("lim=0", fs2_nrchr_nth(&str, 'a', 1, 0), (ptrdiff_t)-1);
+    fs2_free(&str);
+    assert_balanced();
+}
+
+Test(fs2_api_sort_search, nrchr_nth_null_aborts, .signal = SIGABRT) {
+    fs2_nrchr_nth(NULL, 'a', 1, SIZE_MAX);
+}
+
+/* =========================================================================
+ * Differential: fs2_nrchr_nth vs fs2_chr_nth at symmetric k
+ *   For "abcabcabc" (3 'a's): backward k=1 == forward k=3, etc.
+ * ========================================================================= */
+
+Test(fs2_api_sort_search, nrchr_nth_mirror_of_chr_nth) {
+    __fs2_checkreset();
+    fs2 str = fs2_fromstr("abcabcabc");
+
+    /* 3 'a's at 0,3,6 */
+    CHECK_EQ("fwd k=1", fs2_chr_nth(&str, 'a', 1), (ptrdiff_t)0);
+    CHECK_EQ("bwd k=1", fs2_nrchr_nth(&str, 'a', 1, SIZE_MAX), (ptrdiff_t)6);
+    CHECK_EQ("fwd k=2", fs2_chr_nth(&str, 'a', 2), (ptrdiff_t)3);
+    CHECK_EQ("bwd k=2", fs2_nrchr_nth(&str, 'a', 2, SIZE_MAX), (ptrdiff_t)3);
+    CHECK_EQ("fwd k=3", fs2_chr_nth(&str, 'a', 3), (ptrdiff_t)6);
+    CHECK_EQ("bwd k=3", fs2_nrchr_nth(&str, 'a', 3, SIZE_MAX), (ptrdiff_t)0);
+
+    fs2_free(&str);
     assert_balanced();
 }
