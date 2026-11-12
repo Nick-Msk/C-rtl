@@ -5,9 +5,12 @@ import argparse
 import json
 import os
 import sys
+import platform
+import subprocess
+import time
+from datetime import datetime
 from datetime import datetime
 from pathlib import Path
-
 import requests
 
 HERE = Path(__file__).resolve().parent
@@ -39,7 +42,156 @@ SYSTEM_PROMPT = """\
 
 Не выдумывай проблем. Если код в порядке — так и скажи.
 """
+# ── System info (best-effort, no external deps) ──────────────────────
+def _sysctl(name: str) -> str | None:
+    try:
+        return subprocess.check_output(
+            ["sysctl", "-n", name],
+            stderr=subprocess.DEVNULL, text=True, timeout=2,
+        ).strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
+
+def _cpu_brand() -> str:
+    sysname = platform.system()
+    if sysname == "Darwin":
+        v = _sysctl("machdep.cpu.brand_string")
+        if v:
+            return v
+    elif sysname == "Linux":
+        try:
+            with open("/proc/cpuinfo", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("model name"):
+                        return line.split(":", 1)[1].strip()
+        except OSError:
+            pass
+    return platform.processor() or "unknown"
+
+
+def _ram_bytes() -> int | None:
+    sysname = platform.system()
+    if sysname == "Darwin":
+        v = _sysctl("hw.memsize")
+        if v and v.isdigit():
+            return int(v)
+    elif sysname == "Linux":
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        return int(line.split()[1]) * 1024
+        except (OSError, ValueError, IndexError):
+            pass
+    return None
+
+
+def _cores() -> tuple[int | None, int | None]:
+    logical = os.cpu_count()
+    physical: int | None = None
+    sysname = platform.system()
+    if sysname == "Darwin":
+        v = _sysctl("hw.physicalcpu")
+        if v and v.isdigit():
+            physical = int(v)
+    elif sysname == "Linux":
+        try:
+            seen: set[tuple[str, str]] = set()
+            pid = ""
+            with open("/proc/cpuinfo", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("physical id"):
+                        pid = line.split(":", 1)[1].strip()
+                    elif line.startswith("core id"):
+                        seen.add((pid, line.split(":", 1)[1].strip()))
+            if seen:
+                physical = len(seen)
+        except OSError:
+            pass
+    return physical, logical
+
+
+def system_info() -> dict:
+    sysname = platform.system()
+    host = platform.node() or "unknown"
+
+    if sysname == "Darwin":
+        hw = _sysctl("hw.model") or host
+        os_str = f"macOS {platform.mac_ver()[0]}"
+    elif sysname == "Linux":
+        hw = host
+        for p in ("/sys/class/dmi/id/product_name",
+                  "/sys/devices/virtual/dmi/id/product_name"):
+            try:
+                hw = Path(p).read_text(encoding="utf-8").strip() or host
+                break
+            except OSError:
+                continue
+        try:
+            pretty = None
+            with open("/etc/os-release", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        pretty = line.split("=", 1)[1].strip().strip('"')
+                        break
+            os_str = pretty or f"Linux {platform.release()}"
+        except OSError:
+            os_str = f"Linux {platform.release()}"
+    else:
+        hw = host
+        os_str = f"{sysname} {platform.release()}"
+
+    physical, logical = _cores()
+    ram = _ram_bytes()
+    return {
+        "host": hw,
+        "os": f"{os_str} ({platform.machine()})",
+        "cpu": _cpu_brand(),
+        "cores": (f"{physical}p/{logical}l" if physical
+                  else f"{logical} logical" if logical else "unknown"),
+        "ram": f"{ram / (1024 ** 3):.1f} GB" if ram else "unknown",
+        "python": platform.python_version(),
+    }
+
+
+def _fmt_dur(sec: float) -> str:
+    if sec < 60:
+        return f"{sec:.1f}s"
+    m, s = divmod(int(round(sec)), 60)
+    if m < 60:
+        return f"{m}m {s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m:02d}m {s:02d}s"
+
+
+def format_header_md(name: str, model: str, base_url: str, started: datetime,
+                     duration: float, chunk_durs: list[float],
+                     usage: dict, sysinfo: dict) -> str:
+    comp = usage.get("completion_tokens", 0)
+    total = usage.get("total_tokens", 0) or (
+        usage.get("prompt_tokens", 0) + comp)
+    tps = (comp / duration) if duration > 0 and comp else None
+    chunk_str = ("  (per chunk: " + ", ".join(_fmt_dur(d) for d in chunk_durs) + ")"
+                 if len(chunk_durs) > 1 else "")
+
+    rows = [
+        ("started",  started.strftime("%Y-%m-%d %H:%M:%S")),
+        ("duration", _fmt_dur(duration) + chunk_str),
+        ("model",    f"`{model}`"),
+        ("endpoint", f"`{base_url}`"),
+        ("tokens",   f"{usage.get('prompt_tokens', 0):,} prompt / "
+                     f"{comp:,} completion / {total:,} total "
+                     f"({usage.get('requests', 0)} req)"),
+        ("speed",    f"{tps:.1f} completion tok/s" if tps else "n/a"),
+        ("host",     sysinfo["host"]),
+        ("os",       sysinfo["os"]),
+        ("cpu",      f"{sysinfo['cpu']} ({sysinfo['cores']})"),
+        ("ram",      sysinfo["ram"]),
+        ("python",   sysinfo["python"]),
+    ]
+    body = "\n".join(f"| {k:<8} | {v} |" for k, v in rows)
+    return f"# AI review: {name}\n\n| field    | value |\n|----------|-------|\n{body}\n\n"
 
 def discover_projects() -> list[Path]:
     out: list[Path] = []
@@ -207,9 +359,17 @@ def main() -> int:
         jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
                 for p in projects]
 
-    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+        OUT_ROOT.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     stream = not args.no_stream
+
+    # Snapshot once per run; also archived as JSON for later comparison.
+    sysinfo = system_info()
+    (OUT_ROOT / "_machine.json").write_text(
+        json.dumps(sysinfo, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"[ai-checker] host={sysinfo['host']}  "
+          f"cpu={sysinfo['cpu']} ({sysinfo['cores']})  "
+          f"ram={sysinfo['ram']}", file=sys.stderr)
 
     for name, files in jobs:
         if not files:
@@ -226,28 +386,30 @@ def main() -> int:
         else:
             sub = OUT_ROOT / name
             report = sub / f"{ts}{tag}.md"
-
         sub.mkdir(parents=True, exist_ok=True)
         report_rel = report.relative_to(ROOT)
 
         if args.no_tests and not args.file:
             print(f"[ai-checker] {name}: --no-tests, test/ excluded",
                   file=sys.stderr)
-
         print(f"[ai-checker] {name}: {len(files)} files, "
               f"{len(chunks)} chunk(s) -> {report_rel}", file=sys.stderr)
 
-        buf: list[str] = [f"# AI review: {name}\n\n_model: `{model}`_\n\n@USAGE@\n\n"]
+        t_start = time.perf_counter()
+        started = datetime.now()
+        chunk_durs: list[float] = []
         usage = {"prompt_tokens": 0, "completion_tokens": 0,
                  "total_tokens": 0, "requests": 0}
+        body: list[str] = []
 
         for i, chunk in enumerate(chunks, 1):
             if len(chunks) > 1:
                 hdr = f"## Part {i}/{len(chunks)}\n\n"
-                buf.append(hdr)
+                body.append(hdr)
                 sys.stdout.write(hdr)
             user = build_user_prompt(name, chunk)
             chunk_usage: dict = {}
+            t0 = time.perf_counter()
             try:
                 for piece in ask(args.base_url, model,
                                  [{"role": "system", "content": SYSTEM_PROMPT},
@@ -255,26 +417,33 @@ def main() -> int:
                                  stream=stream, usage_out=chunk_usage):
                     sys.stdout.write(piece)
                     sys.stdout.flush()
-                    buf.append(piece)
+                    body.append(piece)
+                dt = time.perf_counter() - t0
+                chunk_durs.append(dt)
                 for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                     usage[k] += chunk_usage.get(k, 0)
                 usage["requests"] += 1
-                if chunk_usage:
-                    print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
-                          f"prompt={chunk_usage.get('prompt_tokens', 0):,} "
-                          f"completion={chunk_usage.get('completion_tokens', 0):,}",
-                          file=sys.stderr)
+                print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
+                      f"{_fmt_dur(dt)}  prompt={chunk_usage.get('prompt_tokens', 0):,}  "
+                      f"completion={chunk_usage.get('completion_tokens', 0):,}",
+                      file=sys.stderr)
             except Exception as e:  # noqa: BLE001
+                dt = time.perf_counter() - t0
+                chunk_durs.append(dt)
                 msg = f"\n\n[error: {e}]\n"
                 print(msg)
-                buf.append(msg)
-            buf.append("\n\n")
+                body.append(msg)
+            body.append("\n\n")
             print()
 
-        content = "".join(buf).replace("@USAGE@", format_usage_md(usage), 1)
-        report.write_text(content, encoding="utf-8")
+        total_dur = time.perf_counter() - t_start
+        header = format_header_md(name, model, args.base_url, started,
+                                  total_dur, chunk_durs, usage, sysinfo)
+        report.write_text(header + "".join(body), encoding="utf-8")
+
         print(f"[ai-checker] done: {name} -> {report_rel}  "
-              f"[{usage['prompt_tokens']:,} in / "
+              f"[{_fmt_dur(total_dur)} · "
+              f"{usage['prompt_tokens']:,} in / "
               f"{usage['completion_tokens']:,} out]", file=sys.stderr)
 
     return 0
