@@ -68,7 +68,7 @@ fs2_partialsort(fs2 *str, size_t from, size_t to, bool asc) {
 
 // ------------------------------------------ ONE SYMBOL, N occurence SEARCH  --------------------------------------------------------
 
-// general
+// general search helper
 ptrdiff_t
 fs2_chr_nth_raw(const unsigned char *p, size_t avail, int c, size_t k,
                   fs2_chr_raw_fn fn, bool forward) {

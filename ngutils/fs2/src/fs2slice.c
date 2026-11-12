@@ -320,7 +320,7 @@ fs2arrslice_techfprint(FILE *restrict out, const fs2arrslice *restrict a,
 
 ptrdiff_t
 fs2slice_charsearch_nth(const fs2slice *s, char ch, size_t k,
-                        size_t lim, fs2_chr_raw_fn fn) {
+                        size_t lim, fs2_chr_raw_fn fn, bool forward) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null slice");
 
     if (s->parent == NULL)
@@ -328,11 +328,14 @@ fs2slice_charsearch_nth(const fs2slice *s, char ch, size_t k,
     if (s->parent->v == NULL || k == 0)
         return -1;
 
-    size_t avail = s->range.to - s->range.from;
-    if (lim < avail)
-        avail = lim;
+    size_t sl_len = s->range.to - s->range.from;
+    size_t avail  = (lim < sl_len) ? lim : sl_len;
+    size_t off    = forward ? 0 : sl_len - avail;
 
-    return fs2_chr_nth_raw((const unsigned char *)s->parent->v + s->range.from,
-                             avail, (unsigned char)ch, k, fn,
-                             /*forward=*/true);
+    ptrdiff_t hit = fs2_chr_nth_raw(
+                        (const unsigned char *)s->parent->v
+                            + s->range.from + off,
+                        avail, (unsigned char)ch, k, fn, forward);
+
+    return (hit < 0) ? -1 : (ptrdiff_t)off + hit;
 }
