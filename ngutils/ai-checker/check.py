@@ -4,13 +4,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import platform
 import subprocess
+import sys
 import time
 from datetime import datetime
-from datetime import datetime
 from pathlib import Path
+
 import requests
 
 HERE = Path(__file__).resolve().parent
@@ -42,6 +42,56 @@ SYSTEM_PROMPT = """\
 
 Не выдумывай проблем. Если код в порядке — так и скажи.
 """
+
+# ── Single-instance lock ─────────────────────────────────────────────
+# flock(2)-based: the kernel drops the lock on process exit, including
+# SIGKILL and Ctrl+C. No stale locks, no manual cleanup needed.
+LOCK_PATH = ROOT / "build" / "ai-checker" / ".lock"
+
+
+def acquire_lock():
+    """Exclusive non-blocking lock. Returns open fd, or None on failure."""
+    try:
+        import fcntl  # POSIX only
+    except ImportError:
+        print("[ai-checker] warn: no fcntl module, "
+              "concurrent-run protection disabled", file=sys.stderr)
+        return None
+
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd = LOCK_PATH.open("w")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        try:
+            other = LOCK_PATH.read_text().strip() or "?"
+        except OSError:
+            other = "?"
+        fd.close()
+        sys.exit(
+            f"ERROR: another ai-checker is already running (pid {other}).\n"
+            f"       Lock: {LOCK_PATH}\n"
+            f"       Wait for it to finish, or if it is truly stuck:\n"
+            f"         kill {other}"
+        )
+    fd.seek(0)
+    fd.truncate()
+    fd.write(f"{os.getpid()}\n")
+    fd.flush()
+    return fd
+
+
+def release_lock(fd):
+    if fd is None:
+        return
+    try:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        pass
+    finally:
+        fd.close()
+
 # ── System info (best-effort, no external deps) ──────────────────────
 def _sysctl(name: str) -> str | None:
     try:
@@ -158,7 +208,7 @@ def system_info() -> dict:
 def _fmt_dur(sec: float) -> str:
     if sec < 60:
         return f"{sec:.1f}s"
-    m, s = divmod(int(round(sec)), 60)
+    m, s = divmod(round(sec), 60)
     if m < 60:
         return f"{m}m {s:02d}s"
     h, m = divmod(m, 60)
@@ -180,9 +230,9 @@ def format_header_md(name: str, model: str, base_url: str, started: datetime,
         ("duration", _fmt_dur(duration) + chunk_str),
         ("model",    f"`{model}`"),
         ("endpoint", f"`{base_url}`"),
-        ("tokens",   f"{usage.get('prompt_tokens', 0):,} prompt / "
-                     f"{comp:,} completion / {total:,} total "
-                     f"({usage.get('requests', 0)} req)"),
+        ("tokens",   (f"{usage.get('prompt_tokens', 0):,} prompt / "
+                      f"{comp:,} completion / {total:,} total "
+                      f"({usage.get('requests', 0)} req)")),
         ("speed",    f"{tps:.1f} completion tok/s" if tps else "n/a"),
         ("host",     sysinfo["host"]),
         ("os",       sysinfo["os"]),
@@ -359,7 +409,15 @@ def main() -> int:
         jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
                 for p in projects]
 
-        OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    lock_fd = acquire_lock()
+    try:
+        return _run_checks(args, model, jobs)
+    finally:
+        release_lock(lock_fd)
+
+def _run_checks(args, model, jobs) -> int:
+
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     stream = not args.no_stream
 
