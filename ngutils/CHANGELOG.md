@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ai-checker/` — a small Python tool that sends source trees to a
+  locally running LM Studio instance (OpenAI-compatible API) and
+  writes Markdown code-review reports to `build/ai-checker/`.
+  Reports are timestamped and carry a metadata header (model,
+  endpoint, duration, token usage, throughput, host, CPU, RAM).
+- New dispatcher targets:
+  - `ai-models` — list models loaded in LM Studio.
+  - `ai-check` / `ai-check-notest` — review all projects (with or
+    without `test/` directories).
+  - `ai-check-<project>` / `ai-check-notest-<project>` — same, for
+    a single project.
+  - `ai-check-file F=<path>` — review one source file.
+  - `ai-checker-arch` — pack `build/ai-checker/` into
+    `build/ai-checker-reports.tar.zst`.
+- `make clean` now preserves `build/ai-checker/` and
+  `build/ai-checker-reports*.tar.zst` — review history survives
+  routine cleaning.
+
 - `checker` — assert-style invariants (`inv`, `invraise`, `inv2`,
   `inv2raise`) with `_Generic` dispatch, and runtime validators
   (`check_arg`). Aborts on invariant violation; compiles out with

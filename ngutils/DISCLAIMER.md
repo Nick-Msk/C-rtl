@@ -19,3 +19,34 @@ This is a personal utility collection, not a polished library.
   no MISRA/CERT compliance claims, no static analysis reports beyond
   what you see in CI logs.
 
+## AI-Assisted Reviews
+
+The `ai-checker/` tool and the `make ai-check*` targets produce
+machine-generated code reviews. They are provided **as-is** and
+carry no warranty of correctness, completeness, or fitness for any
+purpose.
+
+By using these targets you acknowledge that:
+
+- **Reports are not engineering advice.** They are suggestions
+  produced by a statistical language model and may contain
+  factual errors, invented APIs, or recommendations that are
+  actively wrong for this codebase.
+- **No finding is authoritative until a human verifies it.** Treat
+  every `## Критично` or `## Важно` item as a hypothesis to be
+  checked against the source, not as a defect report.
+- **The tool sends source code over HTTP** to the LM Studio
+  endpoint configured via `LMSTUDIO_URL`. The default is
+  `http://127.0.0.1:1234`, i.e. the same machine. If you point it
+  at a remote host, you are responsible for the confidentiality
+  of the code being transmitted.
+- **Reports are retained** under `build/ai-checker/` and survive
+  `make clean`. Archive or delete them according to your own data
+  retention policy.
+- **No automated decisions** should be made on the basis of a
+  report without human review. This includes, but is not limited
+  to, merging code, closing issues, or blocking releases.
+
+The maintainers of `ngutils` do not accept any liability for
+consequences arising from the use of AI-generated reviews.
+
