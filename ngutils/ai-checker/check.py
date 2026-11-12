@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
 import requests
 
 HERE = Path(__file__).resolve().parent
@@ -216,14 +217,22 @@ def main() -> int:
             continue
         chunks = chunk_files(files)
 
+        # '--no-tests' is only meaningful for project mode; in file mode
+        # the single file is whatever the user pointed at, tag it as-is.
+        tag = "_notest" if (args.no_tests and not args.file) else ""
         if args.file:
             sub = OUT_ROOT / "_files"
-            report = sub / f"{ts}_{name}.md"
+            report = sub / f"{ts}_{name}{tag}.md"
         else:
             sub = OUT_ROOT / name
-            report = sub / f"{ts}.md"
+            report = sub / f"{ts}{tag}.md"
+
         sub.mkdir(parents=True, exist_ok=True)
         report_rel = report.relative_to(ROOT)
+
+        if args.no_tests and not args.file:
+            print(f"[ai-checker] {name}: --no-tests, test/ excluded",
+                  file=sys.stderr)
 
         print(f"[ai-checker] {name}: {len(files)} files, "
               f"{len(chunks)} chunk(s) -> {report_rel}", file=sys.stderr)
