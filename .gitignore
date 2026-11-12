@@ -17,5 +17,7 @@ build/
 docs/
 *.log.gz
 *.bkp
+#ai checker
 ai-checker/.venv/
+.lock
 
