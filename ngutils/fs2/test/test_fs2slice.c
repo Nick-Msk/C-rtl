@@ -3345,3 +3345,246 @@ Test(fs2slice, chr_nth_v_null_defensive) {
     /* no fs2_free — canonical owns nothing */
     assert_balanced();
 }
+
+/* =========================================================================
+ * fs2slice_rchr_nth — k=1 is last, k decreases
+ * ========================================================================= */
+
+Test(fs2slice, rchr_nth_k1_is_last) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abcabcabc");      /* 'a' at 0,3,6 */
+    fs2slice s = fs2slice_new(&parent, 0, 9);
+
+    CHECK_EQ("k=1", fs2slice_rchr_nth(&s, 'a', 1), (ptrdiff_t)6);
+    CHECK_EQ("k=2", fs2slice_rchr_nth(&s, 'a', 2), (ptrdiff_t)3);
+    CHECK_EQ("k=3", fs2slice_rchr_nth(&s, 'a', 3), (ptrdiff_t)0);
+    CHECK_EQ("k=4", fs2slice_rchr_nth(&s, 'a', 4), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: backward offsets are slice-relative, not parent-relative */
+Test(fs2slice, rchr_nth_returns_slice_relative_offset) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXaXaX");         /* X at 0,1,3,5 */
+    fs2slice s = fs2slice_new(&parent, 2, 6);   /* "aXaX" — X at slice[1],[3] */
+
+    CHECK_EQ("k=1", fs2slice_rchr_nth(&s, 'X', 1), (ptrdiff_t)3);
+    CHECK_EQ("k=2", fs2slice_rchr_nth(&s, 'X', 2), (ptrdiff_t)1);
+    CHECK_EQ("k=3", fs2slice_rchr_nth(&s, 'X', 3), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: backward must not see parent suffix */
+Test(fs2slice, rchr_nth_does_not_leak_parent_suffix) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aXaXaX");
+    fs2slice s = fs2slice_new(&parent, 0, 3);   /* "aXa" — one X at slice[1] */
+
+    CHECK_EQ("k=1", fs2slice_rchr_nth(&s, 'X', 1), (ptrdiff_t)1);
+    CHECK_EQ("k=2", fs2slice_rchr_nth(&s, 'X', 2), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, rchr_nth_k0_returns_minus1) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aaa");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    CHECK_EQ("k=0", fs2slice_rchr_nth(&s, 'a', 0), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_rchr_nth vs fs2slice_chr_nth — mirror symmetry
+ * ========================================================================= */
+
+Test(fs2slice, rchr_nth_mirror_of_chr_nth) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abcabcabc");
+    fs2slice s = fs2slice_new(&parent, 0, 9);
+
+    CHECK_EQ("fwd k=1", fs2slice_chr_nth(&s,  'a', 1), (ptrdiff_t)0);
+    CHECK_EQ("bwd k=1", fs2slice_rchr_nth(&s, 'a', 1), (ptrdiff_t)6);
+    CHECK_EQ("fwd k=2", fs2slice_chr_nth(&s,  'a', 2), (ptrdiff_t)3);
+    CHECK_EQ("bwd k=2", fs2slice_rchr_nth(&s, 'a', 2), (ptrdiff_t)3);   /* same middle */
+    CHECK_EQ("fwd k=3", fs2slice_chr_nth(&s,  'a', 3), (ptrdiff_t)6);
+    CHECK_EQ("bwd k=3", fs2slice_rchr_nth(&s, 'a', 3), (ptrdiff_t)0);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * fs2slice_nrchr_nth — lim clamps FROM TAIL (not head!)
+ * ========================================================================= */
+
+Test(fs2slice, nrchr_nth_lim_caps_from_tail) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aXaXaX");         /* X at 1,3,5 */
+    fs2slice s = fs2slice_new(&parent, 0, 6);
+
+    /* lim=4 → window [2,6) = "aXaX" → X at abs 3,5 */
+    CHECK_EQ("k=1 lim=4", fs2slice_nrchr_nth(&s, 'X', 1, 4), (ptrdiff_t)5);
+    CHECK_EQ("k=2 lim=4", fs2slice_nrchr_nth(&s, 'X', 2, 4), (ptrdiff_t)3);
+    CHECK_EQ("k=3 lim=4", fs2slice_nrchr_nth(&s, 'X', 3, 4), (ptrdiff_t)-1);
+
+    /* lim=2 → window [4,6) = "aX" → X at abs 5 */
+    CHECK_EQ("k=1 lim=2", fs2slice_nrchr_nth(&s, 'X', 1, 2), (ptrdiff_t)5);
+    CHECK_EQ("k=2 lim=2", fs2slice_nrchr_nth(&s, 'X', 2, 2), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* KEY: lim on slice = window inside slice, not inside parent */
+Test(fs2slice, nrchr_nth_lim_relative_to_slice_not_parent) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XXaXaX");         /* X at 0,1,3,5 */
+    fs2slice s = fs2slice_new(&parent, 2, 6);   /* "aXaX" — X at slice[1],[3] */
+
+    /* lim=2 → last 2 bytes of slice [2,4) = "aX" → X at slice[3] */
+    CHECK_EQ("k=1 lim=2", fs2slice_nrchr_nth(&s, 'X', 1, 2), (ptrdiff_t)3);
+    CHECK_EQ("k=2 lim=2", fs2slice_nrchr_nth(&s, 'X', 2, 2), (ptrdiff_t)-1);
+
+    /* lim=3 → last 3 bytes of slice [1,4) = "XaX" → X at slice[3], [1] */
+    CHECK_EQ("k=1 lim=3", fs2slice_nrchr_nth(&s, 'X', 1, 3), (ptrdiff_t)3);
+    CHECK_EQ("k=2 lim=3", fs2slice_nrchr_nth(&s, 'X', 2, 3), (ptrdiff_t)1);
+    CHECK_EQ("k=3 lim=3", fs2slice_nrchr_nth(&s, 'X', 3, 3), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, nrchr_nth_lim_zero) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+
+    CHECK_EQ("lim=0", fs2slice_nrchr_nth(&s, 'a', 1, 0), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, nrchr_nth_lim_overshoot_clamped) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("XaXbXcX");        /* X at 0,2,4,6 */
+    fs2slice s = fs2slice_new(&parent, 1, 5);   /* "aXbX" — X at slice[1],[3] */
+
+    CHECK_EQ("k=1 lim=100", fs2slice_nrchr_nth(&s, 'X', 1, 100), (ptrdiff_t)3);
+    CHECK_EQ("k=2 lim=100", fs2slice_nrchr_nth(&s, 'X', 2, 100), (ptrdiff_t)1);
+    CHECK_EQ("k=3 lim=100", fs2slice_nrchr_nth(&s, 'X', 3, 100), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * _ci variants
+ * ========================================================================= */
+
+Test(fs2slice, rchr_nth_ci_basic) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aBaBaB");
+    fs2slice s = fs2slice_new(&parent, 0, 6);
+
+    CHECK_EQ("k=1 'b'", fs2slice_rchr_nth_ci(&s, 'b', 1), (ptrdiff_t)5);
+    CHECK_EQ("k=2 'b'", fs2slice_rchr_nth_ci(&s, 'b', 2), (ptrdiff_t)3);
+    CHECK_EQ("k=3 'b'", fs2slice_rchr_nth_ci(&s, 'b', 3), (ptrdiff_t)1);
+    CHECK_EQ("k=4 'b'", fs2slice_rchr_nth_ci(&s, 'b', 4), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+Test(fs2slice, nrchr_nth_ci_lim_from_tail) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("aBaBaB");
+    fs2slice s = fs2slice_new(&parent, 0, 6);
+
+    /* lim=4 → last 4 bytes = "aBaB" → 'b' at 5,3 */
+    CHECK_EQ("k=1 lim=4", fs2slice_nrchr_nth_ci(&s, 'b', 1, 4), (ptrdiff_t)5);
+    CHECK_EQ("k=2 lim=4", fs2slice_nrchr_nth_ci(&s, 'b', 2, 4), (ptrdiff_t)3);
+    CHECK_EQ("k=3 lim=4", fs2slice_nrchr_nth_ci(&s, 'b', 3, 4), (ptrdiff_t)-1);
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Leech after realloc
+ * ========================================================================= */
+
+Test(fs2slice, rchr_nth_after_parent_realloc) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abcabc");
+    fs2slice s = fs2slice_new(&parent, 0, 6);
+    fs2_catstr(&parent, "abcabc");              /* forced realloc */
+
+    CHECK_EQ("k=1", fs2slice_rchr_nth(&s, 'a', 1), (ptrdiff_t)3);
+    CHECK_EQ("k=2", fs2slice_rchr_nth(&s, 'a', 2), (ptrdiff_t)0);
+    CHECK_EQ("k=3", fs2slice_rchr_nth(&s, 'a', 3), (ptrdiff_t)-1);   /* suffix ignored */
+
+    fs2slice_free(&s);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* =========================================================================
+ * Guards
+ * ========================================================================= */
+
+Test(fs2slice, rchr_nth_null_slice_aborts, .signal = SIGABRT) {
+    fs2slice_rchr_nth(NULL, 'a', 1);
+}
+
+Test(fs2slice, rchr_nth_zombie_aborts, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_rchr_nth(&s, 'a', 1);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* Zombie + k=0 still raises — guards precede k==0 short-circuit */
+Test(fs2slice, rchr_nth_zombie_with_k0_still_raises, .signal = SIGINT) {
+    __fs2_checkreset();
+    fs2 parent = fs2_fromstr("abc");
+    fs2slice s = fs2slice_new(&parent, 0, 3);
+    fs2slice_free(&s);
+    fs2slice_rchr_nth(&s, 'a', 0);
+    fs2_free(&parent);
+    assert_balanced();
+}
+
+/* Hand-built slice with v==NULL must not UB */
+Test(fs2slice, rchr_nth_v_null_defensive) {
+    fs2 canonical = FS2();                      /* v=NULL */
+    fs2slice s = { .parent = &canonical, .range = {0, 1} };
+
+    CHECK_EQ("k=1",  fs2slice_rchr_nth(&s, 'a', 1),       (ptrdiff_t)-1);
+    CHECK_EQ("lim",  fs2slice_nrchr_nth(&s, 'a', 1, 5),   (ptrdiff_t)-1);
+
+    assert_balanced();
+}
