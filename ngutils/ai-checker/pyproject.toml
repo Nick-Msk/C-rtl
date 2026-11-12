@@ -1,0 +1,7 @@
+[project]
+name = "ai-checker"
+version = "0.1.0"
+description = "AI code review for ngutils via LM Studio (OpenAI-compatible API)"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31"]
+

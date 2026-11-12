@@ -42,7 +42,9 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) \
         $(addprefix lib-,$(PROJECTS)) \
 		$(addprefix librelease-,$(PROJECTS)) \
-		asan_check asan_leak
+		asan_check asan_leak \
+		qwen-check qwen-models qwen-check-file \
+        $(addprefix qwen-check-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -56,6 +58,12 @@ help:
 	@echo "  make check            run clang-tidy in all projects"
 	@echo "  make analyze          run clang static analyzer in all projects"
 	@echo "  make analyze-test     run clang static analyzer for test suite in all projects"
+	@echo ""
+	@echo "  make qwen-check       AI review of all projects (LM Studio / Qwen)"
+	@echo "  make qwen-check-<n>   AI review of one project (e.g. qwen-check-fs2)"
+	@echo "  make qwen-check-file  AI review of one file (F=log/src/log.c)"
+	@echo "  make qwen-models      list models available in LM Studio"
+	@echo ""
 	@echo "  make clean            clean all projects"
 	@echo "  make install          install libngutils.a + headers to PREFIX"
 	@echo "  make <target>-<name>  run one target in one project"
@@ -150,6 +158,39 @@ $(addprefix analyze-test-,$(PROJECTS)): analyze-test-%:
 $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
+
+# --- AI review (LM Studio / Qwen, OpenAI-compatible API) ---
+#
+# Requires: ai-checker/pyproject.toml and 'uv' on PATH.
+# Default endpoint: LM Studio on http://127.0.0.1:1234
+# Reports land in: build/qwen/<project>.md (removed by 'make clean')
+
+AI_CHECKER    := ai-checker
+LMSTUDIO_URL ?= http://127.0.0.1:1234
+QWEN_MODEL   ?=
+
+qwen-check:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python check.py --all
+
+$(addprefix qwen-check-,$(PROJECTS)): qwen-check-%:
+	@echo "==> qwen-check $*"
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python check.py --project $*
+
+qwen-check-file:
+	@test -n "$(F)" || { echo "usage: make qwen-check-file F=<path>" >&2; exit 1; }
+	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python check.py --file "$(CURDIR)/$(F)"
+
+qwen-models:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" \
+		uv run python check.py --models
 
 # --- docs ---
 
