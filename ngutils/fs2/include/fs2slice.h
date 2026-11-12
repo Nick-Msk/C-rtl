@@ -675,7 +675,7 @@ static inline ptrdiff_t fs2slice_rchr_ci(const fs2slice *s, char ch)
  * @param fn   Raw forward search helper (`__fs2_chr_raw` / `_ci`).
  * @return     Slice-relative 0-based offset, or -1 if fewer than k hits.
  */
-extern ptrdiff_t
+extern ptrdiff_t // TODO: that should be merged with fs2_nrchr_nth to make the same logic
 fs2slice_charsearch_nth(const fs2slice *s, char ch, size_t k,
                           size_t lim, fs2_chr_raw_fn fn);
 
