@@ -51,7 +51,8 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(addprefix ai-fix-,$(PROJECTS))								\
 		ai-fix ai-fix-commit ai-fix-file ai-fix-commit-file 			\
         $(addprefix ai-fix-,$(PROJECTS)) 								\
-        $(addprefix ai-fix-commit-,$(PROJECTS))
+        $(addprefix ai-fix-commit-,$(PROJECTS))							\
+		ai-status $(addprefix ai-status-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -79,6 +80,10 @@ help:
 	@echo "  make ai-fix-file F=<p>   dry-run, one file's report"
 	@echo "  make ai-fix-commit-<n>   apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
 	@echo "  make ai-fix-commit       apply, all projects"
+	@echo ""
+	@echo "  make ai-status           per-project status summary from check.db"
+	@echo "  make ai-status-<n>       list all issues for one project"
+	@echo "  make ai-status AI_STATUS='--status fixed'"
 	@echo ""
 	@echo "  FIXLIST=\"1/1, 1/7\"       process only these finding ids (from the report)"
 	@echo "  AI_FIX_MINOR=1           include 'Minor' section (Мелочи)"
@@ -304,7 +309,7 @@ ai-fix-commit-file:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_COMMIT)
-		
+
 # --- docs ---
 
 docs:
