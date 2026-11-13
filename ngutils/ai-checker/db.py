@@ -78,6 +78,13 @@ def _now_iso() -> str:
 
 TABLE_LOCAL_BASE = 1000
 
+def finding_key_str(finding) -> str:
+    """Canonical 'chunk/local_id' string for display and FIXLIST."""
+    if isinstance(finding, dict):
+        chunk, local = issue_key(finding)
+    else:
+        chunk, local = split_finding_id(str(finding))
+    return f"{chunk}/{local}"
 
 def issue_key(finding: dict) -> tuple[int, int]:
     """Return (chunk_id, local_id) for a finding dict.

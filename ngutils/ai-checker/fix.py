@@ -445,12 +445,27 @@ def apply_edit(path: Path, old: str, new: str) -> bool:
     except OSError:
         return False
 
-def _parse_fixlist(raw: str) -> set[str] | None:
-    """Parse '1/1, 1/7, 16' into {'1/1', '1/7', '16'}. None if empty."""
+def _parse_fixlist(raw: str) -> dict | None:
+    """Parse '1/1, 1/1001, 16' into {'keys': {(1,1),(1,1001)},
+    'ids': {'16'}}. None if empty.
+
+    'chunk/local' or 'chunk:local' go to keys (unambiguous across
+    chunks). Bare numbers go to ids (legacy finding_id; ambiguous
+    when multiple chunks contain the same row number).
+    """
     if not raw or not raw.strip():
         return None
-    tokens = re.split(r"[,\s]+", raw.strip())
-    return {t for t in tokens if t}
+    keys: set[tuple[int, int]] = set()
+    ids: set[str] = set()
+    for tok in re.split(r"[,\s]+", raw.strip()):
+        if not tok:
+            continue
+        if re.match(r"^\d+[/:]\d+$", tok):
+            a, b = re.split(r"[/:]", tok)
+            keys.add((int(a), int(b)))
+        else:
+            ids.add(tok)
+    return {"keys": keys, "ids": ids}
 
 # ── Main ─────────────────────────────────────────────────────────────
 def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
@@ -642,10 +657,30 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         findings = iter_findings(report_path, args.include_minor, 0)
         only = _parse_fixlist(args.only)
         if only is not None:
-            selected = [f for f in findings if f.get("id") in only]
-            missing = only - {f.get("id") for f in findings}
-            if missing:
-                print(f"  warn: FIXLIST ids not found: {sorted(missing)}",
+            selected: list[dict] = []
+            hit_keys: set[tuple[int, int]] = set()
+            hit_ids: set[str] = set()
+            for f in findings:
+                fid = f.get("id", "")
+                try:
+                    k = db.issue_key(f)
+                except (ValueError, TypeError):
+                    k = None
+                matched = (
+                    (k is not None and k in only["keys"])
+                    or (fid and fid in only["ids"])
+                )
+                if matched:
+                    selected.append(f)
+                    if k is not None:
+                        hit_keys.add(k)
+                    if fid:
+                        hit_ids.add(fid)
+            missing_keys = only["keys"] - hit_keys
+            missing_ids = only["ids"] - hit_ids
+            if missing_keys or missing_ids:
+                miss = sorted(missing_keys) + sorted(missing_ids)
+                print(f"  warn: FIXLIST ids not found: {miss}",
                       file=sys.stderr)
             if not selected:
                 print("  no findings match FIXLIST")
