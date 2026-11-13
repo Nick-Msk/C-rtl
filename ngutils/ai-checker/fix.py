@@ -185,6 +185,77 @@ def git_commit_file(path: Path, msg: str) -> str:
         raise RuntimeError(f"git commit failed: {r.stderr.strip()}")
     return git("rev-parse", "--short", "HEAD").stdout.strip()
 
+def make_run_id(label: str) -> str:
+    """Return '<label>-fix<N>' with N unused among existing branches.
+
+    Branches from this run are named '<run_id>-<seq>', so we probe
+    the same '<label>-fix<N>' prefix when looking for collisions.
+    """
+    base = f"ai-checker-{label}-fix"
+    existing = git("branch", "--list", f"{base}*").stdout.splitlines()
+    used: set[int] = set()
+    for line in existing:
+        name = line.strip().lstrip("* ").strip()
+        if not name.startswith(base):
+            continue
+        suffix = name[len(base):]
+        head = suffix.split("-", 1)[0]
+        if head.isdigit():
+            used.add(int(head))
+    n = 1
+    while n in used:
+        n += 1
+    return f"{base}{n}"
+
+
+def make_fix_branch_name(run_id: str, seq: int) -> str:
+    return f"{run_id}-{seq}"
+
+
+def commit_one_fix(base_sha: str, base_branch: str,
+                   branch_name: str, path: Path,
+                   old: str, new: str, msg: str) -> str:
+    """Create branch from base_sha, apply edit, commit, return to base.
+
+    The working tree is clean at entry (enforced by git_clean_check in
+    _run). On any failure (checkout, edit, add, commit) the partial
+    branch is deleted and the tree is reset to base_branch, so the
+    caller can continue with the next finding without leaving crumbs.
+    """
+    r = git("checkout", "-b", branch_name, base_sha, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
+
+    def _cleanup(reason: str) -> None:
+        git("reset", "--hard", check=False)
+        git("checkout", base_branch, check=False)
+        git("branch", "-D", branch_name, check=False)
+        raise RuntimeError(reason)
+
+    if not apply_edit(path, old, new):
+        _cleanup("apply_edit failed (file changed under us?)")
+
+    rel = str(path.relative_to(ROOT))
+    r = git("add", "--", rel, check=False)
+    if r.returncode != 0:
+        _cleanup(f"git add failed: {r.stderr.strip()}")
+
+    r = git("commit", "-F", "-", input=msg, check=False)
+    if r.returncode != 0:
+        _cleanup(f"git commit failed: {r.stderr.strip()}")
+
+    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+
+    r = git("checkout", base_branch, check=False)
+    if r.returncode != 0:
+        # The commit exists; we just could not return. Tell the user
+        # exactly where we are so they can recover manually.
+        raise RuntimeError(
+            f"commit {sha} on {branch_name} succeeded, but "
+            f"'git checkout {base_branch}' failed: {r.stderr.strip()}. "
+            f"Recover: git checkout {base_branch}"
+        )
+    return sha
 
 def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
@@ -364,6 +435,13 @@ def apply_edit(path: Path, old: str, new: str) -> bool:
     except OSError:
         return False
 
+def _parse_fixlist(raw: str) -> set[str] | None:
+    """Parse '1/1, 1/7, 16' into {'1/1', '1/7', '16'}. None if empty."""
+    if not raw or not raw.strip():
+        return None
+    tokens = re.split(r"[,\s]+", raw.strip())
+    return {t for t in tokens if t}
+
 # ── Main ─────────────────────────────────────────────────────────────
 def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
     if args.report:
@@ -417,7 +495,7 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, files: list[Path],
                     args, model: str,
-                    fix_state: dict,
+                    ctx: dict,
                     applied: list[dict], skipped: list[str],
                     needs_review: list[dict]) -> None:
     print(f"\n=== Finding {idx}/{total}  [{finding['section']}] ===")
@@ -485,64 +563,78 @@ def _handle_finding(idx: int, total: int, finding: dict,
             skipped.append(finding["text"][:80])
             return
 
-    # Lazy branch creation on the first applied fix of this run.
-    if fix_state["branch"] is None:
-        branch = make_branch_name(fix_state["label"])
-        git_create_branch(branch, fix_state["base_sha"])
-        fix_state["branch"] = branch
-        print(f"  (created branch: {branch})")
-
-    if not apply_edit(path, edit["old_snippet"], edit["new_snippet"]):
-        print("  SKIP: file changed under us (previous fix shifted context?)")
-        skipped.append(finding["text"][:80])
-        return
-
+    ctx["seq"] += 1
+    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
     rel = str(path.relative_to(ROOT))
     msg = _build_commit_msg(finding, rel, reason, explanation)
+
     try:
-        sha = git_commit_file(path, msg)
+        sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
+                             path, edit["old_snippet"], edit["new_snippet"],
+                             msg)
     except RuntimeError as e:
-        # Roll back the file write so the tree stays clean.
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(
-                edit["new_snippet"], edit["old_snippet"], 1),
-            encoding="utf-8")
         print(f"  SKIP: {e}")
-        skipped.append(finding["text"][:80])
+        skipped.append(finding.get("id", "?") + ": " + str(e))
         return
 
-    print(f"  COMMITTED {sha}  {rel}")
-    applied.append({"sha": sha, "file": rel,
-                    "summary": finding["text"].splitlines()[0][:70]})
-
+    print(f"  COMMITTED {sha}  {branch}  {rel}")
+    applied.append({
+        "id": finding.get("id", "?"),
+        "section": finding["section"],
+        "sha": sha,
+        "branch": branch,
+        "file": rel,
+        "summary": finding["text"].splitlines()[0][:70],
+    })
 
 def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
-    base_branch = None
-    base_sha = None
+    base_branch = base_sha = None
     if args.apply:
         base_branch, base_sha = git_clean_check()
 
     FIX_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    all_branches: list[tuple[str, str, list[dict]]] = []
+    created_all: list[tuple[str, str, list[dict]]] = []
 
     for label, report_path, project in jobs:
         print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
-        applied: list[dict] = []
-        skipped: list[str] = []
-        needs_review: list[dict] = []
-        fix_state = {"label": label, "base_sha": base_sha, "branch": None}
 
-        findings = iter_findings(report_path, args.include_minor, args.limit)
+        findings = iter_findings(report_path, args.include_minor, 0)
+        only = _parse_fixlist(args.only)
+        if only is not None:
+            selected = [f for f in findings if f.get("id") in only]
+            missing = only - {f.get("id") for f in findings}
+            if missing:
+                print(f"  warn: FIXLIST ids not found: {sorted(missing)}",
+                      file=sys.stderr)
+            if not selected:
+                print("  no findings match FIXLIST")
+                continue
+            findings = selected
+        elif args.limit:
+            findings = findings[:args.limit]
+
         if not findings:
             print("  no findings to process")
             continue
 
+        run_id = (make_run_id(label) if args.apply
+                  else f"ai-checker-{label}-fix<N>")
+        ctx = {
+            "run_id": run_id,
+            "base_sha": base_sha,
+            "base_branch": base_branch,
+            "seq": 0,
+        }
+
+        applied: list[dict] = []
+        skipped: list[str] = []
+        needs_review: list[dict] = []
         t0 = time.perf_counter()
         for idx, finding in enumerate(findings, 1):
             files = gather_context_files(finding, project)
             _handle_finding(idx, len(findings), finding, project, files,
-                            args, model, fix_state,
+                            args, model, ctx,
                             applied, skipped, needs_review)
         dt = time.perf_counter() - t0
 
@@ -550,66 +642,64 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
               f"{len(applied)} applied, {len(skipped)} skipped, "
               f"{len(needs_review)} needs review, {dt:.1f}s")
 
-        if applied and fix_state["branch"]:
-            branch = fix_state["branch"]
-            print(f"[ai-fixer] branch: {branch}")
-            print("[ai-fixer] commits:")
+        if applied:
+            print(f"[ai-fixer] {len(applied)} fix branches "
+                  f"(run_id={run_id}):")
             for c in applied:
-                print(f"  {c['sha']}  {c['summary']}")
-            print(f"[ai-fixer] review:  git log --oneline {base_branch}..{branch}")
-            print(f"[ai-fixer] diff:    git diff {base_sha}..{branch}")
-            print("[ai-fixer] keep one: git cherry-pick <sha>")
-            print(f"[ai-fixer] reject:  git branch -D {branch}")
-            print(f"[ai-fixer] back:    git checkout {base_branch}")
+                print(f"  {c['branch']:<32}  id={c['id']:<6}  "
+                      f"{c['summary']}")
+            first = applied[0]
+            print(f"\n[ai-fixer] review one:   git log --oneline "
+                  f"{first['branch']}")
+            print(f"[ai-fixer] inspect one:  git show {first['sha']}")
+            print(f"[ai-fixer] merge one:    git checkout {base_branch} && "
+                  f"git merge --no-ff {first['branch']}")
+            print(f"[ai-fixer] reject one:   git branch -D {first['branch']}")
+            print(f"[ai-fixer] reject all:   git branch -D "
+                  f"{' '.join(c['branch'] for c in applied)}")
 
-            # Save a JSON log of what happened.
-            (FIX_DIR / f"{ts}_{label}.json").write_text(json.dumps({
+            log_path = FIX_DIR / f"{ts}_{label}.json"
+            log_path.write_text(json.dumps({
                 "project": label,
                 "base_branch": base_branch,
                 "base_sha": base_sha,
-                "fix_branch": branch,
+                "run_id": run_id,
                 "started": ts,
                 "duration_sec": round(dt, 1),
-                "commits": applied,
+                "fixes": applied,
                 "skipped": skipped,
                 "needs_review": [
-                    {"section": n["section"], "text": n["text"],
+                    {"id": n.get("id"), "section": n["section"],
+                     "text": n["text"],
                      "reason": n["verdict"].get("reason"),
                      "direction": n["verdict"].get("direction")}
                     for n in needs_review
                 ],
             }, indent=2, ensure_ascii=False), encoding="utf-8")
+            print(f"[ai-fixer] json log:    {log_path.relative_to(ROOT)}")
 
-            all_branches.append((label, branch, applied))
+            created_all.append((label, run_id, applied))
 
         if needs_review:
             print(f"\n=== Needs human thought ({len(needs_review)}) ===")
             for i, item in enumerate(needs_review, 1):
                 v = item["verdict"]
-                first = item["text"].splitlines()[0][:100]
-                print(f"[{i}] {first}")
+                print(f"[{i}] id={item.get('id', '?')}  "
+                      f"{item['text'].splitlines()[0][:100]}")
                 if v.get("reason"):
                     print(f"    why: {v['reason']}")
                 if v.get("direction"):
                     print(f"    direction: {v['direction']}")
 
-    # Return to base branch if we moved.
-    if args.apply and all_branches and base_branch:
-        try:
-            git("checkout", base_branch)
-        except subprocess.CalledProcessError:
-            print(f"[ai-fixer] warning: could not return to {base_branch}",
-                  file=sys.stderr)
-
-    if all_branches:
-        print("\n[ai-fixer] summary of created branches:")
-        for label, branch, applied in all_branches:
-            print(f"  {label:<12} {branch}  ({len(applied)} commit(s))")
-        print(f"[ai-fixer] discard all:  git branch -D "
-              f"{' '.join(b for _, b, _ in all_branches)}")
+    if created_all:
+        print("\n[ai-fixer] all branches from this run:")
+        for label, _run_id, applied in created_all:
+            for c in applied:
+                print(f"  {c['branch']:<32}  {label:<8}  id={c['id']}")
+        print(f"[ai-fixer] return to base:  git checkout "
+              f"{base_branch or 'master'}")
 
     return 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -632,8 +722,11 @@ def main() -> int:
     ap.add_argument("--include-minor", action="store_true",
                     help="also process the 'Мелочи' section")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
-                    help=f"max findings per project (default {DEFAULT_LIMIT}, "
-                         f"0 = unlimited)")
+                    help=f"max findings when --only is not set "
+                         f"(default {DEFAULT_LIMIT}, 0 = unlimited)")
+    ap.add_argument("--only", default="",
+                    help="comma-separated finding ids to process "
+                         "(e.g. '1/1,1/7,16'); default: all")
     args = ap.parse_args()
 
     try:
