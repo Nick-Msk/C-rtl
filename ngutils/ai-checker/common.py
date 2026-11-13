@@ -50,6 +50,12 @@ ITEM_SEP = re.compile(
     r"[ \t]+",
     re.MULTILINE,
 )
+
+# Markdown table (used in 'Мелочи' sections):
+#   | 16 | log_preambule | lv + 1 ... |
+TABLE_ROW_RE = re.compile(r"^[ \t]*\|(.+)\|[ \t]*$", re.MULTILINE)
+TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
+
 FILE_REF_RE = re.compile(
     r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
 
@@ -112,6 +118,37 @@ def discover_projects() -> list[Path]:
 def lang_of(f: Path) -> str:
     return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
 
+def _parse_table_rows(body: str) -> list[str]:
+    """Extract finding texts from markdown tables in a section body.
+
+    Assumes the first non-separator row is the header; every
+    subsequent row becomes one finding with cells rendered as
+    '<header>: <cell>' joined by '; '.
+    """
+    out: list[str] = []
+    header: list[str] | None = None
+    for line in body.split("\n"):
+        m = TABLE_ROW_RE.match(line)
+        if not m:
+            header = None
+            continue
+        cells = [c.strip() for c in m.group(1).split("|")]
+        if not cells:
+            continue
+        if all(not c or TABLE_SEP_CELL_RE.match(c) for c in cells):
+            continue
+        if header is None:
+            header = cells
+            continue
+        parts = []
+        for i, c in enumerate(cells):
+            if not c:
+                continue
+            label = header[i] if i < len(header) else f"col{i + 1}"
+            parts.append(f"{label}: {c}")
+        if parts:
+            out.append("; ".join(parts))
+    return out
 
 # ── Finding parsing ──────────────────────────────────────────────────
 def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
@@ -125,11 +162,22 @@ def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
         if not m or m.group(1) not in targets:
             continue
         body = sec[m.end():]
-        items = ITEM_SEP.split(body)
-        for item in items[1:]:
+
+        # Header-based findings: '### N/M. ...'
+        header_texts: list[str] = []
+        for item in ITEM_SEP.split(body)[1:]:
             text = item.strip()
             if len(text) >= 20:
+                header_texts.append(text)
+
+        if header_texts:
+            for text in header_texts:
                 findings.append({"section": m.group(1), "text": text})
+        else:
+            # Table-based findings: '| 16 | ... | ... |'
+            for text in _parse_table_rows(body):
+                if len(text) >= 20:
+                    findings.append({"section": m.group(1), "text": text})
     return findings
 
 
