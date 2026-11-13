@@ -522,7 +522,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
         try:
-            db.update_issue_status(report_path, finding.get("id", ""),
+            db.update_issue_status(report_path, finding.get("finding", ""),
                                    db.STATUS_FAILED,
                                    reason=f"LLM: {e}")
         except Exception as exc:  # noqa: BLE001
@@ -539,7 +539,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
         print(f"  SKIP: invalid JSON: {raw[:120]!r}")
         skipped.append(finding["text"][:80])
         try:
-            db.update_issue_status(report_path, finding.get("id", ""),
+            db.update_issue_status(report_path, finding.get("finding", ""),
                                    db.STATUS_FAILED,
                                    reason=f"LLM request failed {e}")
         except Exception as exc:  # noqa: BLE001
@@ -590,7 +590,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
             print("  skipped by user")
             skipped.append(finding["text"][:80])
             try:
-                db.update_issue_status(report_path, finding.get("id", ""),
+                db.update_issue_status(report_path, finding.get("finding", ""),
                                        db.STATUS_REJECTED,
                                        reason="user rejected")
             except Exception as exc:  # noqa: BLE001
@@ -672,14 +672,22 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         # should show everything.
         if args.apply and not args.reprocess:
             try:
-                resolved = db.resolved_finding_ids(report_path)
+                resolved = db.resolved_finding_keys(report_path)
             except Exception as exc:  # noqa: BLE001
                 print(f"  warn: db query failed: {exc}", file=sys.stderr)
                 resolved = set()
             if resolved:
                 before = len(findings)
-                findings = [f for f in findings
-                            if f.get("id") not in resolved]
+                kept: list[dict] = []
+                for f in findings:
+                    try:
+                        key = db.issue_key(f)
+                    except (ValueError, TypeError):
+                        kept.append(f)
+                        continue
+                    if key not in resolved:
+                        kept.append(f)
+                findings = kept
                 print(f"  skip {before - len(findings)} already-resolved "
                       f"(use --reprocess to include)", file=sys.stderr)
                 if not findings:

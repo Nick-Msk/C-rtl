@@ -75,13 +75,55 @@ def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def split_finding_id(fid: str) -> tuple[int, int]:
-    """'1/10' -> (1, 10);  '16' -> (1, 16)."""
+
+TABLE_LOCAL_BASE = 1000
+
+
+def issue_key(finding: dict) -> tuple[int, int]:
+    """Return (chunk_id, local_id) for a finding dict.
+
+    '1/10'      (header) -> (1, 10)
+    '16' chunk1 (table)  -> (1, 1016)
+    '16' chunk2 (table)  -> (2, 1016)
+
+    Headers carry their chunk in the id, so chunk=parse, local=parse.
+    Tables/lists carry only the row number; we keep the report's
+    current chunk and offset the local id past TABLE_LOCAL_BASE so
+    rows never collide with header locals of the same chunk.
+    """
+    fid = str(finding.get("id", ""))
+    chunk = int(finding.get("chunk", 1))
+    kind = finding.get("kind", "header")
     if "/" in fid:
         a, b = fid.split("/", 1)
         return int(a), int(b)
-    return 1, int(fid)
+    local = int(fid) if fid.isdigit() else 0
+    if kind in ("table", "list"):
+        return chunk, TABLE_LOCAL_BASE + local
+    return chunk, local
 
+
+def split_finding_id(fid: str) -> tuple[int, int]:
+    """Legacy: '1/10' -> (1, 10); bare '16' -> (1, 1016).
+
+    Bare ids cannot carry their chunk; this fallback assumes chunk 1.
+    Prefer passing the finding dict to update_issue_status/get_status.
+    """
+    if "/" in fid:
+        a, b = fid.split("/", 1)
+        return int(a), int(b)
+    return 1, TABLE_LOCAL_BASE + int(fid)
+
+def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
+    """Return {(chunk_id, local_id)} with status fixed/rejected."""
+    rel = _rel(report_path)
+    with connect() as con:
+        rows = con.execute(
+            "SELECT chunk_id, local_id FROM issue WHERE "
+            "report_id = (SELECT id FROM report WHERE path = ?) "
+            "AND status IN (?, ?)",
+            (rel, STATUS_FIXED, STATUS_REJECTED)).fetchall()
+    return {(r["chunk_id"], r["local_id"]) for r in rows}
 
 def _rel(path: Path | str) -> str:
     p = Path(path)
@@ -231,4 +273,3 @@ def get_status(report_path: Path | str, finding_id: str) -> str | None:
             "AND chunk_id = ? AND local_id = ?",
             (rel, chunk_id, local_id)).fetchone()
     return row["status"] if row else None
-
