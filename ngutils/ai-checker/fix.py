@@ -30,25 +30,24 @@ from pathlib import Path
 
 import requests
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-OUT_ROOT = ROOT / "build" / "ai-checker"
-FIX_DIR = OUT_ROOT / "fixes"
-LOCK_PATH = OUT_ROOT / ".lock"
+from common import (
+    ALLOWED_TOP_DIRS,
+    DEFAULT_LIMIT,
+    FIX_DIR,
+    FORBIDDEN_ROOT_NAMES,
+    MAX_SOURCE_CHARS,
+    OUT_ROOT,
+    ROOT,
+    SRC_EXTS,
+    acquire_lock,
+    discover_projects,
+    gather_context_files,
+    iter_findings,
+    release_lock,
+    types_digest_path,
+)
 
-SRC_EXTS = {".h", ".hpp", ".c", ".cc", ".cpp", ".cxx"}
-MAX_FINDING_CHARS = 8_000
-MAX_SOURCE_CHARS = 40_000
 MAX_DIFF_LINES = 20
-DEFAULT_LIMIT = 20
-
-# Only these directories may contain editable files.
-ALLOWED_TOP_DIRS = {"bool", "checker", "common", "error", "fs2", "log",
-                    "path", "skeleton"}
-# Anything at repo root with these suffixes/names is off-limits.
-FORBIDDEN_ROOT_NAMES = {"Makefile", "Makefile.common", "Doxyfile",
-                        "Dockerfile.dev", "README.md", "CHANGELOG.md",
-                        "DISCLAIMER.md", "LICENSE", ".gitignore"}
 
 CLASSIFY_SYSTEM = """\
 You are a strict C/C++ code-fix validator. You receive a code-review
@@ -118,46 +117,6 @@ Output ONLY a JSON object, no prose, no markdown fences:
 - Do NOT touch anything outside the single function body.
 """
 
-# ── Single-instance lock (shared with check.py) ─────────────────────
-def acquire_lock():
-    try:
-        import fcntl
-    except ImportError:
-        print("[ai-fixer] warn: no fcntl module, "
-              "concurrent-run protection disabled", file=sys.stderr)
-        return None
-    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd = LOCK_PATH.open("w")
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        try:
-            other = LOCK_PATH.read_text().strip() or "?"
-        except OSError:
-            other = "?"
-        fd.close()
-        sys.exit(f"ERROR: another ai-checker/ai-fixer is already running "
-                 f"(pid {other}).\n"
-                 f"       Lock: {LOCK_PATH}\n"
-                 f"       Wait for it to finish, or if truly stuck: kill {other}")
-    fd.seek(0)
-    fd.truncate()
-    fd.write(f"{os.getpid()}\n")
-    fd.flush()
-    return fd
-
-
-def release_lock(fd):
-    if fd is None:
-        return
-    try:
-        import fcntl
-        fcntl.flock(fd, fcntl.LOCK_UN)
-    except (ImportError, OSError):
-        pass
-    finally:
-        fd.close()
-
 # ── Git helpers ──────────────────────────────────────────────────────
 def git(*args: str, input: str | None = None,
         check: bool = True) -> subprocess.CompletedProcess:
@@ -211,16 +170,6 @@ def git_commit_file(path: Path, msg: str) -> str:
         raise RuntimeError(f"git commit failed: {r.stderr.strip()}")
     return git("rev-parse", "--short", "HEAD").stdout.strip()
 
-# ── Report discovery ─────────────────────────────────────────────────
-def discover_projects() -> list[Path]:
-    out: list[Path] = []
-    for p in sorted(ROOT.iterdir()):
-        if p.name not in ALLOWED_TOP_DIRS:
-            continue
-        if (p / "include").is_dir() or (p / "src").is_dir():
-            out.append(p)
-    return out
-
 
 def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
@@ -237,71 +186,6 @@ def latest_report_for_file(stem: str) -> Path | None:
     reports = sorted(d.glob(f"*_{stem}*.md"))
     return reports[-1] if reports else None
 
-# ── Finding extraction ───────────────────────────────────────────────
-def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
-    targets = {"Критично", "Важно"}
-    if include_minor:
-        targets.add("Мелочи")
-    findings: list[dict] = []
-    sections = re.split(r"^## ", report_text, flags=re.MULTILINE)
-    for sec in sections:
-        m = re.match(r"^(\S+)", sec)
-        if not m or m.group(1) not in targets:
-            continue
-        body = sec[m.end():]
-        items = re.split(r"^(?:\d+\.|[-*])\s+", body, flags=re.MULTILINE)
-        for item in items[1:]:
-            text = item.strip()
-            if len(text) >= 20:
-                findings.append({"section": m.group(1), "text": text})
-    return findings
-
-
-FILE_REF_RE = re.compile(r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
-
-
-def resolve_path(token: str, project: Path) -> Path | None:
-    candidates = [
-        ROOT / token,
-        project / token,
-        project / "src" / token,
-        project / "include" / token,
-        project / "test" / token,
-    ]
-    if "/" in token:
-        candidates.append(project / Path(*Path(token).parts[-2:]))
-    for c in candidates:
-        try:
-            c = c.resolve()
-            c.relative_to(ROOT)
-            if c.is_file() and c.suffix.lower() in SRC_EXTS:
-                return c
-        except (ValueError, OSError):
-            continue
-    return None
-
-
-def gather_context_files(finding: dict, project: Path) -> list[Path]:
-    hits: list[Path] = []
-    seen: set[Path] = set()
-    for token in FILE_REF_RE.findall(finding["text"]):
-        p = resolve_path(token, project)
-        if p and p not in seen:
-            seen.add(p)
-            hits.append(p)
-    if hits:
-        return hits
-    files: list[Path] = []
-    for sub in ("include", "src", "test"):
-        d = project / sub
-        if not d.is_dir():
-            continue
-        for f in sorted(d.rglob("*")):
-            if f.is_file() and f.suffix.lower() in SRC_EXTS:
-                files.append(f)
-    return files
-
-
 def build_prompt(finding: dict, project: Path, files: list[Path]) -> str:
     parts = [f"Project: {project.name}",
              f"Section: {finding['section']}",
@@ -310,7 +194,24 @@ def build_prompt(finding: dict, project: Path, files: list[Path]) -> str:
              "",
              "Source files:"]
     budget = MAX_SOURCE_CHARS
+
+    # Prepend the pre-extracted type digest. This is what check.py
+    # showed the reviewing model; the classifier must see it too.
+    types_path = types_digest_path(project.name)
+    if types_path.is_file():
+        try:
+            types_text = types_path.read_text(encoding="utf-8")
+            block = ("### File: _types.h "
+                     "(extracted type declarations from all headers)\n"
+                     f"```c\n{types_text}\n```\n")
+            parts.append(block)
+            budget -= len(block)
+        except OSError:
+            pass
+
     for f in files:
+        if budget <= 0:
+            break
         try:
             text = f.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
@@ -320,8 +221,6 @@ def build_prompt(finding: dict, project: Path, files: list[Path]) -> str:
             block = block[:budget] + "\n... (truncated)\n```\n"
         parts.append(block)
         budget -= len(block)
-        if budget <= 0:
-            break
     return "\n".join(parts)
 
 # ── LLM call ─────────────────────────────────────────────────────────
@@ -485,17 +384,6 @@ def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
         sys.exit(f"ERROR: no reports in {OUT_ROOT}. Run 'make ai-check' first.")
     return out
 
-
-def _iter_findings(report_path: Path, include_minor: bool, limit: int):
-    text = report_path.read_text(encoding="utf-8")
-    findings = parse_findings(text, include_minor)
-    if limit and len(findings) > limit:
-        print(f"[ai-fixer] warning: {len(findings)} findings, "
-              f"capped to {limit} (use --limit 0 for all)", file=sys.stderr)
-        findings = findings[:limit]
-    return findings
-
-
 def _build_commit_msg(finding: dict, rel: str, reason: str,
                       explanation: str) -> str:
     first_line = finding["text"].splitlines()[0][:70]
@@ -630,7 +518,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         needs_review: list[dict] = []
         fix_state = {"label": label, "base_sha": base_sha, "branch": None}
 
-        findings = _iter_findings(report_path, args.include_minor, args.limit)
+        findings = iter_findings(report_path, args.include_minor, args.limit)
         if not findings:
             print("  no findings to process")
             continue

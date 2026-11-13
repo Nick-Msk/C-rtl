@@ -14,14 +14,19 @@ from pathlib import Path
 
 import requests
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-OUT_ROOT = ROOT / "build" / "ai-checker"
-
-EXCLUDE_DIRS = {"build", "bkp", "docs", "scripts", "ai-checker",
-                ".git", ".github", ".vscode"}
-SRC_EXTS = {".h", ".hpp", ".c", ".cc", ".cpp", ".cxx"}
-MAX_CHARS = 40_000
+from common import (
+    CPP_EXTS,
+    HEADER_EXTS,
+    MAX_CHARS,
+    OUT_ROOT,
+    ROOT,
+    acquire_lock,
+    discover_projects,
+    gather_files,
+    lang_of,
+    release_lock,
+    renumber_findings,
+)
 
 SYSTEM_PROMPT = """\
 Ты — опытный C/C++ ревьюер системных библиотек. Анализируй строго и по делу.
@@ -50,56 +55,6 @@ Do not claim you cannot see a header — the relevant type
 declarations are right there in that block.
 """
 
-# ── Single-instance lock ─────────────────────────────────────────────
-# flock(2)-based: the kernel drops the lock on process exit, including
-# SIGKILL and Ctrl+C. No stale locks, no manual cleanup needed.
-LOCK_PATH = ROOT / "build" / "ai-checker" / ".lock"
-
-
-def acquire_lock():
-    """Exclusive non-blocking lock. Returns open fd, or None on failure."""
-    try:
-        import fcntl  # POSIX only
-    except ImportError:
-        print("[ai-checker] warn: no fcntl module, "
-              "concurrent-run protection disabled", file=sys.stderr)
-        return None
-
-    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd = LOCK_PATH.open("w")
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        try:
-            other = LOCK_PATH.read_text().strip() or "?"
-        except OSError:
-            other = "?"
-        fd.close()
-        sys.exit(
-            f"ERROR: another ai-checker is already running (pid {other}).\n"
-            f"       Lock: {LOCK_PATH}\n"
-            f"       Wait for it to finish, or if it is truly stuck:\n"
-            f"         kill {other}"
-        )
-    fd.seek(0)
-    fd.truncate()
-    fd.write(f"{os.getpid()}\n")
-    fd.flush()
-    return fd
-
-
-def release_lock(fd):
-    if fd is None:
-        return
-    try:
-        import fcntl
-        fcntl.flock(fd, fcntl.LOCK_UN)
-    except (ImportError, OSError):
-        pass
-    finally:
-        fd.close()
-
-# ── System info (best-effort, no external deps) ──────────────────────
 def _sysctl(name: str) -> str | None:
     try:
         return subprocess.check_output(
@@ -108,7 +63,6 @@ def _sysctl(name: str) -> str | None:
         ).strip() or None
     except (OSError, subprocess.SubprocessError):
         return None
-
 
 def _cpu_brand() -> str:
     sysname = platform.system()
@@ -221,7 +175,6 @@ def _fmt_dur(sec: float) -> str:
     h, m = divmod(m, 60)
     return f"{h}h {m:02d}m {s:02d}s"
 
-
 def format_header_md(name: str, model: str, base_url: str, started: datetime,
                      duration: float, chunk_durs: list[float],
                      usage: dict, sysinfo: dict) -> str:
@@ -250,34 +203,6 @@ def format_header_md(name: str, model: str, base_url: str, started: datetime,
     body = "\n".join(f"| {k:<8} | {v} |" for k, v in rows)
     return f"# AI review: {name}\n\n| field    | value |\n|----------|-------|\n{body}\n\n"
 
-def discover_projects() -> list[Path]:
-    out: list[Path] = []
-    for p in sorted(ROOT.iterdir()):
-        if not p.is_dir() or p.name in EXCLUDE_DIRS or p.name.startswith("."):
-            continue
-        if (p / "include").is_dir() or (p / "src").is_dir():
-            out.append(p)
-    return out
-
-
-def gather_files(project: Path, include_tests: bool) -> list[Path]:
-    subs = ["include", "src"]
-    if include_tests:
-        subs.append("test")
-    files: list[Path] = []
-    for sub in subs:
-        d = project / sub
-        if not d.is_dir():
-            continue
-        for f in sorted(d.rglob("*")):
-            if f.is_file() and f.suffix.lower() in SRC_EXTS:
-                files.append(f)
-    return files
-
-
-def lang_of(f: Path) -> str:
-    return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
-
 def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
                 project_name: str = "",
                 full_headers: bool = False
@@ -292,8 +217,9 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
 
     Set full_headers=True (--full-headers) to include headers verbatim.
     """
-    headers = [f for f in files if f.suffix.lower() in (".h", ".hpp")]
-    sources = [f for f in files if f.suffix.lower() not in (".h", ".hpp")]
+
+    headers = [f for f in files if f.suffix.lower() in HEADER_EXTS]
+    sources = [f for f in files if f.suffix.lower() not in HEADER_EXTS]
 
     if not sources:
         content_files = headers
@@ -309,8 +235,8 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
             dump.parent.mkdir(parents=True, exist_ok=True)
             dump.write_text(digest + "\n", encoding="utf-8")
         if digest:
-            any_cpp = any(h.suffix.lower() in (".hpp", ".cc", ".cpp", ".cxx")
-                          for h in headers)
+            any_cpp = any(h.suffix.lower() in CPP_EXTS
+                                    for h in headers)
             fence = "cpp" if any_cpp else "c"
             types_block = (
                 "### File: _types.h "
@@ -481,6 +407,8 @@ def build_types_digest(headers: list[Path]) -> str:
 def build_user_prompt(project: str, chunk: list[tuple[Path, str]]) -> str:
     return f"Проект: `{project}`. Проведи ревью исходников ниже.\n" + \
            "\n".join(b for _, b in chunk)
+
+
 
 def format_usage_md(u: dict) -> str:
     if not u.get("requests"):
@@ -688,7 +616,8 @@ def _run_checks(args, model, jobs) -> int:
         total_dur = time.perf_counter() - t_start
         header = format_header_md(name, model, args.base_url, started,
                                   total_dur, chunk_durs, usage, sysinfo)
-        report.write_text(header + "".join(body), encoding="utf-8")
+        body_text = renumber_findings("".join(body))
+        report.write_text(header + body_text, encoding="utf-8")
 
         print(f"[ai-checker] done: {name} -> {report_rel}  "
               f"[{_fmt_dur(total_dur)} · "
