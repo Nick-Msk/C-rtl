@@ -64,6 +64,33 @@ TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 FILE_REF_RE = re.compile(
     r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
 
+def rotate_reports(project_dir: Path) -> list[Path]:
+    """Move all *.md except the newest into <project_dir>/hist/.
+
+    Returns the list of moved paths (for logging). Only `*.md` is
+    touched; `_types.h` and other files stay put. `_files/` handled
+    by the same function if called with that directory.
+    """
+    reports = sorted(project_dir.glob("*.md"),
+                     key=lambda p: p.stat().st_mtime)
+    if len(reports) <= 1:
+        return []
+    hist = project_dir / "hist"
+    hist.mkdir(exist_ok=True)
+    moved: list[Path] = []
+    for p in reports[:-1]:
+        target = hist / p.name
+        # If we already have a file with this name in hist (rare
+        # but possible after clock skew), add a numeric suffix.
+        if target.exists():
+            stem, suffix = p.stem, p.suffix
+            i = 1
+            while (hist / f"{stem}.{i}{suffix}").exists():
+                i += 1
+            target = hist / f"{stem}.{i}{suffix}"
+        p.rename(target)
+        moved.append(target)
+    return moved
 
 # ── Lock (flock-based; kernel releases on exit incl. SIGKILL) ───────
 def acquire_lock():

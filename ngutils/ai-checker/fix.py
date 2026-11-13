@@ -261,9 +261,15 @@ def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
     if not d.is_dir():
         return None
-    reports = sorted(d.glob("*.md"))
-    return reports[-1] if reports else None
-
+    reports = sorted(d.glob("*.md"), key=lambda p: p.stat().st_mtime)
+    if reports:
+        return reports[-1]
+    hist = d / "hist"
+    if hist.is_dir():
+        old = sorted(hist.glob("*.md"), key=lambda p: p.stat().st_mtime)
+        if old:
+            return old[-1]
+    return None
 
 def latest_report_for_file(stem: str) -> Path | None:
     d = OUT_ROOT / "_files"

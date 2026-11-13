@@ -24,6 +24,7 @@ from common import (
     lang_of,
     release_lock,
     renumber_findings,
+    rotate_reports,
 )
 from sysinfo import system_info
 
@@ -511,6 +512,11 @@ def _run_checks(args, model, jobs) -> int:
                                   total_dur, chunk_durs, usage, sysinfo)
         body_text = renumber_findings("".join(body))
         report.write_text(header + body_text, encoding="utf-8")
+
+        moved = rotate_reports(sub)
+        if moved:
+            print(f"[ai-checker] rotated {len(moved)} older report(s) "
+                  f"-> {sub.relative_to(ROOT)}/hist/", file=sys.stderr)
 
         print(f"[ai-checker] done: {name} -> {report_rel}  "
               f"[{_fmt_dur(total_dur)} · "
