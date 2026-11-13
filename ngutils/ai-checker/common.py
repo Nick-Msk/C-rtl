@@ -51,6 +51,11 @@ ITEM_SEP = re.compile(
     re.MULTILINE,
 )
 
+FINDING_HEADER_SPLIT = re.compile(
+    r"^###[ \t]+\d+(?:[./]\d+)*\.[ \t]+",
+    re.MULTILINE,
+)
+
 # Markdown table (used in 'Мелочи' sections):
 #   | 16 | log_preambule | lv + 1 ... |
 TABLE_ROW_RE = re.compile(r"^[ \t]*\|(.+)\|[ \t]*$", re.MULTILINE)
@@ -163,23 +168,31 @@ def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
             continue
         body = sec[m.end():]
 
-        # Header-based findings: '### N/M. ...'
-        header_texts: list[str] = []
+        # Case A: '### N/M. Title' headers - one finding per header.
+        # Sub-bullets ('- **Save** ...', '1. ...') inside a finding
+        # stay with their finding and are NOT split out.
+        if FINDING_HEADER_SPLIT.search(body):
+            parts = FINDING_HEADER_SPLIT.split(body)
+            for chunk in parts[1:]:
+                text = chunk.strip()
+                if len(text) >= 20:
+                    findings.append({"section": m.group(1), "text": text})
+            continue
+
+        # Case B: markdown table (Мелочи)
+        table = _parse_table_rows(body)
+        if table:
+            for text in table:
+                if len(text) >= 20:
+                    findings.append({"section": m.group(1), "text": text})
+            continue
+
+        # Case C: bare numbered/bulleted list (no '### N.' headers)
         for item in ITEM_SEP.split(body)[1:]:
             text = item.strip()
             if len(text) >= 20:
-                header_texts.append(text)
-
-        if header_texts:
-            for text in header_texts:
                 findings.append({"section": m.group(1), "text": text})
-        else:
-            # Table-based findings: '| 16 | ... | ... |'
-            for text in _parse_table_rows(body):
-                if len(text) >= 20:
-                    findings.append({"section": m.group(1), "text": text})
     return findings
-
 
 def iter_findings(report_path: Path, include_minor: bool,
                   limit: int) -> list[dict]:
