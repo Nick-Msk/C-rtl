@@ -30,6 +30,7 @@ from pathlib import Path
 
 import requests
 
+import db
 from common import (
     ALLOWED_TOP_DIRS,
     DEFAULT_LIMIT,
@@ -257,19 +258,15 @@ def commit_one_fix(base_sha: str, base_branch: str,
         )
     return sha
 
+
+
 def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
     if not d.is_dir():
         return None
-    reports = sorted(d.glob("*.md"), key=lambda p: p.stat().st_mtime)
-    if reports:
-        return reports[-1]
-    hist = d / "hist"
-    if hist.is_dir():
-        old = sorted(hist.glob("*.md"), key=lambda p: p.stat().st_mtime)
-        if old:
-            return old[-1]
-    return None
+    reports = sorted(d.glob("*.md"))
+    return reports[-1] if reports else None
+
 
 def latest_report_for_file(stem: str) -> Path | None:
     d = OUT_ROOT / "_files"
@@ -499,7 +496,7 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
 
 
 def _handle_finding(idx: int, total: int, finding: dict,
-                    project: Path, files: list[Path],
+                    project: Path, report_path: Path, files: list[Path],
                     args, model: str,
                     ctx: dict,
                     applied: list[dict], skipped: list[str],
@@ -517,6 +514,12 @@ def _handle_finding(idx: int, total: int, finding: dict,
     except requests.RequestException as e:
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
+        try:
+            db.update_issue_status(report_path, finding.get("id", ""),
+                                   db.STATUS_FAILED,
+                                   reason=f"LLM: {e}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  warn: db update failed: {exc}", file=sys.stderr)
         return
 
     raw = raw.strip()
@@ -525,9 +528,15 @@ def _handle_finding(idx: int, total: int, finding: dict,
         raw = re.sub(r"\n?```$", "", raw)
     try:
         verdict = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         print(f"  SKIP: invalid JSON: {raw[:120]!r}")
         skipped.append(finding["text"][:80])
+        try:
+            db.update_issue_status(report_path, finding.get("id", ""),
+                                   db.STATUS_FAILED,
+                                   reason=f"LLM request failed {e}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  warn: db update failed: {exc}", file=sys.stderr)
         return
 
     cls = verdict.get("class", "needs_review")
@@ -538,6 +547,12 @@ def _handle_finding(idx: int, total: int, finding: dict,
         if verdict.get("direction"):
             print(f"    direction: {verdict['direction']}")
         needs_review.append(finding | {"verdict": verdict})
+        try:
+            db.update_issue_status(
+                report_path, finding.get("id", ""), db.STATUS_ANALYZE,
+                reason=reason, direction=verdict.get("direction"))
+        except Exception as e:  # noqa: BLE001
+            print(f"  warn: db update failed: {e}", file=sys.stderr)
         return
 
     edit = verdict.get("edit") or {}
@@ -567,6 +582,12 @@ def _handle_finding(idx: int, total: int, finding: dict,
         if ans != "y":
             print("  skipped by user")
             skipped.append(finding["text"][:80])
+            try:
+                db.update_issue_status(report_path, finding.get("id", ""),
+                                       db.STATUS_REJECTED,
+                                       reason="user rejected")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  warn: db update failed: {exc}", file=sys.stderr)
             return
 
     ctx["seq"] += 1
@@ -592,6 +613,12 @@ def _handle_finding(idx: int, total: int, finding: dict,
         "file": rel,
         "summary": finding["text"].splitlines()[0][:70],
     })
+    try:
+        db.update_issue_status(
+            report_path, finding.get("id", ""), db.STATUS_FIXED,
+            reason=reason, fix_branch=branch, fix_commit=sha)
+    except Exception as e:  # noqa: BLE001
+        print(f"  warn: db update failed: {e}", file=sys.stderr)
 
 def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     base_branch = base_sha = None
@@ -625,13 +652,32 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             continue
 
         run_id = (make_run_id(label) if args.apply
-                  else f"ai-checker-{label}-fix<N>")
+                          else f"ai-checker-{label}-fix<N>")
         ctx = {
             "run_id": run_id,
             "base_sha": base_sha,
             "base_branch": base_branch,
             "seq": 0,
         }
+
+        # Skip findings already resolved in a previous run, unless
+        # --reprocess is given. Only makes sense with --apply: dry-run
+        # should show everything.
+        if args.apply and not args.reprocess:
+            try:
+                resolved = db.resolved_finding_ids(report_path)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  warn: db query failed: {exc}", file=sys.stderr)
+                resolved = set()
+            if resolved:
+                before = len(findings)
+                findings = [f for f in findings
+                            if f.get("id") not in resolved]
+                print(f"  skip {before - len(findings)} already-resolved "
+                      f"(use --reprocess to include)", file=sys.stderr)
+                if not findings:
+                    print("  nothing left after resolved filter")
+                    continue
 
         applied: list[dict] = []
         skipped: list[str] = []
@@ -733,6 +779,9 @@ def main() -> int:
     ap.add_argument("--only", default="",
                     help="comma-separated finding ids to process "
                          "(e.g. '1/1,1/7,16'); default: all")
+    ap.add_argument("--reprocess", action="store_true",
+                    help="re-process findings already marked "
+                         "fixed/rejected in the DB")
     args = ap.parse_args()
 
     try:

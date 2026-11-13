@@ -150,19 +150,21 @@ def discover_projects() -> list[Path]:
 def lang_of(f: Path) -> str:
     return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
 
-def _parse_table_rows(body: str) -> list[str]:
-    """Extract finding texts from markdown tables in a section body.
+def _parse_table_rows(body: str) -> list[tuple[str, str]]:
+    """Return (id, text) for each data row of a markdown table.
 
-    Assumes the first non-separator row is the header; every
-    subsequent row becomes one finding with cells rendered as
+    `id` is the first cell if it looks numeric ('16', '11'), else
+    the 1-based row index as a string. `text` renders all cells as
     '<header>: <cell>' joined by '; '.
     """
-    out: list[str] = []
+    out: list[tuple[str, str]] = []
     header: list[str] | None = None
+    row_no = 0
     for line in body.split("\n"):
         m = TABLE_ROW_RE.match(line)
         if not m:
             header = None
+            row_no = 0
             continue
         cells = [c.strip() for c in m.group(1).split("|")]
         if not cells:
@@ -172,18 +174,28 @@ def _parse_table_rows(body: str) -> list[str]:
         if header is None:
             header = cells
             continue
-        parts = []
+        row_no += 1
+        parts: list[str] = []
         for i, c in enumerate(cells):
             if not c:
                 continue
             label = header[i] if i < len(header) else f"col{i + 1}"
             parts.append(f"{label}: {c}")
-        if parts:
-            out.append("; ".join(parts))
+        if not parts:
+            continue
+        text = "; ".join(parts)
+        first = cells[0] if cells else ""
+        fid = first if first.isdigit() else str(row_no)
+        out.append((fid, text))
     return out
 
 # ── Finding parsing ──────────────────────────────────────────────────
 def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
+    """Split report into findings: {section, id, text}.
+
+    'id' is the original finding number ('1/3', '17'), for stable
+    cross-referencing with the report and commit messages.
+    """
     targets = {"Критично", "Важно"}
     if include_minor:
         targets.add("Мелочи")
@@ -198,27 +210,34 @@ def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
         # Case A: '### N/M. Title' headers - one finding per header.
         # Sub-bullets ('- **Save** ...', '1. ...') inside a finding
         # stay with their finding and are NOT split out.
-        if FINDING_HEADER_SPLIT.search(body):
-            parts = FINDING_HEADER_SPLIT.split(body)
-            for chunk in parts[1:]:
-                text = chunk.strip()
-                if len(text) >= 20:
-                    findings.append({"section": m.group(1), "text": text})
+        matches = list(FINDING_HEADER_SPLIT.finditer(body))
+        if matches:
+            for i, match in enumerate(matches):
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+                text = body[match.end():end].strip()
+                if len(text) < 20:
+                    continue
+                head = body[match.start():match.end()]
+                fid = head.replace("###", "").strip().rstrip(".").strip()
+                findings.append({"section": m.group(1),
+                                 "id": fid, "text": text})
             continue
 
         # Case B: markdown table (Мелочи)
         table = _parse_table_rows(body)
         if table:
-            for text in table:
+            for fid, text in table:
                 if len(text) >= 20:
-                    findings.append({"section": m.group(1), "text": text})
+                    findings.append({"section": m.group(1),
+                                     "id": fid, "text": text})
             continue
 
         # Case C: bare numbered/bulleted list (no '### N.' headers)
-        for item in ITEM_SEP.split(body)[1:]:
+        for i, item in enumerate(ITEM_SEP.split(body)[1:], start=1):
             text = item.strip()
             if len(text) >= 20:
-                findings.append({"section": m.group(1), "text": text})
+                findings.append({"section": m.group(1),
+                                 "id": str(i), "text": text})
     return findings
 
 def iter_findings(report_path: Path, include_minor: bool,

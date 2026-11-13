@@ -12,6 +12,7 @@ from pathlib import Path
 
 import requests
 
+import db
 from common import (
     CPP_EXTS,
     HEADER_EXTS,
@@ -22,6 +23,7 @@ from common import (
     discover_projects,
     gather_files,
     lang_of,
+    parse_findings,
     release_lock,
     renumber_findings,
     rotate_reports,
@@ -511,6 +513,25 @@ def _run_checks(args, model, jobs) -> int:
         header = format_header_md(name, model, args.base_url, started,
                                   total_dur, chunk_durs, usage, sysinfo)
         body_text = renumber_findings("".join(body))
+
+        kind = "file" if args.file else ("notest" if args.no_tests else "full")
+        try:
+            ingest_findings = parse_findings(body_text, include_minor=True)
+            db.ingest_report(
+                project=name,
+                report_path=report,
+                model=model,
+                kind=kind,
+                started=started,
+                duration_s=total_dur,
+                findings=ingest_findings,
+            )
+            print(f"[ai-checker] db: ingested {len(ingest_findings)} "
+                  f"issue(s)", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"[ai-checker] warn: db ingest failed: {e}",
+                  file=sys.stderr)
+
         report.write_text(header + body_text, encoding="utf-8")
 
         moved = rotate_reports(sub)
