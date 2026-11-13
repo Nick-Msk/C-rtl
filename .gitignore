@@ -20,4 +20,5 @@ docs/
 #ai checker
 ai-checker/.venv/
 .lock
+__pycache__
 
