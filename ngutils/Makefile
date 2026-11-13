@@ -192,31 +192,31 @@ REPORTS_TAR  := build/ai-checker-reports.tar.zst
 ai-check:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --all
+		uv run python check.py --all $(AI_CHECK_EXTRA)
 
 ai-check-notest:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --all --no-tests
+		uv run python check.py --all --no-tests $(AI_CHECK_EXTRA)
 
 $(addprefix ai-check-,$(PROJECTS)): ai-check-%:
 	@echo "==> ai-check $*"
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --project $*
+		uv run python check.py --project $* $(AI_CHECK_EXTRA)
 
 $(addprefix ai-check-notest-,$(PROJECTS)): ai-check-notest-%:
 	@echo "==> ai-check-notest $*"
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --project $* --no-tests
+		uv run python check.py --project $* --no-tests $(AI_CHECK_EXTRA)
 
 ai-check-file:
 	@test -n "$(F)" || { echo "usage: make ai-check-file F=<path>" >&2; exit 1; }
 	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --file "$(CURDIR)/$(F)"
+		uv run python check.py --file "$(CURDIR)/$(F)" $(AI_CHECK_EXTRA)
 
 ai-models:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
