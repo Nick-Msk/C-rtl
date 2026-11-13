@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -41,6 +42,12 @@ SYSTEM_PROMPT = """\
 ## Что хорошо
 
 Не выдумывай проблем. Если код в порядке — так и скажи.
+
+The context below starts with a block titled "_types.h" containing
+ALL struct/union/enum/typedef declarations from this project's
+headers, extracted verbatim. Use it to look up any type you need.
+Do not claim you cannot see a header — the relevant type
+declarations are right there in that block.
 """
 
 # ── Single-instance lock ─────────────────────────────────────────────
@@ -271,26 +278,163 @@ def gather_files(project: Path, include_tests: bool) -> list[Path]:
 def lang_of(f: Path) -> str:
     return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
 
+def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
+                project_name: str = "",
+                full_headers: bool = False
+                ) -> list[list[tuple[Path | None, str]]]:
+    """Pack source files into chunks.
 
-def chunk_files(files: list[Path], budget: int = MAX_CHARS):
-    chunks: list[list[tuple[Path, str]]] = []
-    cur: list[tuple[Path, str]] = []
-    size = 0
-    for f in files:
+    By default, header files are NOT sent verbatim. Only their type
+    declarations (struct/union/enum/typedef) are extracted and
+    prepended to EVERY chunk, so the model always sees the types
+    without paying for a full 60 KB header per chunk. The digest is
+    also dumped to build/ai-checker/<project>/_types.h for inspection.
+
+    Set full_headers=True (--full-headers) to include headers verbatim.
+    """
+    headers = [f for f in files if f.suffix.lower() in (".h", ".hpp")]
+    sources = [f for f in files if f.suffix.lower() not in (".h", ".hpp")]
+
+    if not sources:
+        content_files = headers
+        types_block = ""
+    elif full_headers:
+        content_files = headers + sources
+        types_block = ""
+    else:
+        content_files = sources
+        digest = build_types_digest(headers)
+        if digest and project_name:
+            dump = OUT_ROOT / project_name / "_types.h"
+            dump.parent.mkdir(parents=True, exist_ok=True)
+            dump.write_text(digest + "\n", encoding="utf-8")
+        if digest:
+            any_cpp = any(h.suffix.lower() in (".hpp", ".cc", ".cpp", ".cxx")
+                          for h in headers)
+            fence = "cpp" if any_cpp else "c"
+            types_block = (
+                "### File: _types.h "
+                "(extracted type declarations from all headers)\n"
+                f"```{fence}\n{digest}\n```\n"
+            )
+        else:
+            types_block = ""
+
+    types_size = len(types_block)
+
+    def read_block(f: Path) -> str:
         try:
             text = f.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             text = f.read_text(encoding="utf-8", errors="replace")
-        block = f"### File: {f.relative_to(ROOT)}\n```{lang_of(f)}\n{text}\n```\n"
-        if cur and size + len(block) > budget:
-            chunks.append(cur)
-            cur, size = [], 0
-        cur.append((f, block))
-        size += len(block)
-    if cur:
-        chunks.append(cur)
-    return chunks
+        return (f"### File: {f.relative_to(ROOT)}\n"
+                f"```{lang_of(f)}\n{text}\n```\n")
 
+    chunks: list[list[tuple[Path, str]]] = []
+    cur: list[tuple[Path, str]] = []
+    cur_size = types_size
+
+    for f in content_files:
+        block = read_block(f)
+        if cur and cur_size + len(block) > budget:
+            chunks.append(cur)
+            cur, cur_size = [], types_size
+        cur.append((f, block))
+        cur_size += len(block)
+    if cur or not chunks:
+        chunks.append(cur)
+
+    result: list[list[tuple[Path | None, str]]] = []
+    for chunk in chunks:
+        result.append([(None, types_block)] + chunk if types_block else chunk)
+    return result
+
+# ── Type digest: extract struct/union/enum/typedef from headers ─────
+def _strip_preprocessor(text: str) -> str:
+    """Drop preprocessor directives, including multi-line continuations."""
+    out = []
+    cont = False
+    for line in text.split("\n"):
+        if cont:
+            cont = line.rstrip().endswith("\\")
+            continue
+        if line.lstrip().startswith("#"):
+            cont = line.rstrip().endswith("\\")
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _strip_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def _strip_extern_c(text: str) -> str:
+    """Remove `extern "C" {` wrappers so the splitter sees flat content."""
+    return re.sub(r'\bextern\s+"C"\s*\{', "", text)
+
+
+def _split_top_level(text: str) -> list[str]:
+    """Split at `;` occurring at brace depth 0."""
+    decls: list[str] = []
+    buf_start = 0
+    depth = 0
+    for i, c in enumerate(text):
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth = max(0, depth - 1)
+        elif c == ";" and depth == 0:
+            decl = text[buf_start:i + 1].strip()
+            if decl:
+                decls.append(decl)
+            buf_start = i + 1
+    tail = text[buf_start:].strip()
+    if tail:
+        decls.append(tail)
+    return decls
+
+
+_FORWARD_DECL_RE = re.compile(r"^\s*(?:struct|union|enum)\s+\w+\s*;\s*$")
+
+
+def _is_type_decl(decl: str) -> bool:
+    s = decl.strip()
+    if not s:
+        return False
+    if s.startswith("typedef "):
+        return True
+    if not s.startswith(("struct ", "union ", "enum ")):
+        return False
+    return "{" in s or bool(_FORWARD_DECL_RE.match(s))
+
+
+def extract_types(text: str) -> str:
+    """Extract top-level struct/union/enum/typedef declarations.
+
+    Function prototypes, variable declarations, macros, and everything
+    inside function bodies are dropped. Comments are stripped.
+    """
+    text = _strip_preprocessor(text)
+    text = _strip_comments(text)
+    text = _strip_extern_c(text)
+    kept = [d for d in _split_top_level(text) if _is_type_decl(d)]
+    return "\n\n".join(kept)
+
+
+def build_types_digest(headers: list[Path]) -> str:
+    """Combine type declarations from all headers, with provenance."""
+    parts: list[str] = []
+    for h in headers:
+        try:
+            text = h.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        digest = extract_types(text)
+        if digest:
+            parts.append(f"/* === from {h.relative_to(ROOT)} === */\n{digest}")
+    return "\n\n".join(parts)
 
 def build_user_prompt(project: str, chunk: list[tuple[Path, str]]) -> str:
     return f"Проект: `{project}`. Проведи ревью исходников ниже.\n" + \
@@ -373,6 +517,10 @@ def main() -> int:
     ap.add_argument("--no-stream", action="store_true")
     ap.add_argument("--models", action="store_true",
                     help="list models loaded in LM Studio")
+
+    ap.add_argument("--full-headers", action="store_true",
+                help="include full header text instead of extracting "
+                        "only struct/union/enum/typedef declarations")
     args = ap.parse_args()
 
     try:
@@ -433,7 +581,8 @@ def _run_checks(args, model, jobs) -> int:
         if not files:
             print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
             continue
-        chunks = chunk_files(files)
+        chunks = chunk_files(files, project_name=name,
+                        full_headers=args.full_headers)
 
         # '--no-tests' is only meaningful for project mode; in file mode
         # the single file is whatever the user pointed at, tag it as-is.
