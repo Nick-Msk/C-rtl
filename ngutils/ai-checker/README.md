@@ -144,6 +144,7 @@ headers, pass `--full-headers`:
 ```sh
 make ai-check-fs2 AI_CHECK_EXTRA="--full-headers"
 ```
+Types are extracted from headers and source files, so both public API typedefs and private struct definitions (e.g. struct fs2 with field borrow) are available to the model in every chunk. This eliminates a whole class of "I cannot see the header, but if the type were X..." findings.
 
 ## Limitations
 
