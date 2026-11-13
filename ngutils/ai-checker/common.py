@@ -46,7 +46,7 @@ PART_RE = re.compile(r"^##[ \t]+Part[ \t]+(\d+)/\d+", re.MULTILINE)
 HEADER_NUM_RE = re.compile(r"^###[ \t]+(\d+)\.[ \t]*", re.MULTILINE)
 ITEM_SEP = re.compile(
     r"^(?:#{2,4}[ \t]+)?"
-    r"(?:\d+(?:\.\d+)*[.)]|[-*])"
+    r"(?:\d+(?:[./]\d+)*[.)]|[-*])"   # 1.  1.1.  1/10.  1/10.1.  -  *
     r"[ \t]+",
     re.MULTILINE,
 )
@@ -146,11 +146,12 @@ def iter_findings(report_path: Path, include_minor: bool,
 
 # ── Renumbering (used by check.py; coupled to parse_findings format) ─
 def renumber_findings(body: str) -> str:
-    """Prefix each finding number with its chunk number.
+    """Prefix each finding number with '<chunk>/' as a separator.
 
-    Chunk 1, id 1 -> '### 11.'   chunk 2, id 1 -> '### 21.'
-    Id is per-chunk, so identification is unambiguous as long as a
-    project does not need 10+ chunks.
+    Chunk 1, id 10 -> '### 1/10.'   chunk 2, id 3 -> '### 2/3.'
+    Id is per-chunk (restarts at 1 in each chunk), so a single-chunk
+    report gets '1/1.', '1/2.', ..., '1/14.' and a two-chunk one
+    gets '1/1.'..'1/9.', then '2/1.'..'2/7.'.
     """
     if not body:
         return body
@@ -167,7 +168,7 @@ def renumber_findings(body: str) -> str:
         if not m:
             continue
         gid += 1
-        lines[i] = HEADER_NUM_RE.sub(f"### {chunk}{gid}. ", line, count=1)
+        lines[i] = HEADER_NUM_RE.sub(f"### {chunk}/{gid}. ", line, count=1)
     return "\n".join(lines)
 
 
