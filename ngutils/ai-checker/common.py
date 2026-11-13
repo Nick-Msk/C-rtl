@@ -38,7 +38,7 @@ FORBIDDEN_ROOT_NAMES = {"Makefile", "Makefile.common", "Doxyfile",
 
 # ── Limits ───────────────────────────────────────────────────────────
 MAX_CHARS = 80_000          # chunk budget for check.py
-MAX_SOURCE_CHARS = 60_000   # source budget for fix.py prompt
+MAX_SOURCE_CHARS = 100_000  # source budget for fix.py prompt
 DEFAULT_LIMIT = 50          # findings per project in fix.py
 
 # ── Finding-format regexes (shared by renumber and parse) ───────────
