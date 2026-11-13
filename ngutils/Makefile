@@ -310,6 +310,17 @@ ai-fix-commit-file:
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_COMMIT)
 
+AI_STATUS      := status.py
+AI_STATUS_ARGS ?=
+
+ai-status:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		uv run python $(AI_STATUS) $(AI_STATUS_ARGS)
+
+$(addprefix ai-status-,$(PROJECTS)): ai-status-%:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
+
 # --- docs ---
 
 docs:
