@@ -4,9 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
 import re
-import subprocess
 import sys
 import time
 from datetime import datetime
@@ -27,6 +25,7 @@ from common import (
     release_lock,
     renumber_findings,
 )
+from sysinfo import system_info
 
 SYSTEM_PROMPT = """\
 Ты — опытный C/C++ ревьюер системных библиотек. Анализируй строго и по делу.
@@ -54,117 +53,6 @@ headers, extracted verbatim. Use it to look up any type you need.
 Do not claim you cannot see a header — the relevant type
 declarations are right there in that block.
 """
-
-def _sysctl(name: str) -> str | None:
-    try:
-        return subprocess.check_output(
-            ["sysctl", "-n", name],
-            stderr=subprocess.DEVNULL, text=True, timeout=2,
-        ).strip() or None
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-def _cpu_brand() -> str:
-    sysname = platform.system()
-    if sysname == "Darwin":
-        v = _sysctl("machdep.cpu.brand_string")
-        if v:
-            return v
-    elif sysname == "Linux":
-        try:
-            with open("/proc/cpuinfo", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("model name"):
-                        return line.split(":", 1)[1].strip()
-        except OSError:
-            pass
-    return platform.processor() or "unknown"
-
-
-def _ram_bytes() -> int | None:
-    sysname = platform.system()
-    if sysname == "Darwin":
-        v = _sysctl("hw.memsize")
-        if v and v.isdigit():
-            return int(v)
-    elif sysname == "Linux":
-        try:
-            with open("/proc/meminfo", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("MemTotal:"):
-                        return int(line.split()[1]) * 1024
-        except (OSError, ValueError, IndexError):
-            pass
-    return None
-
-
-def _cores() -> tuple[int | None, int | None]:
-    logical = os.cpu_count()
-    physical: int | None = None
-    sysname = platform.system()
-    if sysname == "Darwin":
-        v = _sysctl("hw.physicalcpu")
-        if v and v.isdigit():
-            physical = int(v)
-    elif sysname == "Linux":
-        try:
-            seen: set[tuple[str, str]] = set()
-            pid = ""
-            with open("/proc/cpuinfo", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("physical id"):
-                        pid = line.split(":", 1)[1].strip()
-                    elif line.startswith("core id"):
-                        seen.add((pid, line.split(":", 1)[1].strip()))
-            if seen:
-                physical = len(seen)
-        except OSError:
-            pass
-    return physical, logical
-
-
-def system_info() -> dict:
-    sysname = platform.system()
-    host = platform.node() or "unknown"
-
-    if sysname == "Darwin":
-        hw = _sysctl("hw.model") or host
-        os_str = f"macOS {platform.mac_ver()[0]}"
-    elif sysname == "Linux":
-        hw = host
-        for p in ("/sys/class/dmi/id/product_name",
-                  "/sys/devices/virtual/dmi/id/product_name"):
-            try:
-                hw = Path(p).read_text(encoding="utf-8").strip() or host
-                break
-            except OSError:
-                continue
-        try:
-            pretty = None
-            with open("/etc/os-release", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("PRETTY_NAME="):
-                        pretty = line.split("=", 1)[1].strip().strip('"')
-                        break
-            os_str = pretty or f"Linux {platform.release()}"
-        except OSError:
-            os_str = f"Linux {platform.release()}"
-    else:
-        hw = host
-        os_str = f"{sysname} {platform.release()}"
-
-    physical, logical = _cores()
-    ram = _ram_bytes()
-    return {
-        "host": hw,
-        "os": f"{os_str} ({platform.machine()})",
-        "cpu": _cpu_brand(),
-        "cores": (f"{physical}p/{logical}l" if physical
-                  else f"{logical} logical" if logical else "unknown"),
-        "ram": f"{ram / (1024 ** 3):.1f} GB" if ram else "unknown",
-        "python": platform.python_version(),
-    }
-
 
 def _fmt_dur(sec: float) -> str:
     if sec < 60:
@@ -541,8 +429,13 @@ def _run_checks(args, model, jobs) -> int:
 
     # Snapshot once per run; also archived as JSON for later comparison.
     sysinfo = system_info()
-    (OUT_ROOT / "_machine.json").write_text(
-        json.dumps(sysinfo, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        (OUT_ROOT / "_machine.json").write_text(
+            json.dumps(sysinfo, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+    except OSError as e:
+        print(f"[ai-checker] warn: cannot write _machine.json: {e}",
+              file=sys.stderr)
     print(f"[ai-checker] host={sysinfo['host']}  "
           f"cpu={sysinfo['cpu']} ({sysinfo['cores']})  "
           f"ram={sysinfo['ram']}", file=sys.stderr)
