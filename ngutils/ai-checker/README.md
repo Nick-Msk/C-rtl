@@ -121,6 +121,30 @@ environment or on the `make` command line.
   the last SSE event before `[DONE]`; if the server ignores the flag,
   the report simply says *"not reported by server"*.
 
+## Type digest
+
+By default, `check.py` does **not** send header files verbatim. Full
+headers in this repository can exceed 200 KB (e.g. `fs2_api.h` is
+91 KB, `fs2.h` is 60 KB) — duplicating them per chunk would waste
+the entire context window.
+
+Instead, only **type declarations** (`struct`, `union`, `enum`,
+`typedef`) are extracted from all headers of the project and
+prepended to **every** chunk as a synthetic file `_types.h`. The
+digest is also written to `build/ai-checker/<project>/_types.h` so
+you can inspect what the model actually sees.
+
+This guarantees the model always has access to type definitions —
+even in chunk 2, 3, ... — without paying for full headers.
+
+Function prototypes, macros, variable declarations, and inline
+function bodies are **not** included in the digest. If you want full
+headers, pass `--full-headers`:
+
+```sh
+make ai-check-fs2 AI_CHECK_EXTRA="--full-headers"
+```
+
 ## Limitations
 
 - **Not a replacement for `make check`, `make analyze`, or tests.**
