@@ -21,4 +21,7 @@ docs/
 ai-checker/.venv/
 .lock
 __pycache__
+check.db
+check.db-shm
+check.db-wal
 
