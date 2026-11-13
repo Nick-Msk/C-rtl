@@ -251,9 +251,11 @@ ai-checker-arch:
 
 AI_FIXER    := fix.py
 FIX_LIMIT   ?=
+AI_FIX_INCLUDE_MINOR ?=
 
 AI_FIX_ARGS  = $(if $(APPLY),--apply,) $(if $(YES),--yes,) \
-               $(if $(FIX_LIMIT),--limit $(FIX_LIMIT),)
+               $(if $(FIX_LIMIT),--limit $(FIX_LIMIT),) \
+			   $(if $(AI_FIX_INCLUDE_MINOR),--include-minor,)
 
 ai-fix:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
