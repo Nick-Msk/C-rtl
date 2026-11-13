@@ -115,6 +115,21 @@ Output ONLY a JSON object, no prose, no markdown fences:
 - "new_snippet" must differ and preserve indentation.
 - Do NOT reformat surrounding code, add comments, or add blank lines.
 - Do NOT touch anything outside the single function body.
+
+If the finding mentions multiple functions, multiple files, or
+phrases like "in A, B, and C", "all callers", "everywhere",
+"across the codebase", classify as needs_review. A partial fix that
+touches only one of the mentioned functions is misleading — do not
+emit one.
+
+Never propose edits to:
+  - any file outside <project>/src/, <project>/include/, <project>/test/
+  - _types.h, _machine.json, or anything under build/
+Those files are context-only.
+
+If the finding requires adding a new #include (e.g. <stdbool.h>),
+classify as needs_review: a missing include can ripple across
+translation units.
 """
 
 # ── Git helpers ──────────────────────────────────────────────────────
