@@ -376,28 +376,67 @@ def _strip_extern_c(text: str) -> str:
 
 
 def _split_top_level(text: str) -> list[str]:
-    """Split at `;` occurring at brace depth 0."""
+    """Split text into top-level declarations.
+
+    A declaration ends at a `;` at brace depth 0. Additionally, a
+    function body `{ ... }` at depth 0 ends the current declaration
+    (functions have no trailing `;`), unless the declaration started
+    with `typedef`, `struct`, `union`, or `enum` — in that case the
+    trailing `} name;` is part of the type definition and must be
+    kept together.
+
+    Limitation: a function definition whose first word is
+    `struct`/`union`/`enum` (e.g. `struct X *foo() { ... }`) will be
+    incorrectly merged with the following declaration. Extremely
+    rare in practice; add a typedef for the return type to avoid.
+    """
     decls: list[str] = []
     buf_start = 0
     depth = 0
-    for i, c in enumerate(text):
+    is_type = False
+    n = len(text)
+    i = 0
+    while i < n:
+        if i == buf_start and depth == 0:
+            # Peek the first word of this top-level declaration.
+            j = i
+            while j < n and text[j].isspace():
+                j += 1
+            k = j
+            while k < n and (text[k].isalnum() or text[k] == "_"):
+                k += 1
+            is_type = text[j:k] in ("typedef", "struct", "union", "enum")
+            if j > i:
+                buf_start = j
+                i = j
+                continue
+
+        c = text[i]
         if c == "{":
             depth += 1
         elif c == "}":
             depth = max(0, depth - 1)
+            if depth == 0 and not is_type:
+                # End of a top-level function body (or similar).
+                decl = text[buf_start:i + 1].strip()
+                if decl:
+                    decls.append(decl)
+                buf_start = i + 1
+                is_type = False
         elif c == ";" and depth == 0:
             decl = text[buf_start:i + 1].strip()
             if decl:
                 decls.append(decl)
             buf_start = i + 1
+            is_type = False
+        i += 1
+
     tail = text[buf_start:].strip()
     if tail:
         decls.append(tail)
     return decls
 
-
 _FORWARD_DECL_RE = re.compile(r"^\s*(?:struct|union|enum)\s+\w+\s*;\s*$")
-
 
 def _is_type_decl(decl: str) -> bool:
     s = decl.strip()
@@ -407,8 +446,12 @@ def _is_type_decl(decl: str) -> bool:
         return True
     if not s.startswith(("struct ", "union ", "enum ")):
         return False
+    # `struct X v = { ... };` is a variable declaration, not a type.
+    eq = s.find("=")
+    brace = s.find("{")
+    if eq != -1 and (brace == -1 or eq < brace):
+        return False
     return "{" in s or bool(_FORWARD_DECL_RE.match(s))
-
 
 def extract_types(text: str) -> str:
     """Extract top-level struct/union/enum/typedef declarations.
@@ -421,7 +464,6 @@ def extract_types(text: str) -> str:
     text = _strip_extern_c(text)
     kept = [d for d in _split_top_level(text) if _is_type_decl(d)]
     return "\n\n".join(kept)
-
 
 def build_types_digest(headers: list[Path]) -> str:
     """Combine type declarations from all headers, with provenance."""
