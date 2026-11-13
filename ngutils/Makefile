@@ -48,7 +48,10 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(addprefix ai-check-,$(PROJECTS)) 								\
 		$(addprefix ai-check-notest-,$(PROJECTS)) 						\
 		ai-fix ai-fix-file 												\
-        $(addprefix ai-fix-,$(PROJECTS))
+        $(addprefix ai-fix-,$(PROJECTS))								\
+		ai-fix ai-fix-commit ai-fix-file ai-fix-commit-file 			\
+        $(addprefix ai-fix-,$(PROJECTS)) 								\
+        $(addprefix ai-fix-commit-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
@@ -69,13 +72,18 @@ help:
 	@echo "  make ai-check-notest      	AI review of all projects, skip test/ dirs"
 	@echo "  make ai-check-notest-<n>  	AI review of one project, skip test/ dirs (e.g. ai-check-notest-fs2)"
 	@echo "  make ai-models        		list models available in LM Studio"
-	@echo ""
 	@echo "  make ai-arch  		   		pack build/ai-checker/ into ai-checker-reports.tar.zst"
-	@echo "  make ai-fix            	dry-run: propose local fixes for all projects"
-	@echo "  make ai-fix-<n>        	same, for one project (e.g. ai-fix-fs2)"
-	@echo "  make ai-fix-file F=<p> 	same, for the report of one source file"
-	@echo "  make ai-fix-<n> APPLY=1          apply + commit to branch ai-checker-<n>-fix<N>"
-	@echo "  make ai-fix-<n> APPLY=1 YES=1    same, no per-fix prompts"
+	@echo ""
+	@echo "  make ai-fix              dry-run: propose local fixes for all projects"
+	@echo "  make ai-fix-<n>          dry-run, one project (e.g. ai-fix-fs2)"
+	@echo "  make ai-fix-file F=<p>   dry-run, one file's report"
+	@echo "  make ai-fix-commit-<n>   apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
+	@echo "  make ai-fix-commit       apply, all projects"
+	@echo ""
+	@echo "  FIXLIST=\"1/1, 1/7\"       process only these finding ids (from the report)"
+	@echo "  AI_FIX_MINOR=1           include 'Minor' section (Мелочи)"
+	@echo "  AI_FIX_YES=1             skip per-fix confirmation prompt"
+	@echo "  AI_FIX_LIMIT=N           cap when FIXLIST is not set (default 50)"
 	@echo ""
 	@echo "  make clean            		clean all projects"
 	@echo "  make install          		install libngutils.a + headers to PREFIX"
@@ -229,44 +237,59 @@ ai-checker-arch:
 	@tar -C build --zstd -cf "$(CURDIR)/$(REPORTS_TAR)" ai-checker
 	@echo "Archived: $(REPORTS_TAR) ($$(du -h "$(REPORTS_TAR)" | cut -f1))"
 
-# --- AI fix (applies only local, self-contained fixes from the latest report) ---
+# --- AI fix (applies only self-contained local fixes from the latest report) ---
 #
 # Usage:
-#   make ai-fix-fs2                    dry-run, show proposed edits
-#   make ai-fix-fs2 APPLY=1            apply + per-fix git commit on
-#                                      branch ai-checker-fs2-fix<N>
-#   make ai-fix-fs2 APPLY=1 YES=1      apply all, no prompts
-#   make ai-fix-file F=log/src/log.c
-#   make ai-fix-fs2 FIX_LIMIT=5
+#   make ai-fix-fs2                         dry-run, all findings
+#   make ai-fix-fs2 FIXLIST="1/1, 1/7"      dry-run, only those ids
+#   make ai-fix-fs2 AI_FIX_MINOR=1          dry-run, include Мелочи
+#
+#   make ai-fix-commit-fs2                  apply, one branch per fix
+#   make ai-fix-commit-fs2 FIXLIST="1/1"    apply only that one
+#   make ai-fix-commit-fs2 AI_FIX_YES=1     apply without prompts
+#
+# Each accepted fix gets its own branch ai-checker-<proj>-fix<N>-<seq>,
+# one commit on top of the current HEAD. Review/inspect/merge/delete per
+# branch; cherry-pick is not needed.
 #
 # Refuses: cross-file edits, signature changes, new functions, struct
 # changes, public renames, new #includes, edits spanning more than one
 # function body, diffs > 20 lines. Everything else is listed as
 # "needs human thought" with a direction, never auto-applied.
-#
-# One fix = one git commit on a dedicated branch. Review with
-# 'git log <branch>', cherry-pick what you like, delete the rest:
-#   git cherry-pick <sha>
-#   git branch -D ai-checker-fs2-fix1
 
-AI_FIXER    := fix.py
-FIX_LIMIT   ?=
-AI_FIX_INCLUDE_MINOR ?=
+AI_FIXER      := fix.py
+FIXLIST       ?=
+AI_FIX_MINOR  ?=
+AI_FIX_YES    ?=
+AI_FIX_LIMIT  ?=
 
-AI_FIX_ARGS  = $(if $(APPLY),--apply,) $(if $(YES),--yes,) \
-               $(if $(FIX_LIMIT),--limit $(FIX_LIMIT),) \
-			   $(if $(AI_FIX_INCLUDE_MINOR),--include-minor,)
+AI_FIX_BASE    = $(if $(FIXLIST),--only "$(FIXLIST)",) \
+                 $(if $(AI_FIX_MINOR),--include-minor,) \
+                 $(if $(AI_FIX_LIMIT),--limit $(AI_FIX_LIMIT),)
+AI_FIX_ARGS    = $(AI_FIX_BASE)
+AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply $(if $(AI_FIX_YES),--yes,)
 
 ai-fix:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python $(AI_FIXER) --all $(AI_FIX_ARGS)
 
+ai-fix-commit:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --all $(AI_FIX_COMMIT)
+
 $(addprefix ai-fix-,$(PROJECTS)): ai-fix-%:
 	@echo "==> ai-fix $*"
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python $(AI_FIXER) --project $* $(AI_FIX_ARGS)
+
+$(addprefix ai-fix-commit-,$(PROJECTS)): ai-fix-commit-%:
+	@echo "==> ai-fix-commit $*"
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --project $* $(AI_FIX_COMMIT)
 
 ai-fix-file:
 	@test -n "$(F)" || { echo "usage: make ai-fix-file F=<path>" >&2; exit 1; }
@@ -275,6 +298,13 @@ ai-fix-file:
 		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
 		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_ARGS)
 
+ai-fix-commit-file:
+	@test -n "$(F)" || { echo "usage: make ai-fix-commit-file F=<path>" >&2; exit 1; }
+	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
+		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_COMMIT)
+		
 # --- docs ---
 
 docs:
