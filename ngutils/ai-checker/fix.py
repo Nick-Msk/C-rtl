@@ -445,27 +445,72 @@ def apply_edit(path: Path, old: str, new: str) -> bool:
     except OSError:
         return False
 
-def _parse_fixlist(raw: str) -> dict | None:
-    """Parse '1/1, 1/1001, 16' into {'keys': {(1,1),(1,1001)},
-    'ids': {'16'}}. None if empty.
+def _parse_fixlist(raw: str):
+    """Return a matcher(chunk, local, fid) -> bool, or None if empty.
 
-    'chunk/local' or 'chunk:local' go to keys (unambiguous across
-    chunks). Bare numbers go to ids (legacy finding_id; ambiguous
-    when multiple chunks contain the same row number).
+    Accepted (comma/space separated):
+      1/1           exact chunk/local
+      1/1-5         local 1..5 in chunk 1     (headers)
+      1/1001-1011   local 1001..1011 in chunk 1 (Мелочи)
+      1/*           everything in chunk 1
+      *             everything (same as no FIXLIST)
+      16            legacy bare id (tables only; ambiguous across chunks)
+
+    Local ids in the 1000+ range are 'Мелочи'; 1..999 are headers
+    (Критично + Важно). This mirrors db.TABLE_LOCAL_BASE.
     """
     if not raw or not raw.strip():
         return None
-    keys: set[tuple[int, int]] = set()
-    ids: set[str] = set()
-    for tok in re.split(r"[,\s]+", raw.strip()):
-        if not tok:
+
+    tokens = [t for t in re.split(r"[,\s]+", raw.strip()) if t]
+    match_all = False
+    exact: set[tuple[int, int]] = set()
+    ranges: list[tuple[int, int, int]] = []
+    wildcards: set[int] = set()
+    bare_ids: set[str] = set()
+
+    for tok in tokens:
+        if tok == "*":
+            match_all = True
             continue
-        if re.match(r"^\d+[/:]\d+$", tok):
-            a, b = re.split(r"[/:]", tok)
-            keys.add((int(a), int(b)))
+        if "/" in tok:
+            c_s, rest = tok.split("/", 1)
+            try:
+                chunk = int(c_s)
+            except ValueError:
+                bare_ids.add(tok)
+                continue
+            if rest == "*":
+                wildcards.add(chunk)
+            elif "-" in rest:
+                lo_s, hi_s = rest.split("-", 1)
+                try:
+                    lo = int(lo_s) if lo_s and lo_s != "*" else 0
+                    hi = int(hi_s) if hi_s and hi_s != "*" else 10**9
+                    ranges.append((chunk, lo, hi))
+                except ValueError:
+                    bare_ids.add(tok)
+            else:
+                try:
+                    exact.add((chunk, int(rest)))
+                except ValueError:
+                    bare_ids.add(tok)
         else:
-            ids.add(tok)
-    return {"keys": keys, "ids": ids}
+            bare_ids.add(tok)
+
+    def matcher(chunk: int, local: int, fid: str) -> bool:
+        if match_all:
+            return True
+        if (chunk, local) in exact:
+            return True
+        if chunk in wildcards:
+            return True
+        for c, lo, hi in ranges:
+            if c == chunk and lo <= local <= hi:
+                return True
+        return fid in bare_ids
+
+    return matcher
 
 # ── Main ─────────────────────────────────────────────────────────────
 def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
@@ -652,37 +697,22 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     created_all: list[tuple[str, str, list[dict]]] = []
 
     for label, report_path, project in jobs:
-        print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
-
-        findings = iter_findings(report_path, args.include_minor, 0)
+        print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")        
+        
+        findings = iter_findings(report_path, True, 0)
         only = _parse_fixlist(args.only)
         if only is not None:
             selected: list[dict] = []
-            hit_keys: set[tuple[int, int]] = set()
-            hit_ids: set[str] = set()
             for f in findings:
-                fid = f.get("id", "")
                 try:
-                    k = db.issue_key(f)
+                    chunk, local = db.issue_key(f)
                 except (ValueError, TypeError):
-                    k = None
-                matched = (
-                    (k is not None and k in only["keys"])
-                    or (fid and fid in only["ids"])
-                )
-                if matched:
+                    continue
+                if only(chunk, local, f.get("id", "")):
                     selected.append(f)
-                    if k is not None:
-                        hit_keys.add(k)
-                    if fid:
-                        hit_ids.add(fid)
-            missing_keys = only["keys"] - hit_keys
-            missing_ids = only["ids"] - hit_ids
-            if missing_keys or missing_ids:
-                miss = sorted(missing_keys) + sorted(missing_ids)
-                print(f"  warn: FIXLIST ids not found: {miss}",
-                      file=sys.stderr)
             if not selected:
+                print(f"  warn: FIXLIST matched nothing: {args.only!r}",
+                      file=sys.stderr)
                 print("  no findings match FIXLIST")
                 continue
             findings = selected
@@ -736,7 +766,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         for idx, finding in enumerate(findings, 1):
             files = gather_context_files(finding, project)
             _handle_finding(idx, len(findings), finding, project, files,
-                            args, model, ctx,
+                            report_path, args, model, ctx,
                             applied, skipped, needs_review)
         dt = time.perf_counter() - t0
 
@@ -821,14 +851,12 @@ def main() -> int:
                          "(default: dry-run)")
     ap.add_argument("--yes", action="store_true",
                     help="skip per-fix confirmation (use with --apply)")
-    ap.add_argument("--include-minor", action="store_true",
-                    help="also process the 'Мелочи' section")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
                     help=f"max findings when --only is not set "
                          f"(default {DEFAULT_LIMIT}, 0 = unlimited)")
     ap.add_argument("--only", default="",
-                    help="comma-separated finding ids to process "
-                         "(e.g. '1/1,1/7,16'); default: all")
+                    help="FIXLIST: '1/1, 1/3-5, 1/1001-1011, 1/*, *'. "
+                         "chunk/local; local>=1000 = Мелочи. default: all")
     ap.add_argument("--reprocess", action="store_true",
                     help="re-process findings already marked "
                          "fixed/rejected in the DB")

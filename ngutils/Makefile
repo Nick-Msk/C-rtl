@@ -75,20 +75,19 @@ help:
 	@echo "  make ai-models        		list models available in LM Studio"
 	@echo "  make ai-arch  		   		pack build/ai-checker/ into ai-checker-reports.tar.zst"
 	@echo ""
-	@echo "  make ai-fix              dry-run: propose local fixes for all projects"
-	@echo "  make ai-fix-<n>          dry-run, one project (e.g. ai-fix-fs2)"
-	@echo "  make ai-fix-file F=<p>   dry-run, one file's report"
-	@echo "  make ai-fix-commit-<n>   apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
-	@echo "  make ai-fix-commit       apply, all projects"
+	@echo "  make ai-fix              	dry-run: propose local fixes for all projects"
+	@echo "  make ai-fix-<n>          	dry-run, one project (e.g. ai-fix-fs2)"
+	@echo "  make ai-fix-file F=<p>   	dry-run, one file's report"
+	@echo "  make ai-fix-commit-<n>   	apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
+	@echo "  make ai-fix-commit       	apply, all projects"
 	@echo ""
-	@echo "  make ai-status           per-project status summary from check.db"
-	@echo "  make ai-status-<n>       list all issues for one project"
+	@echo "  make ai-status           	per-project status summary from check.db"
+	@echo "  make ai-status-<n>       	list all issues for one project"
 	@echo "  make ai-status AI_STATUS='--status fixed'"
 	@echo ""
 	@echo "  FIXLIST=\"1/1, 1/7\"       process only these finding ids (from the report)"
-	@echo "  AI_FIX_MINOR=1           include 'Minor' section (Мелочи)"
-	@echo "  AI_FIX_YES=1             skip per-fix confirmation prompt"
-	@echo "  AI_FIX_LIMIT=N           cap when FIXLIST is not set (default 50)"
+	@echo "  AI_FIX_YES=1             	skip per-fix confirmation prompt"
+	@echo "  AI_FIX_LIMIT=N           	cap when FIXLIST is not set (default 50)"
 	@echo ""
 	@echo "  make clean            		clean all projects"
 	@echo "  make install          		install libngutils.a + headers to PREFIX"
@@ -269,7 +268,6 @@ AI_FIX_YES    ?=
 AI_FIX_LIMIT  ?=
 
 AI_FIX_BASE    = $(if $(FIXLIST),--only "$(FIXLIST)",) \
-                 $(if $(AI_FIX_MINOR),--include-minor,) \
                  $(if $(AI_FIX_LIMIT),--limit $(AI_FIX_LIMIT),)
 AI_FIX_ARGS    = $(AI_FIX_BASE)
 AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply $(if $(AI_FIX_YES),--yes,)
