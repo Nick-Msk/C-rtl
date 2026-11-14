@@ -151,11 +151,10 @@ def lang_of(f: Path) -> str:
     return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
 
 def _parse_table_rows(body: str) -> list[tuple[str, str]]:
-    """Return (id, text) for each data row of a markdown table.
+    """Return (id, text) for each data row of the markdown table.
 
-    `id` is the first cell if it looks numeric ('16', '11'), else
-    the 1-based row index as a string. `text` renders all cells as
-    '<header>: <cell>' joined by '; '.
+    `id` is the first cell if it looks numeric, else 1-based row index.
+    `text` renders all cells as '<header>: <cell>' joined by '; '.
     """
     out: list[tuple[str, str]] = []
     header: list[str] | None = None
@@ -190,26 +189,37 @@ def _parse_table_rows(body: str) -> list[tuple[str, str]]:
     return out
 
 # ── Finding parsing ──────────────────────────────────────────────────
-def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
-    """Split report into findings: {section, id, text}.
+PART_HDR_RE = re.compile(r"Part[ \t]+(\d+)/\d+")
 
-    'id' is the original finding number ('1/3', '17'), for stable
-    cross-referencing with the report and commit messages.
+
+def parse_findings(report_text: str) -> list[dict]:
+    """Split report into findings.
+
+    Each finding: {section, id, text, chunk, kind}:
+      chunk = part number (1 for single-chunk reports)
+      kind  = 'header' (### N/M.), 'table' (| N |), 'list' (1.)
     """
-    targets = {"Критично", "Важно"}
-    if include_minor:
-        targets.add("Мелочи")
+    targets = {"Критично", "Важно", "Мелочи"}
+
     findings: list[dict] = []
+    current_chunk = 1
     sections = re.split(r"^## ", report_text, flags=re.MULTILINE)
     for sec in sections:
         m = re.match(r"^(\S+)", sec)
-        if not m or m.group(1) not in targets:
+        if not m:
+            continue
+        name = m.group(1)
+        # Chunk boundary: '## Part N/M'. Bump the counter and skip.
+        if name == "Part":
+            pm = PART_HDR_RE.match(sec)
+            if pm:
+                current_chunk = int(pm.group(1))
+            continue
+        if name not in targets:
             continue
         body = sec[m.end():]
 
-        # Case A: '### N/M. Title' headers - one finding per header.
-        # Sub-bullets ('- **Save** ...', '1. ...') inside a finding
-        # stay with their finding and are NOT split out.
+        # Case A: '### N/M. Title' headers.
         matches = list(FINDING_HEADER_SPLIT.finditer(body))
         if matches:
             for i, match in enumerate(matches):
@@ -219,31 +229,33 @@ def parse_findings(report_text: str, include_minor: bool) -> list[dict]:
                     continue
                 head = body[match.start():match.end()]
                 fid = head.replace("###", "").strip().rstrip(".").strip()
-                findings.append({"section": m.group(1),
-                                 "id": fid, "text": text})
+                findings.append({"section": name, "id": fid, "text": text,
+                                 "chunk": current_chunk, "kind": "header"})
             continue
 
-        # Case B: markdown table (Мелочи)
+        # Case B: markdown table (Мелочи).
         table = _parse_table_rows(body)
         if table:
             for fid, text in table:
                 if len(text) >= 20:
-                    findings.append({"section": m.group(1),
-                                     "id": fid, "text": text})
+                    findings.append({"section": name, "id": fid,
+                                     "text": text,
+                                     "chunk": current_chunk,
+                                     "kind": "table"})
             continue
 
-        # Case C: bare numbered/bulleted list (no '### N.' headers)
+        # Case C: bare numbered/bulleted list.
         for i, item in enumerate(ITEM_SEP.split(body)[1:], start=1):
             text = item.strip()
             if len(text) >= 20:
-                findings.append({"section": m.group(1),
-                                 "id": str(i), "text": text})
+                findings.append({"section": name, "id": str(i), "text": text,
+                                 "chunk": current_chunk, "kind": "list"})
     return findings
 
-def iter_findings(report_path: Path, include_minor: bool,
+def iter_findings(report_path: Path,
                   limit: int) -> list[dict]:
     text = report_path.read_text(encoding="utf-8")
-    findings = parse_findings(text, include_minor)
+    findings = parse_findings(text)
     if limit and len(findings) > limit:
         print(f"warning: {len(findings)} findings, capped to {limit} "
               f"(use --limit 0 for all)", file=sys.stderr)

@@ -516,7 +516,7 @@ def _run_checks(args, model, jobs) -> int:
 
         kind = "file" if args.file else ("notest" if args.no_tests else "full")
         try:
-            ingest_findings = parse_findings(body_text, include_minor=True)
+            ingest_findings = parse_findings(body_text)
             db.ingest_report(
                 project=name,
                 report_path=report,

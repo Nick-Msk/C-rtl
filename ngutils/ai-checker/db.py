@@ -79,7 +79,10 @@ def _now_iso() -> str:
 TABLE_LOCAL_BASE = 1000
 
 def finding_key_str(finding) -> str:
-    """Canonical 'chunk/local_id' string for display and FIXLIST."""
+    """Canonical 'chunk/local_id' for display and FIXLIST.
+
+    Accepts a dict (from parse_findings) or a raw str id.
+    """
     if isinstance(finding, dict):
         chunk, local = issue_key(finding)
     else:
