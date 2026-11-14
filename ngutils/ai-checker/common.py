@@ -183,8 +183,10 @@ def _parse_table_rows(body: str) -> list[tuple[str, str]]:
         if not parts:
             continue
         text = "; ".join(parts)
-        first = cells[0] if cells else ""
-        fid = first if first.isdigit() else str(row_no)
+        
+        # Always use the 1-based row position, ignore the model's '#'
+        # column (it often continues numbering from earlier sections).
+        fid = str(row_no)
         out.append((fid, text))
     return out
 
