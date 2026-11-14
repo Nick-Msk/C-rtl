@@ -620,7 +620,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
     # In --apply mode we'll bump it to 'fixed' after the commit;
     # in dry-run it stays 'proposed-to-fix' until someone runs --apply.
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
-
+    ctx["ready"] = ctx.get("ready", 0) + 1
+    
     if not args.apply:
         print("  [dry-run] not applied")
         return
@@ -710,6 +711,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             "base_sha": base_sha,
             "base_branch": base_branch,
             "seq": 0,
+            "ready": 0
         }
 
         # Skip findings already resolved in a previous run, unless
@@ -742,6 +744,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         applied: list[dict] = []
         skipped: list[str] = []
         needs_review: list[dict] = []
+
         t0 = time.perf_counter()
         for idx, finding in enumerate(findings, 1):
             files = gather_context_files(finding, project)
@@ -752,7 +755,9 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         dt = time.perf_counter() - t0
 
         print(f"\n[ai-fixer] {label}: "
-              f"{len(applied)} applied, {len(skipped)} skipped, "
+              f"{len(applied)} applied, "
+              f"{ctx.get('ready', 0)} ready (not committed), "
+              f"{len(skipped)} skipped, "
               f"{len(needs_review)} needs review, {dt:.1f}s")
 
         if applied:
