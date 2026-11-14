@@ -233,18 +233,27 @@ def ingest_report(*, project: str, report_path: Path, model: str,
                 (report_id, fid, chunk_id, local_id, f["section"],
                  title, f["text"], STATUS_ADDED, now))
 
+def _key_for(finding) -> tuple[str, int, int]:
+    """Return (fid_text, chunk_id, local_id) from a finding dict or str."""
+    if isinstance(finding, dict):
+        fid = str(finding.get("id", ""))
+        chunk, local = issue_key(finding)
+        return fid, chunk, local
+    fid = str(finding)
+    chunk, local = split_finding_id(fid)
+    return fid, chunk, local
 
-def update_issue_status(report_path: Path | str, finding_id: str,
+def update_issue_status(report_path: Path | str, finding,
                         status: str, *, reason: str | None = None,
                         direction: str | None = None,
                         fix_branch: str | None = None,
                         fix_commit: str | None = None) -> bool:
-    """Update one issue. Returns True if the row exists, False otherwise."""
+    """Update one issue. `finding` is a dict (preferred) or str id."""
     if status not in STATUSES:
         raise ValueError(f"unknown status {status!r}")
     try:
-        chunk_id, local_id = split_finding_id(finding_id)
-    except (ValueError, AttributeError):
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
         return False
     rel = _rel(report_path)
     with connect() as con:
@@ -261,7 +270,6 @@ def update_issue_status(report_path: Path | str, finding_id: str,
              fix_branch, fix_commit, rel, chunk_id, local_id))
         return cur.rowcount > 0
 
-
 def resolved_finding_ids(report_path: Path | str) -> set[str]:
     """Return finding ids whose status is 'fixed' or 'rejected'."""
     rel = _rel(report_path)
@@ -274,10 +282,10 @@ def resolved_finding_ids(report_path: Path | str) -> set[str]:
     return {r["finding_id"] for r in rows}
 
 
-def get_status(report_path: Path | str, finding_id: str) -> str | None:
+def get_status(report_path: Path | str, finding) -> str | None:
     try:
-        chunk_id, local_id = split_finding_id(finding_id)
-    except (ValueError, AttributeError):
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
         return None
     rel = _rel(report_path)
     with connect() as con:
