@@ -267,8 +267,11 @@ AI_FIX_MINOR  ?=
 AI_FIX_YES    ?=
 AI_FIX_LIMIT  ?=
 
+AI_FIX_REFETCH ?=
 AI_FIX_BASE    = $(if $(FIXLIST),--only "$(FIXLIST)",) \
-                 $(if $(AI_FIX_LIMIT),--limit $(AI_FIX_LIMIT),)
+                 $(if $(AI_FIX_LIMIT),--limit $(AI_FIX_LIMIT),) \
+                 $(if $(AI_FIX_REFETCH),--refetch,)
+
 AI_FIX_ARGS    = $(AI_FIX_BASE)
 AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply $(if $(AI_FIX_YES),--yes,)
 

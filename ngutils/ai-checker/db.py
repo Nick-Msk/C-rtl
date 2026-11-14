@@ -61,6 +61,21 @@ CREATE TABLE IF NOT EXISTS issue (
 
 CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
+
+CREATE TABLE proposal_commit (
+    issue_id     INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
+    seq          INTEGER NOT NULL DEFAULT 1,
+    file         TEXT NOT NULL,
+    old_snippet  TEXT NOT NULL,
+    new_snippet  TEXT NOT NULL,
+    explanation  TEXT NOT NULL DEFAULT '',
+    commit_msg   TEXT NOT NULL,
+    reason       TEXT NOT NULL DEFAULT '',
+    file_sha256  TEXT NOT NULL,
+    dt           TEXT NOT NULL,
+    PRIMARY KEY (issue_id, seq)
+);
+CREATE INDEX idx_proposal_commit_dt ON proposal_commit(dt);
 """
 
 STATUS_ADDED    = "added"
@@ -295,3 +310,78 @@ def get_status(report_path: Path | str, finding) -> str | None:
             "AND chunk_id = ? AND local_id = ?",
             (rel, chunk_id, local_id)).fetchone()
     return row["status"] if row else None
+
+def save_proposal(report_path: Path | str, finding, *,
+                  file: str, old_snippet: str, new_snippet: str,
+                  explanation: str, commit_msg: str,
+                  reason: str, file_sha256: str,
+                  seq: int = 1) -> bool:
+    """Cache a validated local-fix proposal at (issue_id, seq)."""
+    try:
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
+        return False
+    rel = _rel(report_path)
+    with connect() as con:
+        row = con.execute(
+            "SELECT id FROM issue WHERE "
+            "report_id = (SELECT id FROM report WHERE path = ?) "
+            "AND chunk_id = ? AND local_id = ?",
+            (rel, chunk_id, local_id)).fetchone()
+        if not row:
+            return False
+        con.execute(
+            "INSERT OR REPLACE INTO proposal_commit "
+            "(issue_id, seq, file, old_snippet, new_snippet, explanation, "
+            " commit_msg, reason, file_sha256, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (row["id"], seq, file, old_snippet, new_snippet, explanation,
+             commit_msg, reason, file_sha256, _now_iso()))
+        return True
+
+
+def load_proposal(report_path: Path | str, finding) -> dict | None:
+    """Load the newest proposal (MAX seq) for an issue, or None."""
+    try:
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
+        return None
+    rel = _rel(report_path)
+    with connect() as con:
+        row = con.execute(
+            "SELECT p.seq, p.file, p.old_snippet, p.new_snippet, "
+            "       p.explanation, p.commit_msg, p.reason, "
+            "       p.file_sha256, p.dt "
+            "FROM proposal_commit p JOIN issue i ON i.id = p.issue_id "
+            "JOIN report r ON r.id = i.report_id "
+            "WHERE r.path = ? AND i.chunk_id = ? AND i.local_id = ? "
+            "ORDER BY p.seq DESC LIMIT 1",
+            (rel, chunk_id, local_id)).fetchone()
+    return dict(row) if row else None
+
+
+def clear_proposal(report_path: Path | str, finding,
+                   seq: int | None = None) -> int:
+    """Delete one proposal (seq given) or all for an issue. Returns count."""
+    try:
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
+        return 0
+    rel = _rel(report_path)
+    with connect() as con:
+        if seq is None:
+            cur = con.execute(
+                "DELETE FROM proposal_commit WHERE issue_id = ("
+                "  SELECT id FROM issue WHERE "
+                "    report_id = (SELECT id FROM report WHERE path = ?) "
+                "    AND chunk_id = ? AND local_id = ?)",
+                (rel, chunk_id, local_id))
+        else:
+            cur = con.execute(
+                "DELETE FROM proposal_commit WHERE seq = ? AND issue_id = ("
+                "  SELECT id FROM issue WHERE "
+                "    report_id = (SELECT id FROM report WHERE path = ?) "
+                "    AND chunk_id = ? AND local_id = ?)",
+                (seq, rel, chunk_id, local_id))
+        return cur.rowcount
+    

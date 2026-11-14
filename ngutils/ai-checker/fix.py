@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -553,6 +554,14 @@ def _db_set(report_path: Path, finding: dict, status: str,
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: db update failed: {exc}", file=sys.stderr)
 
+def _clear_proposal(report_path: Path, finding: dict) -> None:
+    """Best-effort proposal cleanup. Currently unused in _handle_finding
+    (proposals are kept as history); reserved for admin tools."""
+    try:
+        db.clear_proposal(report_path, finding)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: proposal clear failed: {exc}", file=sys.stderr)
+
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, report_path: Path, files: list[Path],
                     args, model: str,
@@ -566,13 +575,111 @@ def _handle_finding(idx: int, total: int, finding: dict,
         skipped.append(finding["text"][:80])
         return
 
+    pending = None
+    if not args.refetch:
+        try:
+            pending = db.load_proposal(report_path, finding)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  warn: proposal load failed: {exc}", file=sys.stderr)
+
+    if pending is not None:
+        if args.apply:
+            # Проверить file_sha256 — единственная быстрая проверка
+            try:
+                cur = hashlib.sha256(
+                    (ROOT / pending["file"]).read_text(
+                        encoding="utf-8").encode()).hexdigest()
+            except OSError as e:
+                print(f"  STALE proposal: cannot read {pending['file']}: {e}")
+                print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+                      f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
+                # db.clear_proposal(report_path, finding)
+                _db_set(report_path, finding, db.STATUS_FAILED,
+                        reason=f"stale: OS {e}")
+                return
+            if cur != pending["file_sha256"]:
+                print(f"  STALE proposal: {pending['file']} changed since "
+                      f"dry-run ({pending['dt']})")
+                print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+                      f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
+                # db.clear_proposal(report_path, finding)
+                _db_set(report_path, finding, db.STATUS_FAILED,
+                        reason="stale: file changed")
+                return
+
+        edit = {"file": pending["file"],
+                "old_snippet": pending["old_snippet"],
+                "new_snippet": pending["new_snippet"],
+                "explanation": pending["explanation"]}
+        path, err = validate_edit(edit, project)
+        if err:
+            print(f"  STALE proposal ({err}); use --refetch")
+            print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+                  f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
+            db.clear_proposal(report_path, finding)
+            _db_set(report_path, finding, db.STATUS_FAILED,
+                    reason=f"stale: {err}")
+            return
+
+        reason = pending["reason"]
+        explanation = pending["explanation"]
+        diff = make_diff(path, edit["old_snippet"], edit["new_snippet"])
+        print(f"  LOCAL (cached {pending['dt']}): {explanation}")
+        for line in diff.splitlines():
+            print(f"    {line}")
+
+        if not args.apply:
+            print(f"  [dry-run] cached proposal from {pending['dt']}")
+            ctx["ready"] += 1
+            return
+
+        if not args.yes:
+            try:
+                ans = input("  Apply and commit? [y/N/q] ").strip().lower()
+            except EOFError:
+                ans = "n"
+            if ans == "q":
+                sys.exit(0)
+            if ans != "y":
+                print("  skipped by user")
+                skipped.append(finding.get("id", "?") + ": user")
+                # db.clear_proposal(report_path, finding)
+                _db_set(report_path, finding, db.STATUS_REJECTED,
+                        reason="user rejected")
+                return
+
+        ctx["seq"] += 1
+        branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+        try:
+            sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"],
+                                 branch, path, edit["old_snippet"],
+                                 edit["new_snippet"], pending["commit_msg"])
+        except RuntimeError as e:
+            print(f"  SKIP: {e}")
+            skipped.append(finding.get("id", "?") + ": " + str(e))
+            return
+
+        print(f"  COMMITTED {sha}  {branch}  {pending['file']}")
+        applied.append({
+            "id": finding.get("id", "?"),
+            "section": finding["section"],
+            "sha": sha,
+            "branch": branch,
+            "file": pending["file"],
+            "summary": finding["text"].splitlines()[0][:70],
+        })
+        # db.clear_proposal(report_path, finding)
+        _db_set(report_path, finding, db.STATUS_FIXED,
+                reason=reason, fix_branch=branch, fix_commit=sha)
+        return
+
     try:
         raw = ask_model(args.base_url, model,
                         build_prompt(finding, project, files))
     except requests.RequestException as e:
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
-        _db_set(report_path, finding, db.STATUS_FAILED, f"LLM: {e}")
+        _db_set(report_path, finding, db.STATUS_FAILED, reason=f"LLM: {e}")
         
         return
 
@@ -585,7 +692,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
     except json.JSONDecodeError as e:
         print(f"  SKIP: invalid JSON: {raw[:120]!r}")
         skipped.append(finding["text"][:80])
-        _db_set(report_path, finding, db.STATUS_FAILED, f"LLM request failed {e}");
+        _db_set(report_path, finding, db.STATUS_FAILED, reason=f"bad JSON {e}");
 
         return
 
@@ -619,11 +726,31 @@ def _handle_finding(idx: int, total: int, finding: dict,
     # Classifier said 'local' and edit validated: mark it.
     # In --apply mode we'll bump it to 'fixed' after the commit;
     # in dry-run it stays 'proposed-to-fix' until someone runs --apply.
+    rel = str(path.relative_to(ROOT))
+    commit_msg = _build_commit_msg(finding, rel, reason, explanation)
+    try:
+        db.save_proposal(
+            report_path, finding,
+            file=rel,
+            old_snippet=edit["old_snippet"],
+            new_snippet=edit["new_snippet"],
+            explanation=explanation,
+            commit_msg=commit_msg,
+            reason=reason,
+            file_sha256=hashlib.sha256(
+                path.read_text(encoding="utf-8").encode()).hexdigest(),
+            # seq=1 (default); future: pass ctx["proposal_seq"] if
+            # you want to preserve rejected proposals as seq=2,3,...
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
+
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
     ctx["ready"] +=1
     
     if not args.apply:
-        print("  [dry-run] not applied")
+        print(f"  [dry-run] cached proposal from {pending['dt']}")
+        ctx["ready"] += 1
         return
 
     if not args.yes:
@@ -644,13 +771,11 @@ def _handle_finding(idx: int, total: int, finding: dict,
 
     ctx["seq"] += 1
     branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
-    rel = str(path.relative_to(ROOT))
-    msg = _build_commit_msg(finding, rel, reason, explanation)
 
     try:
         sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
                              path, edit["old_snippet"], edit["new_snippet"],
-                             msg)
+                             commit_msg)
     except RuntimeError as e:
         print(f"  SKIP: {e}")
         skipped.append(finding.get("id", "?") + ": " + str(e))
@@ -846,6 +971,8 @@ def main() -> int:
     ap.add_argument("--reprocess", action="store_true",
                     help="re-process findings already marked "
                          "fixed/rejected in the DB")
+    ap.add_argument("--refetch", action="store_true",
+                    help="ignore cached proposal; re-query the LLM")
     args = ap.parse_args()
 
     try:
