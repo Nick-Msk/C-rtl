@@ -92,7 +92,20 @@ STATUSES = {STATUS_ADDED, STATUS_PROPOSED,
 def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
+def has_any_report() -> bool:
+    """True if check.db exists and contains at least one report row.
 
+    Does not create the DB if it is missing; does not raise on a
+    half-built or corrupt file — callers get False and decide.
+    """
+    if not DB_PATH.is_file():
+        return False
+    try:
+        with connect() as con:
+            n = con.execute("SELECT COUNT(*) FROM report").fetchone()[0]
+            return n > 0
+    except Exception:  # noqa: BLE001
+        return False
 
 TABLE_LOCAL_BASE = 1000
 
