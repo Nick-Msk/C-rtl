@@ -67,6 +67,14 @@ A fix is LOCAL only if ALL of the following hold:
    (or one #include line, one macro definition, or one comment
    attached to a declaration). Edits spanning multiple function
    bodies in the same file are NON-local.
+   A fix is LOCAL even if it changes the on-disk file format (e.g.
+a wrong fscanf/sscanf format string in a #define), PROVIDED that:
+  - the edit is one line in a single macro or string literal, AND
+  - the previous format was provably broken (e.g. the literal did
+    not match what the writer produces), so there is nothing to be
+    backward-compatible with.
+    In this case, do NOT classify as needs_review on "format change"
+    grounds alone.
 3. It does NOT change any function signature: parameters, return
    type, qualifiers, calling convention. Even if you also update the
    .h file, adding or removing a parameter would require updating
