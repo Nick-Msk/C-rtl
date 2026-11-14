@@ -159,6 +159,12 @@ Those files are context-only.
 If the finding requires adding a new #include (e.g. <stdbool.h>),
 classify as needs_review: a missing include can ripple across
 translation units.
+
+If a finding requires the same textual replacement in multiple
+places, output ONE entry per file with count = N, and list the file
+once. If different contexts in the same file need DIFFERENT
+replacements, that is not uniform — list separate entries or
+classify as needs_review.
 """
 
 # ── Git helpers ──────────────────────────────────────────────────────
@@ -444,9 +450,15 @@ def validate_edits(edits: list[dict], project: Path
             src = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError) as exc:
             return None, f"cannot read {rel}: {exc}"
+        
+        expected = int(e.get("count", 1))
+        if expected < 1:
+            return None, f"{rel}: count={expected}, must be >= 1"
         n = src.count(old)
-        if n != 1:
-            return None, f"{rel}: old_snippet appears {n} times (need 1)"
+        if n != expected:
+            return None, (f"{rel}: old_snippet appears {n} times, "
+                          f"expected {expected}")
+        
         if old == new:
             return None, f"{rel}: old_snippet == new_snippet"
 
@@ -475,30 +487,46 @@ def validate_edits(edits: list[dict], project: Path
     if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
         return None, "two files must be a paired X.c + X.h (same dir, same stem)"
 
-    if total_added + total_removed > MAX_DIFF_LINES:
-        return None, (f"diff too large ({total_added}+{total_removed} "
+    weighted = 0
+    for p, e in parsed:
+        a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
+        weighted += (a + r) * int(e.get("count", 1))
+    if weighted > MAX_DIFF_LINES:
+        return None, (f"diff too large ({weighted} weighted lines "
                       f"> {MAX_DIFF_LINES})")
+    
     return parsed, None
 
-def make_diff(edits: list[tuple[Path, str, str]]) -> str:
+def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
+    """[(path, old, new, count)]. One diff per entry; 'count' shown
+    as a comment after the file header when > 1."""
     parts: list[str] = []
-    for path, old, new in edits:
+    for path, old, new, count in edits:
         rel = path.relative_to(ROOT)
+        header = f"a/{rel}"
+        if count > 1:
+            header += f"  (replace all {count} occurrence(s))"
         parts.append("".join(difflib.unified_diff(
             old.splitlines(keepends=True), new.splitlines(keepends=True),
-            fromfile=f"a/{rel}", tofile=f"b/{rel}", n=2)))
+            fromfile=header, tofile=f"b/{rel}", n=2)))
     return "".join(parts)
 
 
 def apply_edit(path: Path, old: str, new: str) -> bool:
+    """Replace ALL occurrences of old with new.
+
+    validate_edits has already confirmed the count matches the LLM's
+    expectation, so this is safe: replace every occurrence.
+    """
     try:
         src = path.read_text(encoding="utf-8")
-        if src.count(old) != 1:
+        if old not in src:
             return False
-        path.write_text(src.replace(old, new, 1), encoding="utf-8")
+        path.write_text(src.replace(old, new), encoding="utf-8")
         return True
     except OSError:
         return False
+    
 def _parse_fixlist(raw: str):
     """Return matcher(key: tuple[int,int]) -> bool, or None.
 
@@ -588,12 +616,14 @@ def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
     return out
 
 def _build_commit_msg(finding: dict, rel: str, reason: str,
-                      explanation: str) -> str:
+                      explanation: str,
+                      total_count: int = 1) -> str:
     first_line = finding["text"].splitlines()[0][:70]
     if not first_line.endswith("."):
         first_line += "."
+    suffix = f" ({total_count} occurrences)" if total_count > 1 else ""
     body = (f"Section: {finding['section']}\n"
-            f"File:    {rel}\n"
+            f"File:    {rel}{suffix}\n"
             f"Reason:  {reason}\n"
             f"Change:  {explanation}\n")
     return (f"ai-fix: {first_line}\n\n"
@@ -726,7 +756,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
                         reason="user rejected")
                 return
 
-                ctx["seq"] += 1
+        ctx["seq"] += 1
         branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
         commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                         for p, e in parsed]
@@ -802,8 +832,11 @@ def _handle_finding(idx: int, total: int, finding: dict,
 
     explanations = [e.get("explanation", "") for _, e in parsed]
     explanation = "; ".join(x for x in explanations if x)
-    diff = make_diff([(p, e["old_snippet"], e["new_snippet"])
-                      for p, e in parsed])
+    diff = make_diff([
+        (p, e["old_snippet"], e["new_snippet"], int(e.get("count", 1)))
+        for p, e in parsed
+    ])
+
     print(f"  LOCAL: {explanation}")
     for line in diff.splitlines():
         print(f"    {line}")
@@ -820,6 +853,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
             "old_snippet": e["old_snippet"],
             "new_snippet": e["new_snippet"],
             "explanation": e.get("explanation", ""),
+            "count": int(e.get("count", 1)),
             "file_sha256": sha256,
         })
 
