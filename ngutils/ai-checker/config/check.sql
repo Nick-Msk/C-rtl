@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS issue (
     section     TEXT NOT NULL,             -- 'Критично', 'Важно', 'Мелочи'
     title       TEXT NOT NULL,             -- first line, for scan
     text        TEXT NOT NULL,             -- full finding
-    status      TEXT NOT NULL DEFAULT 'proposed-to-fix'
-                CHECK (status IN ('proposed-to-fix','analyze-by-dev',
+    status      TEXT NOT NULL DEFAULT 'added'
+                CHECK (status IN ('added', 'proposed-to-fix','analyze-by-dev',
                                   'fixed','rejected','failed')),
     reason      TEXT,                      -- classifier reason
     direction   TEXT,                      -- for needs_review

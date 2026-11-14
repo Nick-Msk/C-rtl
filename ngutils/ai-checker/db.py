@@ -16,7 +16,7 @@ from pathlib import Path
 from common import ROOT
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS base_commit (
@@ -47,9 +47,10 @@ CREATE TABLE IF NOT EXISTS issue (
     section     TEXT NOT NULL,
     title       TEXT NOT NULL,
     text        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'proposed-to-fix'
-                CHECK (status IN ('proposed-to-fix','analyze-by-dev',
-                                  'fixed','rejected','failed')),
+    status      TEXT NOT NULL DEFAULT 'added'
+                CHECK (status IN ('added', 'proposed-to-fix',
+                                    'analyze-by-dev',
+                                    'fixed','rejected','failed')),
     reason      TEXT,
     direction   TEXT,
     fix_branch  TEXT,
@@ -62,12 +63,14 @@ CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
 """
 
+STATUS_ADDED    = "added"
 STATUS_PROPOSED = "proposed-to-fix"
 STATUS_ANALYZE  = "analyze-by-dev"
 STATUS_FIXED    = "fixed"
 STATUS_REJECTED = "rejected"
 STATUS_FAILED   = "failed"
-STATUSES = {STATUS_PROPOSED, STATUS_ANALYZE, STATUS_FIXED,
+STATUSES = {STATUS_ADDED, STATUS_PROPOSED, 
+            STATUS_ANALYZE, STATUS_FIXED,
             STATUS_REJECTED, STATUS_FAILED}
 
 
@@ -125,7 +128,8 @@ def split_finding_id(fid: str) -> tuple[int, int]:
     return 1, TABLE_LOCAL_BASE + int(fid)
 
 def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
-    """Return {(chunk_id, local_id)} with status fixed/rejected."""
+    """Keys to skip on next --apply: needs-review (already classified),
+    fixed, rejected. Use --reprocess to override."""
     rel = _rel(report_path)
     with connect() as con:
         rows = con.execute(
@@ -227,7 +231,7 @@ def ingest_report(*, project: str, report_path: Path, model: str,
                 " title, text, status, dt) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (report_id, fid, chunk_id, local_id, f["section"],
-                 title, f["text"], STATUS_PROPOSED, now))
+                 title, f["text"], STATUS_ADDED, now))
 
 
 def update_issue_status(report_path: Path | str, finding_id: str,
@@ -266,7 +270,7 @@ def resolved_finding_ids(report_path: Path | str) -> set[str]:
             "SELECT finding_id FROM issue WHERE "
             "report_id = (SELECT id FROM report WHERE path = ?) "
             "AND status IN (?, ?)",
-            (rel, STATUS_FIXED, STATUS_REJECTED)).fetchall()
+            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED)).fetchall()
     return {r["finding_id"] for r in rows}
 
 

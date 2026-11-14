@@ -546,6 +546,12 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
             f"Finding:\n{finding['text']}\n\n"
             f"Applied by ai-checker/fix.py\n")
 
+def _db_set(report_path: Path, finding: dict, status: str,
+            **kw) -> None:
+    try:
+        db.update_issue_status(report_path, finding, status, **kw)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: db update failed: {exc}", file=sys.stderr)
 
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, report_path: Path, files: list[Path],
@@ -566,12 +572,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
     except requests.RequestException as e:
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
-        try:
-            db.update_issue_status(report_path, finding.get("finding", ""),
-                                   db.STATUS_FAILED,
-                                   reason=f"LLM: {e}")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  warn: db update failed: {exc}", file=sys.stderr)
+        _db_set(report_path, finding, db.STATUS_FAILED, f"LLM: {e}")
+        
         return
 
     raw = raw.strip()
@@ -583,12 +585,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
     except json.JSONDecodeError as e:
         print(f"  SKIP: invalid JSON: {raw[:120]!r}")
         skipped.append(finding["text"][:80])
-        try:
-            db.update_issue_status(report_path, finding.get("finding", ""),
-                                   db.STATUS_FAILED,
-                                   reason=f"LLM request failed {e}")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  warn: db update failed: {exc}", file=sys.stderr)
+        _db_set(report_path, finding, db.STATUS_FAILED, f"LLM request failed {e}");
+
         return
 
     cls = verdict.get("class", "needs_review")
@@ -599,19 +597,17 @@ def _handle_finding(idx: int, total: int, finding: dict,
         if verdict.get("direction"):
             print(f"    direction: {verdict['direction']}")
         needs_review.append(finding | {"verdict": verdict})
-        try:
-            db.update_issue_status(
-                report_path, finding.get("id", ""), db.STATUS_ANALYZE,
-                reason=reason, direction=verdict.get("direction"))
-        except Exception as e:  # noqa: BLE001
-            print(f"  warn: db update failed: {e}", file=sys.stderr)
+        _db_set(report_path, finding, db.STATUS_ANALYZE, reason=reason, direction=verdict.get("direction"))
+
         return
 
     edit = verdict.get("edit") or {}
     path, err = validate_edit(edit, project)
     if err:
         print(f"  SKIP (invalid edit): {err}")
-        skipped.append(finding["text"][:80])
+        skipped.append(finding.get("id", "?") + ": " + err)
+        _db_set(report_path, finding, db.STATUS_FAILED,
+                reason=f"invalid edit: {err}")
         return
 
     diff = make_diff(path, edit["old_snippet"], edit["new_snippet"])
@@ -619,6 +615,11 @@ def _handle_finding(idx: int, total: int, finding: dict,
     print(f"  LOCAL: {explanation}")
     for line in diff.splitlines():
         print(f"    {line}")
+
+    # Classifier said 'local' and edit validated: mark it.
+    # In --apply mode we'll bump it to 'fixed' after the commit;
+    # in dry-run it stays 'proposed-to-fix' until someone runs --apply.
+    _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
 
     if not args.apply:
         print("  [dry-run] not applied")
@@ -634,12 +635,10 @@ def _handle_finding(idx: int, total: int, finding: dict,
         if ans != "y":
             print("  skipped by user")
             skipped.append(finding["text"][:80])
-            try:
-                db.update_issue_status(report_path, finding.get("finding", ""),
-                                       db.STATUS_REJECTED,
-                                       reason="user rejected")
-            except Exception as exc:  # noqa: BLE001
-                print(f"  warn: db update failed: {exc}", file=sys.stderr)
+            _db_set(report_path, finding,
+                        db.STATUS_REJECTED,
+                        reason="user rejected")
+            
             return
 
     ctx["seq"] += 1
@@ -665,12 +664,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
         "file": rel,
         "summary": finding["text"].splitlines()[0][:70],
     })
-    try:
-        db.update_issue_status(
-            report_path, finding.get("id", ""), db.STATUS_FIXED,
-            reason=reason, fix_branch=branch, fix_commit=sha)
-    except Exception as e:  # noqa: BLE001
-        print(f"  warn: db update failed: {e}", file=sys.stderr)
+    _db_set(report_path, finding, db.STATUS_FIXED, reason=reason, 
+            fix_branch=branch, fix_commit=sha)
 
 def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     base_branch = base_sha = None
