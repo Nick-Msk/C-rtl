@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 
 import db
 
@@ -80,6 +81,14 @@ def main() -> int:
                     help="print one finding key per line "
                          "(directly usable as FIXLIST)")
     args = ap.parse_args()
+
+    if not db.has_any_report():
+        rel = db.DB_PATH.relative_to(db.ROOT)
+        print(f"No data in {rel}.", file=sys.stderr)
+        print("Run 'make ai-check' (or 'make ai-check-<project>') first.",
+              file=sys.stderr)
+        return 1
+
     if args.list or args.project or args.status or args.key:
         return cmd_list(args.project, args.status, args.json, args.key)
     return cmd_summary(args.json)
