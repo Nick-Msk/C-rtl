@@ -28,6 +28,7 @@ from common import (
     renumber_findings,
     rotate_reports,
 )
+from report import fmt_dur, format_header_md
 from sysinfo import system_info
 
 SYSTEM_PROMPT = """\
@@ -56,43 +57,6 @@ headers, extracted verbatim. Use it to look up any type you need.
 Do not claim you cannot see a header — the relevant type
 declarations are right there in that block.
 """
-
-def _fmt_dur(sec: float) -> str:
-    if sec < 60:
-        return f"{sec:.1f}s"
-    m, s = divmod(round(sec), 60)
-    if m < 60:
-        return f"{m}m {s:02d}s"
-    h, m = divmod(m, 60)
-    return f"{h}h {m:02d}m {s:02d}s"
-
-def format_header_md(name: str, model: str, base_url: str, started: datetime,
-                     duration: float, chunk_durs: list[float],
-                     usage: dict, sysinfo: dict) -> str:
-    comp = usage.get("completion_tokens", 0)
-    total = usage.get("total_tokens", 0) or (
-        usage.get("prompt_tokens", 0) + comp)
-    tps = (comp / duration) if duration > 0 and comp else None
-    chunk_str = ("  (per chunk: " + ", ".join(_fmt_dur(d) for d in chunk_durs) + ")"
-                 if len(chunk_durs) > 1 else "")
-
-    rows = [
-        ("started",  started.strftime("%Y-%m-%d %H:%M:%S")),
-        ("duration", _fmt_dur(duration) + chunk_str),
-        ("model",    f"`{model}`"),
-        ("endpoint", f"`{base_url}`"),
-        ("tokens",   (f"{usage.get('prompt_tokens', 0):,} prompt / "
-                      f"{comp:,} completion / {total:,} total "
-                      f"({usage.get('requests', 0)} req)")),
-        ("speed",    f"{tps:.1f} completion tok/s" if tps else "n/a"),
-        ("host",     sysinfo["host"]),
-        ("os",       sysinfo["os"]),
-        ("cpu",      f"{sysinfo['cpu']} ({sysinfo['cores']})"),
-        ("ram",      sysinfo["ram"]),
-        ("python",   sysinfo["python"]),
-    ]
-    body = "\n".join(f"| {k:<8} | {v} |" for k, v in rows)
-    return f"# AI review: {name}\n\n| field    | value |\n|----------|-------|\n{body}\n\n"
 
 def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
                 project_name: str = "",
@@ -497,7 +461,7 @@ def _run_checks(args, model, jobs) -> int:
                     usage[k] += chunk_usage.get(k, 0)
                 usage["requests"] += 1
                 print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
-                      f"{_fmt_dur(dt)}  prompt={chunk_usage.get('prompt_tokens', 0):,}  "
+                      f"{fmt_dur(dt)}  prompt={chunk_usage.get('prompt_tokens', 0):,}  "
                       f"completion={chunk_usage.get('completion_tokens', 0):,}",
                       file=sys.stderr)
             except Exception as e:  # noqa: BLE001
@@ -540,7 +504,7 @@ def _run_checks(args, model, jobs) -> int:
                   f"-> {sub.relative_to(ROOT)}/hist/", file=sys.stderr)
 
         print(f"[ai-checker] done: {name} -> {report_rel}  "
-              f"[{_fmt_dur(total_dur)} · "
+              f"[{fmt_dur(total_dur)} · "
               f"{usage['prompt_tokens']:,} in / "
               f"{usage['completion_tokens']:,} out]", file=sys.stderr)
 

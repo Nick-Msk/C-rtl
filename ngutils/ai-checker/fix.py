@@ -46,8 +46,11 @@ from common import (
     gather_context_files,
     iter_findings,
     release_lock,
+    rotate_reports,
     types_digest_path,
 )
+from report import format_header_md
+from sysinfo import system_info
 
 MAX_DIFF_LINES = 20
 
@@ -353,7 +356,8 @@ def build_prompt(finding: dict, project: Path, files: list[Path]) -> str:
     return "\n".join(parts)
 
 # ── LLM call ─────────────────────────────────────────────────────────
-def ask_model(base_url: str, model: str, user: str) -> str:
+def ask_model(base_url: str, model: str, user: str,
+              usage_out: dict | None = None) -> str:
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     payload = {
         "model": model,
@@ -366,7 +370,10 @@ def ask_model(base_url: str, model: str, user: str) -> str:
     }
     r = requests.post(url, json=payload, timeout=600)
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    data = r.json()
+    if usage_out is not None:
+        usage_out.update(data.get("usage") or {})
+    return data["choices"][0]["message"]["content"]
 
 # ── Edit validation ─────────────────────────────────────────────────
 FUNC_HEADER_RE = re.compile(
@@ -785,6 +792,9 @@ def _handle_finding(idx: int, total: int, finding: dict,
             "branch": branch,
             "file": ", ".join(files),
             "summary": finding["text"].splitlines()[0][:70],
+            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
+                       "count": int(e.get("count", 1))}
+                      for e in pending["edits"]],
         })
         # db.clear_proposal(report_path, finding)
         _db_set(report_path, finding, db.STATUS_FIXED,
@@ -863,6 +873,9 @@ def _handle_finding(idx: int, total: int, finding: dict,
             "explanation": e.get("explanation", ""),
             "count": int(e.get("count", 1)),
             "file_sha256": sha256,
+            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
+                       "count": int(e.get("count", 1))}
+                      for e in pending["edits"]],
         })
 
     rels = [e["file"] for e in proposal_edits]
@@ -921,6 +934,9 @@ def _handle_finding(idx: int, total: int, finding: dict,
             "branch": branch,
             "file": ", ".join(rels),
             "summary": finding["text"].splitlines()[0][:70],
+            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
+                       "count": int(e.get("count", 1))}
+                      for e in pending["edits"]],
         })
         _db_set(report_path, finding, db.STATUS_FIXED,
                 reason=reason, fix_branch=branch, fix_commit=sha)
@@ -930,6 +946,86 @@ def _handle_finding(idx: int, total: int, finding: dict,
     _db_set(report_path, finding, db.STATUS_FIXED, reason=reason, 
             fix_branch=branch, fix_commit=sha)
 
+def _write_fix_report(label: str, source_report: Path, started: datetime,
+                      duration: float, ctx: dict, args,
+                      applied: list[dict], skipped: list[str],
+                      needs_review: list[dict]) -> Path:
+    """Write a fix-run report under build/ai-checker/<label>/fix/."""
+    out_dir = OUT_ROOT / label / "fix"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = started.strftime("%Y-%m-%d_%H-%M-%S")
+    suffix = "_commit" if args.apply else ""
+    out_path = out_dir / f"{ts}{suffix}.md"
+
+    sysinfo = system_info()
+    header = format_header_md(
+        f"AI fix report: {label}",
+        model=ctx.get("model", ""),
+        base_url=args.base_url,
+        started=started,
+        duration=duration,
+        step_durs=ctx.get("finding_durs", []),
+        usage=ctx["usage"],
+        sysinfo=sysinfo,
+    )
+
+    mode = "apply" if args.apply else "dry-run"
+    body: list[str] = [
+        f"**Source report:** `{source_report.relative_to(ROOT)}`\n",
+        f"**Mode:** {mode}\n",
+        f"**FIXLIST:** `{args.only or '*'}`\n\n",
+        "## Summary\n\n",
+        f"- applied: {len(applied)}\n",
+        f"- ready (validated, not committed): {ctx.get('ready', 0)}\n",
+        f"- skipped: {len(skipped)}\n",
+        f"- needs review: {len(needs_review)}\n\n",
+    ]
+
+    if applied:
+        body.append("## Applied\n\n")
+        for c in applied:
+            body.append(f"- **{c['id']}** → `{c['branch']}` "
+                        f"(`{c['sha']}`): {c['summary']}\n")
+            for e in c.get("edits", []):
+                cnt = e.get("count", 1)
+                cnt_s = f" (x{cnt})" if cnt > 1 else ""
+                body.append(f"  - `{e['file']}`{cnt_s}: "
+                            f"{e.get('explanation', '')}\n")
+        body.append("\n")
+
+    if ctx.get("ready", 0) and not args.apply:
+        body.append("## Ready (validated, not committed)\n\n")
+        body.append("These findings were classified as `local` and "
+                    "validated; run `make ai-fix-commit-<proj>` "
+                    "(or `AI_FIX_REFETCH=1` to reclassify) to apply.\n\n")
+
+    if needs_review:
+        body.append("## Needs human thought\n\n")
+        for n in needs_review:
+            v = n["verdict"]
+            head = n["text"].splitlines()[0][:100]
+            body.append(f"### {n.get('id', '?')}: {head}\n\n")
+            if v.get("reason"):
+                body.append(f"**Why:** {v['reason']}\n\n")
+            if v.get("direction"):
+                body.append(f"**Direction:** {v['direction']}\n\n")
+            body.append(f"<details><summary>Full finding</summary>\n\n"
+                        f"{n['text']}\n\n</details>\n\n")
+
+    if skipped:
+        body.append("## Skipped\n\n")
+        for s in skipped:
+            body.append(f"- {s}\n")
+        body.append("\n")
+
+    out_path.write_text(header + "".join(body), encoding="utf-8")
+
+    moved = rotate_reports(out_dir)
+    if moved:
+        print(f"[ai-fixer] rotated {len(moved)} older fix report(s) "
+              f"-> {out_dir.relative_to(ROOT)}/hist/", file=sys.stderr)
+    return out_path
+
 def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     base_branch = base_sha = None
     if args.apply:
@@ -938,6 +1034,8 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     FIX_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     created_all: list[tuple[str, str, list[dict]]] = []
+    all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
+                 "total_tokens": 0, "requests": 0}
 
     for label, report_path, project in jobs:
         print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")        
@@ -973,7 +1071,11 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             "base_sha": base_sha,
             "base_branch": base_branch,
             "seq": 0,
-            "ready": 0
+            "ready": 0,
+            "model": model,
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                      "total_tokens": 0, "requests": 0},
+            "finding_durs": [],
         }
 
         # Skip findings already resolved in a previous run, unless
@@ -1007,20 +1109,31 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
         skipped: list[str] = []
         needs_review: list[dict] = []
 
+        started = datetime.now()
         t0 = time.perf_counter()
         for idx, finding in enumerate(findings, 1):
+            t_finding = time.perf_counter()
             files = gather_context_files(finding, project)
-            _handle_finding(idx, len(findings), finding, project, 
-                            report_path, files,
-                            args, model, ctx,
+            _handle_finding(idx, len(findings), finding, project,
+                            report_path, files, args, model, ctx,
                             applied, skipped, needs_review)
+            ctx["finding_durs"].append(time.perf_counter() - t_finding)
         dt = time.perf_counter() - t0
 
+        for k in all_usage:
+            all_usage[k] += ctx["usage"].get(k, 0)
+
+        report_out = _write_fix_report(label, report_path, started, dt,
+                                        ctx, args, applied, skipped,
+                                        needs_review)
         print(f"\n[ai-fixer] {label}: "
               f"{len(applied)} applied, "
-              f"{ctx.get('ready', 0)} ready (not committed), "
+              f"{ctx['ready']} ready (not committed), "
               f"{len(skipped)} skipped, "
-              f"{len(needs_review)} needs review, {dt:.1f}s")
+              f"{len(needs_review)} needs review, {dt:.1f}s, "
+              f"{ctx['usage']['prompt_tokens']:,} in / "
+              f"{ctx['usage']['completion_tokens']:,} out")
+        print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
 
         if applied:
             print(f"[ai-fixer] {len(applied)} fix branches "
@@ -1078,7 +1191,12 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
                 print(f"  {c['branch']:<32}  {label:<8}  id={c['id']}")
         print(f"[ai-fixer] return to base:  git checkout "
               f"{base_branch or 'master'}")
-
+    if all_usage["requests"]:
+        print(f"\n[ai-fixer] total across projects: "
+              f"{all_usage['prompt_tokens']:,} in / "
+              f"{all_usage['completion_tokens']:,} out "
+              f"({all_usage['requests']} request(s))")
+        
     return 0
 
 def main() -> int:
