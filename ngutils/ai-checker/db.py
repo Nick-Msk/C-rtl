@@ -248,6 +248,7 @@ def ingest_report(*, project: str, report_path: Path, model: str,
             (project, rel, sha, model, kind,
              started.strftime("%Y-%m-%dT%H:%M:%S"), duration_s, now))
         report_id = cur.lastrowid
+        skipped_dup = 0
         for f in findings:
             fid = f.get("id", "")
             try:
@@ -255,13 +256,19 @@ def ingest_report(*, project: str, report_path: Path, model: str,
             except (ValueError, AttributeError):
                 continue
             title = f["text"].splitlines()[0][:120]
-            con.execute(
-                "INSERT INTO issue "
-                "(report_id, finding_id, chunk_id, local_id, section, "
-                " title, text, status, dt) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (report_id, fid, chunk_id, local_id, f["section"],
-                 title, f["text"], STATUS_ADDED, now))
+            try:
+                con.execute(
+                    "INSERT INTO issue "
+                    "(report_id, finding_id, chunk_id, local_id, section, "
+                    " title, text, status, dt) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (report_id, fid, chunk_id, local_id, f["section"],
+                    title, f["text"], STATUS_ADDED, now))
+            except sqlite3.IntegrityError:
+                skipped_dup += 1
+        if skipped_dup:
+            print(f"  ERROR: {skipped_dup} duplicate finding(s) "
+                  f"skipped during ingest", file=sys.stderr)
 
 def _key_for(finding) -> tuple[str, int, int]:
     """Return (fid_text, chunk_id, local_id) from a finding dict or str."""

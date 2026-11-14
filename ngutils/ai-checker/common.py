@@ -192,26 +192,25 @@ def _parse_table_rows(body: str) -> list[tuple[str, str]]:
 
 # ── Finding parsing ──────────────────────────────────────────────────
 PART_HDR_RE = re.compile(r"Part[ \t]+(\d+)/\d+")
-
+TABLE_LOCAL_BASE = 1000
 
 def parse_findings(report_text: str) -> list[dict]:
-    """Split report into findings.
+    """Split report into findings with guaranteed-unique ids.
 
-    Each finding: {section, id, text, chunk, kind}:
-      chunk = part number (1 for single-chunk reports)
-      kind  = 'header' (### N/M.), 'table' (| N |), 'list' (1.)
+    ids are assigned here, not taken from the text: '<chunk>/<n>'
+    for headers and lists, '<chunk>/<1000+n>' for tables. This is
+    independent of what the model wrote ('### 1.', '### 1/1.', '| 5 |').
     """
     targets = {"Критично", "Важно", "Мелочи"}
-
     findings: list[dict] = []
     current_chunk = 1
+    counters: dict[tuple[int, str], int] = {}
     sections = re.split(r"^## ", report_text, flags=re.MULTILINE)
     for sec in sections:
         m = re.match(r"^(\S+)", sec)
         if not m:
             continue
         name = m.group(1)
-        # Chunk boundary: '## Part N/M'. Bump the counter and skip.
         if name == "Part":
             pm = PART_HDR_RE.match(sec)
             if pm:
@@ -221,7 +220,14 @@ def parse_findings(report_text: str) -> list[dict]:
             continue
         body = sec[m.end():]
 
-        # Case A: '### N/M. Title' headers.
+        def next_id(kind: str, _chunk: int = current_chunk) -> str:
+            k = (_chunk, kind)
+            counters[k] = counters.get(k, 0) + 1
+            n = counters[k]
+            if kind in ("table", "list"):
+                return f"{_chunk}/{TABLE_LOCAL_BASE + n}"
+            return f"{_chunk}/{n}"
+
         matches = list(FINDING_HEADER_SPLIT.finditer(body))
         if matches:
             for i, match in enumerate(matches):
@@ -229,29 +235,32 @@ def parse_findings(report_text: str) -> list[dict]:
                 text = body[match.end():end].strip()
                 if len(text) < 20:
                     continue
-                head = body[match.start():match.end()]
-                fid = head.replace("###", "").strip().rstrip(".").strip()
-                findings.append({"section": name, "id": fid, "text": text,
-                                 "chunk": current_chunk, "kind": "header"})
+                findings.append({"section": name,
+                                 "id": next_id("header"),
+                                 "text": text,
+                                 "chunk": current_chunk,
+                                 "kind": "header"})
             continue
 
-        # Case B: markdown table (Мелочи).
         table = _parse_table_rows(body)
         if table:
-            for fid, text in table:
+            for _fid, text in table:
                 if len(text) >= 20:
-                    findings.append({"section": name, "id": fid,
+                    findings.append({"section": name,
+                                     "id": next_id("table"),
                                      "text": text,
                                      "chunk": current_chunk,
                                      "kind": "table"})
             continue
 
-        # Case C: bare numbered/bulleted list.
-        for i, item in enumerate(ITEM_SEP.split(body)[1:], start=1):
+        for item in ITEM_SEP.split(body)[1:]:
             text = item.strip()
             if len(text) >= 20:
-                findings.append({"section": name, "id": str(i), "text": text,
-                                 "chunk": current_chunk, "kind": "list"})
+                findings.append({"section": name,
+                                 "id": next_id("list"),
+                                 "text": text,
+                                 "chunk": current_chunk,
+                                 "kind": "list"})
     return findings
 
 def iter_findings(report_path: Path,
