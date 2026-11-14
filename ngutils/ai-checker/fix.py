@@ -59,13 +59,19 @@ requires human thought because it would ripple through the codebase.
 
 A fix is LOCAL only if ALL of the following hold:
 
-1. It touches exactly ONE file.
-2. It is confined to ONE function body (or one #include line, or one
-   macro definition). Anything that spans function boundaries is
-   NON-local.
-3. It does NOT change any function signature: parameters, return type,
-   qualifiers, calling convention. Adding or removing a parameter is
-   FORBIDDEN, because every caller would then need updating.
+1. It touches at most TWO files. If two, they must be a paired
+   source/header with the same stem in the same directory:
+   X.c + X.h, X.cpp + X.hpp, X.cc + X.hpp. Editing a function body
+   in X.c AND the matching declaration/comment in X.h is allowed.
+2. Within EACH file, edits are confined to a single function body
+   (or one #include line, one macro definition, or one comment
+   attached to a declaration). Edits spanning multiple function
+   bodies in the same file are NON-local.
+3. It does NOT change any function signature: parameters, return
+   type, qualifiers, calling convention. Even if you also update the
+   .h file, adding or removing a parameter would require updating
+   every caller in other translation units — that is still
+   FORBIDDEN.
 4. It does NOT add or remove any function, struct, union, enum, or
    global variable.
 5. It does NOT change struct/union/enum layout, field type, or order.
@@ -102,21 +108,36 @@ Output ONLY a JSON object, no prose, no markdown fences:
 {
   "class": "local" | "needs_review",
   "reason": "short reason (<= 200 chars)",
-  "direction": "for needs_review: suggested direction for a human (<= 300 chars)",
-  "edit": {
-    "file": "relative path from repo root",
-    "old_snippet": "exact text from the source, with 1-3 lines of context",
-    "new_snippet": "replacement text",
-    "explanation": "one line"
-  }
+  "direction": "for needs_review: suggested direction for a human",
+  "edits": [
+    {
+      "file": "relative path from repo root",
+      "old_snippet": "exact text from the source, with 1-3 lines of context",
+      "new_snippet": "replacement text",
+      "explanation": "one line"
+    }
+  ]
 }
 
-"edit" is present iff class == "local". Rules for "edit":
+"edits" is present iff class == "local". It is a list of 1 or 2 entries.
+Rules for each entry in "edits":
 - "file" must be one of the source files provided.
 - "old_snippet" must appear exactly ONCE in that file.
 - "new_snippet" must differ and preserve indentation.
 - Do NOT reformat surrounding code, add comments, or add blank lines.
-- Do NOT touch anything outside the single function body.
+- Do NOT touch anything outside the single function body (or the
+  single comment block attached to a declaration).
+
+Rules for the list itself:
+- If there is ONE entry, that file is the only file changed.
+- If there are TWO entries, the files MUST be a paired source/header
+  with the same stem in the same directory: X.c + X.h, X.cpp + X.hpp,
+  X.cc + X.hpp, X.cxx + X.hpp. Typical case: change the function
+  body or comment in X.c AND the matching declaration or comment
+  in X.h.
+- Never propose edits to three or more files.
+- Never propose edits to two unrelated files (e.g. log.c + fs2.c).
+- Total added+removed lines across ALL entries must be <= 20.
 
 If the finding mentions multiple functions, multiple files, or
 phrases like "in A, B, and C", "all callers", "everywhere",
@@ -214,16 +235,9 @@ def make_fix_branch_name(run_id: str, seq: int) -> str:
     return f"{run_id}-{seq}"
 
 
-def commit_one_fix(base_sha: str, base_branch: str,
-                   branch_name: str, path: Path,
-                   old: str, new: str, msg: str) -> str:
-    """Create branch from base_sha, apply edit, commit, return to base.
-
-    The working tree is clean at entry (enforced by git_clean_check in
-    _run). On any failure (checkout, edit, add, commit) the partial
-    branch is deleted and the tree is reset to base_branch, so the
-    caller can continue with the next finding without leaving crumbs.
-    """
+def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
+                   edits: list[tuple[Path, str, str]], msg: str) -> str:
+    """Create branch from base_sha, apply all edits, commit, return to base."""
     r = git("checkout", "-b", branch_name, base_sha, check=False)
     if r.returncode != 0:
         raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
@@ -234,13 +248,15 @@ def commit_one_fix(base_sha: str, base_branch: str,
         git("branch", "-D", branch_name, check=False)
         raise RuntimeError(reason)
 
-    if not apply_edit(path, old, new):
-        _cleanup("apply_edit failed (file changed under us?)")
+    for path, old, new in edits:
+        if not apply_edit(path, old, new):
+            _cleanup(f"apply_edit failed on {path.relative_to(ROOT)}")
 
-    rel = str(path.relative_to(ROOT))
-    r = git("add", "--", rel, check=False)
-    if r.returncode != 0:
-        _cleanup(f"git add failed: {r.stderr.strip()}")
+    for path, _, _ in edits:
+        rel = str(path.relative_to(ROOT))
+        r = git("add", "--", rel, check=False)
+        if r.returncode != 0:
+            _cleanup(f"git add failed for {rel}: {r.stderr.strip()}")
 
     r = git("commit", "-F", "-", input=msg, check=False)
     if r.returncode != 0:
@@ -250,13 +266,9 @@ def commit_one_fix(base_sha: str, base_branch: str,
 
     r = git("checkout", base_branch, check=False)
     if r.returncode != 0:
-        # The commit exists; we just could not return. Tell the user
-        # exactly where we are so they can recover manually.
         raise RuntimeError(
-            f"commit {sha} on {branch_name} succeeded, but "
-            f"'git checkout {base_branch}' failed: {r.stderr.strip()}. "
-            f"Recover: git checkout {base_branch}"
-        )
+            f"commit {sha} on {branch_name} succeeded, "
+            f"but 'git checkout {base_branch}' failed: {r.stderr.strip()}")
     return sha
 
 
@@ -380,60 +392,96 @@ def diff_line_counts(old: str, new: str) -> tuple[int, int]:
             removed += 1
     return added, removed
 
-
-def validate_edit(edit: dict, project: Path) -> tuple[Path | None, str | None]:
-    rel = edit.get("file", "")
-    old = edit.get("old_snippet", "")
-    new = edit.get("new_snippet", "")
-    if not rel or not old or not new:
-        return None, "missing file/old_snippet/new_snippet"
-    if is_forbidden(rel):
-        return None, f"forbidden path: {rel}"
-    p = (ROOT / rel).resolve()
-    try:
-        p.relative_to(project.resolve())
-    except ValueError:
-        return None, f"outside project: {rel}"
-    if not p.is_file():
-        return None, f"file not found: {rel}"
-    try:
-        src = p.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError) as e:
-        return None, f"cannot read {rel}: {e}"
-    if src.count(old) != 1:
-        return None, f"old_snippet appears {src.count(old)} times (need 1)"
-    if old == new:
-        return None, "old_snippet == new_snippet"
-
-    # Cascade / ripple checks.
-    old_headers: set[str] = set()
-    new_headers: set[str] = set()
-    for line in old.splitlines():
-        h = extract_function_header(line)
-        if h:
-            old_headers.add(h)
-    for line in new.splitlines():
-        h = extract_function_header(line)
-        if h:
-            new_headers.add(h)
-    added_headers = new_headers - old_headers
-    if added_headers:
-        return None, f"adds function: {sorted(added_headers)}"
-    removed_headers = old_headers - new_headers
-    if removed_headers:
-        return None, f"changes/removes function signature: {sorted(removed_headers)}"
-
-    added, removed = diff_line_counts(old, new)
-    if added + removed > MAX_DIFF_LINES:
-        return None, f"diff too large ({added}+{removed} > {MAX_DIFF_LINES})"
-    return p, None
+def _is_paired(a: Path, b: Path) -> bool:
+    """X.c + X.h, X.cpp + X.hpp, X.cc + X.hpp, X.cxx + X.hpp — same dir, same stem."""
+    if a.parent != b.parent or a.stem != b.stem:
+        return False
+    pair = {a.suffix.lower(), b.suffix.lower()}
+    return pair in ({".c", ".h"}, {".cpp", ".hpp"},
+                    {".cc", ".hpp"}, {".cxx", ".hpp"})
 
 
-def make_diff(path: Path, old: str, new: str) -> str:
-    rel = path.relative_to(ROOT)
-    return "".join(difflib.unified_diff(
-        old.splitlines(keepends=True), new.splitlines(keepends=True),
-        fromfile=f"a/{rel}", tofile=f"b/{rel}", n=2))
+def validate_edits(edits: list[dict], project: Path
+                   ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
+    """Validate 1 or 2 edits. Two edits must be a paired .c/.h.
+
+    Returns ([(abs_path, edit), ...], None) on success.
+    """
+    if not edits:
+        return None, "no edits"
+    if len(edits) > 2:
+        return None, f"too many files ({len(edits)}, max 2)"
+
+    parsed: list[tuple[Path, dict]] = []
+    seen: set[Path] = set()
+    total_added = total_removed = 0
+
+    for e in edits:
+        rel = e.get("file", "")
+        old = e.get("old_snippet", "")
+        new = e.get("new_snippet", "")
+        if not rel or not old or not new:
+            return None, "missing file/old_snippet/new_snippet"
+        if is_forbidden(rel):
+            return None, f"forbidden path: {rel}"
+        p = (ROOT / rel).resolve()
+        try:
+            p.relative_to(project.resolve())
+        except ValueError:
+            return None, f"outside project: {rel}"
+        if not p.is_file():
+            return None, f"file not found: {rel}"
+        if p in seen:
+            return None, f"file appears twice: {rel}"
+        seen.add(p)
+        try:
+            src = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            return None, f"cannot read {rel}: {exc}"
+        n = src.count(old)
+        if n != 1:
+            return None, f"{rel}: old_snippet appears {n} times (need 1)"
+        if old == new:
+            return None, f"{rel}: old_snippet == new_snippet"
+
+        old_h: set[str] = set()
+        new_h: set[str] = set()
+        for line in old.splitlines():
+            h = extract_function_header(line)
+            if h:
+                old_h.add(h)
+        for line in new.splitlines():
+            h = extract_function_header(line)
+            if h:
+                new_h.add(h)
+        added = new_h - old_h
+        if added:
+            return None, f"{rel}: adds function {sorted(added)}"
+        removed = old_h - new_h
+        if removed:
+            return None, f"{rel}: changes/removes function signature {sorted(removed)}"
+
+        a, r = diff_line_counts(old, new)
+        total_added += a
+        total_removed += r
+        parsed.append((p, e))
+
+    if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
+        return None, "two files must be a paired X.c + X.h (same dir, same stem)"
+
+    if total_added + total_removed > MAX_DIFF_LINES:
+        return None, (f"diff too large ({total_added}+{total_removed} "
+                      f"> {MAX_DIFF_LINES})")
+    return parsed, None
+
+def make_diff(edits: list[tuple[Path, str, str]]) -> str:
+    parts: list[str] = []
+    for path, old, new in edits:
+        rel = path.relative_to(ROOT)
+        parts.append("".join(difflib.unified_diff(
+            old.splitlines(keepends=True), new.splitlines(keepends=True),
+            fromfile=f"a/{rel}", tofile=f"b/{rel}", n=2)))
+    return "".join(parts)
 
 
 def apply_edit(path: Path, old: str, new: str) -> bool:
@@ -568,7 +616,15 @@ def _handle_finding(idx: int, total: int, finding: dict,
                     ctx: dict,
                     applied: list[dict], skipped: list[str],
                     needs_review: list[dict]) -> None:
-    print(f"\n=== Finding {idx}/{total}  [{finding['section']}] ===")
+    
+    try:
+        _c, _l = db.issue_key(finding)
+        key = f"{_c}/{_l}"
+    except (ValueError, TypeError):
+        key = finding.get("id", "?")
+    print(f"\n=== Finding {key}  ({idx}/{total})  "
+          f"[{finding['section']}] ===")
+    
     print(f"  {finding['text'][:200].replace(chr(10), ' ')}...")
     if not files:
         print("  SKIP: no source files to work with")
@@ -607,23 +663,39 @@ def _handle_finding(idx: int, total: int, finding: dict,
                         reason="stale: file changed")
                 return
 
-        edit = {"file": pending["file"],
-                "old_snippet": pending["old_snippet"],
-                "new_snippet": pending["new_snippet"],
-                "explanation": pending["explanation"]}
-        path, err = validate_edit(edit, project)
+        if args.apply:
+            for e in pending["edits"]:
+                try:
+                    cur = hashlib.sha256(
+                        (ROOT / e["file"]).read_text(
+                            encoding="utf-8").encode()).hexdigest()
+                except OSError as exc:
+                    print(f"  STALE proposal: cannot read {e['file']}: {exc}")
+                    _db_set(report_path, finding, db.STATUS_FAILED,
+                            reason=f"stale: {exc}")
+                    return
+                if cur != e.get("file_sha256"):
+                    print(f"  STALE proposal: {e['file']} changed since "
+                          f"dry-run ({pending['dt']})")
+                    print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+                          f"FIXLIST=\"{key}\"' to reclassify")
+                    _db_set(report_path, finding, db.STATUS_FAILED,
+                            reason="stale: file changed")
+                    return
+        parsed, err = validate_edits(pending["edits"], project)
         if err:
-            print(f"  STALE proposal ({err}); use --refetch")
+            print(f"  STALE proposal ({err})")
             print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-                  f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
-            db.clear_proposal(report_path, finding)
+                              f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
             _db_set(report_path, finding, db.STATUS_FAILED,
                     reason=f"stale: {err}")
             return
 
         reason = pending["reason"]
-        explanation = pending["explanation"]
-        diff = make_diff(path, edit["old_snippet"], edit["new_snippet"])
+        explanation = "; ".join(e.get("explanation", "")
+                                for e in pending["edits"] if e.get("explanation"))
+        diff = make_diff([(p, e["old_snippet"], e["new_snippet"])
+                          for p, e in parsed])
         print(f"  LOCAL (cached {pending['dt']}): {explanation}")
         for line in diff.splitlines():
             print(f"    {line}")
@@ -648,24 +720,26 @@ def _handle_finding(idx: int, total: int, finding: dict,
                         reason="user rejected")
                 return
 
-        ctx["seq"] += 1
+                ctx["seq"] += 1
         branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+        commit_edits = [(p, e["old_snippet"], e["new_snippet"])
+                        for p, e in parsed]
         try:
             sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"],
-                                 branch, path, edit["old_snippet"],
-                                 edit["new_snippet"], pending["commit_msg"])
-        except RuntimeError as e:
-            print(f"  SKIP: {e}")
-            skipped.append(finding.get("id", "?") + ": " + str(e))
+                                 branch, commit_edits, pending["commit_msg"])
+        except RuntimeError as exc:
+            print(f"  SKIP: {exc}")
+            skipped.append(f"{key}: {exc}")
             return
 
-        print(f"  COMMITTED {sha}  {branch}  {pending['file']}")
+        files = [str(p.relative_to(ROOT)) for p, _ in parsed]
+        print(f"  COMMITTED {sha}  {branch}  {', '.join(files)}")
         applied.append({
             "id": finding.get("id", "?"),
             "section": finding["section"],
             "sha": sha,
             "branch": branch,
-            "file": pending["file"],
+            "file": ", ".join(files),
             "summary": finding["text"].splitlines()[0][:70],
         })
         # db.clear_proposal(report_path, finding)
@@ -708,39 +782,50 @@ def _handle_finding(idx: int, total: int, finding: dict,
 
         return
 
-    edit = verdict.get("edit") or {}
-    path, err = validate_edit(edit, project)
+    raw_edits = verdict.get("edits")
+    if not raw_edits:
+        single = verdict.get("edit")
+        raw_edits = [single] if single else []
+    parsed, err = validate_edits(raw_edits, project)
     if err:
         print(f"  SKIP (invalid edit): {err}")
-        skipped.append(finding.get("id", "?") + ": " + err)
+        skipped.append(f"{key}: {err}")
         _db_set(report_path, finding, db.STATUS_FAILED,
                 reason=f"invalid edit: {err}")
         return
 
-    diff = make_diff(path, edit["old_snippet"], edit["new_snippet"])
-    explanation = edit.get("explanation", "")
+    explanations = [e.get("explanation", "") for _, e in parsed]
+    explanation = "; ".join(x for x in explanations if x)
+    diff = make_diff([(p, e["old_snippet"], e["new_snippet"])
+                      for p, e in parsed])
     print(f"  LOCAL: {explanation}")
     for line in diff.splitlines():
         print(f"    {line}")
 
-    # Classifier said 'local' and edit validated: mark it.
-    # In --apply mode we'll bump it to 'fixed' after the commit;
-    # in dry-run it stays 'proposed-to-fix' until someone runs --apply.
-    rel = str(path.relative_to(ROOT))
-    commit_msg = _build_commit_msg(finding, rel, reason, explanation)
+    proposal_edits = []
+    for p, e in parsed:
+        try:
+            sha256 = hashlib.sha256(
+                p.read_text(encoding="utf-8").encode()).hexdigest()
+        except OSError:
+            sha256 = ""
+        proposal_edits.append({
+            "file": str(p.relative_to(ROOT)),
+            "old_snippet": e["old_snippet"],
+            "new_snippet": e["new_snippet"],
+            "explanation": e.get("explanation", ""),
+            "file_sha256": sha256,
+        })
+
+    rels = [e["file"] for e in proposal_edits]
+    commit_msg = _build_commit_msg(finding, ", ".join(rels),
+                                    reason, explanation)
     try:
         db.save_proposal(
             report_path, finding,
-            file=rel,
-            old_snippet=edit["old_snippet"],
-            new_snippet=edit["new_snippet"],
-            explanation=explanation,
+            edits=proposal_edits,
             commit_msg=commit_msg,
             reason=reason,
-            file_sha256=hashlib.sha256(
-                path.read_text(encoding="utf-8").encode()).hexdigest(),
-            # seq=1 (default); future: pass ctx["proposal_seq"] if
-            # you want to preserve rejected proposals as seq=2,3,...
         )
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
@@ -768,27 +853,32 @@ def _handle_finding(idx: int, total: int, finding: dict,
             
             return
 
-    ctx["seq"] += 1
-    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+        ctx["seq"] += 1
+        branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+        commit_edits = [(p, e["old_snippet"], e["new_snippet"])
+                        for p, e in parsed]
+        try:
+            sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
+                                commit_edits, commit_msg)
+        except RuntimeError as exc:
+            print(f"  SKIP: {exc}")
+            skipped.append(f"{key}: {exc}")
+            return
 
-    try:
-        sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
-                             path, edit["old_snippet"], edit["new_snippet"],
-                             commit_msg)
-    except RuntimeError as e:
-        print(f"  SKIP: {e}")
-        skipped.append(finding.get("id", "?") + ": " + str(e))
+        print(f"  COMMITTED {sha}  {branch}  {', '.join(rels)}")
+        applied.append({
+            "id": finding.get("id", "?"),
+            "section": finding["section"],
+            "sha": sha,
+            "branch": branch,
+            "file": ", ".join(rels),
+            "summary": finding["text"].splitlines()[0][:70],
+        })
+        _db_set(report_path, finding, db.STATUS_FIXED,
+                reason=reason, fix_branch=branch, fix_commit=sha)
+        _db_set(report_path, finding, db.STATUS_FIXED,
+                reason=reason, fix_branch=branch, fix_commit=sha)
         return
-
-    print(f"  COMMITTED {sha}  {branch}  {rel}")
-    applied.append({
-        "id": finding.get("id", "?"),
-        "section": finding["section"],
-        "sha": sha,
-        "branch": branch,
-        "file": rel,
-        "summary": finding["text"].splitlines()[0][:70],
-    })
     _db_set(report_path, finding, db.STATUS_FIXED, reason=reason, 
             fix_branch=branch, fix_commit=sha)
 

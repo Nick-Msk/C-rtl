@@ -6,6 +6,7 @@ just because the DB is broken.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import subprocess
 import sys
@@ -325,16 +326,20 @@ def get_status(report_path: Path | str, finding) -> str | None:
     return row["status"] if row else None
 
 def save_proposal(report_path: Path | str, finding, *,
-                  file: str, old_snippet: str, new_snippet: str,
-                  explanation: str, commit_msg: str,
-                  reason: str, file_sha256: str,
+                  edits: list[dict], commit_msg: str, reason: str,
                   seq: int = 1) -> bool:
-    """Cache a validated local-fix proposal at (issue_id, seq)."""
+    """Cache 1-2 validated local-fix edits.
+
+    `edits` = [{file, old_snippet, new_snippet, explanation, file_sha256}].
+    """
+    if not edits:
+        return False
     try:
         _fid, chunk_id, local_id = _key_for(finding)
     except (ValueError, TypeError):
         return False
     rel = _rel(report_path)
+    first = edits[0]
     with connect() as con:
         row = con.execute(
             "SELECT id FROM issue WHERE "
@@ -346,15 +351,19 @@ def save_proposal(report_path: Path | str, finding, *,
         con.execute(
             "INSERT OR REPLACE INTO proposal_commit "
             "(issue_id, seq, file, old_snippet, new_snippet, explanation, "
-            " commit_msg, reason, file_sha256, dt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (row["id"], seq, file, old_snippet, new_snippet, explanation,
-             commit_msg, reason, file_sha256, _now_iso()))
+            " commit_msg, reason, file_sha256, edits_json, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (row["id"], seq,
+             first["file"], first["old_snippet"], first["new_snippet"],
+             first.get("explanation", ""),
+             commit_msg, reason, first.get("file_sha256", ""),
+             json.dumps(edits, ensure_ascii=False),
+             _now_iso()))
         return True
 
 
 def load_proposal(report_path: Path | str, finding) -> dict | None:
-    """Load the newest proposal (MAX seq) for an issue, or None."""
+    """Load newest proposal; `edits` is a list of 1-2 dicts."""
     try:
         _fid, chunk_id, local_id = _key_for(finding)
     except (ValueError, TypeError):
@@ -362,15 +371,36 @@ def load_proposal(report_path: Path | str, finding) -> dict | None:
     rel = _rel(report_path)
     with connect() as con:
         row = con.execute(
-            "SELECT p.seq, p.file, p.old_snippet, p.new_snippet, "
-            "       p.explanation, p.commit_msg, p.reason, "
-            "       p.file_sha256, p.dt "
+            "SELECT p.seq, p.commit_msg, p.reason, p.dt, "
+            "       p.edits_json, p.file, p.old_snippet, p.new_snippet, "
+            "       p.explanation, p.file_sha256 "
             "FROM proposal_commit p JOIN issue i ON i.id = p.issue_id "
             "JOIN report r ON r.id = i.report_id "
             "WHERE r.path = ? AND i.chunk_id = ? AND i.local_id = ? "
             "ORDER BY p.seq DESC LIMIT 1",
             (rel, chunk_id, local_id)).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    edits: list[dict]
+    if row["edits_json"]:
+        try:
+            edits = json.loads(row["edits_json"])
+        except json.JSONDecodeError:
+            edits = []
+    else:
+        edits = []
+    if not edits:
+        # legacy single-file proposal
+        edits = [{
+            "file": row["file"],
+            "old_snippet": row["old_snippet"],
+            "new_snippet": row["new_snippet"],
+            "explanation": row["explanation"] or "",
+            "file_sha256": row["file_sha256"] or "",
+        }]
+    return {"seq": row["seq"], "commit_msg": row["commit_msg"] or "",
+            "reason": row["reason"] or "", "dt": row["dt"] or "",
+            "edits": edits}
 
 
 def clear_proposal(report_path: Path | str, finding,
