@@ -17,7 +17,7 @@ from pathlib import Path
 from common import ROOT
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS base_commit (
@@ -67,6 +67,7 @@ CREATE TABLE proposal_commit (
     issue_id     INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
     seq          INTEGER NOT NULL DEFAULT 1,
     file         TEXT NOT NULL,
+    edits_json   TEXT,
     old_snippet  TEXT NOT NULL,
     new_snippet  TEXT NOT NULL,
     explanation  TEXT NOT NULL DEFAULT '',
