@@ -620,7 +620,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
     # In --apply mode we'll bump it to 'fixed' after the commit;
     # in dry-run it stays 'proposed-to-fix' until someone runs --apply.
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
-    ctx["ready"] = ctx.get("ready", 0) + 1
+    ctx["ready"] +=1
     
     if not args.apply:
         print("  [dry-run] not applied")
