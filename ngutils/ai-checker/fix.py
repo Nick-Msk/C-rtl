@@ -127,6 +127,12 @@ Rules for each entry in "edits":
 - Do NOT reformat surrounding code, add comments, or add blank lines.
 - Do NOT touch anything outside the single function body (or the
   single comment block attached to a declaration).
+- "count" (optional, default 1): the exact number of times old_snippet
+  appears in that file and must be replaced. Use count > 1 ONLY when
+  the SAME replacement applies to copy-pasted occurrences of the SAME
+  text (e.g. an identical @param doc-comment in N functions). The model
+  MUST count exactly; validate_edits will reject if the count does not
+  match.
 
 Rules for the list itself:
 - If there is ONE entry, that file is the only file changed.
