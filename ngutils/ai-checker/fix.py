@@ -749,8 +749,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
     ctx["ready"] +=1
     
     if not args.apply:
-        print(f"  [dry-run] cached proposal from {pending['dt']}")
-        ctx["ready"] += 1
+        print("  [dry-run] not applied (saved as proposal)")
         return
 
     if not args.yes:
