@@ -132,6 +132,7 @@ inv_double_bool(FILE *out, double res, double val)
 bool
 inv_str_bool(FILE *out, const char *res, const char *val)
 {
+    /* "expected" = val, "got" = res; do NOT swap argument order. */
     if (res == val)
         return true;                              /* both NULL */
     if (res && val && strcmp(res, val) == 0)
