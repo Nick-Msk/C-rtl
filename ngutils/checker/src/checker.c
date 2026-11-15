@@ -17,7 +17,7 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 static const char *const versions[] = {
-    CHECKER_VERSION,   /* current — always computed from macros */
+    CHECKER_VERSION,   /* index 0 = current — always computed from macros */
     NULL
 };
 
