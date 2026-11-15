@@ -186,7 +186,7 @@ Test(checker, checkraise_printf_args_sigint, .signal = SIGABRT) {
     invfatal(ERR_OUT_OF_RANGE, x > 0, "x=%d must be positive", x);
 }
 
-Test(checker, checkraise_catched_by_try, .signal = SIGABRT) {
+Test(checker, checkraise_caught_by_try, .signal = SIGABRT) {
     /* Active TRY() →  SIGABRT */
     int caught = 0;
     TRY() {
