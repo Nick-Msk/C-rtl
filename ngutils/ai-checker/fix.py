@@ -662,159 +662,161 @@ def _clear_proposal(report_path: Path, finding: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal clear failed: {exc}", file=sys.stderr)
 
-def _handle_finding(idx: int, total: int, finding: dict,
-                    project: Path, report_path: Path, files: list[Path],
-                    args, model: str,
-                    ctx: dict,
-                    applied: list[dict], skipped: list[str],
-                    needs_review: list[dict]) -> None:
-    
+def _print_finding_header(finding: dict, idx: int, total: int) -> str:
     try:
-        _c, _l = db.issue_key(finding)
-        key = f"{_c}/{_l}"
+        c, l = db.issue_key(finding)
+        key = f"{c}/{l}"
     except (ValueError, TypeError):
         key = finding.get("id", "?")
     print(f"\n=== Finding {key}  ({idx}/{total})  "
           f"[{finding['section']}] ===")
-    
     print(f"  {finding['text'][:200].replace(chr(10), ' ')}...")
-    if not files:
-        print("  SKIP: no source files to work with")
-        skipped.append(finding["text"][:80])
-        return
+    return key
 
-    pending = None
+def _resolve_edits(finding: dict, key: str, project: Path,
+                   report_path: Path, files: list[Path],
+                   args, model: str, ctx: dict,
+                   needs_review: list[dict], skipped: list[str]):
+    """Return outcome dict, or None if this finding was already
+    recorded (skip / failed / needs_review)."""
     if not args.refetch:
-        try:
-            pending = db.load_proposal(report_path, finding)
-        except Exception as exc:  # noqa: BLE001
-            print(f"  warn: proposal load failed: {exc}", file=sys.stderr)
+        pending = _load_pending(report_path, finding)
+        if pending is not None:
+            return _validate_cached(pending, finding, key,
+                                    project, report_path, args, ctx, skipped)
 
-    if pending is not None:
-        if args.apply:
-            # Проверить file_sha256 — единственная быстрая проверка
-            try:
-                cur = hashlib.sha256(
-                    (ROOT / pending["file"]).read_text(
-                        encoding="utf-8").encode()).hexdigest()
-            except OSError as e:
-                print(f"  STALE proposal: cannot read {pending['file']}: {e}")
-                print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-                      f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
-                # db.clear_proposal(report_path, finding)
+    return _classify_with_llm(finding, key, project, report_path, files,
+                              args, model, ctx, needs_review, skipped)
+
+def _load_pending(report_path: Path, finding: dict) -> dict | None:
+    try:
+        return db.load_proposal(report_path, finding)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: proposal load failed: {exc}", file=sys.stderr)
+        return None
+
+def _validate_cached(pending: dict, finding: dict, key: str,
+                     project: Path, report_path: Path,
+                     args, ctx: dict, skipped: list[str]):
+    """Verify cached proposal is still valid; return outcome or None."""
+    if args.apply:
+        for e in pending["edits"]:
+            msg, reason = _check_file_freshness(e, pending["dt"], key)
+            if msg is not None:
+                print(msg)
+                skipped.append(f"{key}: {reason}")
                 _db_set(report_path, finding, db.STATUS_FAILED,
-                        reason=f"stale: OS {e}")
-                return
-            if cur != pending["file_sha256"]:
-                print(f"  STALE proposal: {pending['file']} changed since "
-                      f"dry-run ({pending['dt']})")
-                print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-                      f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
-                # db.clear_proposal(report_path, finding)
-                _db_set(report_path, finding, db.STATUS_FAILED,
-                        reason="stale: file changed")
-                return
+                        reason=reason)
+                return None
 
-        if args.apply:
-            for e in pending["edits"]:
-                try:
-                    cur = hashlib.sha256(
-                        (ROOT / e["file"]).read_text(
-                            encoding="utf-8").encode()).hexdigest()
-                except OSError as exc:
-                    print(f"  STALE proposal: cannot read {e['file']}: {exc}")
-                    _db_set(report_path, finding, db.STATUS_FAILED,
-                            reason=f"stale: {exc}")
-                    return
-                if cur != e.get("file_sha256"):
-                    print(f"  STALE proposal: {e['file']} changed since "
-                          f"dry-run ({pending['dt']})")
-                    print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-                          f"FIXLIST=\"{key}\"' to reclassify")
-                    _db_set(report_path, finding, db.STATUS_FAILED,
-                            reason="stale: file changed")
-                    return
-        parsed, err = validate_edits(pending["edits"], project,
-                                     max_diff_lines=ctx["max_diff_lines"])
-        if err:
-            print(f"  STALE proposal ({err})")
-            print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-                              f"FIXLIST=\"{finding.get('id', '?')}\"' to reclassify")
-            _db_set(report_path, finding, db.STATUS_FAILED,
-                    reason=f"stale: {err}")
-            return
+    parsed, err = validate_edits(pending["edits"], project,
+                                 max_diff_lines=ctx["max_diff_lines"])
+    if err:
+        print(f"  STALE proposal ({err})")
+        print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+              f"FIXLIST=\"{key}\"' to reclassify")
+        skipped.append(f"{key}: stale: {err}")
+        _db_set(report_path, finding, db.STATUS_FAILED,
+                reason=f"stale: {err}")
+        return None
 
-        reason = pending["reason"]
-        explanation = "; ".join(e.get("explanation", "")
-                                for e in pending["edits"] if e.get("explanation"))
-        diff = make_diff([(p, e["old_snippet"], e["new_snippet"])
-                          for p, e in parsed])
-        print(f"  LOCAL (cached {pending['dt']}): {explanation}")
-        for line in diff.splitlines():
-            print(f"    {line}")
+    explanation = "; ".join(
+        e.get("explanation", "") for _, e in parsed
+        if e.get("explanation"))
+    return {
+        "edits": parsed,
+        "reason": pending["reason"],
+        "explanation": explanation,
+        "commit_msg": pending["commit_msg"],
+        "source": "cached",
+        "dt": pending["dt"],
+    }
 
-        if not args.apply:
-            print(f"  [dry-run] cached proposal from {pending['dt']}")
-            ctx["ready"] += 1
-            return
+def _check_file_freshness(e: dict, dt: str, key: str):
+    """Return (message, reason_short) if file changed, else (None, None)."""
+    path = ROOT / e["file"]
+    try:
+        cur = hashlib.sha256(
+            path.read_text(encoding="utf-8").encode()).hexdigest()
+    except OSError as exc:
+        return (f"  STALE proposal: cannot read {e['file']}: {exc}",
+                f"stale: {exc}")
+    if cur != e.get("file_sha256"):
+        return ((f"  STALE proposal: {e['file']} changed since "
+                f"dry-run ({dt})\n"
+                f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
+                f"FIXLIST=\"{key}\"' to reclassify"),
+                "stale: file changed")
+    return None, None
 
-        if not args.yes:
-            try:
-                ans = input("  Apply and commit? [y/N/q] ").strip().lower()
-            except EOFError:
-                ans = "n"
-            if ans == "q":
-                sys.exit(0)
-            if ans != "y":
-                print("  skipped by user")
-                skipped.append(finding.get("id", "?") + ": user")
-                # db.clear_proposal(report_path, finding)
-                _db_set(report_path, finding, db.STATUS_REJECTED,
-                        reason="user rejected")
-                return
+def _classify_with_llm(finding: dict, key: str, project: Path,
+                       report_path: Path, files: list[Path],
+                       args, model: str, ctx: dict,
+                       needs_review: list[dict], skipped: list[str]):
+    """Ask the model; return outcome for LOCAL, else record and None."""
+    verdict, err = _ask_classifier(finding, project, files, args, model, ctx)
+    if err is not None:
+        print(f"  SKIP: {err}")
+        skipped.append(f"{key}: {err}")
+        _db_set(report_path, finding, db.STATUS_FAILED, reason=err)
+        return None
 
-        ctx["seq"] += 1
-        branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
-        commit_edits = [(p, e["old_snippet"], e["new_snippet"])
-                        for p, e in parsed]
-        try:
-            sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"],
-                                 branch, commit_edits, pending["commit_msg"])
-        except RuntimeError as exc:
-            print(f"  SKIP: {exc}")
-            skipped.append(f"{key}: {exc}")
-            return
+    cls = verdict.get("class", "needs_review")
+    reason = verdict.get("reason", "")
 
-        files = [str(p.relative_to(ROOT)) for p, _ in parsed]
-        print(f"  COMMITTED {sha}  {branch}  {', '.join(files)}")
-        applied.append({
-            "id": finding.get("id", "?"),
-            "section": finding["section"],
-            "sha": sha,
-            "branch": branch,
-            "file": ", ".join(files),
-            "summary": finding["text"].splitlines()[0][:70],
-            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
-                       "count": int(e.get("count", 1))}
-                      for e in pending["edits"]],
-        })
-        # db.clear_proposal(report_path, finding)
-        _db_set(report_path, finding, db.STATUS_FIXED,
-                reason=reason, fix_branch=branch, fix_commit=sha)
-        return
+    if cls != "local":
+        print(f"  NEEDS REVIEW: {reason}")
+        if verdict.get("direction"):
+            print(f"    direction: {verdict['direction']}")
+        needs_review.append(finding | {"verdict": verdict})
+        _db_set(report_path, finding, db.STATUS_ANALYZE,
+                reason=reason, direction=verdict.get("direction"))
+        return None
 
+    raw_edits = verdict.get("edits")
+    if not raw_edits:
+        single = verdict.get("edit")
+        raw_edits = [single] if single else []
+
+    parsed, verr = validate_edits(raw_edits, project,
+                                  max_diff_lines=ctx["max_diff_lines"])
+    if verr:
+        print(f"  SKIP (invalid edit): {verr}")
+        skipped.append(f"{key}: {verr}")
+        _db_set(report_path, finding, db.STATUS_FAILED,
+                reason=f"invalid edit: {verr}")
+        return None
+
+    explanation = "; ".join(
+        e.get("explanation", "") for _, e in parsed
+        if e.get("explanation"))
+    rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
+    commit_msg = _build_commit_msg(finding, ", ".join(rels),
+                                   reason, explanation)
+
+    _save_proposal(report_path, finding, parsed, commit_msg, reason)
+    _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
+
+    return {
+        "edits": parsed,
+        "reason": reason,
+        "explanation": explanation,
+        "commit_msg": commit_msg,
+        "source": "llm",
+        "dt": None,
+    }
+
+def _ask_classifier(finding: dict, project: Path, files: list[Path],
+                    args, model: str, ctx: dict):
+    """Return (verdict_dict, None) or (None, error_string)."""
     chunk_usage: dict = {}
     try:
-        raw = ask_model(args.base_url, model,
-                        build_prompt(finding, project, files,
-                                     budget=ctx["max_source"]),
-                        usage_out=chunk_usage)
-    except requests.RequestException as e:
-        print(f"  SKIP: LLM request failed: {e}")
-        skipped.append(finding["text"][:80])
-        _db_set(report_path, finding, db.STATUS_FAILED,
-                reason=f"LLM: {e}")
-        return
+        raw = ask_model(
+            args.base_url, model,
+            build_prompt(finding, project, files, budget=ctx["max_source"]),
+            usage_out=chunk_usage)
+    except requests.RequestException as exc:
+        return None, f"LLM: {exc}"
 
     for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
         ctx["usage"][k] += chunk_usage.get(k, 0)
@@ -825,50 +827,13 @@ def _handle_finding(idx: int, total: int, finding: dict,
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
     try:
-        verdict = json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"  SKIP: invalid JSON: {raw[:120]!r}")
-        skipped.append(finding["text"][:80])
-        _db_set(report_path, finding, db.STATUS_FAILED, reason=f"bad JSON {e}");
+        return json.loads(raw), None
+    except json.JSONDecodeError as exc:
+        return None, f"bad JSON: {exc}"
 
-        return
-
-    cls = verdict.get("class", "needs_review")
-    reason = verdict.get("reason", "")
-
-    if cls != "local":
-        print(f"  NEEDS REVIEW: {reason}")
-        if verdict.get("direction"):
-            print(f"    direction: {verdict['direction']}")
-        needs_review.append(finding | {"verdict": verdict})
-        _db_set(report_path, finding, db.STATUS_ANALYZE, reason=reason, direction=verdict.get("direction"))
-
-        return
-
-    raw_edits = verdict.get("edits")
-    if not raw_edits:
-        single = verdict.get("edit")
-        raw_edits = [single] if single else []
-    parsed, err = validate_edits(raw_edits, project,
-                                 max_diff_lines=ctx["max_diff_lines"])
-    if err:
-        print(f"  SKIP (invalid edit): {err}")
-        skipped.append(f"{key}: {err}")
-        _db_set(report_path, finding, db.STATUS_FAILED,
-                reason=f"invalid edit: {err}")
-        return
-
-    explanations = [e.get("explanation", "") for _, e in parsed]
-    explanation = "; ".join(x for x in explanations if x)
-    diff = make_diff([
-        (p, e["old_snippet"], e["new_snippet"], int(e.get("count", 1)))
-        for p, e in parsed
-    ])
-
-    print(f"  LOCAL: {explanation}")
-    for line in diff.splitlines():
-        print(f"    {line}")
-
+def _save_proposal(report_path: Path, finding: dict,
+                   parsed: list[tuple[Path, dict]],
+                   commit_msg: str, reason: str) -> None:
     proposal_edits = []
     for p, e in parsed:
         try:
@@ -883,29 +848,46 @@ def _handle_finding(idx: int, total: int, finding: dict,
             "explanation": e.get("explanation", ""),
             "count": int(e.get("count", 1)),
             "file_sha256": sha256,
-            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
-                       "count": int(e.get("count", 1))}
-                      for e in pending["edits"]],
         })
-
-    rels = [e["file"] for e in proposal_edits]
-    commit_msg = _build_commit_msg(finding, ", ".join(rels),
-                                    reason, explanation)
     try:
-        db.save_proposal(
-            report_path, finding,
-            edits=proposal_edits,
-            commit_msg=commit_msg,
-            reason=reason,
-        )
+        db.save_proposal(report_path, finding,
+                         edits=proposal_edits,
+                         commit_msg=commit_msg, reason=reason)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
 
-    _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
-    ctx["ready"] +=1
-    
+def _apply_or_report(outcome: dict, finding: dict, key: str,
+                     project: Path, report_path: Path,
+                     args, ctx: dict,
+                     applied: list[dict], skipped: list[str]) -> None:
+    """Show diff; in --apply mode: confirm, commit, record status.
+
+    This is the ONLY place where dry-run/commit/reject logic lives,
+    so cached and LLM outcomes cannot diverge.
+    """
+    parsed = outcome["edits"]
+    reason = outcome["reason"]
+    explanation = outcome["explanation"]
+    commit_msg = outcome["commit_msg"]
+
+    header = (f"  LOCAL (cached {outcome['dt']}): {explanation}"
+              if outcome["source"] == "cached"
+              else f"  LOCAL: {explanation}")
+
+    diff = make_diff([
+        (p, e["old_snippet"], e["new_snippet"], int(e.get("count", 1)))
+        for p, e in parsed
+    ])
+    print(header)
+    for line in diff.splitlines():
+        print(f"    {line}")
+
     if not args.apply:
-        print("  [dry-run] not applied (saved as proposal)")
+        if outcome["source"] == "cached":
+            print(f"  [dry-run] cached proposal from {outcome['dt']}")
+        else:
+            print("  [dry-run] not applied (saved as proposal)")
+        ctx["ready"] += 1
         return
 
     if not args.yes:
@@ -917,44 +899,67 @@ def _handle_finding(idx: int, total: int, finding: dict,
             sys.exit(0)
         if ans != "y":
             print("  skipped by user")
-            skipped.append(finding["text"][:80])
-            _db_set(report_path, finding,
-                        db.STATUS_REJECTED,
-                        reason="user rejected")
-            
+            skipped.append(f"{key}: user")
+            _db_set(report_path, finding, db.STATUS_REJECTED,
+                    reason="user rejected")
             return
 
-        ctx["seq"] += 1
-        branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
-        commit_edits = [(p, e["old_snippet"], e["new_snippet"])
-                        for p, e in parsed]
-        try:
-            sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
-                                commit_edits, commit_msg)
-        except RuntimeError as exc:
-            print(f"  SKIP: {exc}")
-            skipped.append(f"{key}: {exc}")
-            return
-
-        print(f"  COMMITTED {sha}  {branch}  {', '.join(rels)}")
-        applied.append({
-            "id": finding.get("id", "?"),
-            "section": finding["section"],
-            "sha": sha,
-            "branch": branch,
-            "file": ", ".join(rels),
-            "summary": finding["text"].splitlines()[0][:70],
-            "edits": [{"file": e["file"], "explanation": e.get("explanation", ""),
-                       "count": int(e.get("count", 1))}
-                      for e in pending["edits"]],
-        })
-        _db_set(report_path, finding, db.STATUS_FIXED,
-                reason=reason, fix_branch=branch, fix_commit=sha)
-        _db_set(report_path, finding, db.STATUS_FIXED,
-                reason=reason, fix_branch=branch, fix_commit=sha)
+    ctx["seq"] += 1
+    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+    commit_edits = [(p, e["old_snippet"], e["new_snippet"])
+                    for p, e in parsed]
+    try:
+        sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
+                             commit_edits, commit_msg)
+    except RuntimeError as exc:
+        print(f"  SKIP: {exc}")
+        skipped.append(f"{key}: {exc}")
         return
-    _db_set(report_path, finding, db.STATUS_FIXED, reason=reason, 
-            fix_branch=branch, fix_commit=sha)
+
+    files = [str(p.relative_to(ROOT)) for p, _ in parsed]
+    print(f"  COMMITTED {sha}  {branch}  {', '.join(files)}")
+    applied.append({
+        "id": finding.get("id", "?"),
+        "section": finding["section"],
+        "sha": sha,
+        "branch": branch,
+        "file": ", ".join(files),
+        "summary": finding["text"].splitlines()[0][:70],
+        "edits": [{
+            "file": str(p.relative_to(ROOT)),
+            "explanation": e.get("explanation", ""),
+            "count": int(e.get("count", 1)),
+        } for p, e in parsed],
+    })
+    _db_set(report_path, finding, db.STATUS_FIXED,
+            reason=reason, fix_branch=branch, fix_commit=sha)
+
+def _handle_finding(idx: int, total: int, finding: dict,
+                    project: Path, report_path: Path, files: list[Path],
+                    args, model: str, ctx: dict,
+                    applied: list[dict], skipped: list[str],
+                    needs_review: list[dict]) -> None:
+    """Classify one finding and either report it or commit a fix.
+
+    Pipeline:
+      _print_finding_header  -> display
+      _resolve_edits         -> cached proposal or LLM (returns outcome)
+      _apply_or_report       -> dry-run print / apply commit / reject
+    """
+    key = _print_finding_header(finding, idx, total)
+    if not files:
+        print("  SKIP: no source files to work with")
+        skipped.append(finding.get("id", "?") + ": no files")
+        return
+
+    outcome = _resolve_edits(finding, key, project, report_path, files,
+                             args, model, ctx, needs_review, skipped)
+    if outcome is None:
+        return
+
+    _apply_or_report(outcome, finding, key, project, report_path,
+                     args, ctx, applied, skipped)
+    
 
 def _write_fix_report(label: str, source_report: Path, started: datetime,
                       duration: float, ctx: dict, args,
