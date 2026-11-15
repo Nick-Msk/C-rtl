@@ -260,8 +260,15 @@ def make_run_id(label: str) -> str:
     return f"{base}{n}"
 
 
-def make_fix_branch_name(run_id: str, seq: int) -> str:
-    return f"{run_id}-{seq}"
+def make_fix_branch_name(run_id: str, seq: int,
+                         chunk_id: int, local_id: int) -> str:
+    """<run_id>-<seq>/<chunk_id>-<local_id>.
+
+    The '/<chunk>-<local>' suffix makes the branch self-documenting
+    (which finding it fixes) and unambiguous across chunks. Git
+    supports '/' in ref names; `git branch -D` and `git log` work.
+    """
+    return f"{run_id}-{seq}/{chunk_id}-{local_id}"
 
 
 def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
@@ -927,15 +934,16 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
         return
 
     ctx["seq"] += 1
-    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
+    try:
+        chunk_id, local_id = db.issue_key(finding)
+    except (ValueError, TypeError):
+        chunk_id, local_id = 0, 0
+    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"],
+                                  chunk_id, local_id)
     commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                     for p, e in parsed]
     files = [str(p.relative_to(ROOT)) for p, _ in parsed]
-
-    try:
-        local_id = db.issue_key(finding)[1]
-    except (ValueError, TypeError):
-        local_id = 0
+    
     commit_msg = _build_commit_msg(
         finding, ", ".join(files), reason, explanation,
         commit_subject=outcome.get("commit_subject", ""),
