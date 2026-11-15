@@ -36,10 +36,10 @@ FORBIDDEN_ROOT_NAMES = {"Makefile", "Makefile.common", "Doxyfile",
                         "Dockerfile.dev", "README.md", "CHANGELOG.md",
                         "DISCLAIMER.md", "LICENSE", ".gitignore"}
 
-# ── Limits ───────────────────────────────────────────────────────────
-MAX_CHARS = 80_000          # chunk budget for check.py
-MAX_SOURCE_CHARS = 100_000  # source budget for fix.py prompt
-DEFAULT_LIMIT = 50          # findings per project in fix.py
+# ── Limits (defaults; live values come from db.params) ─────────────
+MAX_CHARS = 80_000          # chunk budget for check.py - check.max_chars
+MAX_SOURCE_CHARS = 100_000  # source budget for fix.py prompt - fix.max_source_chars
+DEFAULT_LIMIT = 50          # findings per project in fix.py - fix.default_limit
 
 # ── Finding-format regexes (shared by renumber and parse) ───────────
 PART_RE = re.compile(r"^##[ \t]+Part[ \t]+(\d+)/\d+", re.MULTILINE)

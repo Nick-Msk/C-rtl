@@ -52,7 +52,8 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
 		ai-fix ai-fix-commit ai-fix-file ai-fix-commit-file 			\
         $(addprefix ai-fix-,$(PROJECTS)) 								\
         $(addprefix ai-fix-commit-,$(PROJECTS))							\
-		ai-status $(addprefix ai-status-,$(PROJECTS))
+		ai-status $(addprefix ai-status-,$(PROJECTS))					\
+		ai-config ai-config-set
 
 help:
 	@echo "ngutils dispatcher"
@@ -88,6 +89,10 @@ help:
 	@echo "  FIXLIST=\"1/1, 1/7\"       process only these finding ids (from the report)"
 	@echo "  AI_FIX_YES=1             	skip per-fix confirmation prompt"
 	@echo "  AI_FIX_LIMIT=N           	cap when FIXLIST is not set (default 50)"
+	@echo ""
+	@echo "  make ai-config           list tunable params from check.db"
+	@echo "  make ai-config-set CATEGORY=check NAME=max_chars VALUE=120000"
+	@echo "                           (omit VALUE to reset to default)"
 	@echo ""
 	@echo "  make clean            		clean all projects"
 	@echo "  make install          		install libngutils.a + headers to PREFIX"
@@ -321,6 +326,19 @@ ai-status:
 $(addprefix ai-status-,$(PROJECTS)): ai-status-%:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
+
+AI_CONFIG := params.py
+
+ai-config:
+	@cd $(CURDIR)/$(AI_CHECKER) && uv run python $(AI_CONFIG) $(AI_CONFIG_ARGS)
+
+ai-config-set:
+	@test -n "$(CATEGORY)" -a -n "$(NAME)" || { \
+	    echo "usage: make ai-config-set CATEGORY=<cat> NAME=<name> [VALUE=<v>]" >&2; \
+	    echo "       omit VALUE to reset to default" >&2; \
+	    exit 1; }
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+	    uv run python $(AI_CONFIG) set $(CATEGORY) $(NAME) $(VALUE)
 
 # --- docs ---
 

@@ -407,12 +407,16 @@ def _run_checks(args, model, jobs) -> int:
           f"cpu={sysinfo['cpu']} ({sysinfo['cores']})  "
           f"ram={sysinfo['ram']}", file=sys.stderr)
 
+    db.seed_defaults()
+    max_chars = db.get_param("check", "max_chars", MAX_CHARS)
+
     for name, files in jobs:
         if not files:
             print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
             continue
-        chunks = chunk_files(files, project_name=name,
-                        full_headers=args.full_headers)
+        chunks = chunk_files(files, budget=max_chars,
+                             project_name=name,
+                             full_headers=args.full_headers)
 
         # '--no-tests' is only meaningful for project mode; in file mode
         # the single file is whatever the user pointed at, tag it as-is.

@@ -19,6 +19,14 @@ from common import ROOT
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 SCHEMA_VERSION = 4
 
+
+DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
+    ("check", "max_chars"):        80_000,
+    ("fix",   "max_source_chars"): 100_000,
+    ("fix",   "default_limit"):     50,
+    ("fix",   "max_diff_lines"):    20,
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS base_commit (
     sha         TEXT PRIMARY KEY,
@@ -435,4 +443,76 @@ def clear_proposal(report_path: Path | str, finding,
                 "    AND chunk_id = ? AND local_id = ?)",
                 (seq, rel, chunk_id, local_id))
         return cur.rowcount
-    
+
+def _seed_params(con: sqlite3.Connection) -> None:
+    """Insert missing default params. Idempotent."""
+    now = _now_iso()
+    for (cat, name), default in DEFAULTS.items():
+        con.execute(
+            "INSERT OR IGNORE INTO params "
+            "(category, name, value, default_value, dt) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (cat, name, str(default), str(default), now))
+
+def seed_defaults() -> None:
+    """Public entry point: ensure all known params exist.
+
+    Best-effort: a failure here must not abort a run — callers always
+    have their in-code defaults as a fallback. We log once, so a
+    persistent problem (corrupt DB, read-only mount) is visible.
+    """
+    try:
+        with connect() as con:
+            _seed_params(con)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: seed_defaults failed: {exc}",
+              file=sys.stderr)
+
+
+def get_param(category: str, name: str, default):
+    """Return typed value from params. Falls back to `default`."""
+    try:
+        with connect() as con:
+            row = con.execute(
+                "SELECT value FROM params "
+                "WHERE category = ? AND name = ?",
+                (category, name)).fetchone()
+        if not row:
+            return default
+        raw = row["value"]
+        if isinstance(default, bool):
+            return raw.lower() in ("1", "true", "yes", "y", "on")
+        if isinstance(default, int):
+            return int(raw)
+        if isinstance(default, float):
+            return float(raw)
+        return raw
+    except Exception:  # noqa: BLE001
+        return default
+
+
+def set_param(category: str, name: str, value) -> bool:
+    """Update value. If `value` is None, reset to default_value."""
+    try:
+        with connect() as con:
+            if value is None:
+                cur = con.execute(
+                    "UPDATE params SET value = default_value, dt = ? "
+                    "WHERE category = ? AND name = ?",
+                    (_now_iso(), category, name))
+            else:
+                cur = con.execute(
+                    "UPDATE params SET value = ?, dt = ? "
+                    "WHERE category = ? AND name = ?",
+                    (str(value), _now_iso(), category, name))
+            return cur.rowcount > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def all_params() -> list[dict]:
+    with connect() as con:
+        rows = con.execute(
+            "SELECT category, name, value, default_value, dt "
+            "FROM params ORDER BY category, name").fetchall()
+    return [dict(r) for r in rows]

@@ -318,14 +318,14 @@ def latest_report_for_file(stem: str) -> Path | None:
     reports = sorted(d.glob(f"*_{stem}*.md"))
     return reports[-1] if reports else None
 
-def build_prompt(finding: dict, project: Path, files: list[Path]) -> str:
+def build_prompt(finding: dict, project: Path, files: list[Path],
+                 budget: int = MAX_SOURCE_CHARS) -> str:
     parts = [f"Project: {project.name}",
              f"Section: {finding['section']}",
              "Finding:",
              finding["text"],
              "",
              "Source files:"]
-    budget = MAX_SOURCE_CHARS
 
     # Prepend the pre-extracted type digest. This is what check.py
     # showed the reviewing model; the classifier must see it too.
@@ -428,7 +428,8 @@ def _is_paired(a: Path, b: Path) -> bool:
                     {".cc", ".hpp"}, {".cxx", ".hpp"})
 
 
-def validate_edits(edits: list[dict], project: Path
+def validate_edits(edits: list[dict], project: Path,
+                   max_diff_lines: int = MAX_DIFF_LINES
                    ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
     """Validate 1 or 2 edits. Two edits must be a paired .c/.h.
 
@@ -506,9 +507,9 @@ def validate_edits(edits: list[dict], project: Path
     for p, e in parsed:
         a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
         weighted += (a + r) * int(e.get("count", 1))
-    if weighted > MAX_DIFF_LINES:
+    if weighted > max_diff_lines:
         return None, (f"diff too large ({weighted} weighted lines "
-                      f"> {MAX_DIFF_LINES})")
+                      f"> {max_diff_lines})")
     
     return parsed, None
 
@@ -733,7 +734,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
                     _db_set(report_path, finding, db.STATUS_FAILED,
                             reason="stale: file changed")
                     return
-        parsed, err = validate_edits(pending["edits"], project)
+        parsed, err = validate_edits(pending["edits"], project,
+                                     max_diff_lines=ctx["max_diff_lines"])
         if err:
             print(f"  STALE proposal ({err})")
             print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
@@ -801,9 +803,12 @@ def _handle_finding(idx: int, total: int, finding: dict,
                 reason=reason, fix_branch=branch, fix_commit=sha)
         return
 
+    chunk_usage: dict = {}
     try:
         raw = ask_model(args.base_url, model,
-                        build_prompt(finding, project, files))
+                        build_prompt(finding, project, files,
+                                     budget=ctx["max_source"]),
+                        usage_out=chunk_usage)
     except requests.RequestException as e:
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
@@ -840,7 +845,8 @@ def _handle_finding(idx: int, total: int, finding: dict,
     if not raw_edits:
         single = verdict.get("edit")
         raw_edits = [single] if single else []
-    parsed, err = validate_edits(raw_edits, project)
+    parsed, err = validate_edits(raw_edits, project,
+                                 max_diff_lines=ctx["max_diff_lines"])
     if err:
         print(f"  SKIP (invalid edit): {err}")
         skipped.append(f"{key}: {err}")
@@ -1066,6 +1072,11 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
 
         run_id = (make_run_id(label) if args.apply
                           else f"ai-checker-{label}-fix<N>")
+
+        db.seed_defaults()
+        max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
+        max_diff = db.get_param("fix", "max_diff_lines", MAX_DIFF_LINES)
+
         ctx = {
             "run_id": run_id,
             "base_sha": base_sha,
@@ -1076,6 +1087,8 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0,
                       "total_tokens": 0, "requests": 0},
             "finding_durs": [],
+            "max_source": max_source,
+            "max_diff_lines": max_diff,
         }
 
         # Skip findings already resolved in a previous run, unless
@@ -1217,9 +1230,11 @@ def main() -> int:
                          "(default: dry-run)")
     ap.add_argument("--yes", action="store_true",
                     help="skip per-fix confirmation (use with --apply)")
-    ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
+    db.seed_defaults()
+    default_limit = db.get_param("fix", "default_limit", DEFAULT_LIMIT)
+    ap.add_argument("--limit", type=int, default=default_limit,
                     help=f"max findings when --only is not set "
-                         f"(default {DEFAULT_LIMIT}, 0 = unlimited)")
+                         f"(default {default_limit}, 0 = unlimited)")
     ap.add_argument("--only", default="",
                     help="FIXLIST: '1/1, 1/3-5, 1/1001-1011, 1/*, *'. "
                          "chunk/local; local>=1000 = Мелочи. default: all")
