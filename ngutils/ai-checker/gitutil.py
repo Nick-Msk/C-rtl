@@ -21,24 +21,41 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def _list(prefix: str) -> tuple[list[str], list[str]]:
-    """Return (merged, unmerged) branches whose short name starts
-    with prefix. Excludes the current branch (git refuses to delete it
-    anyway, but we skip it for cleanliness of output)."""
-    head = _git("rev-parse", "--abbrev-ref", "HEAD", check=False)
-    current = head.stdout.strip() if head.returncode == 0 else ""
+    """Return (merged, unmerged) branches matching '<prefix>*'.
 
-    def collect(flag: str) -> list[str]:
-        r = _git("branch", flag, "--format=%(refname:short)", check=False)
-        if r.returncode != 0:
-            return []
-        return [b for b in r.stdout.splitlines()
-                if b and b != current and b.startswith(prefix)]
-
+    Uses for-each-ref (all branches) filtered in Python by prefix,
+    then git merge-base --is-ancestor to classify merged vs unmerged.
+    Both are portable across git versions; avoids the fragile
+    --list/--merged/--format combination that returns empty output
+    on some macOS git builds.
+    """
+    current_r = _git("rev-parse", "--abbrev-ref", "HEAD", check=False)
+    current = current_r.stdout.strip() if current_r.returncode == 0 else ""
     if current == "HEAD":
         print("warn: detached HEAD; all branches treated as unmerged",
               file=sys.stderr)
-        return [], collect("--no-merged") + collect("")
-    return collect("--merged"), collect("--no-merged")
+        current = ""
+
+    r = _git("for-each-ref", "--format=%(refname:short)",
+             "refs/heads/", check=False)
+    if r.returncode != 0:
+        print(f"warn: for-each-ref failed: {r.stderr.strip()}",
+              file=sys.stderr)
+        return [], []
+
+    branches = [b.strip() for b in r.stdout.splitlines() if b.strip()]
+    branches = [b for b in branches
+                if b != current and b.startswith(prefix)]
+
+    merged: list[str] = []
+    unmerged: list[str] = []
+    for b in branches:
+        mb = _git("merge-base", "--is-ancestor", b, "HEAD", check=False)
+        if mb.returncode == 0:
+            merged.append(b)
+        else:
+            unmerged.append(b)
+    return merged, unmerged
 
 
 def _print_list(label: str, branches: list[str]) -> None:
