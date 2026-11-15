@@ -668,7 +668,7 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
         # Branch name already contains the finding ref (<run_id>/<chunk>-<local>),
         # so no extra /<local_id> — that would duplicate it.
         header += f" ({branch})"
-        
+
     body = (f"Section: {finding['section']}\n"
             f"Finding: {finding.get('id', '?')}\n"
             f"File:    {rel}\n"
@@ -678,6 +678,19 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
             f"{body}\n"
             f"Full finding:\n{finding['text']}\n\n"
             f"Applied by ai-checker/fix.py\n")
+
+_TERMINAL = {db.STATUS_FIXED, db.STATUS_REJECTED}
+
+def _db_set_if_not_fixed(report_path: Path, finding: dict,
+                         status: str, **kw) -> None:
+    """_db_set, but never downgrades fixed/rejected to something else."""
+    try:
+        cur = db.get_status(report_path, finding)
+    except Exception:  # noqa: BLE001
+        cur = None
+    if cur in _TERMINAL:
+        return
+    _db_set(report_path, finding, status, **kw)
 
 def _db_set(report_path: Path, finding: dict, status: str,
             **kw) -> None:
@@ -711,7 +724,7 @@ def _resolve_edits(finding: dict, key: str, project: Path,
                    needs_review: list[dict], skipped: list[str]):
     """Return outcome dict, or None if this finding was already
     recorded (skip / failed / needs_review)."""
-    if not args.refetch:
+    if not (args.refetch or args.reprocess):
         pending = _load_pending(report_path, finding)
         if pending is not None:
             return _validate_cached(pending, finding, key,
@@ -737,8 +750,8 @@ def _validate_cached(pending: dict, finding: dict, key: str,
             if msg is not None:
                 print(msg)
                 skipped.append(f"{key}: {reason}")
-                _db_set(report_path, finding, db.STATUS_FAILED,
-                        reason=reason)
+                _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
+                                     reason=reason)
                 return None
 
     parsed, err = validate_edits(pending["edits"], project,
@@ -748,8 +761,8 @@ def _validate_cached(pending: dict, finding: dict, key: str,
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
               f"FIXLIST=\"{key}\"' to reclassify")
         skipped.append(f"{key}: stale: {err}")
-        _db_set(report_path, finding, db.STATUS_FAILED,
-                reason=f"stale: {err}")
+        _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
+                                     reason=reason)
         return None
 
     explanation = "; ".join(
@@ -1148,10 +1161,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             "max_diff_lines": max_diff,
         }
 
-        # Skip findings already resolved in a previous run, unless
-        # --reprocess is given. Only makes sense with --apply: dry-run
-        # should show everything.
-        if args.apply and not args.reprocess:
+        if not args.reprocess:
             try:
                 resolved = db.resolved_finding_keys(report_path)
             except Exception as exc:  # noqa: BLE001
@@ -1168,9 +1178,11 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
                         continue
                     if key not in resolved:
                         kept.append(f)
+                skipped_n = before - len(kept)
+                print(f"  skip {skipped_n} already-resolved "
+                      f"(fixed/rejected/analyze-by-dev); "
+                      f"use --reprocess to include", file=sys.stderr)
                 findings = kept
-                print(f"  skip {before - len(findings)} already-resolved "
-                      f"(use --reprocess to include)", file=sys.stderr)
                 if not findings:
                     print("  nothing left after resolved filter")
                     continue
