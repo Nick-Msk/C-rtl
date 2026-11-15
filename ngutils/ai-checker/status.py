@@ -21,8 +21,13 @@ def cmd_summary(as_json: bool) -> int:
     if as_json:
         print(json.dumps(by, indent=2, ensure_ascii=False))
         return 0
-    cols = ["proposed-to-fix", "analyze-by-dev", "fixed",
-            "rejected", "failed"]
+    cols = ["added", "proposed-to-fix", "analyze-by-dev",
+            "fixed", "rejected", "failed"]
+    missing = db.STATUSES - set(cols)
+    extra = set(cols) - db.STATUSES
+    if missing or extra:
+        print(f"warn: column list out of sync with db.STATUSES "
+              f"(missing={missing}, extra={extra})", file=sys.stderr)
     print(f"{'project':<10} " + " ".join(f"{c:>16}" for c in cols))
     for proj, counts in by.items():
         print(f"{proj:<10} " + " ".join(
