@@ -812,9 +812,13 @@ def _handle_finding(idx: int, total: int, finding: dict,
     except requests.RequestException as e:
         print(f"  SKIP: LLM request failed: {e}")
         skipped.append(finding["text"][:80])
-        _db_set(report_path, finding, db.STATUS_FAILED, reason=f"LLM: {e}")
-        
+        _db_set(report_path, finding, db.STATUS_FAILED,
+                reason=f"LLM: {e}")
         return
+
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        ctx["usage"][k] += chunk_usage.get(k, 0)
+    ctx["usage"]["requests"] += 1
 
     raw = raw.strip()
     if raw.startswith("```"):
