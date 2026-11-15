@@ -70,10 +70,9 @@ def cmd_list(project: str | None, status: str | None,
         print(f"{r['project']:<6} {key:<10} {r['section']:<10} "
               f"{r['status']:<16} {r['title'][:60]}")
         if r["fix_branch"]:
-            prefix = " " * 6
-            print(f"{prefix}  {r['fix_branch']}  {r['fix_commit']}")
-            if r.get("fix_subject"):
-                print(f"{prefix}  {r['fix_subject']}")
+            print(f"      {r['fix_branch']}  {r['fix_commit']}")
+            if "fix_subject" in r.keys() and r["fix_subject"]:
+                print(f"      {r['fix_subject']}")
     return 0
 
 
