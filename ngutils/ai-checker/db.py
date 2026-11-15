@@ -85,6 +85,17 @@ CREATE TABLE proposal_commit (
     dt           TEXT NOT NULL,
     PRIMARY KEY (issue_id, seq)
 );
+
+CREATE TABLE IF NOT EXISTS params (
+    category      TEXT NOT NULL
+                  CHECK (category IN ('check','fix','db','common','report')),
+    name          TEXT NOT NULL,
+    value         TEXT NOT NULL,
+    default_value TEXT NOT NULL,
+    dt            TEXT NOT NULL,
+    PRIMARY KEY (category, name)
+);
+
 CREATE INDEX idx_proposal_commit_dt ON proposal_commit(dt);
 """
 
