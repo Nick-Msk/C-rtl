@@ -38,7 +38,8 @@ def cmd_summary(as_json: bool) -> int:
 def cmd_list(project: str | None, status: str | None,
              as_json: bool, keys_only: bool) -> int:
     q = ("SELECT r.project, i.chunk_id, i.local_id, i.section, "
-         "i.finding_id, i.status, i.title, i.fix_branch, i.fix_commit, i.dt "
+         "i.finding_id, i.status, i.title, i.fix_branch, i.fix_commit, "
+         "i.fix_subject, i.dt "
          "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
     args: list = []
     if project:
@@ -65,13 +66,14 @@ def cmd_list(project: str | None, status: str | None,
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
 
-    for r in rows:
+    for row in rows:
+        r = dict(row)
         key = f"{r['chunk_id']}/{r['local_id']}"
         print(f"{r['project']:<6} {key:<10} {r['section']:<10} "
               f"{r['status']:<16} {r['title'][:60]}")
-        if r["fix_branch"]:
+        if r.get("fix_branch"):
             print(f"      {r['fix_branch']}  {r['fix_commit']}")
-            if "fix_subject" in r.keys() and r["fix_subject"]:
+            if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
     return 0
 
