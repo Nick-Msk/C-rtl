@@ -53,65 +53,71 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(addprefix ai-fix-,$(PROJECTS)) 								\
         $(addprefix ai-fix-commit-,$(PROJECTS))							\
 		ai-status $(addprefix ai-status-,$(PROJECTS))					\
-		ai-config ai-config-set
+		ai-config ai-config-set											\
+		ai-del-branches $(addprefix ai-del-branches-,$(PROJECTS))
 
 help:
 	@echo "ngutils dispatcher"
 	@echo ""
-	@echo "  make list             		list discovered projects"
-	@echo "  make all              		run lib + test + librelease in all projects"
-	@echo "  make lib              		per-project debug .a + build/debug/libngutils.a"
-	@echo "  make librelease       		per-project release .a + build/release/libngutils.a"
+	@echo "  make list             			list discovered projects"
+	@echo "  make all              			run lib + test + librelease in all projects"
+	@echo "  make lib              			per-project debug .a + build/debug/libngutils.a"
+	@echo "  make librelease       			per-project release .a + build/release/libngutils.a"
 	@echo ""
-	@echo "  make test             		run tests in all projects"
-	@echo "  make check            		run clang-tidy in all projects"
-	@echo "  make analyze          		run clang static analyzer in all projects"
-	@echo "  make analyze-test     		run clang static analyzer for test suite in all projects"
+	@echo "  make test             			run tests in all projects"
+	@echo "  make check            			run clang-tidy in all projects"
+	@echo "  make analyze          			run clang static analyzer in all projects"
+	@echo "  make analyze-test     			run clang static analyzer for test suite in all projects"
 	@echo ""
-	@echo "  make ai-check         		AI review of all projects (LM Studio / ai)"
-	@echo "  make ai-check-<n>     		AI review of one project (e.g. ai-check-fs2, ai-check-log)"
-	@echo "  make ai-check-file    		AI review of one file (F=log/src/log.c)"
-	@echo "  make ai-check-notest      	AI review of all projects, skip test/ dirs"
-	@echo "  make ai-check-notest-<n>  	AI review of one project, skip test/ dirs (e.g. ai-check-notest-fs2)"
-	@echo "  make ai-models        		list models available in LM Studio"
-	@echo "  make ai-arch  		   		pack build/ai-checker/ into ai-checker-reports.tar.zst"
+	@echo "  make ai-check         			AI review of all projects (LM Studio / ai)"
+	@echo "  make ai-check-<n>     			AI review of one project (e.g. ai-check-fs2, ai-check-log)"
+	@echo "  make ai-check-file    			AI review of one file (F=log/src/log.c)"
+	@echo "  make ai-check-notest      		AI review of all projects, skip test/ dirs"
+	@echo "  make ai-check-notest-<n>  		AI review of one project, skip test/ dirs (e.g. ai-check-notest-fs2)"
+	@echo "  make ai-models        			list models available in LM Studio"
+	@echo "  make ai-arch  		   			pack build/ai-checker/ into ai-checker-reports.tar.zst"
 	@echo ""
-	@echo "  make ai-fix              	dry-run: propose local fixes for all projects"
-	@echo "  make ai-fix-<n>          	dry-run, one project (e.g. ai-fix-fs2)"
-	@echo "  make ai-fix-file F=<p>   	dry-run, one file's report"
-	@echo "  make ai-fix-commit-<n>   	apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
-	@echo "  make ai-fix-commit       	apply, all projects"
+	@echo "  make ai-fix              		dry-run: propose local fixes for all projects"
+	@echo "  make ai-fix-<n>          		dry-run, one project (e.g. ai-fix-fs2)"
+	@echo "  make ai-fix-file F=<p>   		dry-run, one file's report"
+	@echo "  make ai-fix-commit-<n>   		apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
+	@echo "  make ai-fix-commit       		apply, all projects"
 	@echo ""
-	@echo "  make ai-status           	per-project status summary from check.db"
-	@echo "  make ai-status-<n>       	list all issues for one project"
+	@echo "  make ai-del-branches          delete ai-checker-* branches (merged only)"
+	@echo "  make ai-del-branches-<n>      same, only for project <n>"
+	@echo "  make ai-del-branches FORCE=1  also delete unmerged branches"
+	@echo "  make ai-del-branches DRY_RUN=1 list what would be deleted"
+	@echo ""
+	@echo "  make ai-status           		per-project status summary from check.db"
+	@echo "  make ai-status-<n>       		list all issues for one project"
 	@echo "  make ai-status AI_STATUS='--status fixed'"
 	@echo ""
-	@echo "  FIXLIST=\"1/1, 1/7\"       process only these finding ids (from the report)"
-	@echo "  AI_FIX_YES=1             	skip per-fix confirmation prompt"
-	@echo "  AI_FIX_LIMIT=N           	cap when FIXLIST is not set (default 50)"
+	@echo "  FIXLIST=\"1/1, 1/7\"       	process only these finding ids (from the report)"
+	@echo "  AI_FIX_YES=1             		skip per-fix confirmation prompt"
+	@echo "  AI_FIX_LIMIT=N           		cap when FIXLIST is not set (default 50)"
 	@echo ""
-	@echo "  make ai-config           list tunable params from check.db"
+	@echo "  make ai-config           		list tunable params from check.db"
 	@echo "  make ai-config-set CATEGORY=check NAME=max_chars VALUE=120000"
 	@echo "                           (omit VALUE to reset to default)"
 	@echo ""
-	@echo "  make clean            		clean all projects"
-	@echo "  make install          		install libngutils.a + headers to PREFIX"
-	@echo "  make <target>-<name>  		run one target in one project"
-	@echo "  make docs             		build doxygen HTML"
+	@echo "  make clean            			clean all projects"
+	@echo "  make install          			install libngutils.a + headers to PREFIX"
+	@echo "  make <target>-<name>  			run one target in one project"
+	@echo "  make docs             			build doxygen HTML"
 	@echo ""
-	@echo "  make build-docker     		build the Linux dev image"
-	@echo "  make clean-docker     		delete the Linux dev image"
-	@echo "  make check-docker     		verify docker CLI + daemon"
-	@echo "  make test-docker      		run all tests inside Docker (Linux)"
-	@echo "  make test-docker-ub   		ASan + UBSan inside the container (Linux)"
-	@echo "  make test-docker-leak 		run ASan+LSan across all projects (Linux)"
-	@echo "  make delete-docker    		remove the $(DOCKER_IMAGE) image"
-	@echo "  make test-docker-all  		regular + ASan+UBSan + ASan+LSan in Docker"
+	@echo "  make build-docker     			build the Linux dev image"
+	@echo "  make clean-docker     			delete the Linux dev image"
+	@echo "  make check-docker     			verify docker CLI + daemon"
+	@echo "  make test-docker      			run all tests inside Docker (Linux)"
+	@echo "  make test-docker-ub   			ASan + UBSan inside the container (Linux)"
+	@echo "  make test-docker-leak 			run ASan+LSan across all projects (Linux)"
+	@echo "  make delete-docker    			remove the $(DOCKER_IMAGE) image"
+	@echo "  make test-docker-all  			regular + ASan+UBSan + ASan+LSan in Docker"
 	@echo ""
-	@echo "  make cloneproj NAME=x  	create new utility from skeleton"
+	@echo "  make cloneproj NAME=x  		create new utility from skeleton"
 	@echo ""
-	@echo "  make asan_check   			rebuild with ASan + UBSan (macOS + Linux)"
-	@echo "  make asan_leak    			ASan + LSan (Linux only; error skipped)"
+	@echo "  make asan_check   				rebuild with ASan + UBSan (macOS + Linux)"
+	@echo "  make asan_leak    				ASan + LSan (Linux only; error skipped)"
 	@echo ""
 	@echo "Projects:"
 	@for p in $(PROJECTS); do echo "  - $$p"; done
@@ -326,6 +332,19 @@ ai-status:
 $(addprefix ai-status-,$(PROJECTS)): ai-status-%:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
+
+AI_BRANCHES := branches.py
+
+DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,)
+
+ai-del-branches:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+	    uv run python $(AI_BRANCHES) --all $(DEL_BRANCHES_ARGS)
+
+$(addprefix ai-del-branches-,$(PROJECTS)): ai-del-branches-%:
+	@echo "==> ai-del-branches $*"
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+	    uv run python $(AI_BRANCHES) --project $* $(DEL_BRANCHES_ARGS)
 
 AI_CONFIG := params.py
 
