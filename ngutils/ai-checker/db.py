@@ -186,7 +186,7 @@ def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
         rows = con.execute(
             "SELECT chunk_id, local_id FROM issue WHERE "
             "report_id = (SELECT id FROM report WHERE path = ?) "
-            "AND status IN (?, ?)",
+            "AND status IN (?, ?, ?)",
             (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED)).fetchall()
     return {(r["chunk_id"], r["local_id"]) for r in rows}
 
