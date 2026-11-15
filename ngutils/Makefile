@@ -333,7 +333,7 @@ $(addprefix ai-status-,$(PROJECTS)): ai-status-%:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
 
-AI_BRANCHES := branches.py
+AI_BRANCHES := gitutil.py
 
 DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,)
 
