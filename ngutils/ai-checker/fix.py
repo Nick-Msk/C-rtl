@@ -636,11 +636,18 @@ def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
     if not out:
         sys.exit(f"ERROR: no reports in {OUT_ROOT}. Run 'make ai-check' first.")
     return out
+
 def _build_commit_msg(finding: dict, rel: str, reason: str,
                       explanation: str, *,
                       commit_subject: str = "",
-                      project_name: str = "") -> str:
-    """Conventional commits: fix(ngutils/<proj>): <english subject>."""
+                      project_name: str = "",
+                      branch: str = "",
+                      local_id: int = 0) -> str:
+    """fix(ngutils/<proj>): <english subject> (<branch>/<local_id>).
+
+    When branch and local_id are both set, the reference is appended
+    to the subject line — one line, greppable from git log.
+    """
     subject = (commit_subject or explanation).splitlines()[0].strip()
     subject = subject.rstrip(" .,;:!?()[]")
     if len(subject) > 60:
@@ -649,6 +656,8 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
         subject = "auto-fix"
     scope = f"ngutils/{project_name}" if project_name else "ngutils"
     header = f"fix({scope}): {subject}"
+    if branch and local_id:
+        header += f" ({branch}/{local_id})"
     body = (f"Section: {finding['section']}\n"
             f"Finding: {finding.get('id', '?')}\n"
             f"File:    {rel}\n"
@@ -736,14 +745,17 @@ def _validate_cached(pending: dict, finding: dict, key: str,
         e.get("explanation", "") for _, e in parsed
         if e.get("explanation"))
     rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
+    commit_subject = pending.get("commit_subject", "")
     commit_msg = _build_commit_msg(
         finding, ", ".join(rels), pending["reason"], explanation,
+        commit_subject=commit_subject,
         project_name=project.name)
     return {
         "edits": parsed,
         "reason": pending["reason"],
         "explanation": explanation,
         "commit_msg": commit_msg,
+        "commit_subject": commit_subject,
         "source": "cached",
         "dt": pending["dt"],
     }
@@ -806,13 +818,16 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
     explanation = "; ".join(
         e.get("explanation", "") for _, e in parsed
         if e.get("explanation"))
+    
+    commit_subject = verdict.get("commit_subject", "")
     rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
     commit_msg = _build_commit_msg(
         finding, ", ".join(rels), reason, explanation,
-        commit_subject=verdict.get("commit_subject", ""),
+        commit_subject=commit_subject,
         project_name=project.name)
 
-    _save_proposal(report_path, finding, parsed, commit_msg, reason)
+    _save_proposal(report_path, finding, parsed, commit_msg, reason,
+                   commit_subject=commit_subject)
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
 
     return {
@@ -820,6 +835,7 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
         "reason": reason,
         "explanation": explanation,
         "commit_msg": commit_msg,
+        "commit_subject": commit_subject,
         "source": "llm",
         "dt": None,
     }
@@ -851,7 +867,8 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
 
 def _save_proposal(report_path: Path, finding: dict,
                    parsed: list[tuple[Path, dict]],
-                   commit_msg: str, reason: str) -> None:
+                   commit_msg: str, reason: str,
+                   commit_subject: str = "") -> None:
     proposal_edits = []
     for p, e in parsed:
         try:
@@ -870,7 +887,8 @@ def _save_proposal(report_path: Path, finding: dict,
     try:
         db.save_proposal(report_path, finding,
                          edits=proposal_edits,
-                         commit_msg=commit_msg, reason=reason)
+                         commit_msg=commit_msg, reason=reason,
+                         commit_subject=commit_subject)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
 
@@ -912,6 +930,19 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
     branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
     commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                     for p, e in parsed]
+    files = [str(p.relative_to(ROOT)) for p, _ in parsed]
+
+    try:
+        local_id = db.issue_key(finding)[1]
+    except (ValueError, TypeError):
+        local_id = 0
+    commit_msg = _build_commit_msg(
+        finding, ", ".join(files), reason, explanation,
+        commit_subject=outcome.get("commit_subject", ""),
+        project_name=project.name,
+        branch=branch, local_id=local_id)
+    subject_line = commit_msg.split("\n\n", 1)[0]
+
     try:
         sha = commit_one_fix(ctx["base_sha"], ctx["base_branch"], branch,
                              commit_edits, commit_msg)
@@ -936,7 +967,8 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
         } for p, e in parsed],
     })
     _db_set(report_path, finding, db.STATUS_FIXED,
-            reason=reason, fix_branch=branch, fix_commit=sha)
+            reason=reason, fix_branch=branch, fix_commit=sha,
+            fix_subject=subject_line)
 
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, report_path: Path, files: list[Path],

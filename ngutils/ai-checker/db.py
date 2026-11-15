@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS issue (
     direction   TEXT,
     fix_branch  TEXT,
     fix_commit  TEXT,
+    fix_subject TEXT,
     dt          TEXT NOT NULL,
     UNIQUE (report_id, chunk_id, local_id)
 );
@@ -72,17 +73,18 @@ CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
 
 CREATE TABLE proposal_commit (
-    issue_id     INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
-    seq          INTEGER NOT NULL DEFAULT 1,
-    file         TEXT NOT NULL,
-    edits_json   TEXT,
-    old_snippet  TEXT NOT NULL,
-    new_snippet  TEXT NOT NULL,
-    explanation  TEXT NOT NULL DEFAULT '',
-    commit_msg   TEXT NOT NULL,
-    reason       TEXT NOT NULL DEFAULT '',
-    file_sha256  TEXT NOT NULL,
-    dt           TEXT NOT NULL,
+    issue_id        INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
+    seq             INTEGER NOT NULL DEFAULT 1,
+    file            TEXT NOT NULL,
+    edits_json      TEXT,
+    old_snippet     TEXT NOT NULL,
+    new_snippet     TEXT NOT NULL,
+    explanation     TEXT NOT NULL DEFAULT '',
+    commit_msg      TEXT NOT NULL,
+    reason          TEXT NOT NULL DEFAULT '',
+    file_sha256     TEXT NOT NULL,
+    commit_subject  TEXT
+    dt              TEXT NOT NULL,
     PRIMARY KEY (issue_id, seq)
 );
 
@@ -299,11 +301,10 @@ def _key_for(finding) -> tuple[str, int, int]:
     chunk, local = split_finding_id(fid)
     return fid, chunk, local
 
-def update_issue_status(report_path: Path | str, finding,
-                        status: str, *, reason: str | None = None,
-                        direction: str | None = None,
-                        fix_branch: str | None = None,
-                        fix_commit: str | None = None) -> bool:
+def update_issue_status(report_path, finding, status, *,
+                        reason=None, direction=None,
+                        fix_branch=None, fix_commit=None,
+                        fix_subject=None) -> bool:
     """Update one issue. `finding` is a dict (preferred) or str id."""
     if status not in STATUSES:
         raise ValueError(f"unknown status {status!r}")
@@ -319,11 +320,13 @@ def update_issue_status(report_path: Path | str, finding,
             "  reason = COALESCE(?, reason), "
             "  direction = COALESCE(?, direction), "
             "  fix_branch = COALESCE(?, fix_branch), "
-            "  fix_commit = COALESCE(?, fix_commit) "
+            "  fix_commit = COALESCE(?, fix_commit), "
+            "  fix_subject = COALESCE(?, fix_subject) "
             "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
             "  AND chunk_id = ? AND local_id = ?",
             (status, _now_iso(), reason, direction,
-             fix_branch, fix_commit, rel, chunk_id, local_id))
+             fix_branch, fix_commit, fix_subject,
+             rel, chunk_id, local_id))
         return cur.rowcount > 0
 
 def resolved_finding_ids(report_path: Path | str) -> set[str]:
@@ -352,8 +355,9 @@ def get_status(report_path: Path | str, finding) -> str | None:
             (rel, chunk_id, local_id)).fetchone()
     return row["status"] if row else None
 
-def save_proposal(report_path: Path | str, finding, *,
-                  edits: list[dict], commit_msg: str, reason: str,
+def save_proposal(report_path, finding, *,
+                  edits, commit_msg, reason,
+                  commit_subject: str = "",
                   seq: int = 1) -> bool:
     """Cache 1-2 validated local-fix edits.
 
@@ -378,12 +382,14 @@ def save_proposal(report_path: Path | str, finding, *,
         con.execute(
             "INSERT OR REPLACE INTO proposal_commit "
             "(issue_id, seq, file, old_snippet, new_snippet, explanation, "
-            " commit_msg, reason, file_sha256, edits_json, dt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " commit_msg, commit_subject, reason, file_sha256, "
+            " edits_json, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (row["id"], seq,
              first["file"], first["old_snippet"], first["new_snippet"],
              first.get("explanation", ""),
-             commit_msg, reason, first.get("file_sha256", ""),
+             commit_msg, commit_subject, reason,
+             first.get("file_sha256", ""),
              json.dumps(edits, ensure_ascii=False),
              _now_iso()))
         return True
@@ -398,7 +404,7 @@ def load_proposal(report_path: Path | str, finding) -> dict | None:
     rel = _rel(report_path)
     with connect() as con:
         row = con.execute(
-            "SELECT p.seq, p.commit_msg, p.reason, p.dt, "
+            "SELECT p.seq, p.commit_msg, p.commit_subject, p.reason, p.dt, "
             "       p.edits_json, p.file, p.old_snippet, p.new_snippet, "
             "       p.explanation, p.file_sha256 "
             "FROM proposal_commit p JOIN issue i ON i.id = p.issue_id "
@@ -425,8 +431,11 @@ def load_proposal(report_path: Path | str, finding) -> dict | None:
             "explanation": row["explanation"] or "",
             "file_sha256": row["file_sha256"] or "",
         }]
-    return {"seq": row["seq"], "commit_msg": row["commit_msg"] or "",
-            "reason": row["reason"] or "", "dt": row["dt"] or "",
+    return {"seq": row["seq"],
+            "commit_msg": row["commit_msg"] or "",
+            "commit_subject": row["commit_subject"] or "",
+            "reason": row["reason"] or "",
+            "dt": row["dt"] or "",
             "edits": edits}
 
 
