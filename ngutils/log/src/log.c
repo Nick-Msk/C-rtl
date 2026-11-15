@@ -656,7 +656,7 @@ log_close(void)
 			fclose(g_logfile);
 		}
 	}
-	g_logfile = 0;			// must be 0 when not initialized
+	g_logfile = NULL;			// must be NULL when not initialized
 	g_format_schema = LOG_FORMAT_ALL;
 	g_offset = 0;			// reset indentation
 	g_offset_inc = OFFSET_INC;
