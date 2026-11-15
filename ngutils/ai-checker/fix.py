@@ -93,6 +93,7 @@ a wrong fscanf/sscanf format string in a #define), PROVIDED that:
 9. It is idempotent (applying twice is safe).
 10. The diff is at most 20 changed lines (+ and - combined).
 
+
 Examples of local fixes:
   - missing NULL check before a pointer dereference in the same function
   - missing fclose/free in the same function's error path
@@ -119,6 +120,7 @@ Output ONLY a JSON object, no prose, no markdown fences:
 {
   "class": "local" | "needs_review",
   "reason": "short reason (<= 200 chars)",
+  "commit_subject": "short English imperative, <= 60 chars, no 'fix:' prefix, no trailing period",
   "direction": "for needs_review: suggested direction for a human",
   "edits": [
     {
@@ -155,6 +157,10 @@ Rules for the list itself:
 - Never propose edits to three or more files.
 - Never propose edits to two unrelated files (e.g. log.c + fs2.c).
 - Total added+removed lines across ALL entries must be <= 20.
+- "commit_subject" is REQUIRED when class == "local". It must be in
+English, imperative mood, no "fix(...):" prefix — the prefix is
+added automatically. Example: "replace 0 with NULL for pointer
+assignment".
 
 If the finding mentions multiple functions, multiple files, or
 phrases like "in A, B, and C", "all callers", "everywhere",
@@ -630,21 +636,27 @@ def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
     if not out:
         sys.exit(f"ERROR: no reports in {OUT_ROOT}. Run 'make ai-check' first.")
     return out
-
 def _build_commit_msg(finding: dict, rel: str, reason: str,
-                      explanation: str,
-                      total_count: int = 1) -> str:
-    first_line = finding["text"].splitlines()[0][:70]
-    if not first_line.endswith("."):
-        first_line += "."
-    suffix = f" ({total_count} occurrences)" if total_count > 1 else ""
+                      explanation: str, *,
+                      commit_subject: str = "",
+                      project_name: str = "") -> str:
+    """Conventional commits: fix(ngutils/<proj>): <english subject>."""
+    subject = (commit_subject or explanation).splitlines()[0].strip()
+    subject = subject.rstrip(" .,;:!?()[]")
+    if len(subject) > 60:
+        subject = subject[:57].rstrip(" .,;:!?()[]") + "..."
+    if not subject:
+        subject = "auto-fix"
+    scope = f"ngutils/{project_name}" if project_name else "ngutils"
+    header = f"fix({scope}): {subject}"
     body = (f"Section: {finding['section']}\n"
-            f"File:    {rel}{suffix}\n"
+            f"Finding: {finding.get('id', '?')}\n"
+            f"File:    {rel}\n"
             f"Reason:  {reason}\n"
             f"Change:  {explanation}\n")
-    return (f"ai-fix: {first_line}\n\n"
+    return (f"{header}\n\n"
             f"{body}\n"
-            f"Finding:\n{finding['text']}\n\n"
+            f"Full finding:\n{finding['text']}\n\n"
             f"Applied by ai-checker/fix.py\n")
 
 def _db_set(report_path: Path, finding: dict, status: str,
@@ -723,11 +735,15 @@ def _validate_cached(pending: dict, finding: dict, key: str,
     explanation = "; ".join(
         e.get("explanation", "") for _, e in parsed
         if e.get("explanation"))
+    rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
+    commit_msg = _build_commit_msg(
+        finding, ", ".join(rels), pending["reason"], explanation,
+        project_name=project.name)
     return {
         "edits": parsed,
         "reason": pending["reason"],
         "explanation": explanation,
-        "commit_msg": pending["commit_msg"],
+        "commit_msg": commit_msg,
         "source": "cached",
         "dt": pending["dt"],
     }
@@ -791,8 +807,10 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
         e.get("explanation", "") for _, e in parsed
         if e.get("explanation"))
     rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
-    commit_msg = _build_commit_msg(finding, ", ".join(rels),
-                                   reason, explanation)
+    commit_msg = _build_commit_msg(
+        finding, ", ".join(rels), reason, explanation,
+        commit_subject=verdict.get("commit_subject", ""),
+        project_name=project.name)
 
     _save_proposal(report_path, finding, parsed, commit_msg, reason)
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
@@ -889,20 +907,6 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
             print("  [dry-run] not applied (saved as proposal)")
         ctx["ready"] += 1
         return
-
-    if not args.yes:
-        try:
-            ans = input("  Apply and commit? [y/N/q] ").strip().lower()
-        except EOFError:
-            ans = "n"
-        if ans == "q":
-            sys.exit(0)
-        if ans != "y":
-            print("  skipped by user")
-            skipped.append(f"{key}: user")
-            _db_set(report_path, finding, db.STATUS_REJECTED,
-                    reason="user rejected")
-            return
 
     ctx["seq"] += 1
     branch = make_fix_branch_name(ctx["run_id"], ctx["seq"])
@@ -1237,8 +1241,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true",
                     help="write edits + commit to a fix branch "
                          "(default: dry-run)")
-    ap.add_argument("--yes", action="store_true",
-                    help="skip per-fix confirmation (use with --apply)")
+    
     db.seed_defaults()
     default_limit = db.get_param("fix", "default_limit", DEFAULT_LIMIT)
     ap.add_argument("--limit", type=int, default=default_limit,
