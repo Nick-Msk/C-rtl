@@ -662,9 +662,13 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
     if not subject:
         subject = "auto-fix"
     scope = f"ngutils/{project_name}" if project_name else "ngutils"
+
     header = f"fix({scope}): {subject}"
-    if branch and local_id:
-        header += f" ({branch}/{local_id})"
+    if branch:
+        # Branch name already contains the finding ref (<run_id>/<chunk>-<local>),
+        # so no extra /<local_id> — that would duplicate it.
+        header += f" ({branch})"
+        
     body = (f"Section: {finding['section']}\n"
             f"Finding: {finding.get('id', '?')}\n"
             f"File:    {rel}\n"
@@ -943,7 +947,7 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
     commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                     for p, e in parsed]
     files = [str(p.relative_to(ROOT)) for p, _ in parsed]
-    
+
     commit_msg = _build_commit_msg(
         finding, ", ".join(files), reason, explanation,
         commit_subject=outcome.get("commit_subject", ""),

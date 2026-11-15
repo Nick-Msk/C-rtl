@@ -71,7 +71,7 @@ def cmd_list(project: str | None, status: str | None,
               f"{r['status']:<16} {r['title'][:60]}")
         if r["fix_branch"]:
             print(f"      {r['fix_branch']}  {r['fix_commit']}")
-            if "fix_subject" in r.keys() and r["fix_subject"]:
+            if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
     return 0
 
