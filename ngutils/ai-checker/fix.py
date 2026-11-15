@@ -762,7 +762,7 @@ def _validate_cached(pending: dict, finding: dict, key: str,
               f"FIXLIST=\"{key}\"' to reclassify")
         skipped.append(f"{key}: stale: {err}")
         _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
-                                     reason=reason)
+                             reason=f"stale: {err}")
         return None
 
     explanation = "; ".join(
