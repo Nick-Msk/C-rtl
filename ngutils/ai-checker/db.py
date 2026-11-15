@@ -536,3 +536,44 @@ def all_params() -> list[dict]:
             "SELECT category, name, value, default_value, dt "
             "FROM params ORDER BY category, name").fetchall()
     return [dict(r) for r in rows]
+
+def summary_by_project_status() -> dict[str, dict[str, int]]:
+    """Returns {project: {status: count}} across all ingested issues."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT r.project, i.status, COUNT(*) AS n "
+            "FROM issue i JOIN report r ON r.id = i.report_id "
+            "GROUP BY r.project, i.status "
+            "ORDER BY r.project, i.status").fetchall()
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        out.setdefault(r["project"], {})[r["status"]] = r["n"]
+    return out
+
+
+def list_issues(project: str | None = None,
+                status: str | None = None) -> list[dict]:
+    """Return issue rows as plain dicts, newest report first.
+
+    Each dict has an extra 'key' = '<chunk_id>/<local_id>'.
+    """
+    q = ("SELECT r.project, i.chunk_id, i.local_id, i.section, "
+         "i.finding_id, i.status, i.title, i.fix_branch, i.fix_commit, "
+         "i.fix_subject, i.dt "
+         "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
+    params: list = []
+    if project:
+        q += "AND r.project = ? "
+        params.append(project)
+    if status:
+        q += "AND i.status = ? "
+        params.append(status)
+    q += "ORDER BY r.id DESC, i.chunk_id, i.local_id"
+    with connect() as con:
+        rows = con.execute(q, params).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["key"] = f"{r['chunk_id']}/{r['local_id']}"
+        out.append(d)
+    return out

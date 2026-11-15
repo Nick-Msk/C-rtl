@@ -9,15 +9,7 @@ import db
 
 
 def cmd_summary(as_json: bool) -> int:
-    with db.connect() as con:
-        rows = con.execute(
-            "SELECT r.project, i.status, COUNT(*) AS n "
-            "FROM issue i JOIN report r ON r.id = i.report_id "
-            "GROUP BY r.project, i.status "
-            "ORDER BY r.project, i.status").fetchall()
-    by: dict[str, dict[str, int]] = {}
-    for r in rows:
-        by.setdefault(r["project"], {})[r["status"]] = r["n"]
+    by = db.summary_by_project_status()
     if as_json:
         print(json.dumps(by, indent=2, ensure_ascii=False))
         return 0
@@ -37,46 +29,25 @@ def cmd_summary(as_json: bool) -> int:
 
 def cmd_list(project: str | None, status: str | None,
              as_json: bool, keys_only: bool) -> int:
-    q = ("SELECT r.project, i.chunk_id, i.local_id, i.section, "
-         "i.finding_id, i.status, i.title, i.fix_branch, i.fix_commit, "
-         "i.fix_subject, i.dt "
-         "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
-    args: list = []
-    if project:
-        q += "AND r.project = ? "
-        args.append(project)
-    if status:
-        q += "AND i.status = ? "
-        args.append(status)
-    q += "ORDER BY r.id DESC, i.chunk_id, i.local_id"
-    with db.connect() as con:
-        rows = con.execute(q, args).fetchall()
+    rows = db.list_issues(project=project, status=status)
 
     if keys_only:
         for r in rows:
-            print(f"{r['chunk_id']}/{r['local_id']}")
+            print(r["key"])
         return 0
 
     if as_json:
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["key"] = f"{r['chunk_id']}/{r['local_id']}"
-            out.append(d)
-        print(json.dumps(out, indent=2, ensure_ascii=False))
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
 
-    for row in rows:
-        r = dict(row)
-        key = f"{r['chunk_id']}/{r['local_id']}"
-        print(f"{r['project']:<6} {key:<10} {r['section']:<10} "
+    for r in rows:
+        print(f"{r['project']:<6} {r['key']:<10} {r['section']:<10} "
               f"{r['status']:<16} {r['title'][:60]}")
         if r.get("fix_branch"):
             print(f"      {r['fix_branch']}  {r['fix_commit']}")
             if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
     return 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()
