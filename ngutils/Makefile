@@ -278,7 +278,7 @@ AI_FIX_BASE    = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                  $(if $(AI_FIX_REFETCH),--refetch,)
 
 AI_FIX_ARGS    = $(AI_FIX_BASE)
-AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply $(if $(AI_FIX_YES),--yes,)
+AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply
 
 ai-fix:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
