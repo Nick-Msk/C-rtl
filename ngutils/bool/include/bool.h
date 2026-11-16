@@ -37,6 +37,9 @@
  *
  * @return Pointer to a static array of version strings. Read-only,
  *         must not be freed.
+ *
+ * @warning The returned array is read-only; do not modify through
+ *          const_cast.
  */
 const char *const *bool_versions(void);
 
