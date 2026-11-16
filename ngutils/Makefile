@@ -83,9 +83,9 @@ help:
 	@echo "  make ai-fix-commit-<n>   		apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
 	@echo "  make ai-fix-commit       		apply, all projects"
 	@echo ""
-	@echo "  make ai-del-branches          delete ai-checker-* branches (merged only)"
-	@echo "  make ai-del-branches-<n>      same, only for project <n>"
-	@echo "  make ai-del-branches FORCE=1  also delete unmerged branches"
+	@echo "  make ai-del-branches          	delete ai-checker-* branches (merged only)"
+	@echo "  make ai-del-branches-<n>      	same, only for project <n>"
+	@echo "  make ai-del-branches FORCE=1  	also delete unmerged branches"
 	@echo "  make ai-del-branches DRY_RUN=1 list what would be deleted"
 	@echo ""
 	@echo "  make ai-status           		per-project status summary from check.db"
@@ -97,7 +97,9 @@ help:
 	@echo "  AI_FIX_LIMIT=N           		cap when FIXLIST is not set (default 50)"
 	@echo ""
 	@echo "  make ai-config           		list tunable params from check.db"
-	@echo "  make ai-config-set CATEGORY=check NAME=max_chars VALUE=120000"
+	@echo "  make ai-config AI_CONFIG_ARGS=--long      group by module"
+	@echo "  make ai-config AI_CONFIG_ARGS=--modules   list modules"
+	@echo "  make ai-config-set MODULE=check NAME=max_chars VALUE=120000"
 	@echo "                           (omit VALUE to reset to default)"
 	@echo ""
 	@echo "  make clean            			clean all projects"
@@ -352,12 +354,13 @@ ai-config:
 	@cd $(CURDIR)/$(AI_CHECKER) && uv run python $(AI_CONFIG) $(AI_CONFIG_ARGS)
 
 ai-config-set:
-	@test -n "$(CATEGORY)" -a -n "$(NAME)" || { \
-	    echo "usage: make ai-config-set CATEGORY=<cat> NAME=<name> [VALUE=<v>]" >&2; \
+	@test -n "$(MODULE)" -a -n "$(NAME)" || { \
+	    echo "usage: make ai-config-set MODULE=<mod> NAME=<name> [VALUE=<v>]" >&2; \
 	    echo "       omit VALUE to reset to default" >&2; \
+	    echo "       run 'make ai-config AI_CONFIG_ARGS=--modules' for module list" >&2; \
 	    exit 1; }
 	@cd $(CURDIR)/$(AI_CHECKER) && \
-	    uv run python $(AI_CONFIG) set $(CATEGORY) $(NAME) $(VALUE)
+	    uv run python $(AI_CONFIG) set $(MODULE) $(NAME) $(VALUE)
 
 # --- docs ---
 

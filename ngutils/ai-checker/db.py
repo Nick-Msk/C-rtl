@@ -17,7 +17,7 @@ from pathlib import Path
 from common import ROOT
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 7
 
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
@@ -25,6 +25,14 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("fix",   "max_source_chars"): 100_000,
     ("fix",   "default_limit"):     50,
     ("fix",   "max_diff_lines"):    20,
+}
+
+MODULES: dict[str, str] = {
+    "check":  "AI review pipeline: chunk size, model, prompt budget",
+    "fix":    "AI fix pipeline: prompt budget, diff limit, default count",
+    "db":     "Database: schema, migrations, queries",
+    "common": "Shared constants, regexes, parser, lock",
+    "report": "Report header formatting",
 }
 
 SCHEMA = """
@@ -88,9 +96,13 @@ CREATE TABLE proposal_commit (
     PRIMARY KEY (issue_id, seq)
 );
 
+CREATE TABLE IF NOT EXISTS modules (
+    name  TEXT PRIMARY KEY,
+    descr TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS params (
-    category      TEXT NOT NULL
-                  CHECK (category IN ('check','fix','db','common','report')),
+    module        TEXT NOT NULL REFERENCES modules(name),
     name          TEXT NOT NULL,
     value         TEXT NOT NULL,
     default_value TEXT NOT NULL,
@@ -464,13 +476,20 @@ def clear_proposal(report_path: Path | str, finding,
                 (seq, rel, chunk_id, local_id))
         return cur.rowcount
 
+def _seed_modules(con: sqlite3.Connection) -> None:
+    """Insert missing modules. Idempotent."""
+    for name, descr in MODULES.items():
+        con.execute(
+            "INSERT OR IGNORE INTO modules (name, descr) VALUES (?, ?)",
+            (name, descr))
+
 def _seed_params(con: sqlite3.Connection) -> None:
     """Insert missing default params. Idempotent."""
     now = _now_iso()
     for (cat, name), default in DEFAULTS.items():
         con.execute(
             "INSERT OR IGNORE INTO params "
-            "(category, name, value, default_value, dt) "
+            "(module, name, value, default_value, dt) "
             "VALUES (?, ?, ?, ?, ?)",
             (cat, name, str(default), str(default), now))
 
@@ -483,6 +502,7 @@ def seed_defaults() -> None:
     """
     try:
         with connect() as con:
+            _seed_modules(con)
             _seed_params(con)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: seed_defaults failed: {exc}",
@@ -495,7 +515,7 @@ def get_param(category: str, name: str, default):
         with connect() as con:
             row = con.execute(
                 "SELECT value FROM params "
-                "WHERE category = ? AND name = ?",
+                "WHERE module = ? AND name = ?",
                 (category, name)).fetchone()
         if not row:
             return default
@@ -511,30 +531,38 @@ def get_param(category: str, name: str, default):
         return default
 
 
-def set_param(category: str, name: str, value) -> bool:
+def set_param(module: str, name: str, value) -> bool:
     """Update value. If `value` is None, reset to default_value."""
     try:
         with connect() as con:
             if value is None:
                 cur = con.execute(
                     "UPDATE params SET value = default_value, dt = ? "
-                    "WHERE category = ? AND name = ?",
-                    (_now_iso(), category, name))
+                    "WHERE module = ? AND name = ?",
+                    (_now_iso(), module, name))
             else:
                 cur = con.execute(
                     "UPDATE params SET value = ?, dt = ? "
-                    "WHERE category = ? AND name = ?",
-                    (str(value), _now_iso(), category, name))
+                    "WHERE module = ? AND name = ?",
+                    (str(value), _now_iso(), module, name))
             return cur.rowcount > 0
     except Exception:  # noqa: BLE001
         return False
 
-
 def all_params() -> list[dict]:
     with connect() as con:
         rows = con.execute(
-            "SELECT category, name, value, default_value, dt "
-            "FROM params ORDER BY category, name").fetchall()
+            "SELECT p.module, m.descr, p.name, p.value, "
+            "       p.default_value, p.dt "
+            "FROM params p JOIN modules m ON m.name = p.module "
+            "ORDER BY p.module, p.name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def all_modules() -> list[dict]:
+    with connect() as con:
+        rows = con.execute(
+            "SELECT name, descr FROM modules ORDER BY name").fetchall()
     return [dict(r) for r in rows]
 
 def summary_by_project_status() -> dict[str, dict[str, int]]:

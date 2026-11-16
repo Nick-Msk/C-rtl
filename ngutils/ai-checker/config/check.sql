@@ -40,9 +40,13 @@ CREATE TABLE IF NOT EXISTS issue (
 CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
 
+CREATE TABLE IF NOT EXISTS modules (
+    name  TEXT PRIMARY KEY,
+    descr TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS params (
-    category      TEXT NOT NULL
-                  CHECK (category IN ('check','fix','db','common','report')),
+    module        TEXT NOT NULL REFERENCES modules(name),
     name          TEXT NOT NULL,
     value         TEXT NOT NULL,
     default_value TEXT NOT NULL,
