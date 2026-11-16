@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import gitutil
 import json
 import sys
 
 import db
+import gitutil
 
 
 def cmd_summary(as_json: bool) -> int:
