@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ai-checker/` — AI-assisted code review + local auto-fix via a
+  local LM Studio instance. Review writes Markdown reports and
+  ingests findings into `config/check.db`; fix auto-applies
+  self-contained local edits as one git commit per fix on
+  `<proj>`-scoped branches, everything else is listed for review.
+  All SQL in `db.py`, all git in `gitutil.py`. Reports survive
+  `make clean`. Full history: `ai-checker/CHANGELOG.md`.
+
 - `checker` — assert-style invariants (`inv`, `invraise`, `inv2`,
   `inv2raise`) with `_Generic` dispatch, and runtime validators
   (`check_arg`). Aborts on invariant violation; compiles out with
