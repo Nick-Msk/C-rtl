@@ -236,7 +236,10 @@ def main() -> int:
 
     merged, unmerged = list(prefix)
     if not merged and not unmerged:
-        print(f"no branches match '{prefix}*'")
+        msg = f"no branches match '{prefix}*'"
+        if args.check_run is not None:
+            msg += f" with check-run c{args.check_run}"
+        print(msg)
         return 0
 
     scope = f"'{prefix}*'"
