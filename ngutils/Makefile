@@ -91,7 +91,7 @@ help:
 	@echo "  make ai-del-branches-<n>      	same, only for project <n>"
 	@echo "  make ai-del-branches FORCE=1  	also delete unmerged branches"
 	@echo "  make ai-del-branches DRY_RUN=1 list what would be deleted"
-	@echo "  make ai-del-branches AI_DEL_CHECK_RUN=7  only c7 branches"
+	@echo "  make ai-del-branches AI_DEL_CHECK_RUN=7  only check-run 7 branches"
 	@echo ""
 	@echo "  make ai-status           		per-project status summary from check.db"
 	@echo "  make ai-status-<n>       		list all issues for one project"
