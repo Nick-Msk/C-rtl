@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-import requests
-
 import db
+import llm
 from common import (
     CPP_EXTS,
     HEADER_EXTS,
@@ -274,58 +272,6 @@ def format_usage_md(u: dict) -> str:
     return (f"**Token usage:** {p:,} prompt / {c:,} completion / "
             f"{t:,} total  ({u['requests']} request(s))")
 
-def list_models(base_url: str) -> list[str]:
-    r = requests.get(f"{base_url.rstrip('/')}/v1/models", timeout=10)
-    r.raise_for_status()
-    return [m["id"] for m in r.json().get("data", [])]
-
-
-def pick_model(models: list[str]) -> str:
-    for m in models:
-        if "qwen" in m.lower():
-            return m
-    return models[0]
-
-
-def ask(base_url: str, model: str, messages: list[dict],
-        stream: bool, usage_out: dict | None = None):
-    url = f"{base_url.rstrip('/')}/v1/chat/completions"
-    payload = {"model": model, "messages": messages,
-               "temperature": 0.2, "stream": stream}
-    if stream:
-        # OpenAI-compatible; LM Studio >= 0.3 honours this and puts
-        # the usage block into the last SSE event before [DONE].
-        payload["stream_options"] = {"include_usage": True}
-    r = requests.post(url, json=payload, stream=stream, timeout=900)
-    r.raise_for_status()
-    if not stream:
-        data = r.json()
-        if usage_out is not None:
-            usage_out.update(data.get("usage") or {})
-        yield data["choices"][0]["message"]["content"]
-        return
-    r.encoding = "utf-8"
-    for line in r.iter_lines(decode_unicode=True):
-        if not line or not line.startswith("data:"):
-            continue
-        chunk = line[5:].strip()
-        if chunk == "[DONE]":
-            break
-        try:
-            ev = json.loads(chunk)
-        except json.JSONDecodeError:
-            continue
-        u = ev.get("usage")
-        if u and usage_out is not None:
-            usage_out.update(u)
-        choices = ev.get("choices") or []
-        if not choices:
-            continue
-        piece = choices[0].get("delta", {}).get("content")
-        if piece:
-            yield piece
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group()
@@ -333,10 +279,10 @@ def main() -> int:
                    help="review every discovered project (default)")
     g.add_argument("--project", help="review a single project by name")
     g.add_argument("--file", help="review a single source file")
-    ap.add_argument("--model", default=os.environ.get("QWEN_MODEL", ""))
-    ap.add_argument("--base-url",
-                    default=os.environ.get("LMSTUDIO_URL",
-                                           "http://127.0.0.1:1234"))
+
+    ap.add_argument("--model", default="")
+    ap.add_argument("--base-url", default="")
+
     ap.add_argument("--no-tests", action="store_true",
                     help="exclude test/ directories from the review")
     ap.add_argument("--no-stream", action="store_true")
@@ -348,23 +294,21 @@ def main() -> int:
                         "only struct/union/enum/typedef declarations")
     args = ap.parse_args()
 
-    try:
-        models = list_models(args.base_url)
-    except requests.RequestException as e:
-        sys.exit(f"ERROR: cannot reach LM Studio at {args.base_url}: {e}\n"
-                 f"       Start LM Studio, load a Qwen model, "
-                 f"or set LMSTUDIO_URL=...")
+    args.base_url = llm.resolve_url(args.base_url)
 
     if args.models:
+        models = llm.check_health(args.base_url)
         for m in models:
             print(m)
         return 0
 
-    if not models:
-        sys.exit("ERROR: LM Studio reports no loaded models")
-
-    model = args.model or pick_model(models)
-    print(f"[ai-checker] endpoint={args.base_url} model={model}", file=sys.stderr)
+    llm.check_health(args.base_url)  # exits on error
+    try:
+        model = llm.resolve_model(args.base_url, args.model)
+    except llm.LLMError as e:
+        sys.exit(f"ERROR: {e}")
+    print(f"[ai-checker] endpoint={args.base_url} model={model}",
+          file=sys.stderr)
 
     if args.file:
         f = Path(args.file)
@@ -396,6 +340,9 @@ def _run_checks(args, model, jobs) -> int:
 
     # Snapshot once per run; also archived as JSON for later comparison.
     sysinfo = system_info()
+    db.seed_defaults()
+    temperature = db.get_param("check", "temperature", 0.2)
+
     try:
         (OUT_ROOT / "_machine.json").write_text(
             json.dumps(sysinfo, indent=2, ensure_ascii=False),
@@ -452,10 +399,11 @@ def _run_checks(args, model, jobs) -> int:
             chunk_usage: dict = {}
             t0 = time.perf_counter()
             try:
-                for piece in ask(args.base_url, model,
-                                 [{"role": "system", "content": SYSTEM_PROMPT},
-                                  {"role": "user",   "content": user}],
-                                 stream=stream, usage_out=chunk_usage):
+                for piece in llm.chat(args.base_url, model,
+                                      [{"role": "system", "content": SYSTEM_PROMPT},
+                                       {"role": "user",   "content": user}],
+                                      temperature=temperature,
+                                      stream=stream, usage_out=chunk_usage):
                     sys.stdout.write(piece)
                     sys.stdout.flush()
                     body.append(piece)

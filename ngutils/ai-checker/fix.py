@@ -21,16 +21,14 @@ import argparse
 import difflib
 import hashlib
 import json
-import os
 import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-import requests
-
 import db
+import llm
 from common import (
     ALLOWED_TOP_DIRS,
     DEFAULT_LIMIT,
@@ -247,26 +245,6 @@ def build_prompt(finding: dict, project: Path, files: list[Path],
         parts.append(block)
         budget -= len(block)
     return "\n".join(parts)
-
-# ── LLM call ─────────────────────────────────────────────────────────
-def ask_model(base_url: str, model: str, user: str,
-              usage_out: dict | None = None) -> str:
-    url = f"{base_url.rstrip('/')}/v1/chat/completions"
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": CLASSIFY_SYSTEM},
-            {"role": "user",   "content": user},
-        ],
-        "temperature": 0.0,
-        "stream": False,
-    }
-    r = requests.post(url, json=payload, timeout=600)
-    r.raise_for_status()
-    data = r.json()
-    if usage_out is not None:
-        usage_out.update(data.get("usage") or {})
-    return data["choices"][0]["message"]["content"]
 
 # ── Edit validation ─────────────────────────────────────────────────
 FUNC_HEADER_RE = re.compile(
@@ -732,13 +710,18 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
 def _ask_classifier(finding: dict, project: Path, files: list[Path],
                     args, model: str, ctx: dict):
     """Return (verdict_dict, None) or (None, error_string)."""
+
     chunk_usage: dict = {}
+    messages = [
+        {"role": "system", "content": CLASSIFY_SYSTEM},
+        {"role": "user",   "content": build_prompt(finding, project, files,
+                                                   budget=ctx["max_source"])},
+    ]
     try:
-        raw = ask_model(
-            args.base_url, model,
-            build_prompt(finding, project, files, budget=ctx["max_source"]),
-            usage_out=chunk_usage)
-    except requests.RequestException as exc:
+        raw = llm.chat_once(args.base_url, model, messages,
+                            temperature=ctx["fix_temp"],
+                            usage_out=chunk_usage)
+    except llm.RequestException as exc:
         return None, f"LLM: {exc}"
 
     for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -1064,6 +1047,7 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     db.seed_defaults()
     max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
     max_diff = db.get_param("fix", "max_diff_lines", MAX_DIFF_LINES)
+    fix_temp = db.get_param("fix", "temperature", 0.0)
 
     return {
         "run_id": run_id,
@@ -1077,6 +1061,7 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "finding_durs": [],
         "max_source": max_source,
         "max_diff_lines": max_diff,
+        "fix_temp": fix_temp,
         "proposed": [],
     }
 
@@ -1244,10 +1229,10 @@ def main() -> int:
     g.add_argument("--project", help="latest report of one project")
     g.add_argument("--file", help="latest _files/ report for a source file")
     g.add_argument("--report", help="explicit report path")
-    ap.add_argument("--model", default=os.environ.get("QWEN_MODEL", ""))
-    ap.add_argument("--base-url",
-                    default=os.environ.get("LMSTUDIO_URL",
-                                           "http://127.0.0.1:1234"))
+
+    ap.add_argument("--model", default="")
+    ap.add_argument("--base-url", default="")
+    
     ap.add_argument("--apply", action="store_true",
                     help="write edits + commit to a fix branch "
                          "(default: dry-run)")
@@ -1267,19 +1252,14 @@ def main() -> int:
                     help="ignore cached proposal; re-query the LLM")
     args = ap.parse_args()
 
+    args.base_url = llm.resolve_url(args.base_url)
+    llm.check_health(args.base_url)
     try:
-        r = requests.get(f"{args.base_url.rstrip('/')}/v1/models", timeout=10)
-        r.raise_for_status()
-        models = [m["id"] for m in r.json().get("data", [])]
-    except requests.RequestException as e:
-        sys.exit(f"ERROR: cannot reach LM Studio at {args.base_url}: {e}")
-
-    if not models:
-        sys.exit("ERROR: LM Studio reports no loaded models")
-
-    model = args.model or next(
-        (m for m in models if "qwen" in m.lower()), models[0])
-    print(f"[ai-fixer] endpoint={args.base_url} model={model}", file=sys.stderr)
+        model = llm.resolve_model(args.base_url, args.model)
+    except llm.LLMError as e:
+        sys.exit(f"ERROR: {e}")
+    print(f"[ai-fixer] endpoint={args.base_url} model={model}",
+          file=sys.stderr)
 
     jobs = _resolve_jobs(args)
     lock_fd = acquire_lock()

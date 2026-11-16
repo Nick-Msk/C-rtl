@@ -22,15 +22,20 @@ SCHEMA_VERSION = 7
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("check", "max_chars"):        80_000,
+    ("check", "temperature"):      0.2,
     ("fix",   "max_source_chars"): 100_000,
     ("fix",   "default_limit"):     50,
     ("fix",   "max_diff_lines"):    20,
+    ("fix",   "temperature"):      0.0,
+    ("llm",   "url"):              "http://127.0.0.1:1234",
+    ("llm",   "model_name"):       "",
 }
 
 MODULES: dict[str, str] = {
     "check":  "AI review pipeline: chunk size, model, prompt budget",
     "fix":    "AI fix pipeline: prompt budget, diff limit, default count",
     "db":     "Database: schema, migrations, queries",
+    "llm":    "LM Studio endpoint and model selection",
     "common": "Shared constants, regexes, parser, lock",
     "report": "Report header formatting",
 }
