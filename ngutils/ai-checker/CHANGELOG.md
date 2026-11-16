@@ -92,6 +92,20 @@ file is independent of `ngutils`.
   migration from schema v6 to v7 renames the column and preserves
   any custom values set via the old CLI.
 
+- `llm.py` — single HTTP client for LM Studio. All `POST
+  /v1/chat/completions` and `GET /v1/models` calls go through it;
+  `check.py` and `fix.py` no longer import `requests` directly.
+  `llm.resolve_url()` and `llm.resolve_model()` consult (in order)
+  explicit CLI arg → `llm.url` / `llm.model_name` DB params →
+  `LMSTUDIO_URL` / `QWEN_MODEL` env vars → hard-coded default, so
+  existing env-var workflows keep working.
+
+- New `llm` module (module table) with params `llm.url` and
+  `llm.model_name`, plus `check.temperature` (0.2) and
+  `fix.temperature` (0.0). These were previously hard-coded in
+  `check.py` / `fix.py`. Adjust with `make ai-config-set
+  MODULE=llm NAME=url VALUE=http://192.168.1.10:1234`.
+
 ### Changed
 
 - Schema version bumped to v7; `params.category` renamed to

@@ -754,13 +754,23 @@ Params live in the `params` table, grouped by `module` (FK to
 and can be extended via `INSERT` — no schema migration needed to
 add a new module category.
 
-| Module  | Name                | Default   | What                        |
-|---------|---------------------|-----------|-----------------------------|
-| `check` | `max_chars`         | 80 000    | chunk size (chars)          |
-| `fix`   | `max_source_chars`  | 100 000   | prompt budget (chars)       |
-| `fix`   | `default_limit`     | 50        | findings per project        |
-| `fix`   | `max_diff_lines`    | 20        | max diff for a "local" fix  |
+| Module  | Name                | Default                    | What                        |
+|---------|---------------------|----------------------------|-----------------------------|
+| `llm`   | `url`               | `http://127.0.0.1:1234`    | LM Studio endpoint          |
+| `llm`   | `model_name`        | *(empty)*                  | Empty = autodetect (first qwen) |
+| `check` | `max_chars`         | 80 000                     | chunk size (chars)          |
+| `check` | `temperature`       | 0.2                        | sampling temperature, review |
+| `fix`   | `max_source_chars`  | 100 000                    | prompt budget (chars)       |
+| `fix`   | `default_limit`     | 50                         | findings per project        |
+| `fix`   | `max_diff_lines`    | 20                         | max diff for a "local" fix  |
+| `fix`   | `temperature`       | 0.0                        | sampling temperature, classifier (deterministic) |
 
+Env vars `LMSTUDIO_URL` and `QWEN_MODEL` still work and override
+the DB values if set; useful for one-off testing against a
+different endpoint:
+
+```sh
+LMSTUDIO_URL=http://192.168.1.10:1234 make ai-check-fs2
 ```sh
 make ai-config                            # tabular
 make ai-config AI_CONFIG_ARGS=--long      # grouped by module, with description
