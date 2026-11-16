@@ -749,21 +749,24 @@ Both can be set in the shell or on the `make` command line.
 
 ### Tunable params (`config/check.db`)
 
+Params live in the `params` table, grouped by `module` (FK to
+`modules(name)`). The `modules` table seeds once per tool install
+and can be extended via `INSERT` — no schema migration needed to
+add a new module category.
+
+| Module  | Name                | Default   | What                        |
+|---------|---------------------|-----------|-----------------------------|
+| `check` | `max_chars`         | 80 000    | chunk size (chars)          |
+| `fix`   | `max_source_chars`  | 100 000   | prompt budget (chars)       |
+| `fix`   | `default_limit`     | 50        | findings per project        |
+| `fix`   | `max_diff_lines`    | 20        | max diff for a "local" fix  |
+
 ```sh
-make ai-config
-make ai-config-set CATEGORY=check NAME=max_chars VALUE=120000
-make ai-config-set CATEGORY=fix   NAME=max_diff_lines VALUE=30
-make ai-config-set CATEGORY=check NAME=max_chars         # reset
-```
-
-| Category | Name                | Default   | What                        |
-|----------|---------------------|-----------|-----------------------------|
-| `check`  | `max_chars`         | 80 000    | chunk size (chars)          |
-| `fix`    | `max_source_chars`  | 100 000   | prompt budget (chars)       |
-| `fix`    | `default_limit`     | 50        | findings per project        |
-| `fix`    | `max_diff_lines`    | 20        | max diff for a "local" fix  |
-
-Params live in `config/check.db` and are read fresh on every run.
+make ai-config                            # tabular
+make ai-config AI_CONFIG_ARGS=--long      # grouped by module, with description
+make ai-config AI_CONFIG_ARGS=--modules   # list modules
+make ai-config-set MODULE=check NAME=max_chars VALUE=120000
+make ai-config-set MODULE=check NAME=max_chars   # reset to default
 
 ## Reports layout
 

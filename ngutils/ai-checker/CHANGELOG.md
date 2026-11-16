@@ -82,8 +82,20 @@ file is independent of `ngutils`.
   duration, per-chunk durations, prompt/completion/total tokens,
   completion throughput, host, OS, CPU, RAM, Python version.
 
+- `modules(name, descr)` table — registry of param namespaces. Each
+  `params` row now carries `module TEXT REFERENCES modules(name)`
+  instead of a `CHECK (category IN (...))` constraint. Adding a new
+  param namespace is `INSERT INTO modules`, not a schema migration.
+  `ai-config --modules` lists the registry, `ai-config --long`
+  groups params by module and shows the description.
+- `ai-config-set` now takes `MODULE=` (was `CATEGORY=`). The
+  migration from schema v6 to v7 renames the column and preserves
+  any custom values set via the old CLI.
+
 ### Changed
 
+- Schema version bumped to v7; `params.category` renamed to
+  `params.module` with FK to `modules(name)`.
 - `make clean` now preserves `build/ai-checker/` and
   `build/ai-checker-reports*.tar.zst` — review history survives
   routine cleaning.
