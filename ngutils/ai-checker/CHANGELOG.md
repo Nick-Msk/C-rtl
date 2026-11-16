@@ -119,4 +119,26 @@ file is independent of `ngutils`.
 - `make clean` now preserves `build/ai-checker/` and
   `build/ai-checker-reports*.tar.zst` — review history survives
   routine cleaning.
+- Branch name format: `ai-checker-<proj>-c<check_runid>-f<fix_runid>-<seq>/<chunk>-<local>`.
+  `c<N>` is the check-run that produced the report; `f<N>` is the
+  fix-run (llmruns.runid, kind='fix'). Both are real llmruns.runid
+  values, not local counters — `git branch --list 'ai-checker-bool-c1-*'`
+  now shows exactly the fixes from check-run 1.
+  Old branches (`...-fix<N>-<seq>/...`) still listed and deletable,
+  just not created anymore.
+- `close_period` returns `fix_branch` refs from BOTH stale and fixed
+  issues. Caller (`check.py`) auto-deletes merged ones via
+  `git branch -d` (safe), prints a hint for unmerged. Fixes the
+  "merged weeks ago, branch still here" bug where 'fixed' issues
+  were skipped from branch collection.
+- `check.py` prints the unmerged cleanup hint after every run, not
+  just on error.
+- `ai-del-branches --check-run N` (`AI_DEL_CHECK_RUN=N`) filters
+  branches by check-run marker `-cN-` in the name.
+
+### Removed
+
+- `gitutil.make_run_id` — was a local counter, replaced by
+  `db.llmrun_start()` returning a real `llmruns.runid`.
+
 
