@@ -106,6 +106,12 @@ file is independent of `ngutils`.
   `check.py` / `fix.py`. Adjust with `make ai-config-set
   MODULE=llm NAME=url VALUE=http://192.168.1.10:1234`.
 
+- `ai-del-branches --check-run N` (`AI_DEL_CHECK_RUN=N`) — filter
+  to branches whose name contains `-c<N>-`, i.e. fixes produced
+  from check-run N. Useful when a single project has accumulated
+  branches across several check periods and you only want to clean
+  up the current one.
+
 ### Changed
 
 - Schema version bumped to v7; `params.category` renamed to
