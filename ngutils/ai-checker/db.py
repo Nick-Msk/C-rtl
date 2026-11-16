@@ -649,6 +649,10 @@ def summary_by_project_status() -> dict[str, dict[str, int]]:
         out.setdefault(r["project"], {})[r["status"]] = r["n"]
     return out
 
+def finding_full_key(finding: dict, runid: int) -> str:
+    """'<runid>/<chunk>/<local>' — globally unique across runs."""
+    chunk, local = issue_key(finding)
+    return f"{runid}/{chunk}/{local}"
 
 def list_issues(project: str | None = None,
                 status: str | None = None,
@@ -682,7 +686,8 @@ def list_issues(project: str | None = None,
     out = []
     for r in rows:
         d = dict(r)
-        d["key"] = f"{r['chunk_id']}/{r['local_id']}"
+        d["chunk_key"] = f"{r['chunk_id']}/{r['local_id']}"
+        d["key"] = f"{r['check_runid']}/{r['chunk_id']}/{r['local_id']}"
         out.append(d)
     return out
 

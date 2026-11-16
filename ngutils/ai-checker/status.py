@@ -50,8 +50,8 @@ def cmd_list(project: str | None, status: str | None,
         status = r["status"]
         if status == "fixed" and r.get("fix_commit"):
             status = f"fixed({r['fix_commit']})"
-        print(f"{r['project']:<6} {r['key']:<10} {r['section']:<10} "
-              f"{status:<16} {r['title'][:60]}")
+        print(f"{r['project']:<6} {r['key']:<14} "
+              f"{r['section']:<10} {status:<16} {r['title'][:60]}")
         if status != r["status"]:
             continue  # fixed, sha already in status — no extra lines
         if r.get("fix_branch"):

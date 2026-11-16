@@ -550,18 +550,23 @@ def _clear_proposal(report_path: Path, finding: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal clear failed: {exc}", file=sys.stderr)
 
-def _print_finding_header(finding: dict, idx: int, total: int) -> str:
+def _print_finding_header(finding: dict, idx: int, total: int,
+                          runid: int) -> str:
+    """Return (full_key, chunk_key). full_key = '<runid>/<chunk>/<local>',
+    chunk_key = '<chunk>/<local>' — both shown for FIXLIST convenience."""
     try:
         c, l = db.issue_key(finding)
-        key = f"{c}/{l}"
+        chunk_key = f"{c}/{l}"
     except (ValueError, TypeError):
-        key = finding.get("id", "?")
-    print(f"\n=== Finding {key}  ({idx}/{total})  "
+        chunk_key = finding.get("id", "?")
+        c, l = 0, 0
+    full_key = f"{runid}/{chunk_key}"
+    print(f"\n=== Finding {full_key}  ({idx}/{total})  "
           f"[{finding['section']}] ===")
     print(f"  {finding['text'][:200].replace(chr(10), ' ')}...")
-    return key
+    return full_key
 
-def _resolve_edits(finding: dict, key: str, project: Path,
+def _resolve_edits(finding: dict, full_key: str, project: Path,
                    report_path: Path, files: list[Path],
                    args, model: str, ctx: dict,
                    needs_review: list[dict], skipped: list[str]):
@@ -570,10 +575,10 @@ def _resolve_edits(finding: dict, key: str, project: Path,
     if not (args.refetch or args.reprocess):
         pending = _load_pending(report_path, finding)
         if pending is not None:
-            return _validate_cached(pending, finding, key,
+            return _validate_cached(pending, finding, full_key,
                                     project, report_path, args, ctx, skipped)
 
-    return _classify_with_llm(finding, key, project, report_path, files,
+    return _classify_with_llm(finding, full_key, project, report_path, files,
                               args, model, ctx, needs_review, skipped)
 
 def _load_pending(report_path: Path, finding: dict) -> dict | None:
@@ -583,16 +588,16 @@ def _load_pending(report_path: Path, finding: dict) -> dict | None:
         print(f"  warn: proposal load failed: {exc}", file=sys.stderr)
         return None
 
-def _validate_cached(pending: dict, finding: dict, key: str,
+def _validate_cached(pending: dict, finding: dict, full_key: str,
                      project: Path, report_path: Path,
                      args, ctx: dict, skipped: list[str]):
     """Verify cached proposal is still valid; return outcome or None."""
     if args.apply:
         for e in pending["edits"]:
-            msg, reason = _check_file_freshness(e, pending["dt"], key)
+            msg, reason = _check_file_freshness(e, pending["dt"], full_key)
             if msg is not None:
                 print(msg)
-                skipped.append(f"{key}: {reason}")
+                skipped.append(f"{full_key}: {reason}")
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                                      reason=reason)
                 return None
@@ -602,8 +607,8 @@ def _validate_cached(pending: dict, finding: dict, key: str,
     if err:
         print(f"  STALE proposal ({err})")
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
-              f"FIXLIST=\"{key}\"' to reclassify")
-        skipped.append(f"{key}: stale: {err}")
+              f"FIXLIST=\"{full_key}\"' to reclassify")
+        skipped.append(f"{full_key}: stale: {err}")
         _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                              reason=f"stale: {err}")
         return None
@@ -644,7 +649,7 @@ def _check_file_freshness(e: dict, dt: str, key: str):
                 "stale: file changed")
     return None, None
 
-def _classify_with_llm(finding: dict, key: str, project: Path,
+def _classify_with_llm(finding: dict, full_key: str, project: Path,
                        report_path: Path, files: list[Path],
                        args, model: str, ctx: dict,
                        needs_review: list[dict], skipped: list[str]):
@@ -652,7 +657,7 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
     verdict, err = _ask_classifier(finding, project, files, args, model, ctx)
     if err is not None:
         print(f"  SKIP: {err}")
-        skipped.append(f"{key}: {err}")
+        skipped.append(f"{full_key}: {err}")
         _db_set(report_path, finding, db.STATUS_FAILED, reason=err)
         return None
 
@@ -677,7 +682,7 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
                                   max_diff_lines=ctx["max_diff_lines"])
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
-        skipped.append(f"{key}: {verr}")
+        skipped.append(f"{full_key}: {verr}")
         _db_set(report_path, finding, db.STATUS_FAILED,
                 reason=f"invalid edit: {verr}")
         return None
@@ -768,7 +773,7 @@ def _save_proposal(report_path: Path, finding: dict,
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
 
-def _apply_or_report(outcome: dict, finding: dict, key: str,
+def _apply_or_report(outcome: dict, finding: dict, full_key: str,
                      project: Path, report_path: Path,
                      args, ctx: dict,
                      applied: list[dict], skipped: list[str]) -> None:
@@ -800,7 +805,7 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
         else:
             print("  [dry-run] not applied (saved as proposal)")
         ctx["ready"] += 1
-        ctx["proposed"].append(key)
+        ctx["proposed"].append(full_key)
         return
 
     ctx["seq"] += 1
@@ -826,7 +831,7 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
                              commit_edits, commit_msg)
     except RuntimeError as exc:
         print(f"  SKIP: {exc}")
-        skipped.append(f"{key}: {exc}")
+        skipped.append(f"{full_key}: {exc}")
         return
 
     files = [str(p.relative_to(ROOT)) for p, _ in parsed]
@@ -860,18 +865,19 @@ def _handle_finding(idx: int, total: int, finding: dict,
       _resolve_edits         -> cached proposal or LLM (returns outcome)
       _apply_or_report       -> dry-run print / apply commit / reject
     """
-    key = _print_finding_header(finding, idx, total)
+
+    full_key = _print_finding_header(finding, idx, total, ctx.get("check_runid", 0))
     if not files:
         print("  SKIP: no source files to work with")
         skipped.append(finding.get("id", "?") + ": no files")
         return
 
-    outcome = _resolve_edits(finding, key, project, report_path, files,
+    outcome = _resolve_edits(finding, full_key, project, report_path, files,
                              args, model, ctx, needs_review, skipped)
     if outcome is None:
         return
 
-    _apply_or_report(outcome, finding, key, project, report_path,
+    _apply_or_report(outcome, finding, full_key, project, report_path,
                      args, ctx, applied, skipped)
     
 
