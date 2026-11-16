@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import gitutil
 import json
 import sys
 
@@ -40,13 +41,21 @@ def cmd_list(project: str | None, status: str | None,
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
 
+    names = [r["fix_branch"] for r in rows if r.get("fix_branch")]
+    alive = gitutil.branches_exist(names) if names else set()
+
     for r in rows:
         print(f"{r['project']:<6} {r['key']:<10} {r['section']:<10} "
               f"{r['status']:<16} {r['title'][:60]}")
         if r.get("fix_branch"):
-            print(f"      {r['fix_branch']}  {r['fix_commit']}")
+            if r["fix_branch"] in alive:
+                print(f"      {r['fix_branch']}  {r['fix_commit']}")
+            #else:
+            #    print(f"      {r['fix_commit']}  "
+            #          f"(merged, branch deleted)")
             if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
+        print("")
     return 0
 
 def main() -> int:

@@ -180,6 +180,21 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
             f"but 'git checkout {base_branch}' failed: {r.stderr.strip()}")
     return sha
 
+def branches_exist(names: list[str]) -> set[str]:
+    """Return the subset of `names` that exist as local branches.
+
+    Fail-safe: if `git for-each-ref` fails, returns `set(names)` so
+    we don't hide information due to a transient git error.
+    """
+    if not names:
+        return set()
+    r = git("for-each-ref", "--format=%(refname:short)",
+            "refs/heads/", check=False)
+    if r.returncode != 0:
+        return set(names)
+    existing = {b.strip() for b in r.stdout.splitlines() if b.strip()}
+    return set(names) & existing
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Delete ai-checker fix branches")
