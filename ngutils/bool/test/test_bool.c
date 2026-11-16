@@ -14,7 +14,7 @@ Test(bool, distinct_literals) {
 }
 
 Test(bool, stable_pointer) {
-    /* string literals are unique within a translation unit */
+    /* identical string literals share the same address within a translation unit */
     cr_assert_eq(bool_str(true), bool_str(true));
     cr_assert_eq(bool_str(false), bool_str(false));
 }
