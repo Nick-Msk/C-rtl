@@ -654,10 +654,12 @@ log    1/2     Важно    added            **%19s vs MAX_MODULE...**
 | `fixed`            | `fix.py --apply`          | committed to a fix branch            |
 | `rejected`         | `--reprocess` + user      | manually discarded                   |
 | `failed`           | `fix.py`                  | stale proposal, LLM error, bad edit  |
+| `stale`            | next `ai-check-<proj>`    | superseded by a newer report; branch deleted |
 
-`fixed`, `rejected`, `analyze-by-dev` are **terminal**: on
-subsequent `ai-fix` runs those findings are skipped. Use
-`--reprocess` to override.
+`fixed`, `rejected`, and `stale` are **terminal**. On a new
+`ai-check-<proj>`, all issues from older reports of the same
+project transition to `stale` (except `fixed`, which is preserved
+because it represents a merged commit).
 
 ## Targets
 

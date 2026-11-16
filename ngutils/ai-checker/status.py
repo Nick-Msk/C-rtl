@@ -15,7 +15,7 @@ def cmd_summary(as_json: bool) -> int:
         print(json.dumps(by, indent=2, ensure_ascii=False))
         return 0
     cols = ["added", "proposed-to-fix", "analyze-by-dev",
-            "fixed", "rejected", "failed"]
+            "fixed", "rejected", "failed", "stale"]
     missing = db.STATUSES - set(cols)
     extra = set(cols) - db.STATUSES
     if missing or extra:
@@ -29,8 +29,10 @@ def cmd_summary(as_json: bool) -> int:
 
 
 def cmd_list(project: str | None, status: str | None,
-             as_json: bool, keys_only: bool) -> int:
-    rows = db.list_issues(project=project, status=status)
+             as_json: bool, keys_only: bool,
+             all_runs: bool) -> int:
+    rows = db.list_issues(project=project, status=status,
+                          latest_only=not all_runs)
 
     if keys_only:
         for r in rows:
@@ -61,6 +63,31 @@ def cmd_list(project: str | None, status: str | None,
                 print(f"      {r['fix_subject']}")
     return 0
 
+def cmd_runs(limit: int, as_json: bool) -> int:
+    rows = db.llmruns_list(limit=limit)
+    if as_json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0
+    print(f"{'runid':<6} {'kind':<6} {'status':<8} "
+          f"{'started':<20} {'dur':<8} {'in':>8} {'out':>8} {'req':>4}  name")
+    for r in rows:
+        started = (r["start_time"] or "")[:19]
+        if r["end_time"]:
+            try:
+                from datetime import datetime
+                t0 = datetime.strptime(r["start_time"], "%Y-%m-%dT%H:%M:%S")
+                t1 = datetime.strptime(r["end_time"], "%Y-%m-%dT%H:%M:%S")
+                dur = f"{int((t1 - t0).total_seconds())}s"
+            except (ValueError, TypeError):
+                dur = "?"
+        else:
+            dur = "..."
+        print(f"{r['runid']:<6} {r['kind']:<6} {r['status']:<8} "
+              f"{started:<20} {dur:<8} "
+              f"{r['in_tokens']:>8} {r['out_tokens']:>8} "
+              f"{r['requests']:>4}  {r['name'] or ''}")
+    return 0
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project")
@@ -71,6 +98,12 @@ def main() -> int:
     ap.add_argument("--key", action="store_true",
                     help="print one finding key per line "
                          "(directly usable as FIXLIST)")
+    ap.add_argument("--all-runs", action="store_true",
+                    help="include issues from previous (stale) reports")
+    ap.add_argument("--runs", action="store_true",
+                    help="show recent LLM runs (from llmruns)")
+    ap.add_argument("--limit", type=int, default=20)
+
     args = ap.parse_args()
 
     if not db.has_any_report():
@@ -80,8 +113,10 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    if args.runs:
+        return cmd_runs(args.limit, args.json)
     if args.list or args.project or args.status or args.key:
-        return cmd_list(args.project, args.status, args.json, args.key)
+        return cmd_list(args.project, args.status, args.json, args.key, args.all_runs)
     return cmd_summary(args.json)
 
 if __name__ == "__main__":

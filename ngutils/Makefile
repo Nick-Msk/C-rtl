@@ -54,7 +54,8 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(addprefix ai-fix-commit-,$(PROJECTS))							\
 		ai-status $(addprefix ai-status-,$(PROJECTS))					\
 		ai-config ai-config-set											\
-		ai-del-branches $(addprefix ai-del-branches-,$(PROJECTS))
+		ai-del-branches $(addprefix ai-del-branches-,$(PROJECTS))		\
+		ai-runs
 
 help:
 	@echo "ngutils dispatcher"
@@ -82,6 +83,9 @@ help:
 	@echo "  make ai-fix-file F=<p>   		dry-run, one file's report"
 	@echo "  make ai-fix-commit-<n>   		apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
 	@echo "  make ai-fix-commit       		apply, all projects"
+	@echo ""
+	@echo "  make ai-runs             recent LLM runs from llmruns"
+	@echo "  make ai-runs AI_STATUS_ARGS='--limit 50'"
 	@echo ""
 	@echo "  make ai-del-branches          	delete ai-checker-* branches (merged only)"
 	@echo "  make ai-del-branches-<n>      	same, only for project <n>"
@@ -337,6 +341,10 @@ $(addprefix ai-status-,$(PROJECTS)): ai-status-%:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
 
+ai-runs:
+	@cd $(CURDIR)/$(AI_CHECKER) && \
+	    uv run python status.py --runs $(AI_STATUS_ARGS)
+		
 AI_BRANCHES := gitutil.py
 
 DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,)

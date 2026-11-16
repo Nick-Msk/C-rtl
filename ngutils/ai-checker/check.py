@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import db
+import gitutil
 import llm
 from common import (
     CPP_EXTS,
@@ -290,8 +291,8 @@ def main() -> int:
                     help="list models loaded in LM Studio")
 
     ap.add_argument("--full-headers", action="store_true",
-                help="include full header text instead of extracting "
-                        "only struct/union/enum/typedef declarations")
+                    help="include full header text instead of extracting "
+                         "only struct/union/enum/typedef declarations")
     args = ap.parse_args()
 
     args.base_url = llm.resolve_url(args.base_url)
@@ -310,38 +311,50 @@ def main() -> int:
     print(f"[ai-checker] endpoint={args.base_url} model={model}",
           file=sys.stderr)
 
-    if args.file:
-        f = Path(args.file)
-        if not f.is_absolute():
-            f = (Path.cwd() / f).resolve()
-        if not f.is_file():
-            sys.exit(f"ERROR: file not found: {f}")
-        jobs = [(f.stem, [f])]
-    else:
-        projects = discover_projects()
-        if args.project:
-            projects = [p for p in projects if p.name == args.project]
-            if not projects:
-                sys.exit(f"ERROR: unknown project '{args.project}'")
-        jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
-                for p in projects]
-
     lock_fd = acquire_lock()
     try:
-        return _run_checks(args, model, jobs)
+        runid = db.llmrun_start(kind="check", url=args.base_url,
+                                name=model)
+        print(f"[ai-checker] runid={runid}", file=sys.stderr)
+
+        try:
+            rc, usage = _run_checks(args, model, runid)
+        except BaseException:
+            db.llmrun_finish(runid, status="failed")
+            raise
+
+        db.llmrun_finish(runid, status="ok",
+                         in_tokens=usage["prompt_tokens"],
+                         out_tokens=usage["completion_tokens"],
+                         requests=usage["requests"])
+
+        if rc == 0:
+            try:
+                n_stale, branches = db.close_period(runid)
+                if n_stale:
+                    print(f"[ai-checker] closed {n_stale} stale issue(s) "
+                          f"from previous run(s)", file=sys.stderr)
+                for b in branches:
+                    if gitutil.delete_branch(b, force=True):
+                        print(f"[ai-checker] deleted branch {b}",
+                              file=sys.stderr)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[ai-checker] warn: close_period failed: {exc}",
+                      file=sys.stderr)
+
+        return rc
     finally:
         release_lock(lock_fd)
 
-def _run_checks(args, model, jobs) -> int:
-
+def _run_checks(args, model, runid: int) -> tuple[int, dict]:
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     stream = not args.no_stream
 
-    # Snapshot once per run; also archived as JSON for later comparison.
     sysinfo = system_info()
     db.seed_defaults()
     temperature = db.get_param("check", "temperature", 0.2)
+    max_chars = db.get_param("check", "max_chars", MAX_CHARS)
 
     try:
         (OUT_ROOT / "_machine.json").write_text(
@@ -354,8 +367,26 @@ def _run_checks(args, model, jobs) -> int:
           f"cpu={sysinfo['cpu']} ({sysinfo['cores']})  "
           f"ram={sysinfo['ram']}", file=sys.stderr)
 
-    db.seed_defaults()
-    max_chars = db.get_param("check", "max_chars", MAX_CHARS)
+    projects = discover_projects()
+    if args.project:
+        projects = [p for p in projects if p.name == args.project]
+        if not projects:
+            sys.exit(f"ERROR: unknown project '{args.project}'")
+    if args.file:
+        f = Path(args.file)
+        if not f.is_absolute():
+            f = (Path.cwd() / f).resolve()
+        if not f.is_file():
+            sys.exit(f"ERROR: file not found: {f}")
+        jobs = [(f.stem, [f])]
+    else:
+        jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
+                for p in projects]
+    if not jobs:
+        sys.exit(f"ERROR: no projects found under {ROOT}")
+
+    all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
+                 "total_tokens": 0, "requests": 0}
 
     for name, files in jobs:
         if not files:
@@ -365,8 +396,6 @@ def _run_checks(args, model, jobs) -> int:
                              project_name=name,
                              full_headers=args.full_headers)
 
-        # '--no-tests' is only meaningful for project mode; in file mode
-        # the single file is whatever the user pointed at, tag it as-is.
         tag = "_notest" if (args.no_tests and not args.file) else ""
         if args.file:
             sub = OUT_ROOT / "_files"
@@ -441,6 +470,7 @@ def _run_checks(args, model, jobs) -> int:
                 started=started,
                 duration_s=total_dur,
                 findings=ingest_findings,
+                runid=runid,
             )
             print(f"[ai-checker] db: ingested {len(ingest_findings)} "
                   f"issue(s)", file=sys.stderr)
@@ -460,8 +490,10 @@ def _run_checks(args, model, jobs) -> int:
               f"{usage['prompt_tokens']:,} in / "
               f"{usage['completion_tokens']:,} out]", file=sys.stderr)
 
-    return 0
+        for k in all_usage:
+            all_usage[k] += usage.get(k, 0)
 
+    return 0, all_usage
 
 if __name__ == "__main__":
     raise SystemExit(main())

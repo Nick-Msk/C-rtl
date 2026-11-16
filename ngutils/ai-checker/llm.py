@@ -138,3 +138,4 @@ def chat_once(base_url: str, model: str, messages: list[dict],
                       usage_out=usage_out):
         out = piece
     return out
+

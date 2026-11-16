@@ -17,7 +17,7 @@ from pathlib import Path
 from common import ROOT
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
@@ -48,7 +48,23 @@ CREATE TABLE IF NOT EXISTS base_commit (
     first_dt    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS llmruns (
+    runid       INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL CHECK (kind IN ('check','fix')),
+    url         TEXT NOT NULL,
+    name        TEXT,
+    start_time  TEXT NOT NULL,
+    end_time    TEXT,
+    status      TEXT NOT NULL DEFAULT 'running'
+                CHECK (status IN ('running','ok','failed')),
+    in_tokens   INTEGER NOT NULL DEFAULT 0,
+    out_tokens  INTEGER NOT NULL DEFAULT 0,
+    requests    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_llmruns_start ON llmruns(start_time);
+
 CREATE TABLE IF NOT EXISTS report (
+    run_id      INTEGER REFERENCES llmruns(runid),
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project     TEXT NOT NULL,
     path        TEXT NOT NULL UNIQUE,
@@ -70,9 +86,9 @@ CREATE TABLE IF NOT EXISTS issue (
     title       TEXT NOT NULL,
     text        TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'added'
-                CHECK (status IN ('added', 'proposed-to-fix',
-                                    'analyze-by-dev',
-                                    'fixed','rejected','failed')),
+                CHECK (status IN ('added','proposed-to-fix',
+                                          'analyze-by-dev','fixed',
+                                          'rejected','failed','stale')),
     reason      TEXT,
     direction   TEXT,
     fix_branch  TEXT,
@@ -124,9 +140,9 @@ STATUS_ANALYZE  = "analyze-by-dev"
 STATUS_FIXED    = "fixed"
 STATUS_REJECTED = "rejected"
 STATUS_FAILED   = "failed"
-STATUSES = {STATUS_ADDED, STATUS_PROPOSED, 
-            STATUS_ANALYZE, STATUS_FIXED,
-            STATUS_REJECTED, STATUS_FAILED}
+STATUS_STALE    = "stale"
+STATUSES = {STATUS_ADDED, STATUS_PROPOSED, STATUS_ANALYZE,
+            STATUS_FIXED, STATUS_REJECTED, STATUS_FAILED, STATUS_STALE}
 
 
 def _now_iso() -> str:
@@ -204,7 +220,7 @@ def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
             "SELECT chunk_id, local_id FROM issue WHERE "
             "report_id = (SELECT id FROM report WHERE path = ?) "
             "AND status IN (?, ?, ?)",
-            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED)).fetchall()
+            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED, STATUS_STALE)).fetchall()
     return {(r["chunk_id"], r["local_id"]) for r in rows}
 
 def _rel(path: Path | str) -> str:
@@ -256,15 +272,23 @@ def current_commit() -> tuple[str | None, str | None]:
         pass
     return None, None
 
+def report_id_by_path(report_path: Path | str) -> int | None:
+    rel = _rel(report_path)
+    with connect() as con:
+        row = con.execute(
+            "SELECT id FROM report WHERE path = ?", (rel,)).fetchone()
+    return row["id"] if row else None
 
 def ingest_report(*, project: str, report_path: Path, model: str,
                   kind: str, started: datetime, duration_s: float,
-                  findings: list[dict]) -> None:
+                  findings: list[dict],
+                  runid: int | None = None) -> None:
     """Insert base_commit, report and all findings with default status.
 
     Idempotent w.r.t. report.path: if a report with the same path was
     already ingested, it is deleted (cascade) and re-inserted.
     """
+    
     sha, branch = current_commit()
     if sha is None:
         print("[ai-checker] db: not a git repo, skipping ingest",
@@ -281,10 +305,12 @@ def ingest_report(*, project: str, report_path: Path, model: str,
         con.execute("DELETE FROM report WHERE path = ?", (rel,))
         cur = con.execute(
             "INSERT INTO report "
-            "(project, path, base_sha, model, kind, started, duration_s, dt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(project, path, base_sha, model, kind, started, duration_s, "
+            " run_id, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (project, rel, sha, model, kind,
-             started.strftime("%Y-%m-%dT%H:%M:%S"), duration_s, now))
+             started.strftime("%Y-%m-%dT%H:%M:%S"), duration_s,
+             runid, now))
         report_id = cur.lastrowid
         skipped_dup = 0
         for f in findings:
@@ -317,6 +343,77 @@ def _key_for(finding) -> tuple[str, int, int]:
     fid = str(finding)
     chunk, local = split_finding_id(fid)
     return fid, chunk, local
+
+def close_period(runid: int) -> tuple[int, list[str]]:
+    """Close previous periods for projects touched by this run.
+
+    For each project that has a report in this run, all OTHER
+    reports of the same project are superseded. Non-'fixed' issues
+    in those older reports become 'stale', their cached proposals
+    are deleted, and their fix_branch references are cleared.
+
+    'fixed' issues are terminal and preserved (they represent
+    already-merged commits).
+
+    Returns (n_stale_issues, branches_to_delete). The caller is
+    responsible for actually deleting the branches — db.py does no
+    git operations.
+    """
+    now = _now_iso()
+    branches: list[str] = []
+    total = 0
+
+    with connect() as con:
+        projects = [r["project"] for r in con.execute(
+            "SELECT DISTINCT project FROM report WHERE run_id = ?",
+            (runid,)).fetchall()]
+
+        for project in projects:
+            this_ids = [r["id"] for r in con.execute(
+                "SELECT id FROM report WHERE run_id = ? AND project = ?",
+                (runid, project)).fetchall()]
+            if not this_ids:
+                continue
+
+            ph_this = ",".join("?" * len(this_ids))
+            older = [r["id"] for r in con.execute(
+                f"SELECT id FROM report WHERE project = ? "
+                f"  AND id NOT IN ({ph_this})",
+                (project, *this_ids)).fetchall()]
+            if not older:
+                continue
+
+            ph_old = ",".join("?" * len(older))
+
+            # Collect branches before clearing them
+            for r in con.execute(
+                    f"SELECT DISTINCT fix_branch FROM issue WHERE "
+                    f"  report_id IN ({ph_old}) "
+                    f"  AND fix_branch IS NOT NULL "
+                    f"  AND status != ?",
+                    (*older, STATUS_FIXED)).fetchall():
+                if r["fix_branch"]:
+                    branches.append(r["fix_branch"])
+
+            # Drop cached proposals
+            con.execute(
+                f"DELETE FROM proposal_commit WHERE issue_id IN ("
+                f"  SELECT id FROM issue WHERE "
+                f"    report_id IN ({ph_old}) "
+                f"    AND status != ?)",
+                (*older, STATUS_FIXED))
+
+            # Mark stale, clear fix_* refs
+            cur = con.execute(
+                f"UPDATE issue SET status = ?, "
+                f"  fix_branch = NULL, fix_commit = NULL, "
+                f"  fix_subject = NULL, dt = ? WHERE "
+                f"  report_id IN ({ph_old}) "
+                f"  AND status != ?",
+                (STATUS_STALE, now, *older, STATUS_FIXED))
+            total += cur.rowcount
+
+    return total, branches
 
 def update_issue_status(report_path, finding, status, *,
                         reason=None, direction=None,
@@ -585,9 +682,12 @@ def summary_by_project_status() -> dict[str, dict[str, int]]:
 
 
 def list_issues(project: str | None = None,
-                status: str | None = None) -> list[dict]:
+                status: str | None = None,
+                latest_only: bool = True) -> list[dict]:
     """Return issue rows as plain dicts, newest report first.
 
+    latest_only=True (default) restricts to the most recent report
+    per project, so superseded ('stale') runs don't drown the view.
     Each dict has an extra 'key' = '<chunk_id>/<local_id>'.
     """
     q = ("SELECT r.project, i.chunk_id, i.local_id, i.section, "
@@ -599,7 +699,9 @@ def list_issues(project: str | None = None,
         q += "AND r.project = ? "
         params.append(project)
     if status:
-        q += "AND i.status = ? "
+        if latest_only:
+            q += ("AND r.id = (SELECT MAX(id) FROM report "
+                "WHERE project = r.project) ")
         params.append(status)
     q += "ORDER BY r.id DESC, i.chunk_id, i.local_id"
     with connect() as con:
@@ -610,3 +712,39 @@ def list_issues(project: str | None = None,
         d["key"] = f"{r['chunk_id']}/{r['local_id']}"
         out.append(d)
     return out
+
+def llmrun_start(kind: str, url: str, name: str = "") -> int:
+    """Insert a new 'running' row, return runid."""
+    if kind not in ("check", "fix"):
+        raise ValueError(f"unknown kind {kind!r}")
+    with connect() as con:
+        cur = con.execute(
+            "INSERT INTO llmruns (kind, url, name, start_time, status) "
+            "VALUES (?, ?, ?, ?, 'running')",
+            (kind, url, name or None, _now_iso()))
+        return cur.lastrowid
+
+
+def llmrun_finish(runid: int, status: str = "ok", *,
+                  in_tokens: int = 0, out_tokens: int = 0,
+                  requests: int = 0) -> bool:
+    """Mark run as finished. status: 'ok' | 'failed'."""
+    if status not in ("ok", "failed"):
+        raise ValueError(f"bad finish status {status!r}")
+    with connect() as con:
+        cur = con.execute(
+            "UPDATE llmruns SET status = ?, end_time = ?, "
+            "  in_tokens = ?, out_tokens = ?, requests = ? "
+            "WHERE runid = ?",
+            (status, _now_iso(), in_tokens, out_tokens, requests, runid))
+        return cur.rowcount > 0
+
+
+def llmruns_list(limit: int = 20) -> list[dict]:
+    with connect() as con:
+        rows = con.execute(
+            "SELECT runid, kind, url, name, start_time, end_time, "
+            "       status, in_tokens, out_tokens, requests "
+            "FROM llmruns ORDER BY runid DESC LIMIT ?",
+            (limit,)).fetchall()
+    return [dict(r) for r in rows]

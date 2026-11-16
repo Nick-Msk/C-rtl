@@ -1205,7 +1205,9 @@ def _print_final_summary(state: dict) -> None:
               f"{u['completion_tokens']:,} out "
               f"({u['requests']} request(s))")
 
-def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
+def _run(args, model: str, jobs: list[tuple[str, Path, Path]],
+         runid: int) -> tuple[int, dict]:
+    
     state = _prepare_run(args)
 
     for label, report_path, project in jobs:
@@ -1218,7 +1220,8 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
                          args, model, ctx, state)
 
     _print_final_summary(state)
-    return 0
+    
+    return 0, state["all_usage"]
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -1264,7 +1267,21 @@ def main() -> int:
     jobs = _resolve_jobs(args)
     lock_fd = acquire_lock()
     try:
-        return _run(args, model, jobs)
+        runid = db.llmrun_start(kind="fix", url=args.base_url,
+                                name=model)
+        print(f"[ai-fixer] runid={runid}", file=sys.stderr)
+
+        try:
+            rc, usage = _run(args, model, jobs, runid)
+        except BaseException:
+            db.llmrun_finish(runid, status="failed")
+            raise
+
+        db.llmrun_finish(runid, status="ok",
+                         in_tokens=usage["prompt_tokens"],
+                         out_tokens=usage["completion_tokens"],
+                         requests=usage["requests"])
+        return rc
     finally:
         release_lock(lock_fd)
 
