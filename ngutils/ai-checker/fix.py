@@ -23,7 +23,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from datetime import datetime
@@ -48,6 +47,12 @@ from common import (
     release_lock,
     rotate_reports,
     types_digest_path,
+)
+from gitutil import (
+    commit_one_fix,
+    git_clean_check,
+    make_fix_branch_name,
+    make_run_id,
 )
 from report import format_header_md
 from sysinfo import system_info
@@ -183,131 +188,6 @@ once. If different contexts in the same file need DIFFERENT
 replacements, that is not uniform — list separate entries or
 classify as needs_review.
 """
-
-# ── Git helpers ──────────────────────────────────────────────────────
-def git(*args: str, input: str | None = None,
-        check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args], cwd=ROOT, text=True,
-        input=input, capture_output=True, check=check)
-
-
-def git_clean_check() -> tuple[str, str]:
-    """Verify we're in a git repo with a clean tree. Return (branch, HEAD sha)."""
-    r = git("rev-parse", "--verify", "HEAD", check=False)
-    if r.returncode != 0:
-        sys.exit("ERROR: not a git repository (or no commits yet)")
-    branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if branch == "HEAD":
-        sys.exit("ERROR: detached HEAD, checkout a branch first")
-    status = git("status", "--porcelain").stdout.strip()
-    if status:
-        sys.exit("ERROR: working tree is dirty. Commit or stash before "
-                 "running with --apply.\n"
-                 f"       Uncommitted changes:\n{status}")
-    sha = git("rev-parse", "HEAD").stdout.strip()
-    return branch, sha
-
-
-def make_branch_name(label: str) -> str:
-    base = f"ai-checker-{label}-fix"
-    existing = git("branch", "--list", f"{base}*").stdout.splitlines()
-    used: set[int] = set()
-    for line in existing:
-        name = line.strip().lstrip("* ").strip()
-        if name.startswith(base):
-            suffix = name[len(base):]
-            if suffix.isdigit():
-                used.add(int(suffix))
-    n = 1
-    while n in used:
-        n += 1
-    return f"{base}{n}"
-
-
-def git_create_branch(branch: str, from_sha: str) -> None:
-    git("checkout", "-b", branch, from_sha)
-
-
-def git_commit_file(path: Path, msg: str) -> str:
-    rel = path.relative_to(ROOT)
-    git("add", "--", str(rel))
-    r = git("commit", "-F", "-", input=msg, check=False)
-    if r.returncode != 0:
-        raise RuntimeError(f"git commit failed: {r.stderr.strip()}")
-    return git("rev-parse", "--short", "HEAD").stdout.strip()
-
-def make_run_id(label: str) -> str:
-    """Return '<label>-fix<N>' with N unused among existing branches.
-
-    Branches from this run are named '<run_id>-<seq>', so we probe
-    the same '<label>-fix<N>' prefix when looking for collisions.
-    """
-    base = f"ai-checker-{label}-fix"
-    existing = git("branch", "--list", f"{base}*").stdout.splitlines()
-    used: set[int] = set()
-    for line in existing:
-        name = line.strip().lstrip("* ").strip()
-        if not name.startswith(base):
-            continue
-        suffix = name[len(base):]
-        head = suffix.split("-", 1)[0]
-        if head.isdigit():
-            used.add(int(head))
-    n = 1
-    while n in used:
-        n += 1
-    return f"{base}{n}"
-
-
-def make_fix_branch_name(run_id: str, seq: int,
-                         chunk_id: int, local_id: int) -> str:
-    """<run_id>-<seq>/<chunk_id>-<local_id>.
-
-    The '/<chunk>-<local>' suffix makes the branch self-documenting
-    (which finding it fixes) and unambiguous across chunks. Git
-    supports '/' in ref names; `git branch -D` and `git log` work.
-    """
-    return f"{run_id}-{seq}/{chunk_id}-{local_id}"
-
-
-def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
-                   edits: list[tuple[Path, str, str]], msg: str) -> str:
-    """Create branch from base_sha, apply all edits, commit, return to base."""
-    r = git("checkout", "-b", branch_name, base_sha, check=False)
-    if r.returncode != 0:
-        raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
-
-    def _cleanup(reason: str) -> None:
-        git("reset", "--hard", check=False)
-        git("checkout", base_branch, check=False)
-        git("branch", "-D", branch_name, check=False)
-        raise RuntimeError(reason)
-
-    for path, old, new in edits:
-        if not apply_edit(path, old, new):
-            _cleanup(f"apply_edit failed on {path.relative_to(ROOT)}")
-
-    for path, _, _ in edits:
-        rel = str(path.relative_to(ROOT))
-        r = git("add", "--", rel, check=False)
-        if r.returncode != 0:
-            _cleanup(f"git add failed for {rel}: {r.stderr.strip()}")
-
-    r = git("commit", "-F", "-", input=msg, check=False)
-    if r.returncode != 0:
-        _cleanup(f"git commit failed: {r.stderr.strip()}")
-
-    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
-
-    r = git("checkout", base_branch, check=False)
-    if r.returncode != 0:
-        raise RuntimeError(
-            f"commit {sha} on {branch_name} succeeded, "
-            f"but 'git checkout {base_branch}' failed: {r.stderr.strip()}")
-    return sha
-
-
 
 def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
@@ -540,21 +420,6 @@ def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
             fromfile=header, tofile=f"b/{rel}", n=2)))
     return "".join(parts)
 
-
-def apply_edit(path: Path, old: str, new: str) -> bool:
-    """Replace ALL occurrences of old with new.
-
-    validate_edits has already confirmed the count matches the LLM's
-    expectation, so this is safe: replace every occurrence.
-    """
-    try:
-        src = path.read_text(encoding="utf-8")
-        if old not in src:
-            return False
-        path.write_text(src.replace(old, new), encoding="utf-8")
-        return True
-    except OSError:
-        return False
     
 def _parse_fixlist(raw: str):
     """Return matcher(key: tuple[int,int]) -> bool, or None.
@@ -948,6 +813,7 @@ def _apply_or_report(outcome: dict, finding: dict, key: str,
         else:
             print("  [dry-run] not applied (saved as proposal)")
         ctx["ready"] += 1
+        ctx["proposed"].append(key)
         return
 
     ctx["seq"] += 1
@@ -1025,7 +891,7 @@ def _handle_finding(idx: int, total: int, finding: dict,
 def _write_fix_report(label: str, source_report: Path, started: datetime,
                       duration: float, ctx: dict, args,
                       applied: list[dict], skipped: list[str],
-                      needs_review: list[dict]) -> Path:
+                      needs_review: list[dict], sysinfo: dict) -> Path:
     """Write a fix-run report under build/ai-checker/<label>/fix/."""
     out_dir = OUT_ROOT / label / "fix"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1033,7 +899,6 @@ def _write_fix_report(label: str, source_report: Path, started: datetime,
     suffix = "_commit" if args.apply else ""
     out_path = out_dir / f"{ts}{suffix}.md"
 
-    sysinfo = system_info()
     header = format_header_md(
         f"AI fix report: {label}",
         model=ctx.get("model", ""),
@@ -1110,6 +975,16 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     FIX_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     created_all: list[tuple[str, str, list[dict]]] = []
+    sysinfo = system_info()
+
+    try:
+        (OUT_ROOT / "_machine.json").write_text(
+            json.dumps(sysinfo, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+    except OSError as exc:
+        print(f"[ai-fixer] warn: cannot write _machine.json: {exc}",
+              file=sys.stderr)
+        
     all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
                  "total_tokens": 0, "requests": 0}
 
@@ -1159,6 +1034,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             "finding_durs": [],
             "max_source": max_source,
             "max_diff_lines": max_diff,
+            "proposed": [],
         }
 
         if not args.reprocess:
@@ -1207,7 +1083,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
 
         report_out = _write_fix_report(label, report_path, started, dt,
                                         ctx, args, applied, skipped,
-                                        needs_review)
+                                        needs_review, sysinfo)
         print(f"\n[ai-fixer] {label}: "
               f"{len(applied)} applied, "
               f"{ctx['ready']} ready (not committed), "
@@ -1216,6 +1092,16 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
               f"{ctx['usage']['prompt_tokens']:,} in / "
               f"{ctx['usage']['completion_tokens']:,} out")
         print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
+
+        if not args.apply and ctx.get("proposed"):
+            ids = ",".join(ctx["proposed"])
+            n = len(ctx["proposed"])
+            print(f"\n[ai-fixer] {n} fix(es) ready to commit for {label}:")
+            print(f"    make ai-fix-commit-{label} FIXLIST=\"{ids}\"")
+            print(f"  or commit all proposed (no FIXLIST):")
+            print(f"    make ai-fix-commit-{label}")
+            print(f"  discard and reclassify with LLM:")
+            print(f"    make ai-fix-log FIXLIST=\"<id>\" AI_FIX_REFETCH=1")
 
         if applied:
             print(f"[ai-fixer] {len(applied)} fix branches "

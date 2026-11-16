@@ -11,16 +11,19 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from pathlib import Path
 
-from common import ROOT
-
-
-def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=ROOT, text=True,
-                          capture_output=True, check=check)
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def _list(prefix: str) -> tuple[list[str], list[str]]:
+def git(*args: str, input: str | None = None,
+        check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, text=True,
+        input=input, capture_output=True, check=check)
+
+
+def list(prefix: str) -> tuple[list[str], list[str]]:
     """Return (merged, unmerged) branches matching '<prefix>*'.
 
     Uses for-each-ref (all branches) filtered in Python by prefix,
@@ -29,14 +32,14 @@ def _list(prefix: str) -> tuple[list[str], list[str]]:
     --list/--merged/--format combination that returns empty output
     on some macOS git builds.
     """
-    current_r = _git("rev-parse", "--abbrev-ref", "HEAD", check=False)
+    current_r = git("rev-parse", "--abbrev-ref", "HEAD", check=False)
     current = current_r.stdout.strip() if current_r.returncode == 0 else ""
     if current == "HEAD":
         print("warn: detached HEAD; all branches treated as unmerged",
               file=sys.stderr)
         current = ""
 
-    r = _git("for-each-ref", "--format=%(refname:short)",
+    r = git("for-each-ref", "--format=%(refname:short)",
              "refs/heads/", check=False)
     if r.returncode != 0:
         print(f"warn: for-each-ref failed: {r.stderr.strip()}",
@@ -50,7 +53,7 @@ def _list(prefix: str) -> tuple[list[str], list[str]]:
     merged: list[str] = []
     unmerged: list[str] = []
     for b in branches:
-        mb = _git("merge-base", "--is-ancestor", b, "HEAD", check=False)
+        mb = git("merge-base", "--is-ancestor", b, "HEAD", check=False)
         if mb.returncode == 0:
             merged.append(b)
         else:
@@ -65,6 +68,117 @@ def _print_list(label: str, branches: list[str]) -> None:
     for b in branches:
         print(f"  {b}")
 
+# ── clean-tree check ─────────────────────────────────────────────────
+def git_clean_check() -> tuple[str, str]:
+    """Verify we're in a git repo with a clean tree. Return (branch, HEAD sha)."""
+    r = git("rev-parse", "--verify", "HEAD", check=False)
+    if r.returncode != 0:
+        sys.exit("ERROR: not a git repository (or no commits yet)")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    if branch == "HEAD":
+        sys.exit("ERROR: detached HEAD, checkout a branch first")
+    status = git("status", "--porcelain").stdout.strip()
+    if status:
+        sys.exit("ERROR: working tree is dirty. Commit or stash before "
+                 "running with --apply.\n"
+                 f"       Uncommitted changes:\n{status}")
+    sha = git("rev-parse", "HEAD").stdout.strip()
+    return branch, sha
+
+
+# ── branch naming ────────────────────────────────────────────────────
+def make_run_id(label: str) -> str:
+    """Return '<label>-fix<N>' with N unused among existing branches.
+
+    Branches from this run are named '<run_id>-<seq>/<chunk>-<local>',
+    so we probe the same '<label>-fix<N>' prefix when looking for
+    collisions.
+    """
+    base = f"ai-checker-{label}-fix"
+    existing = git("branch", "--list", f"{base}*").stdout.splitlines()
+    used: set[int] = set()
+    for line in existing:
+        name = line.strip().lstrip("* ").strip()
+        if not name.startswith(base):
+            continue
+        suffix = name[len(base):]
+        head = suffix.split("-", 1)[0].split("/", 1)[0]
+        if head.isdigit():
+            used.add(int(head))
+    n = 1
+    while n in used:
+        n += 1
+    return f"{base}{n}"
+
+
+def make_fix_branch_name(run_id: str, seq: int,
+                         chunk_id: int, local_id: int) -> str:
+    """<run_id>-<seq>/<chunk_id>-<local_id>.
+
+    The '/<chunk>-<local>' suffix is self-documenting and unambiguous
+    across chunks.
+    """
+    return f"{run_id}-{seq}/{chunk_id}-{local_id}"
+
+
+# ── apply + commit ───────────────────────────────────────────────────
+def _apply_edit(path: Path, old: str, new: str) -> bool:
+    """Replace ALL occurrences of old with new (uniform-fix support).
+
+    Callers (fix.validate_edits) already verified the count matches
+    the LLM's expectation, so replace-all is safe here.
+    """
+    try:
+        src = path.read_text(encoding="utf-8")
+        if old not in src:
+            return False
+        path.write_text(src.replace(old, new), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
+                   edits: list[tuple[Path, str, str]], msg: str) -> str:
+    """Create branch from base_sha, apply all edits, commit, return to base.
+
+    Clean-tree invariant is enforced by git_clean_check before this
+    runs. On any failure (checkout, edit, add, commit) the partial
+    branch is deleted and the tree is reset to base_branch.
+    """
+    r = git("checkout", "-b", branch_name, base_sha, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
+
+    def _cleanup(reason: str) -> None:
+        git("reset", "--hard", check=False)
+        git("checkout", base_branch, check=False)
+        git("branch", "-D", branch_name, check=False)
+        raise RuntimeError(reason)
+
+    for path, old, new in edits:
+        if not _apply_edit(path, old, new):
+            _cleanup(f"apply_edit failed on {path.relative_to(ROOT)}")
+
+    for path, _, _ in edits:
+        rel = str(path.relative_to(ROOT))
+        r = git("add", "--", rel, check=False)
+        if r.returncode != 0:
+            _cleanup(f"git add failed for {rel}: {r.stderr.strip()}")
+
+    r = git("commit", "-F", "-", input=msg, check=False)
+    if r.returncode != 0:
+        _cleanup(f"git commit failed: {r.stderr.strip()}")
+
+    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+
+    r = git("checkout", base_branch, check=False)
+    if r.returncode != 0:
+        # The commit exists; only the return-to-base failed.
+        raise RuntimeError(
+            f"commit {sha} on {branch_name} succeeded, "
+            f"but 'git checkout {base_branch}' failed: {r.stderr.strip()}")
+    return sha
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -82,7 +196,7 @@ def main() -> int:
 
     prefix = f"ai-checker-{args.project}-" if args.project else "ai-checker-"
 
-    merged, unmerged = _list(prefix)
+    merged, unmerged = list(prefix)
     if not merged and not unmerged:
         print(f"no branches match '{prefix}*'")
         return 0
@@ -105,7 +219,7 @@ def main() -> int:
     failed = 0
     print()
     for b in to_delete:
-        r = _git("branch", flag, b, check=False)
+        r = git("branch", flag, b, check=False)
         if r.returncode != 0:
             print(f"  FAILED:  {b}: {r.stderr.strip()}", file=sys.stderr)
             failed += 1
