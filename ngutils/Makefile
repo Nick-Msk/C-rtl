@@ -91,6 +91,7 @@ help:
 	@echo "  make ai-del-branches-<n>      	same, only for project <n>"
 	@echo "  make ai-del-branches FORCE=1  	also delete unmerged branches"
 	@echo "  make ai-del-branches DRY_RUN=1 list what would be deleted"
+	@echo "  make ai-del-branches AI_DEL_CHECK_RUN=7  only c7 branches"
 	@echo ""
 	@echo "  make ai-status           		per-project status summary from check.db"
 	@echo "  make ai-status-<n>       		list all issues for one project"
@@ -344,10 +345,11 @@ $(addprefix ai-status-,$(PROJECTS)): ai-status-%:
 ai-runs:
 	@cd $(CURDIR)/$(AI_CHECKER) && \
 	    uv run python status.py --runs $(AI_STATUS_ARGS)
-		
+
 AI_BRANCHES := gitutil.py
 
-DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,)
+DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,) \
+                    $(if $(AI_DEL_CHECK_RUN),--check-run $(AI_DEL_CHECK_RUN),)
 
 ai-del-branches:
 	@cd $(CURDIR)/$(AI_CHECKER) && \

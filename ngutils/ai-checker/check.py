@@ -329,22 +329,60 @@ def main() -> int:
                          requests=usage["requests"])
 
         if rc == 0:
-            try:
-                n_stale, branches = db.close_period(runid)
-                if n_stale:
-                    print(f"[ai-checker] closed {n_stale} stale issue(s) "
-                          f"from previous run(s)", file=sys.stderr)
-                for b in branches:
-                    if gitutil.delete_branch(b, force=True):
-                        print(f"[ai-checker] deleted branch {b}",
-                              file=sys.stderr)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[ai-checker] warn: close_period failed: {exc}",
-                      file=sys.stderr)
+            _cleanup_old_branches(runid)
 
         return rc
     finally:
         release_lock(lock_fd)
+
+def _cleanup_old_branches(runid: int) -> None:
+    """After a successful check, close the previous period and clean
+    up branches left over from older reports of the same projects.
+
+    - DB: mark stale issues (except 'fixed'), return all fix_branch
+      refs (fixed + non-fixed) for the caller.
+    - git: delete branches that are ancestors of HEAD (safe merge);
+      print a hint for unmerged ones.
+    """
+    try:
+        n_stale, branches = db.close_period(runid)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: close_period failed: {exc}",
+              file=sys.stderr)
+        return
+
+    if n_stale:
+        print(f"[ai-checker] closed {n_stale} stale issue(s) "
+              f"from previous run(s)", file=sys.stderr)
+
+    if not branches:
+        return
+
+    try:
+        merged = set(gitutil.merged_branches("ai-checker-"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: cannot list branches: {exc}",
+              file=sys.stderr)
+        return
+
+    to_delete = [b for b in branches if b in merged]
+    not_merged = [b for b in branches if b not in merged]
+
+    for b in to_delete:
+        if gitutil.delete_branch(b, force=False):
+            print(f"[ai-checker] deleted merged branch {b}",
+                  file=sys.stderr)
+
+    if not_merged:
+        print(f"\n[ai-checker] note: {len(not_merged)} unmerged "
+              f"ai-checker branch(es) preserved; cleanup with:",
+              file=sys.stderr)
+        print("    make ai-del-branches FORCE=1", file=sys.stderr)
+        for b in not_merged[:5]:
+            print(f"      {b}", file=sys.stderr)
+        if len(not_merged) > 5:
+            print(f"      ... and {len(not_merged) - 5} more",
+                  file=sys.stderr)
 
 def _run_checks(args, model, runid: int) -> tuple[int, dict]:
     OUT_ROOT.mkdir(parents=True, exist_ok=True)

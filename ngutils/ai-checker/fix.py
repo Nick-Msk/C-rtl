@@ -50,7 +50,6 @@ from gitutil import (
     commit_one_fix,
     git_clean_check,
     make_fix_branch_name,
-    make_run_id,
 )
 from report import format_header_md
 from sysinfo import system_info
@@ -813,8 +812,11 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
         chunk_id, local_id = db.issue_key(finding)
     except (ValueError, TypeError):
         chunk_id, local_id = 0, 0
-    branch = make_fix_branch_name(ctx["run_id"], ctx["seq"],
-                                  chunk_id, local_id)
+    branch = make_fix_branch_name(
+                        project.name, ctx["fix_runid"], ctx["seq"],
+                        chunk_id, local_id,
+                        check_runid=ctx.get("check_runid", 0))
+    
     commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                     for p, e in parsed]
     files = [str(p.relative_to(ROOT)) for p, _ in parsed]
@@ -1051,8 +1053,6 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
 
 def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     """Per-project accumulator + params from DB."""
-    run_id = (make_run_id(label) if args.apply
-              else f"ai-checker-{label}-fix<N>")
 
     db.seed_defaults()
     max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
@@ -1060,7 +1060,7 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     fix_temp = db.get_param("fix", "temperature", 0.0)
 
     return {
-        "run_id": run_id,
+        "run_id": state["fix_runid"],
         "fix_runid": state["fix_runid"],
         "check_runid": 0,  # fill in в _process_project
         "base_sha": state["base_sha"],
@@ -1153,8 +1153,9 @@ def _print_dry_run_hint(label: str, ctx: dict) -> None:
 
 
 def _print_applied_branches(applied: list[dict], base_branch: str,
-                            run_id: str) -> None:
-    print(f"\n[ai-fixer] {len(applied)} fix branch(es) (run_id={run_id}):")
+                            run_id: int) -> None:
+    print(f"\n[ai-fixer] {len(applied)} fix branch(es) (fix_runid={run_id}):")
+
     for c in applied:
         print(f"\n  {c['branch']}")
         print(f"    id:       {c['id']}")
@@ -1195,7 +1196,8 @@ def _write_json_log(label: str, ts: str, ctx: dict, dt: float,
         "project": label,
         "base_branch": ctx["base_branch"],
         "base_sha": ctx["base_sha"],
-        "run_id": ctx["run_id"],
+        "fix_runid": ctx["fix_runid"],
+        "check_runid": ctx.get("check_runid", 0),
         "started": ts,
         "duration_sec": round(dt, 1),
         "fixes": applied,

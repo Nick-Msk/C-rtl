@@ -279,14 +279,14 @@ def close_period(runid: int) -> tuple[int, list[str]]:
     """Close previous periods for projects touched by this run.
 
     Non-'fixed' issues in older reports of the same project become
-    'stale'; their fix_branch references are cleared (branches
-    queued for deletion by the caller). Cached proposals in
-    `proposal_commit` are KEPT — they are history of fix attempts
-    and useful for audit.
+    'stale'; their fix_* references are cleared. 'fixed' issues are
+    terminal and preserved (they represent already-merged commits).
 
-    'fixed' issues are terminal and preserved.
-
-    Returns (n_stale_issues, branches_to_delete).
+    Returns (n_stale_issues, branches_to_check) — the SECOND element
+    includes fix_branch from BOTH stale and fixed issues, because
+    a fixed issue's branch may still be lying around in git even
+    after merge. The caller (check.py) filters merged-vs-unmerged
+    via gitutil.merged_branches() and deletes only merged ones.
     """
         
     now = _now_iso()
@@ -315,23 +315,16 @@ def close_period(runid: int) -> tuple[int, list[str]]:
 
             ph_old = ",".join("?" * len(older))
 
-            # Collect branches before clearing them
+            # Collect ALL fix_branch refs from older reports, including
+            # those of 'fixed' issues (merged earlier but branch may
+            # still exist). Caller filters merged vs unmerged.
             for r in con.execute(
                     f"SELECT DISTINCT fix_branch FROM issue WHERE "
                     f"  report_id IN ({ph_old}) "
-                    f"  AND fix_branch IS NOT NULL "
-                    f"  AND status != ?",
-                    (*older, STATUS_FIXED)).fetchall():
+                    f"  AND fix_branch IS NOT NULL",
+                    (*older,)).fetchall():
                 if r["fix_branch"]:
                     branches.append(r["fix_branch"])
-
-            # close cached proposals
-            # con.execute(
-            #     f"DELETE FROM proposal_commit WHERE issue_id IN ("
-            #     f"  SELECT id FROM issue WHERE "
-            #     f"    report_id IN ({ph_old}) "
-            #     f"    AND status != ?)",
-            #     (*older, STATUS_FIXED))
 
             # Mark stale, clear fix_* refs
             cur = con.execute(

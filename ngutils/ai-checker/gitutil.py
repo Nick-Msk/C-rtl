@@ -22,15 +22,22 @@ def git(*args: str, input: str | None = None,
         ["git", *args], cwd=ROOT, text=True,
         input=input, capture_output=True, check=check)
 
+def delete_branch(name: str, force: bool = False) -> bool:
+    """Delete a local branch. Returns True on success, False on
+    failure (branch missing, current branch, unmerged + not force).
+    Never raises — this is best-effort cleanup."""
+    flag = "-D" if force else "-d"
+    r = git("branch", flag, name, check=False)
+    return r.returncode == 0
 
-def list(prefix: str) -> tuple[list[str], list[str]]:
+def list(prefix: str, check_run: int | None = None
+          ) -> tuple[list[str], list[str]]:
     """Return (merged, unmerged) branches matching '<prefix>*'.
 
-    Uses for-each-ref (all branches) filtered in Python by prefix,
-    then git merge-base --is-ancestor to classify merged vs unmerged.
-    Both are portable across git versions; avoids the fragile
-    --list/--merged/--format combination that returns empty output
-    on some macOS git builds.
+    check_run filters by the '-c<N>-' marker in the branch name
+    (new format `ai-checker-<proj>-c<check>-f<fix>-<seq>/<chunk>-<local>`).
+    Old branches (`ai-checker-<proj>-fix<N>-<seq>/...`) have no
+    `-c<N>-` and are only listed when check_run is None.
     """
     current_r = git("rev-parse", "--abbrev-ref", "HEAD", check=False)
     current = current_r.stdout.strip() if current_r.returncode == 0 else ""
@@ -49,6 +56,9 @@ def list(prefix: str) -> tuple[list[str], list[str]]:
     branches = [b.strip() for b in r.stdout.splitlines() if b.strip()]
     branches = [b for b in branches
                 if b != current and b.startswith(prefix)]
+    if check_run is not None:
+        marker = f"-c{check_run}-"
+        branches = [b for b in branches if marker in b]
 
     merged: list[str] = []
     unmerged: list[str] = []
@@ -86,39 +96,29 @@ def git_clean_check() -> tuple[str, str]:
     return branch, sha
 
 
-# ── branch naming ────────────────────────────────────────────────────
-def make_run_id(label: str) -> str:
-    """Return '<label>-fix<N>' with N unused among existing branches.
+def make_fix_branch_name(project: str, fix_runid: int, seq: int,
+                         chunk_id: int, local_id: int,
+                         check_runid: int = 0) -> str:
+    """ai-checker-<proj>-c<check>-f<fix>-<seq>/<chunk>-<local>
 
-    Branches from this run are named '<run_id>-<seq>/<chunk>-<local>',
-    so we probe the same '<label>-fix<N>' prefix when looking for
-    collisions.
+    - c<check>        = check-run (llmruns.runid, kind='check'),
+                        which report this fix belongs to
+    - f<fix>          = fix-run (llmruns.runid, kind='fix'),
+                        which ai-fix invocation created it
+    - <seq>           = per-fix-run sequence (1, 2, ...)
+    - <chunk>-<local> = the finding key
+
+    Filtering by check-run: `git branch --list 'ai-checker-<p>-c<N>-*'`.
+    Filtering by fix-run:   `git branch --list 'ai-checker-<p>-*-f<N>-*'`.
+
+    `check_runid=0` falls back to omitting the `c<N>` part
+    (legacy reports with no llmruns entry).
     """
-    base = f"ai-checker-{label}-fix"
-    existing = git("branch", "--list", f"{base}*").stdout.splitlines()
-    used: set[int] = set()
-    for line in existing:
-        name = line.strip().lstrip("* ").strip()
-        if not name.startswith(base):
-            continue
-        suffix = name[len(base):]
-        head = suffix.split("-", 1)[0].split("/", 1)[0]
-        if head.isdigit():
-            used.add(int(head))
-    n = 1
-    while n in used:
-        n += 1
-    return f"{base}{n}"
-
-
-def make_fix_branch_name(run_id: str, seq: int,
-                         chunk_id: int, local_id: int) -> str:
-    """<run_id>-<seq>/<chunk_id>-<local_id>.
-
-    The '/<chunk>-<local>' suffix is self-documenting and unambiguous
-    across chunks.
-    """
-    return f"{run_id}-{seq}/{chunk_id}-{local_id}"
+    parts = [f"ai-checker-{project}"]
+    if check_runid:
+        parts.append(f"c{check_runid}")
+    parts.append(f"f{fix_runid}-{seq}/{chunk_id}-{local_id}")
+    return "-".join(parts)
 
 
 # ── apply + commit ───────────────────────────────────────────────────
@@ -195,6 +195,26 @@ def branches_exist(names: list[str]) -> set[str]:
     existing = {b.strip() for b in r.stdout.splitlines() if b.strip()}
     return set(names) & existing
 
+def merged_branches(prefix: str = "ai-checker-") -> list[str]:
+    """Local branches matching '<prefix>*' that are ancestors of HEAD.
+
+    Uses `git merge-base --is-ancestor` — portable across git versions
+    (unlike `git branch --merged --format`, which returns empty on
+    some macOS builds).
+    """
+    r = git("for-each-ref", "--format=%(refname:short)",
+            "refs/heads/", check=False)
+    if r.returncode != 0:
+        return []
+    branches = [b.strip() for b in r.stdout.splitlines()
+                if b.strip() and b.strip().startswith(prefix)]
+    merged: list[str] = []
+    for b in branches:
+        mb = git("merge-base", "--is-ancestor", b, "HEAD", check=False)
+        if mb.returncode == 0:
+            merged.append(b)
+    return merged
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Delete ai-checker fix branches")
@@ -203,6 +223,9 @@ def main() -> int:
                    help="only branches for this project")
     g.add_argument("--all", action="store_true",
                    help="all ai-checker-* branches (default)")
+    ap.add_argument("--check-run", type=int, default=None,
+                    help="only branches from this check-run "
+                         "(name contains '-c<N>-')")
     ap.add_argument("--force", action="store_true",
                     help="also delete unmerged branches (-D instead of -d)")
     ap.add_argument("--dry-run", action="store_true",
@@ -216,7 +239,10 @@ def main() -> int:
         print(f"no branches match '{prefix}*'")
         return 0
 
-    print(f"pattern: '{prefix}*'")
+    scope = f"'{prefix}*'"
+    if args.check_run is not None:
+        scope += f" filtered to check-run c{args.check_run}"
+    print(f"pattern: {scope}")
     _print_list("merged (safe to delete)", merged)
     _print_list("unmerged (preserved unless FORCE=1)", unmerged)
 
