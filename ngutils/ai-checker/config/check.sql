@@ -83,7 +83,7 @@ CREATE TABLE proposal_commit (
     reason          TEXT NOT NULL DEFAULT '',
     file_sha256     TEXT NOT NULL,
     dt              TEXT NOT NULL,
-    PRIMARY KEY (issue_id, seq)
+    PRIMARY KEY (runid, issue_id, seq)
 );
 
 CREATE INDEX IF NOT EXISTS idx_proposal_fix_run ON proposal_commit(fix_runid);

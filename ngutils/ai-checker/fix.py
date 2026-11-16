@@ -694,7 +694,7 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
         project_name=project.name)
 
     _save_proposal(report_path, finding, parsed, commit_msg, reason,
-                   runid=ctx["llm_runid"],
+                   runid=ctx["check_runid"],
                    fix_runid=ctx["fix_runid"],
                    commit_subject=commit_subject)
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
@@ -1220,9 +1220,10 @@ def _print_final_summary(state: dict) -> None:
               f"{u['completion_tokens']:,} out "
               f"({u['requests']} request(s))")
 
-def _run(args, model: str, jobs: list[tuple[str, Path, Path]],
+def _run(args, model: str, 
+         jobs: list[tuple[str, Path, Path]],
          runid: int) -> tuple[int, dict]:
-    
+
     state = _prepare_run(args)
     state["fix_runid"] = runid
 
