@@ -59,6 +59,7 @@ Test(bool, parse_does_not_touch_out_on_failure) {
 Test(bool, parse_null_str_fails) {
     bool ok = false;
     cr_assert_not(bool_tryparse(NULL, &ok));
+    cr_assert_not(ok);
 }
 
 Test(bool, parse_null_out_is_allowed) {
