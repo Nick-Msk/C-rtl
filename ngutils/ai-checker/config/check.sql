@@ -82,7 +82,6 @@ CREATE TABLE proposal_commit (
     commit_subject  TEXT NOT NULL DEFAULT '',
     reason          TEXT NOT NULL DEFAULT '',
     file_sha256     TEXT NOT NULL,
-    commit_subject  TEXT
     dt              TEXT NOT NULL,
     PRIMARY KEY (issue_id, seq)
 );
