@@ -17,7 +17,7 @@ from pathlib import Path
 from common import ROOT
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS report (
 );
 
 CREATE TABLE IF NOT EXISTS issue (
+    runid       INTEGER NOT NULL REFERENCES llmruns(runid),
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     report_id   INTEGER NOT NULL REFERENCES report(id) ON DELETE CASCADE,
     finding_id  TEXT NOT NULL,
@@ -98,24 +99,32 @@ CREATE TABLE IF NOT EXISTS issue (
     UNIQUE (report_id, chunk_id, local_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_issue_runid ON issue(runid);
 CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
 
 CREATE TABLE proposal_commit (
+    runid           INTEGER NOT NULL REFERENCES llmruns(runid),
     issue_id        INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
     seq             INTEGER NOT NULL DEFAULT 1,
+    fix_runid       INTEGER NOT NULL DEFAULT 0 REFERENCES llmruns(runid),
     file            TEXT NOT NULL,
     edits_json      TEXT,
     old_snippet     TEXT NOT NULL,
     new_snippet     TEXT NOT NULL,
     explanation     TEXT NOT NULL DEFAULT '',
     commit_msg      TEXT NOT NULL,
+    commit_subject  TEXT NOT NULL DEFAULT '',
     reason          TEXT NOT NULL DEFAULT '',
     file_sha256     TEXT NOT NULL,
     commit_subject  TEXT
     dt              TEXT NOT NULL,
     PRIMARY KEY (issue_id, seq)
 );
+
+CREATE INDEX IF NOT EXISTS idx_proposal_fix_run ON proposal_commit(fix_runid);
+CREATE INDEX IF NOT EXISTS idx_proposal_commit ON proposal_commit(runid);
+CREATE INDEX IF NOT EXISTS idx_proposal_commit_dt ON proposal_commit(dt);
 
 CREATE TABLE IF NOT EXISTS modules (
     name  TEXT PRIMARY KEY,
@@ -128,10 +137,9 @@ CREATE TABLE IF NOT EXISTS params (
     value         TEXT NOT NULL,
     default_value TEXT NOT NULL,
     dt            TEXT NOT NULL,
-    PRIMARY KEY (category, name)
+    PRIMARY KEY (module, name)
 );
 
-CREATE INDEX idx_proposal_commit_dt ON proposal_commit(dt);
 """
 
 STATUS_ADDED    = "added"
@@ -212,15 +220,16 @@ def split_finding_id(fid: str) -> tuple[int, int]:
     return 1, TABLE_LOCAL_BASE + int(fid)
 
 def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
-    """Keys to skip on next --apply: needs-review (already classified),
-    fixed, rejected. Use --reprocess to override."""
+    """Keys to skip on next --apply: stale (superseded), needs-review
+    (already classified), fixed, rejected. Use --reprocess to override."""
     rel = _rel(report_path)
     with connect() as con:
         rows = con.execute(
             "SELECT chunk_id, local_id FROM issue WHERE "
             "report_id = (SELECT id FROM report WHERE path = ?) "
-            "AND status IN (?, ?, ?)",
-            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED, STATUS_STALE)).fetchall()
+            "AND status IN (?, ?, ?, ?)",
+            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED,
+             STATUS_STALE)).fetchall()
     return {(r["chunk_id"], r["local_id"]) for r in rows}
 
 def _rel(path: Path | str) -> str:
@@ -305,29 +314,32 @@ def ingest_report(*, project: str, report_path: Path, model: str,
         con.execute("DELETE FROM report WHERE path = ?", (rel,))
         cur = con.execute(
             "INSERT INTO report "
-            "(project, path, base_sha, model, kind, started, duration_s, "
-            " run_id, dt) "
+            "(project, path, base_sha, model, kind, started, "
+            " duration_s, run_id, dt) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (project, rel, sha, model, kind,
              started.strftime("%Y-%m-%dT%H:%M:%S"), duration_s,
              runid, now))
         report_id = cur.lastrowid
+
         skipped_dup = 0
         for f in findings:
             fid = f.get("id", "")
+            if not fid:
+                continue
             try:
-                chunk_id, local_id = split_finding_id(fid)
-            except (ValueError, AttributeError):
+                chunk_id, local_id = issue_key(f)
+            except (ValueError, TypeError):
                 continue
             title = f["text"].splitlines()[0][:120]
             try:
                 con.execute(
                     "INSERT INTO issue "
-                    "(report_id, finding_id, chunk_id, local_id, section, "
-                    " title, text, status, dt) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (report_id, fid, chunk_id, local_id, f["section"],
-                    title, f["text"], STATUS_ADDED, now))
+                    "(report_id, runid, finding_id, chunk_id, local_id, "
+                    " section, title, text, status, dt) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (report_id, runid or 0, fid, chunk_id, local_id,
+                     f["section"], title, f["text"], STATUS_ADDED, now))
             except sqlite3.IntegrityError:
                 skipped_dup += 1
         if skipped_dup:
@@ -347,18 +359,17 @@ def _key_for(finding) -> tuple[str, int, int]:
 def close_period(runid: int) -> tuple[int, list[str]]:
     """Close previous periods for projects touched by this run.
 
-    For each project that has a report in this run, all OTHER
-    reports of the same project are superseded. Non-'fixed' issues
-    in those older reports become 'stale', their cached proposals
-    are deleted, and their fix_branch references are cleared.
+    Non-'fixed' issues in older reports of the same project become
+    'stale'; their fix_branch references are cleared (branches
+    queued for deletion by the caller). Cached proposals in
+    `proposal_commit` are KEPT — they are history of fix attempts
+    and useful for audit.
 
-    'fixed' issues are terminal and preserved (they represent
-    already-merged commits).
+    'fixed' issues are terminal and preserved.
 
-    Returns (n_stale_issues, branches_to_delete). The caller is
-    responsible for actually deleting the branches — db.py does no
-    git operations.
+    Returns (n_stale_issues, branches_to_delete).
     """
+        
     now = _now_iso()
     branches: list[str] = []
     total = 0
@@ -395,13 +406,13 @@ def close_period(runid: int) -> tuple[int, list[str]]:
                 if r["fix_branch"]:
                     branches.append(r["fix_branch"])
 
-            # Drop cached proposals
-            con.execute(
-                f"DELETE FROM proposal_commit WHERE issue_id IN ("
-                f"  SELECT id FROM issue WHERE "
-                f"    report_id IN ({ph_old}) "
-                f"    AND status != ?)",
-                (*older, STATUS_FIXED))
+            # close cached proposals
+            # con.execute(
+            #     f"DELETE FROM proposal_commit WHERE issue_id IN ("
+            #     f"  SELECT id FROM issue WHERE "
+            #     f"    report_id IN ({ph_old}) "
+            #     f"    AND status != ?)",
+            #     (*older, STATUS_FIXED))
 
             # Mark stale, clear fix_* refs
             cur = con.execute(
@@ -450,7 +461,7 @@ def resolved_finding_ids(report_path: Path | str) -> set[str]:
         rows = con.execute(
             "SELECT finding_id FROM issue WHERE "
             "report_id = (SELECT id FROM report WHERE path = ?) "
-            "AND status IN (?, ?)",
+            "AND status IN (?, ?, ?)",
             (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED)).fetchall()
     return {r["finding_id"] for r in rows}
 
@@ -471,11 +482,16 @@ def get_status(report_path: Path | str, finding) -> str | None:
 
 def save_proposal(report_path, finding, *,
                   edits, commit_msg, reason,
+                  runid: int,              # check-runid (from issue)
+                  fix_runid: int,           # fix-runid (from llmruns)
                   commit_subject: str = "",
-                  seq: int = 1) -> bool:
+                  seq: int | None = None) -> bool:
     """Cache 1-2 validated local-fix edits.
 
-    `edits` = [{file, old_snippet, new_snippet, explanation, file_sha256}].
+    `runid` is the check-run id (issue.runid). `fix_runid` is the
+    current fix run id. `seq` auto-increments per (runid, issue_id)
+    when omitted, so re-running ai-fix in a new fix-run preserves
+    the previous proposal as history.
     """
     if not edits:
         return False
@@ -485,6 +501,7 @@ def save_proposal(report_path, finding, *,
         return False
     rel = _rel(report_path)
     first = edits[0]
+
     with connect() as con:
         row = con.execute(
             "SELECT id FROM issue WHERE "
@@ -493,13 +510,22 @@ def save_proposal(report_path, finding, *,
             (rel, chunk_id, local_id)).fetchone()
         if not row:
             return False
+        issue_id = row["id"]
+
+        if seq is None:
+            r = con.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM proposal_commit "
+                "WHERE runid = ? AND issue_id = ?",
+                (runid, issue_id)).fetchone()
+            seq = r[0]
+
         con.execute(
             "INSERT OR REPLACE INTO proposal_commit "
-            "(issue_id, seq, file, old_snippet, new_snippet, explanation, "
-            " commit_msg, commit_subject, reason, file_sha256, "
-            " edits_json, dt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (row["id"], seq,
+            "(runid, issue_id, seq, fix_runid, file, old_snippet, "
+            " new_snippet, explanation, commit_msg, commit_subject, "
+            " reason, file_sha256, edits_json, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (runid, issue_id, seq, fix_runid,
              first["file"], first["old_snippet"], first["new_snippet"],
              first.get("explanation", ""),
              commit_msg, commit_subject, reason,
@@ -508,9 +534,17 @@ def save_proposal(report_path, finding, *,
              _now_iso()))
         return True
 
+def report_runid(report_path: Path | str) -> int | None:
+    """Return report.run_id for this report, or None (legacy / not ingested)."""
+
+    rel = _rel(report_path)
+    with connect() as con:  # обычный connect
+        row = con.execute(
+            "SELECT run_id FROM report WHERE path = ?", (rel,)).fetchone()
+    return row["run_id"] if row else None
 
 def load_proposal(report_path: Path | str, finding) -> dict | None:
-    """Load newest proposal; `edits` is a list of 1-2 dicts."""
+    """Load the newest proposal for an issue (max seq)."""
     try:
         _fid, chunk_id, local_id = _key_for(finding)
     except (ValueError, TypeError):
@@ -518,8 +552,9 @@ def load_proposal(report_path: Path | str, finding) -> dict | None:
     rel = _rel(report_path)
     with connect() as con:
         row = con.execute(
-            "SELECT p.seq, p.commit_msg, p.commit_subject, p.reason, p.dt, "
-            "       p.edits_json, p.file, p.old_snippet, p.new_snippet, "
+            "SELECT p.runid, p.seq, p.fix_runid, p.commit_msg, "
+            "       p.commit_subject, p.reason, p.dt, p.edits_json, "
+            "       p.file, p.old_snippet, p.new_snippet, "
             "       p.explanation, p.file_sha256 "
             "FROM proposal_commit p JOIN issue i ON i.id = p.issue_id "
             "JOIN report r ON r.id = i.report_id "
@@ -545,13 +580,28 @@ def load_proposal(report_path: Path | str, finding) -> dict | None:
             "explanation": row["explanation"] or "",
             "file_sha256": row["file_sha256"] or "",
         }]
-    return {"seq": row["seq"],
+    return {"runid": row["runid"], "seq": row["seq"],
+            "fix_runid": row["fix_runid"],
             "commit_msg": row["commit_msg"] or "",
             "commit_subject": row["commit_subject"] or "",
             "reason": row["reason"] or "",
             "dt": row["dt"] or "",
             "edits": edits}
 
+def issue_runid(report_path: Path | str, finding) -> int | None:
+    """Return issue.runid (check-runid) for this finding, or None."""
+    try:
+        _fid, chunk_id, local_id = _key_for(finding)
+    except (ValueError, TypeError):
+        return None
+    rel = _rel(report_path)
+    with connect() as con:
+        row = con.execute(
+            "SELECT runid FROM issue WHERE "
+            "report_id = (SELECT id FROM report WHERE path = ?) "
+            "AND chunk_id = ? AND local_id = ?",
+            (rel, chunk_id, local_id)).fetchone()
+    return row["runid"] if row else None
 
 def clear_proposal(report_path: Path | str, finding,
                    seq: int | None = None) -> int:
@@ -690,19 +740,23 @@ def list_issues(project: str | None = None,
     per project, so superseded ('stale') runs don't drown the view.
     Each dict has an extra 'key' = '<chunk_id>/<local_id>'.
     """
-    q = ("SELECT r.project, i.chunk_id, i.local_id, i.section, "
-         "i.finding_id, i.status, i.title, i.fix_branch, i.fix_commit, "
-         "i.fix_subject, i.dt "
+    q = ("SELECT r.project, r.id AS report_id, "
+         "r.started AS report_started, i.runid AS check_runid, "
+         "i.chunk_id, i.local_id, i.section, i.finding_id, i.status, "
+         "i.title, i.fix_branch, i.fix_commit, i.fix_subject, i.dt "
          "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
     params: list = []
+
     if project:
         q += "AND r.project = ? "
         params.append(project)
     if status:
-        if latest_only:
-            q += ("AND r.id = (SELECT MAX(id) FROM report "
-                "WHERE project = r.project) ")
+        q += "AND i.status = ? "
         params.append(status)
+    if latest_only:
+        q += ("AND r.id = (SELECT MAX(id) FROM report "
+              "WHERE project = r.project) ")
+        
     q += "ORDER BY r.id DESC, i.chunk_id, i.local_id"
     with connect() as con:
         rows = con.execute(q, params).fetchall()

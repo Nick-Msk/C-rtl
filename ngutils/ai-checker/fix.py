@@ -694,6 +694,8 @@ def _classify_with_llm(finding: dict, key: str, project: Path,
         project_name=project.name)
 
     _save_proposal(report_path, finding, parsed, commit_msg, reason,
+                   runid=ctx["llm_runid"],
+                   fix_runid=ctx["fix_runid"],
                    commit_subject=commit_subject)
     _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
 
@@ -740,6 +742,7 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
 def _save_proposal(report_path: Path, finding: dict,
                    parsed: list[tuple[Path, dict]],
                    commit_msg: str, reason: str,
+                   runid: int, fix_runid: int,
                    commit_subject: str = "") -> None:
     proposal_edits = []
     for p, e in parsed:
@@ -760,6 +763,7 @@ def _save_proposal(report_path: Path, finding: dict,
         db.save_proposal(report_path, finding,
                          edits=proposal_edits,
                          commit_msg=commit_msg, reason=reason,
+                         runid=runid, fix_runid=fix_runid,
                          commit_subject=commit_subject)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: proposal save failed: {exc}", file=sys.stderr)
@@ -1051,6 +1055,8 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
 
     return {
         "run_id": run_id,
+        "fix_runid": state["fix_runid"],
+        "check_runid": 0,  # fill in в _process_project
         "base_sha": state["base_sha"],
         "base_branch": state["base_branch"],
         "seq": 0,
@@ -1075,6 +1081,15 @@ def _process_project(label: str, report_path: Path, project: Path,
 
     started = datetime.now()
     t0 = time.perf_counter()
+
+    try:
+        report_runid = db.report_runid(report_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: cannot resolve report.run_id: {exc}",
+              file=sys.stderr)
+        report_runid = 0
+    ctx["check_runid"] = report_runid or 0
+
     for idx, finding in enumerate(findings, 1):
         t_finding = time.perf_counter()
         files = gather_context_files(finding, project)
@@ -1209,6 +1224,7 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]],
          runid: int) -> tuple[int, dict]:
     
     state = _prepare_run(args)
+    state["fix_runid"] = runid
 
     for label, report_path, project in jobs:
         print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
