@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `test-docker` isolates per-project `build/` via bind-mounts to
   `/tmp/ngutils-docker-build/<project>`.
 
+- Schema definition moved from `db.SCHEMA` (inline Python string) to
+  `config/check.sql` (plain SQL file), loaded lazily by
+  `db._schema_sql()` on first DB creation. Single source of truth;
+  editable/diffable as SQL, viewable in any SQLite client. The
+  Python module now contains only `SCHEMA_VERSION` and the migration
+  dispatch — no DDL.
+- `SCHEMA_VERSION` bumped to 10.
+
 ### Fixed
 
 - `error`: `errno` preserved across `ACTION` and logging in raise
