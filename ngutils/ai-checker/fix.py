@@ -1098,26 +1098,32 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
             n = len(ctx["proposed"])
             print(f"\n[ai-fixer] {n} fix(es) ready to commit for {label}:")
             print(f"    make ai-fix-commit-{label} FIXLIST=\"{ids}\"")
-            print(f"  or commit all proposed (no FIXLIST):")
+            print("  or commit all proposed (no FIXLIST):")
             print(f"    make ai-fix-commit-{label}")
-            print(f"  discard and reclassify with LLM:")
-            print(f"    make ai-fix-log FIXLIST=\"<id>\" AI_FIX_REFETCH=1")
+            print("  discard and reclassify with LLM:")
+            print("    make ai-fix-log FIXLIST=\"<id>\" AI_FIX_REFETCH=1")
 
         if applied:
-            print(f"[ai-fixer] {len(applied)} fix branches "
+            print(f"\n[ai-fixer] {len(applied)} fix branch(es) "
                   f"(run_id={run_id}):")
             for c in applied:
-                print(f"  {c['branch']:<32}  id={c['id']:<6}  "
-                      f"{c['summary']}")
-            first = applied[0]
-            print(f"\n[ai-fixer] review one:   git log --oneline "
-                  f"{first['branch']}")
-            print(f"[ai-fixer] inspect one:  git show {first['sha']}")
-            print(f"[ai-fixer] merge one:    git checkout {base_branch} && "
-                  f"git merge --no-ff {first['branch']}")
-            print(f"[ai-fixer] reject one:   git branch -D {first['branch']}")
-            print(f"[ai-fixer] reject all:   git branch -D "
-                  f"{' '.join(c['branch'] for c in applied)}")
+                print(f"\n  {c['branch']}")
+                print(f"    id:       {c['id']}")
+                print(f"    summary:  {c['summary']}")
+                print(f"    inspect:  git show {c['sha']}")
+                print(f"    merge:    git merge --no-ff {c['branch']}")
+                print(f"    reject:   git branch -D {c['branch']}")
+
+            shas = " ".join(c["sha"] for c in applied)
+            branches = " ".join(c["branch"] for c in applied)
+            merge_lines = "\n    ".join(
+                f"git merge --no-ff {c['branch']}" for c in applied)
+            print(f"\n[ai-fixer] from '{base_branch}', inspect all at once:")
+            print(f"    git show {shas}")
+            print(f"\n[ai-fixer] from '{base_branch}', merge in order:")
+            print(f"    {merge_lines}")
+            print("\n[ai-fixer] reject all:")
+            print(f"    git branch -D {branches}")
 
             log_path = FIX_DIR / f"{ts}_{label}.json"
             log_path.write_text(json.dumps({
