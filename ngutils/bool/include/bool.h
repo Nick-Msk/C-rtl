@@ -38,6 +38,9 @@
  * @return Pointer to a static array of version strings. Read-only,
  *         must not be freed.
  *
+ * @note The array is @c NULL-terminated; iterate until a @c NULL
+ *       entry is encountered.
+ *
  * @warning The returned array is read-only; do not modify through
  *          const_cast.
  */
