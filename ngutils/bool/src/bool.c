@@ -3,7 +3,7 @@
  * @brief Version array and functions.
  */
 
-#include <bool.h>
+#include "bool.h"
 #include <stddef.h>
 
 static const char *const versions[] = {
