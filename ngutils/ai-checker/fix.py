@@ -967,16 +967,16 @@ def _write_fix_report(label: str, source_report: Path, started: datetime,
               f"-> {out_dir.relative_to(ROOT)}/hist/", file=sys.stderr)
     return out_path
 
-def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
+def _prepare_run(args) -> dict:
+    """One-time setup: base branch, machine snapshot, accumulator state."""
     base_branch = base_sha = None
     if args.apply:
         base_branch, base_sha = git_clean_check()
 
     FIX_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    created_all: list[tuple[str, str, list[dict]]] = []
-    sysinfo = system_info()
 
+    sysinfo = system_info()
     try:
         (OUT_ROOT / "_machine.json").write_text(
             json.dumps(sysinfo, indent=2, ensure_ascii=False),
@@ -984,193 +984,255 @@ def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
     except OSError as exc:
         print(f"[ai-fixer] warn: cannot write _machine.json: {exc}",
               file=sys.stderr)
-        
-    all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
-                 "total_tokens": 0, "requests": 0}
 
-    for label, report_path, project in jobs:
-        print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")        
-        
-        findings = iter_findings(report_path, 0)
-        only = _parse_fixlist(args.only)
-        if only is not None:
-            selected: list[dict] = []
-            for f in findings:
-                try:
-                    key = db.issue_key(f)
-                except (ValueError, TypeError):
-                    continue
-                if only(key):
-                    selected.append(f)
-            if not selected:
-                print(f"  warn: FIXLIST matched nothing: {args.only!r}",
-                      file=sys.stderr)
-                print("  no findings match FIXLIST")
-                continue
-            findings = selected
-        elif args.limit:
-            findings = findings[:args.limit]
-
-        if not findings:
-            print("  no findings to process")
-            continue
-
-        run_id = (make_run_id(label) if args.apply
-                          else f"ai-checker-{label}-fix<N>")
-
-        db.seed_defaults()
-        max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
-        max_diff = db.get_param("fix", "max_diff_lines", MAX_DIFF_LINES)
-
-        ctx = {
-            "run_id": run_id,
-            "base_sha": base_sha,
-            "base_branch": base_branch,
-            "seq": 0,
-            "ready": 0,
-            "model": model,
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+    return {
+        "base_branch": base_branch,
+        "base_sha": base_sha,
+        "ts": ts,
+        "sysinfo": sysinfo,
+        "all_usage": {"prompt_tokens": 0, "completion_tokens": 0,
                       "total_tokens": 0, "requests": 0},
-            "finding_durs": [],
-            "max_source": max_source,
-            "max_diff_lines": max_diff,
-            "proposed": [],
-        }
+        "created_all": [],
+    }
 
-        if not args.reprocess:
-            try:
-                resolved = db.resolved_finding_keys(report_path)
-            except Exception as exc:  # noqa: BLE001
-                print(f"  warn: db query failed: {exc}", file=sys.stderr)
-                resolved = set()
-            if resolved:
-                before = len(findings)
-                kept: list[dict] = []
-                for f in findings:
-                    try:
-                        key = db.issue_key(f)
-                    except (ValueError, TypeError):
-                        kept.append(f)
-                        continue
-                    if key not in resolved:
-                        kept.append(f)
-                skipped_n = before - len(kept)
-                print(f"  skip {skipped_n} already-resolved "
-                      f"(fixed/rejected/analyze-by-dev); "
-                      f"use --reprocess to include", file=sys.stderr)
-                findings = kept
-                if not findings:
-                    print("  nothing left after resolved filter")
-                    continue
+def _issue_key_or_none(finding: dict) -> tuple[int, int] | None:
+    try:
+        return db.issue_key(finding)
+    except (ValueError, TypeError):
+        return None
 
-        applied: list[dict] = []
-        skipped: list[str] = []
-        needs_review: list[dict] = []
 
-        started = datetime.now()
-        t0 = time.perf_counter()
-        for idx, finding in enumerate(findings, 1):
-            t_finding = time.perf_counter()
-            files = gather_context_files(finding, project)
-            _handle_finding(idx, len(findings), finding, project,
-                            report_path, files, args, model, ctx,
-                            applied, skipped, needs_review)
-            ctx["finding_durs"].append(time.perf_counter() - t_finding)
-        dt = time.perf_counter() - t0
+def _matches_fixlist(finding: dict, matcher) -> bool:
+    k = _issue_key_or_none(finding)
+    return k is not None and matcher(k)
 
-        for k in all_usage:
-            all_usage[k] += ctx["usage"].get(k, 0)
 
-        report_out = _write_fix_report(label, report_path, started, dt,
-                                        ctx, args, applied, skipped,
-                                        needs_review, sysinfo)
-        print(f"\n[ai-fixer] {label}: "
-              f"{len(applied)} applied, "
-              f"{ctx['ready']} ready (not committed), "
-              f"{len(skipped)} skipped, "
-              f"{len(needs_review)} needs review, {dt:.1f}s, "
-              f"{ctx['usage']['prompt_tokens']:,} in / "
-              f"{ctx['usage']['completion_tokens']:,} out")
-        print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
+def _load_resolved(report_path: Path) -> set[tuple[int, int]]:
+    try:
+        return db.resolved_finding_keys(report_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: db query failed: {exc}", file=sys.stderr)
+        return set()
 
-        if not args.apply and ctx.get("proposed"):
-            ids = ",".join(ctx["proposed"])
-            n = len(ctx["proposed"])
-            print(f"\n[ai-fixer] {n} fix(es) ready to commit for {label}:")
-            print(f"    make ai-fix-commit-{label} FIXLIST=\"{ids}\"")
-            print("  or commit all proposed (no FIXLIST):")
-            print(f"    make ai-fix-commit-{label}")
-            print("  discard and reclassify with LLM:")
-            print("    make ai-fix-log FIXLIST=\"<id>\" AI_FIX_REFETCH=1")
 
-        if applied:
-            print(f"\n[ai-fixer] {len(applied)} fix branch(es) "
-                  f"(run_id={run_id}):")
-            for c in applied:
-                print(f"\n  {c['branch']}")
-                print(f"    id:       {c['id']}")
-                print(f"    summary:  {c['summary']}")
-                print(f"    inspect:  git show {c['sha']}")
-                print(f"    merge:    git merge --no-ff {c['branch']}")
-                print(f"    reject:   git branch -D {c['branch']}")
+def _filter_findings(report_path: Path, args) -> list[dict]:
+    """Apply FIXLIST / --limit / resolved-filter. Empty list = skip project."""
+    findings = iter_findings(report_path, 0)
 
-            shas = " ".join(c["sha"] for c in applied)
-            branches = " ".join(c["branch"] for c in applied)
-            merge_lines = "\n    ".join(
-                f"git merge --no-ff {c['branch']}" for c in applied)
-            print(f"\n[ai-fixer] from '{base_branch}', inspect all at once:")
-            print(f"    git show {shas}")
-            print(f"\n[ai-fixer] from '{base_branch}', merge in order:")
-            print(f"    {merge_lines}")
-            print("\n[ai-fixer] reject all:")
-            print(f"    git branch -D {branches}")
+    only = _parse_fixlist(args.only)
+    if only is not None:
+        selected = [f for f in findings if _matches_fixlist(f, only)]
+        if not selected:
+            print(f"  warn: FIXLIST matched nothing: {args.only!r}",
+                  file=sys.stderr)
+            print("  no findings match FIXLIST")
+            return []
+        findings = selected
+    elif args.limit:
+        findings = findings[:args.limit]
 
-            log_path = FIX_DIR / f"{ts}_{label}.json"
-            log_path.write_text(json.dumps({
-                "project": label,
-                "base_branch": base_branch,
-                "base_sha": base_sha,
-                "run_id": run_id,
-                "started": ts,
-                "duration_sec": round(dt, 1),
-                "fixes": applied,
-                "skipped": skipped,
-                "needs_review": [
-                    {"id": n.get("id"), "section": n["section"],
-                     "text": n["text"],
-                     "reason": n["verdict"].get("reason"),
-                     "direction": n["verdict"].get("direction")}
-                    for n in needs_review
-                ],
-            }, indent=2, ensure_ascii=False), encoding="utf-8")
-            print(f"[ai-fixer] json log:    {log_path.relative_to(ROOT)}")
+    if not findings:
+        print("  no findings to process")
+        return []
 
-            created_all.append((label, run_id, applied))
+    if args.reprocess:
+        return findings
 
-        if needs_review:
-            print(f"\n=== Needs human thought ({len(needs_review)}) ===")
-            for i, item in enumerate(needs_review, 1):
-                v = item["verdict"]
-                print(f"[{i}] id={item.get('id', '?')}  "
-                      f"{item['text'].splitlines()[0][:100]}")
-                if v.get("reason"):
-                    print(f"    why: {v['reason']}")
-                if v.get("direction"):
-                    print(f"    direction: {v['direction']}")
+    resolved = _load_resolved(report_path)
+    if not resolved:
+        return findings
 
-    if created_all:
+    kept: list[dict] = []
+    for f in findings:
+        k = _issue_key_or_none(f)
+        if k is None or k not in resolved:
+            kept.append(f)
+
+    n = len(findings) - len(kept)
+    print(f"  skip {n} already-resolved "
+          f"(fixed/rejected/analyze-by-dev); "
+          f"use --reprocess to include", file=sys.stderr)
+    if not kept:
+        print("  nothing left after resolved filter")
+    return kept
+
+def _build_ctx(label: str, args, model: str, state: dict) -> dict:
+    """Per-project accumulator + params from DB."""
+    run_id = (make_run_id(label) if args.apply
+              else f"ai-checker-{label}-fix<N>")
+
+    db.seed_defaults()
+    max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
+    max_diff = db.get_param("fix", "max_diff_lines", MAX_DIFF_LINES)
+
+    return {
+        "run_id": run_id,
+        "base_sha": state["base_sha"],
+        "base_branch": state["base_branch"],
+        "seq": 0,
+        "ready": 0,
+        "model": model,
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0,
+                  "total_tokens": 0, "requests": 0},
+        "finding_durs": [],
+        "max_source": max_source,
+        "max_diff_lines": max_diff,
+        "proposed": [],
+    }
+
+def _process_project(label: str, report_path: Path, project: Path,
+                     findings: list[dict], args, model: str,
+                     ctx: dict, state: dict) -> None:
+    """Iterate findings, then print summary and persist outputs."""
+    applied: list[dict] = []
+    skipped: list[str] = []
+    needs_review: list[dict] = []
+
+    started = datetime.now()
+    t0 = time.perf_counter()
+    for idx, finding in enumerate(findings, 1):
+        t_finding = time.perf_counter()
+        files = gather_context_files(finding, project)
+        _handle_finding(idx, len(findings), finding, project,
+                        report_path, files, args, model, ctx,
+                        applied, skipped, needs_review)
+        ctx["finding_durs"].append(time.perf_counter() - t_finding)
+    dt = time.perf_counter() - t0
+
+    for k in state["all_usage"]:
+        state["all_usage"][k] += ctx["usage"].get(k, 0)
+
+    report_out = _write_fix_report(label, report_path, started, dt,
+                                    ctx, args, applied, skipped,
+                                    needs_review, state["sysinfo"])
+    _print_project_summary(label, ctx, applied, skipped, needs_review,
+                           dt, report_out)
+
+    if not args.apply and ctx.get("proposed"):
+        _print_dry_run_hint(label, ctx)
+
+    if applied:
+        _print_applied_branches(applied, ctx["base_branch"], ctx["run_id"])
+        log_path = _write_json_log(label, state["ts"], ctx, dt,
+                                   applied, skipped, needs_review)
+        print(f"[ai-fixer] json log:    {log_path.relative_to(ROOT)}")
+        state["created_all"].append((label, ctx["run_id"], applied))
+
+    if needs_review:
+        _print_needs_review(needs_review)
+
+def _print_project_summary(label: str, ctx: dict,
+                           applied: list[dict], skipped: list[str],
+                           needs_review: list[dict], dt: float,
+                           report_out: Path) -> None:
+    print(f"\n[ai-fixer] {label}: "
+          f"{len(applied)} applied, "
+          f"{ctx['ready']} ready (not committed), "
+          f"{len(skipped)} skipped, "
+          f"{len(needs_review)} needs review, {dt:.1f}s, "
+          f"{ctx['usage']['prompt_tokens']:,} in / "
+          f"{ctx['usage']['completion_tokens']:,} out")
+    print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
+
+
+def _print_dry_run_hint(label: str, ctx: dict) -> None:
+    ids = ",".join(ctx["proposed"])
+    n = len(ctx["proposed"])
+    print(f"\n[ai-fixer] {n} fix(es) ready to commit for {label}:")
+    print(f"    make ai-fix-commit-{label} FIXLIST=\"{ids}\"")
+    print("  or commit all proposed (no FIXLIST):")
+    print(f"    make ai-fix-commit-{label}")
+    print("  discard and reclassify with LLM:")
+    print("    make ai-fix-log FIXLIST=\"<id>\" AI_FIX_REFETCH=1")
+
+
+def _print_applied_branches(applied: list[dict], base_branch: str,
+                            run_id: str) -> None:
+    print(f"\n[ai-fixer] {len(applied)} fix branch(es) (run_id={run_id}):")
+    for c in applied:
+        print(f"\n  {c['branch']}")
+        print(f"    id:       {c['id']}")
+        print(f"    summary:  {c['summary']}")
+        print(f"    inspect:  git show {c['sha']}")
+        print(f"    merge:    git merge --no-ff {c['branch']}")
+        print(f"    reject:   git branch -D {c['branch']}")
+
+    shas = " ".join(c["sha"] for c in applied)
+    branches = " ".join(c["branch"] for c in applied)
+    merge_lines = "\n    ".join(
+        f"git merge --no-ff {c['branch']}" for c in applied)
+    print(f"\n[ai-fixer] from '{base_branch}', inspect all at once:")
+    print(f"    git show {shas}")
+    print(f"\n[ai-fixer] from '{base_branch}', merge in order:")
+    print(f"    {merge_lines}")
+    print("\n[ai-fixer] reject all:")
+    print(f"    git branch -D {branches}")
+
+
+def _print_needs_review(needs_review: list[dict]) -> None:
+    print(f"\n=== Needs human thought ({len(needs_review)}) ===")
+    for i, item in enumerate(needs_review, 1):
+        v = item["verdict"]
+        print(f"[{i}] id={item.get('id', '?')}  "
+              f"{item['text'].splitlines()[0][:100]}")
+        if v.get("reason"):
+            print(f"    why: {v['reason']}")
+        if v.get("direction"):
+            print(f"    direction: {v['direction']}")
+
+
+def _write_json_log(label: str, ts: str, ctx: dict, dt: float,
+                    applied: list[dict], skipped: list[str],
+                    needs_review: list[dict]) -> Path:
+    log_path = FIX_DIR / f"{ts}_{label}.json"
+    log_path.write_text(json.dumps({
+        "project": label,
+        "base_branch": ctx["base_branch"],
+        "base_sha": ctx["base_sha"],
+        "run_id": ctx["run_id"],
+        "started": ts,
+        "duration_sec": round(dt, 1),
+        "fixes": applied,
+        "skipped": skipped,
+        "needs_review": [
+            {"id": n.get("id"), "section": n["section"],
+             "text": n["text"],
+             "reason": n["verdict"].get("reason"),
+             "direction": n["verdict"].get("direction")}
+            for n in needs_review
+        ],
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+    return log_path
+
+def _print_final_summary(state: dict) -> None:
+    if state["created_all"]:
         print("\n[ai-fixer] all branches from this run:")
-        for label, _run_id, applied in created_all:
+        for label, _run_id, applied in state["created_all"]:
             for c in applied:
                 print(f"  {c['branch']:<32}  {label:<8}  id={c['id']}")
         print(f"[ai-fixer] return to base:  git checkout "
-              f"{base_branch or 'master'}")
-    if all_usage["requests"]:
+              f"{state['base_branch'] or 'master'}")
+
+    u = state["all_usage"]
+    if u["requests"]:
         print(f"\n[ai-fixer] total across projects: "
-              f"{all_usage['prompt_tokens']:,} in / "
-              f"{all_usage['completion_tokens']:,} out "
-              f"({all_usage['requests']} request(s))")
-        
+              f"{u['prompt_tokens']:,} in / "
+              f"{u['completion_tokens']:,} out "
+              f"({u['requests']} request(s))")
+
+def _run(args, model: str, jobs: list[tuple[str, Path, Path]]) -> int:
+    state = _prepare_run(args)
+
+    for label, report_path, project in jobs:
+        print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
+        findings = _filter_findings(report_path, args)
+        if not findings:
+            continue
+        ctx = _build_ctx(label, args, model, state)
+        _process_project(label, report_path, project, findings,
+                         args, model, ctx, state)
+
+    _print_final_summary(state)
     return 0
 
 def main() -> int:
