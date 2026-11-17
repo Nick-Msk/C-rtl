@@ -33,6 +33,17 @@
 extern fs2array
 fs2_split_toarray(const fs2 *restrict s, const fs2 *restrict delim);
 
+/**
+ * @brief `fs2_split_toarray` with a C-string delimiter.
+ *
+ * NULL @p delim is treated as empty → no split (single part).
+ *
+ * @param s      Non-NULL fs2 to split.
+ * @param delim  Delimiter C-string (NULL → empty → single part).
+ * @return       New fs2array (packed, tight); free with `fs2arr_free`.
+ * @warning     `invfatal` (SIGABRT) if @p s is NULL.
+ * @warning     `sysraise` (OOM) on allocation failure.
+ */
 static inline fs2array
 fs2_split_toarray_str(const fs2 *restrict s, const char *restrict delim) {
     fs2 d = _fs2_wrap(delim);
@@ -72,35 +83,86 @@ fs2_split_toarray_str(const fs2 *restrict s, const char *restrict delim) {
 extern void
 fs2arr_sort(fs2array *a, pointer_comparator_t cmp);
 
-static inline void 
-fs2arr_sortasc(fs2array *a) { 
-    fs2arr_sort(a, fs2_cmp_wrap);           
+/**
+ * @brief Ascending sort (plain lexicographic; requires packed — no holes).
+ *
+ * @pre  @p a is packed (hwm == count). Caller must `fs2arr_compact` first.
+ * @param a  Non-NULL fs2array.
+ * @warning `invfatal` (SIGABRT) if @p a is NULL.
+ */
+static inline void
+fs2arr_sortasc(fs2array *a) {
+    fs2arr_sort(a, fs2_cmp_wrap);
 }
-static inline void 
-fs2arr_sortdesc(fs2array *a) { 
-    fs2arr_sort(a, fs2_cmp_desc_wrap);      
+
+/**
+ * @brief Descending sort (plain lexicographic; requires packed — no holes).
+ *
+ * @pre  @p a is packed (hwm == count). Caller must `fs2arr_compact` first.
+ * @param a  Non-NULL fs2array.
+ * @warning `invfatal` (SIGABRT) if @p a is NULL.
+ */
+static inline void
+fs2arr_sortdesc(fs2array *a) {
+    fs2arr_sort(a, fs2_cmp_desc_wrap);
 }
 /**
- * @note Only needed if you build the array MANUALLY, bypassing push/attach
- *       (which promote canonical FS2() → FS2EMPTY via fs2_move). Under the
- *       normal API, live slots always have v != NULL, so fs2_cmp is safe.
- *       These comparators exist for defense against corrupted/foreign arrays.
+ * @brief Ascending sort, nulls (holes) sorted to the **front**.
+ *
+ * Safe for arrays with holes — holes (v==NULL) treated as smallest.
+ * Result: holes at [0, #holes), live elements [count, hwm) in asc order.
+ *
+ * @note Nulls-first is only needed if the array was built MANUALLY,
+ *       bypassing push/attach (which promote canonical FS2() → FS2EMPTY).
+ *       Under the normal API live slots always have v != NULL.
+ * @param a  Non-NULL fs2array (any state).
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
  */
-static inline void 
-fs2arr_sortasc_nullbefore(fs2array *a) { 
-    fs2arr_sort(a, fs2_cmp_nullbefore_wrap);      
+static inline void
+fs2arr_sortasc_nullbefore(fs2array *a) {
+    fs2arr_sort(a, fs2_cmp_nullbefore_wrap);
 }
-static inline void 
-fs2arr_sortdesc_nullbefore(fs2array *a){ 
-    fs2arr_sort(a, fs2_cmp_desc_nullbefore_wrap); 
+
+/**
+ * @brief Descending sort, nulls (holes) sorted to the **end** (packed).
+ *
+ * Safe for arrays with holes. Result: live elements [0, count) in desc
+ * order, holes at [count, hwm) — equivalent to compact + sort in one call.
+ *
+ * @param a  Non-NULL fs2array (any state).
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
+static inline void
+fs2arr_sortdesc_nullbefore(fs2array *a){
+    fs2arr_sort(a, fs2_cmp_desc_nullbefore_wrap);
 }
-static inline void 
-fs2arr_sortasc_nullafter(fs2array *a) { 
-    fs2arr_sort(a, fs2_cmp_nullafter_wrap);      
+
+/**
+ * @brief Ascending sort, nulls (holes) sorted to the **end** (packed).
+ *
+ * Safe for arrays with holes. Result: live elements [0, count) in asc
+ * order, holes at [count, hwm) — equivalent to compact + sort in one call.
+ *
+ * @param a  Non-NULL fs2array (any state).
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
+static inline void
+fs2arr_sortasc_nullafter(fs2array *a) {
+    fs2arr_sort(a, fs2_cmp_nullafter_wrap);
 }
-static inline void 
-fs2arr_sortdesc_nullafter(fs2array *a){ 
-    fs2arr_sort(a, fs2_cmp_desc_nullafter_wrap); 
+
+/**
+ * @brief Descending sort, nulls (holes) sorted to the **front**.
+ *
+ * Safe for arrays with holes — holes (v==NULL) treated as largest.
+ * Result: holes at [0, #holes), live elements [count, hwm) in desc order.
+ *
+ * @param a  Non-NULL fs2array (any state).
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
+static inline void
+fs2arr_sortdesc_nullafter(fs2array *a){
+    fs2arr_sort(a, fs2_cmp_desc_nullafter_wrap);
 }
 
 /**
@@ -297,11 +359,36 @@ fs2arr_unique_new(const fs2array *restrict src, pointer_comparator_t cmp);
 extern fs2 *
 fs2arr_join_delim(fs2 *restrict dst, const fs2array *restrict src, const fs2 *delim);
 
+/**
+ * @brief Append all live elements of @p src to @p dst (no separator).
+ *
+ * Shortcut for `fs2arr_join_delim(dst, src, NULL)` — elements are
+ * concatenated back-to-back. Semantics of @p dst as first element, hole
+ * skipping, etc. are as in `fs2arr_join_delim`.
+ *
+ * @param dst  Non-NULL fs2; grows as needed.
+ * @param src  Non-NULL fs2array (any state; holes skipped).
+ * @return     @p dst (for chaining).
+ * @warning    `invfatal` (SIGABRT) if @p dst or @p src is NULL.
+ * @warning    `sysraise` (OOM) on allocation failure.
+ */
 static inline fs2 *
 fs2arr_join(fs2 *restrict dst, const fs2array *restrict src) {
     return fs2arr_join_delim(dst, src, NULL);
 }
 
+/**
+ * @brief `fs2arr_join_delim` with a C-string separator.
+ *
+ * NULL / empty @p delim → no separator (equivalent to `fs2arr_join`).
+ *
+ * @param dst    Non-NULL fs2; grows as needed.
+ * @param src    Non-NULL fs2array (any state; holes skipped).
+ * @param delim  Separator C-string (NULL → no separator).
+ * @return       @p dst (for chaining).
+ * @warning      `invfatal` (SIGABRT) if @p dst or @p src is NULL.
+ * @warning      `sysraise` (OOM) on allocation failure.
+ */
 static inline fs2 *
 fs2arr_join_delim_str(fs2 *restrict dst, const fs2array *restrict src, const char *restrict delim) {
     fs2 d = _fs2_wrap(delim);           /* NULL → empty → no separator */
