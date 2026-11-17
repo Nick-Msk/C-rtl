@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────
@@ -25,11 +26,7 @@ CPP_EXTS = {".hpp", ".cc", ".cpp", ".cxx"}
 # ── Discovery / edit policy ──────────────────────────────────────────
 # Dirs that never contain projects (discovery blacklist).
 EXCLUDE_DIRS = {"build", "bkp", "docs", "scripts", "ai-checker",
-                ".git", ".github", ".vscode"}
-
-# Top-level dirs the fixer may touch. Skeleton is excluded on purpose.
-ALLOWED_TOP_DIRS = {"bool", "checker", "common", "error", "fs2", "log",
-                    "path"}
+                "skeleton", ".git", ".github", ".vscode"}
 
 # Files at repo root that are never source.
 FORBIDDEN_ROOT_NAMES = {"Makefile", "Makefile.common", "Doxyfile",
@@ -63,6 +60,16 @@ TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 
 FILE_REF_RE = re.compile(
     r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
+
+@lru_cache(maxsize=1)
+def allowed_top_dirs() -> frozenset[str]:
+    """Top-level dirs the fixer may touch = discovered projects.
+
+    Derived, not hardcoded: a project created by 'make cloneproj NAME=x'
+    is fixable immediately. skeleton/build/bkp stay out via EXCLUDE_DIRS.
+    Cached per process — runs are short-lived.
+    """
+    return frozenset(p.name for p in discover_projects())
 
 def rotate_reports(project_dir: Path) -> list[Path]:
     """Move all *.md except the newest into <project_dir>/hist/.
