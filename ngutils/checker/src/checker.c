@@ -37,9 +37,9 @@ checker_version(void)
  * Core printing
  * ------------------------------------------------------------------------- */
 
-int                     
+int
 inv_fprintf_int(FILE *restrict out, const char *restrict expr,
-                    bool res, const char *restrict msg, ...){
+                bool res, const char *restrict msg, ...){
 	int 	cnt = 0;
 
     if (res)
