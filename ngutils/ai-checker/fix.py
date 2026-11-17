@@ -30,7 +30,7 @@ from pathlib import Path
 import db
 import llm
 from common import (
-    ALLOWED_TOP_DIRS,
+    allowed_top_dirs,
     DEFAULT_LIMIT,
     FIX_DIR,
     FORBIDDEN_ROOT_NAMES,
@@ -272,7 +272,7 @@ def is_forbidden(rel: str) -> bool:
     parts = Path(rel).parts
     if not parts:
         return True
-    if parts[0] not in ALLOWED_TOP_DIRS:
+    if parts[0] not in allowed_top_dirs():
         return True
     if Path(rel).name in FORBIDDEN_ROOT_NAMES:
         return True
