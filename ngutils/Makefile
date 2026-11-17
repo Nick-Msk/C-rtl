@@ -25,7 +25,7 @@ endif
 MAKEFLAGS += --no-print-directory
 
 PROJECTS        := $(patsubst %/Makefile,%,$(wildcard */Makefile))
-PROJECTS 		:= $(filter-out skeleton,$(PROJECTS))
+PROJECTS 		:= $(filter-out skeleton ai-checker,$(PROJECTS))
 
 FORWARD_TARGETS := all test check analyze analyze-test
 
@@ -43,19 +43,7 @@ NGUTILS_LIB_RELEASE := $(BUILD_RELEASE)/libngutils.a
         $(foreach t,$(FORWARD_TARGETS),$(addprefix $(t)-,$(PROJECTS))) 	\
         $(addprefix lib-,$(PROJECTS)) 									\
 		$(addprefix librelease-,$(PROJECTS)) 							\
-		asan_check asan_leak 											\
-		ai-check ai-models ai-check-file ai-arch 						\
-        $(addprefix ai-check-,$(PROJECTS)) 								\
-		$(addprefix ai-check-notest-,$(PROJECTS)) 						\
-		ai-fix ai-fix-file 												\
-        $(addprefix ai-fix-,$(PROJECTS))								\
-		ai-fix ai-fix-commit ai-fix-file ai-fix-commit-file 			\
-        $(addprefix ai-fix-,$(PROJECTS)) 								\
-        $(addprefix ai-fix-commit-,$(PROJECTS))							\
-		ai-status $(addprefix ai-status-,$(PROJECTS))					\
-		ai-config ai-config-set											\
-		ai-del-branches $(addprefix ai-del-branches-,$(PROJECTS))		\
-		ai-runs
+		asan_check asan_leak
 
 help:
 	@echo "ngutils dispatcher"
@@ -70,44 +58,10 @@ help:
 	@echo "  make analyze          			run clang static analyzer in all projects"
 	@echo "  make analyze-test     			run clang static analyzer for test suite in all projects"
 	@echo ""
-	@echo "  make ai-check         			AI review of all projects (LM Studio / ai)"
-	@echo "  make ai-check-<n>     			AI review of one project (e.g. ai-check-fs2, ai-check-log)"
-	@echo "  make ai-check-file    			AI review of one file (F=log/src/log.c)"
-	@echo "  make ai-check-notest      		AI review of all projects, skip test/ dirs"
-	@echo "  make ai-check-notest-<n>  		AI review of one project, skip test/ dirs (e.g. ai-check-notest-fs2)"
-	@echo "  make ai-models        			list models available in LM Studio"
-	@echo "  make ai-arch  		   			pack build/ai-checker/ into ai-checker-reports.tar.zst"
-	@echo ""
-	@echo "  make ai-fix              		dry-run: propose local fixes for all projects"
-	@echo "  make ai-fix-<n>          		dry-run, one project (e.g. ai-fix-fs2)"
-	@echo "  make ai-fix-file F=<p>   		dry-run, one file's report"
-	@echo "  make ai-fix-commit-<n>   		apply + one branch per fix (ai-checker-<n>-fix<N>-<seq>)"
-	@echo "  make ai-fix-commit       		apply, all projects"
-	@echo ""
-	@echo "  make ai-runs             recent LLM runs from llmruns"
-	@echo "  make ai-runs AI_STATUS_ARGS='--limit 50'"
-	@echo ""
-	@echo "  make ai-del-branches          	delete ai-checker-* branches (merged only)"
-	@echo "  make ai-del-branches-<n>      	same, only for project <n>"
-	@echo "  make ai-del-branches FORCE=1  	also delete unmerged branches"
-	@echo "  make ai-del-branches DRY_RUN=1 list what would be deleted"
-	@echo "  make ai-del-branches AI_DEL_CHECK_RUN=7  only check-run 7 branches"
-	@echo ""
-	@echo "  make ai-status           		per-project status summary from check.db"
-	@echo "  make ai-status-<n>       		list all issues for one project"
-	@echo "  make ai-status AI_STATUS='--status fixed'"
-	@echo ""
-	@echo "  FIXLIST=\"1/1, 1/7\"       	process only these finding ids (from the report)"
-	@echo "  AI_FIX_YES=1             		skip per-fix confirmation prompt"
-	@echo "  AI_FIX_LIMIT=N           		cap when FIXLIST is not set (default 50)"
-	@echo ""
-	@echo "  make ai-config           list tunable params from check.db"
-	@echo "  make ai-config AI_CONFIG_ARGS=--long      group by module"
-	@echo "  make ai-config AI_CONFIG_ARGS=--modules   list modules"
-	@echo "  make ai-config-set MODULE=llm NAME=url VALUE=http://192.168.1.10:1234"
-	@echo "  make ai-config-set MODULE=check NAME=temperature VALUE=0.1"
-	@echo "  make ai-config-set MODULE=fix NAME=temperature VALUE=0.0"
-	@echo "                           (omit VALUE to reset to default)"
+	@echo "  make ai-check        			AI review of all projects (LM Studio)"
+	@echo "  make ai-fix-<n>      			dry-run local fixes for one project"
+	@echo "  make ai-status       			per-project status summary from check.db"
+	@echo "  make ai-help         			full AI help (ai-checker/Makefile)"
 	@echo ""
 	@echo "  make clean            			clean all projects"
 	@echo "  make install          			install libngutils.a + headers to PREFIX"
@@ -207,172 +161,25 @@ $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
 
-# --- AI review (LM Studio / Qwen, OpenAI-compatible API) ---
+# --- AI (delegated to ai-checker/Makefile) ---
 #
-# Reports live in build/ai-checker/<project>/<YYYY-MM-DD_HH-MM-SS>[_notest].md
-# The '_notest' suffix is added automatically when test/ dirs are excluded,
-# so full and test-less reviews never collide.
-# Reports are intentionally preserved by 'make clean'.
-# 'make ai-checker-arch' packs them into build/ai-checker-reports.tar.zst.
-
-AI_CHECKER    := ai-checker
-LMSTUDIO_URL ?= http://127.0.0.1:1234
-QWEN_MODEL   ?=
-REPORTS_DIR  := build/ai-checker
-REPORTS_TAR  := build/ai-checker-reports.tar.zst
-
-ai-check:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --all $(AI_CHECK_EXTRA)
-
-ai-check-notest:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --all --no-tests $(AI_CHECK_EXTRA)
-
-$(addprefix ai-check-,$(PROJECTS)): ai-check-%:
-	@echo "==> ai-check $*"
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --project $* $(AI_CHECK_EXTRA)
-
-$(addprefix ai-check-notest-,$(PROJECTS)): ai-check-notest-%:
-	@echo "==> ai-check-notest $*"
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --project $* --no-tests $(AI_CHECK_EXTRA)
-
-ai-check-file:
-	@test -n "$(F)" || { echo "usage: make ai-check-file F=<path>" >&2; exit 1; }
-	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python check.py --file "$(CURDIR)/$(F)" $(AI_CHECK_EXTRA)
-
-ai-models:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" \
-		uv run python check.py --models
-
-ai-checker-arch:
-	@test -d $(REPORTS_DIR) || { echo "nothing to archive: $(REPORTS_DIR) missing"; exit 0; }
-	@mkdir -p build
-	@tar -C build --zstd -cf "$(CURDIR)/$(REPORTS_TAR)" ai-checker
-	@echo "Archived: $(REPORTS_TAR) ($$(du -h "$(REPORTS_TAR)" | cut -f1))"
-
-# --- AI fix (applies only self-contained local fixes from the latest report) ---
+# Every ai-* target is forwarded verbatim, including per-project ones
+# (ai-check-fs2, ai-fix-commit-log, ...). Command-line variables
+# (FIXLIST, F, AI_STATUS_ARGS, FORCE, ...) reach the sub-make through
+# MAKEFLAGS automatically. Defaults for AI knobs live in
+# ai-checker/Makefile only — do not redefine them here.
 #
-# Usage:
-#   make ai-fix-fs2                         dry-run, all findings
-#   make ai-fix-fs2 FIXLIST="1/1, 1/7"      dry-run, only those ids
-#   make ai-fix-fs2 AI_FIX_MINOR=1          dry-run, include Мелочи
-#
-#   make ai-fix-commit-fs2                  apply, one branch per fix
-#   make ai-fix-commit-fs2 FIXLIST="1/1"    apply only that one
-#   make ai-fix-commit-fs2 AI_FIX_YES=1     apply without prompts
-#
-# Each accepted fix gets its own branch ai-checker-<proj>-fix<N>-<seq>,
-# one commit on top of the current HEAD. Review/inspect/merge/delete per
-# branch; cherry-pick is not needed.
-#
-# Refuses: cross-file edits, signature changes, new functions, struct
-# changes, public renames, new #includes, edits spanning more than one
-# function body, diffs > 20 lines. Everything else is listed as
-# "needs human thought" with a direction, never auto-applied.
+# 'ai-force' is an empty phony prerequisite: .PHONY cannot take a
+# pattern, and without it make would skip the recipe whenever a file
+# or directory of the same name exists.
 
-AI_FIXER      := fix.py
-FIXLIST       ?=
-AI_FIX_MINOR  ?=
-AI_FIX_YES    ?=
-AI_FIX_LIMIT  ?=
+AI_CHECKER := ai-checker
 
-AI_FIX_REFETCH ?=
-AI_FIX_BASE    = $(if $(FIXLIST),--only "$(FIXLIST)",) \
-                 $(if $(AI_FIX_LIMIT),--limit $(AI_FIX_LIMIT),) \
-                 $(if $(AI_FIX_REFETCH),--refetch,)
+.PHONY: ai-force
+ai-force: ;
 
-AI_FIX_ARGS    = $(AI_FIX_BASE)
-AI_FIX_COMMIT  = $(AI_FIX_BASE) --apply
-
-ai-fix:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --all $(AI_FIX_ARGS)
-
-ai-fix-commit:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --all $(AI_FIX_COMMIT)
-
-$(addprefix ai-fix-,$(PROJECTS)): ai-fix-%:
-	@echo "==> ai-fix $*"
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --project $* $(AI_FIX_ARGS)
-
-$(addprefix ai-fix-commit-,$(PROJECTS)): ai-fix-commit-%:
-	@echo "==> ai-fix-commit $*"
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --project $* $(AI_FIX_COMMIT)
-
-ai-fix-file:
-	@test -n "$(F)" || { echo "usage: make ai-fix-file F=<path>" >&2; exit 1; }
-	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_ARGS)
-
-ai-fix-commit-file:
-	@test -n "$(F)" || { echo "usage: make ai-fix-commit-file F=<path>" >&2; exit 1; }
-	@test -f "$(F)" || { echo "ERROR: file not found: $(F)" >&2; exit 1; }
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		LMSTUDIO_URL="$(LMSTUDIO_URL)" QWEN_MODEL="$(QWEN_MODEL)" \
-		uv run python $(AI_FIXER) --file "$(CURDIR)/$(F)" $(AI_FIX_COMMIT)
-
-AI_STATUS      := status.py
-AI_STATUS_ARGS ?=
-
-ai-status:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		uv run python $(AI_STATUS) $(AI_STATUS_ARGS)
-
-$(addprefix ai-status-,$(PROJECTS)): ai-status-%:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-		uv run python $(AI_STATUS) --project $* --list $(AI_STATUS_ARGS)
-
-ai-runs:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-	    uv run python status.py --runs $(AI_STATUS_ARGS)
-
-AI_BRANCHES := gitutil.py
-
-DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,) \
-                    $(if $(AI_DEL_CHECK_RUN),--check-run $(AI_DEL_CHECK_RUN),)
-
-ai-del-branches:
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-	    uv run python $(AI_BRANCHES) --all $(DEL_BRANCHES_ARGS)
-
-$(addprefix ai-del-branches-,$(PROJECTS)): ai-del-branches-%:
-	@echo "==> ai-del-branches $*"
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-	    uv run python $(AI_BRANCHES) --project $* $(DEL_BRANCHES_ARGS)
-
-AI_CONFIG := params.py
-
-ai-config:
-	@cd $(CURDIR)/$(AI_CHECKER) && uv run python $(AI_CONFIG) $(AI_CONFIG_ARGS)
-
-ai-config-set:
-	@test -n "$(MODULE)" -a -n "$(NAME)" || { \
-	    echo "usage: make ai-config-set MODULE=<mod> NAME=<name> [VALUE=<v>]" >&2; \
-	    echo "       omit VALUE to reset to default" >&2; \
-	    echo "       run 'make ai-config AI_CONFIG_ARGS=--modules' for module list" >&2; \
-	    exit 1; }
-	@cd $(CURDIR)/$(AI_CHECKER) && \
-	    uv run python $(AI_CONFIG) set $(MODULE) $(NAME) $(VALUE)
+ai-%: ai-force
+	@$(MAKE) -C $(AI_CHECKER) $@
 
 # --- docs ---
 
@@ -461,6 +268,10 @@ delete-docker:
 listall:
 	@echo "# Generic targets:"
 	@grep -E '^[a-zA-Z][a-zA-Z0-9_-]*:' Makefile | sed 's/:.*//' | sort -u | sed 's/^/  /'
+	@echo ""
+	@echo "# AI targets (ai-checker/Makefile, also -<project>):"
+	@grep -E '^ai-[a-zA-Z0-9_-]*:' $(AI_CHECKER)/Makefile \
+	    | sed 's/:.*//' | sort -u | sed 's/^/  /'
 	@echo ""
 	@echo "# Per-project targets:"
 	@for p in $(PROJECTS); do \
