@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from common import ROOT
+from common import ROOT, parse_findings
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -86,6 +86,63 @@ def _schema_sql() -> str:
 
 def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+
+
+def ensure_report(report_path: Path | str, *, project: str,
+                  kind: str = "full", model: str | None = None) -> int | None:
+    """Make sure an on-disk report has a row in the DB; adopt it if not.
+
+    Reports outlive the DB: 'make clean' keeps them, a schema bump may
+    recreate check.db. fix.py reads findings from the .md, so without
+    a report row every status write silently matches zero rows.
+
+    Adoption costs no LLM calls: findings are re-parsed from the very
+    same markdown check.py wrote, with the same parser, so ids (and
+    therefore FIXLIST keys) are identical. Never touches an existing
+    report row — ingest_report's DELETE+reinsert is NOT used here.
+
+    Returns report.run_id, or None if the report could not be adopted.
+    """
+    rel = _rel(report_path)
+    if report_id_by_path(report_path) is not None:
+        return report_runid(report_path)
+
+    p = Path(report_path)
+    try:
+        findings = parse_findings(p.read_text(encoding="utf-8"))
+    except OSError as exc:
+        print(f"[ai-checker] db: cannot adopt {rel}: {exc}", file=sys.stderr)
+        return None
+
+    # rotate_reports() may have moved an already-ingested report into
+    # hist/. Re-point the existing row instead of duplicating it.
+    with connect() as con:
+        row = con.execute(
+            "SELECT id, run_id FROM report WHERE project = ? AND path LIKE ?",
+            (project, "%/" + p.name)).fetchone()
+        if row:
+            con.execute("UPDATE report SET path = ? WHERE id = ?", (rel, row["id"]))
+            return row["run_id"]
+
+    started = datetime.fromtimestamp(p.stat().st_mtime)
+    ts = started.strftime("%Y-%m-%dT%H:%M:%S")
+    with connect() as con:
+        # issue.runid is NOT NULL REFERENCES llmruns — a real row is
+        # required. url='(adopted)' + zero tokens keep ai-runs honest.
+        runid = con.execute(
+            "INSERT INTO llmruns (kind, url, name, start_time, end_time, "
+            "  status, in_tokens, out_tokens, requests) "
+            "VALUES ('check', '(adopted)', ?, ?, ?, 'ok', 0, 0, 0)",
+            (model, ts, ts)).lastrowid
+
+    ingest_report(project=project, report_path=p, model=model,
+                  kind=kind, started=started, duration_s=None,
+                  findings=findings, runid=runid)
+    print(f"[ai-checker] db: adopted {rel} "
+          f"({len(findings)} issue(s), runid={runid}, no LLM calls)",
+          file=sys.stderr)
+    return runid
 
 def has_any_report() -> bool:
     """True if check.db exists and contains at least one report row.

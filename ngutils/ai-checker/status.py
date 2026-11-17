@@ -37,6 +37,19 @@ def cmd_list(project: str | None, status: str | None,
     rows = db.list_issues(project=project, status=status,
                           latest_only=not all_runs)
 
+    if not rows and not (as_json or keys_only):
+        print("no issues in db"
+              + (f" for project '{project}'" if project else "")
+              + (f" with status '{status}'" if status else ""),
+              file=sys.stderr)
+        if project and (db.OUT_ROOT / project).is_dir():
+            print(f"  reports exist on disk: {db.OUT_ROOT / project}\n"
+                  f"  they are not ingested yet — run "
+                  f"'make ai-fix-{project}' (adopts them, no LLM cost)\n"
+                  f"  or 'make ai-check-{project}' for a fresh review",
+                  file=sys.stderr)
+        return 0
+
     if keys_only:
         for r in rows:
             print(r["key"])

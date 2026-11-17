@@ -30,7 +30,6 @@ from pathlib import Path
 import db
 import llm
 from common import (
-    allowed_top_dirs,
     DEFAULT_LIMIT,
     FIX_DIR,
     FORBIDDEN_ROOT_NAMES,
@@ -39,6 +38,7 @@ from common import (
     ROOT,
     SRC_EXTS,
     acquire_lock,
+    allowed_top_dirs,
     discover_projects,
     gather_context_files,
     iter_findings,
@@ -397,6 +397,15 @@ def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
             fromfile=header, tofile=f"b/{rel}", n=2)))
     return "".join(parts)
 
+def _ensure_baseline(report_path: Path, project: Path) -> None:
+    """Materialize the check report into the DB before any status read."""
+
+    kind = ("file" if report_path.parent.name == "_files"
+            else "notest" if report_path.stem.endswith("_notest") else "full")
+    try:
+        db.ensure_report(report_path, project=project.name, kind=kind)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: cannot adopt report into db: {exc}", file=sys.stderr)
     
 def _parse_fixlist(raw: str):
     """Return matcher(key: tuple[int,int]) -> bool, or None.
@@ -532,12 +541,16 @@ def _db_set_if_not_fixed(report_path: Path, finding: dict,
         return
     _db_set(report_path, finding, status, **kw)
 
-def _db_set(report_path: Path, finding: dict, status: str,
-            **kw) -> None:
+def _db_set(report_path: Path, finding: dict, status: str, **kw) -> None:
     try:
-        db.update_issue_status(report_path, finding, status, **kw)
+        ok = db.update_issue_status(report_path, finding, status, **kw)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: db update failed: {exc}", file=sys.stderr)
+        return
+    if not ok:
+        print(f"  warn: db update matched no issue "
+              f"({db.finding_key_str(finding)} in {report_path.relative_to(ROOT)}); "
+              f"report not ingested?", file=sys.stderr)
 
 def _clear_proposal(report_path: Path, finding: dict) -> None:
     """Best-effort proposal cleanup. Currently unused in _handle_finding
@@ -1234,6 +1247,7 @@ def _run(args, model: str,
 
     for label, report_path, project in jobs:
         print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
+        _ensure_baseline(report_path, project)      # <-- before _filter_findings
         findings = _filter_findings(report_path, args)
         if not findings:
             continue
