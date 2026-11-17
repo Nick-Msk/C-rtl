@@ -123,6 +123,8 @@ inv_ulong_bool(FILE *out, unsigned long res, unsigned long val)
 bool
 inv_double_bool(FILE *out, double res, double val)
 {
+    /* Exact == is intentional: invariants compare values from the same
+     * computation, so no epsilon is needed. Do NOT replace with fabs. */
     if (res == val)
         return true;
     INV_MISMATCH_PRINT("%g", res, val);
