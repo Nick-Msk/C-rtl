@@ -25,14 +25,15 @@ _schema_cache: str | None = None
 
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
-    ("check", "max_chars"):        80_000,
-    ("check", "temperature"):      0.2,
-    ("fix",   "max_source_chars"): 100_000,
+    ("check", "max_chars"):         80_000,
+    ("check", "temperature"):       0.2,
+    ("check", "tag_context_chars"): 20_000,
+    ("fix",   "max_source_chars"):  100_000,
     ("fix",   "default_limit"):     50,
     ("fix",   "max_diff_lines"):    20,
-    ("fix",   "temperature"):      0.0,
-    ("llm",   "url"):              "http://127.0.0.1:1234",
-    ("llm",   "model_name"):       "",
+    ("fix",   "temperature"):       0.0,
+    ("llm",   "url"):               "http://127.0.0.1:1234",
+    ("llm",   "model_name"):        "",
 }
 
 MODULES: dict[str, str] = {

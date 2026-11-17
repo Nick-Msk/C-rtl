@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import bytag
 import db
 import gitutil
 import llm
@@ -59,7 +60,8 @@ declarations are right there in that block.
 
 def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
                 project_name: str = "",
-                full_headers: bool = False
+                full_headers: bool = False,
+                tag_chars: int = 0
                 ) -> list[list[tuple[Path | None, str]]]:
     """Pack source files into chunks.
 
@@ -84,6 +86,18 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
     else:
         content_files = sources
         digest = build_types_digest(headers)
+        tagged, st = bytag.build_block(headers, tag_chars, root=ROOT)
+        if st["dropped"]:
+            print(f"[ai-checker] ERROR: tag context over budget "
+                  f"({st['bytes']}/{tag_chars}), dropped "
+                  f"{len(st['dropped'])}: {', '.join(st['dropped'][:8])}"
+                  f" — raise check.tag_context_chars", file=sys.stderr)
+        if digest or tagged:
+            dump = OUT_ROOT / project_name / "_types.h"
+            dump.parent.mkdir(parents=True, exist_ok=True)
+            dump.write_text(digest + "\n\n" + tagged, encoding="utf-8")
+        if tagged:
+            digest = digest + "\n\n" + tagged if digest else tagged
         if digest and project_name:
             dump = OUT_ROOT / project_name / "_types.h"
             dump.parent.mkdir(parents=True, exist_ok=True)
@@ -365,13 +379,16 @@ def _run_checks(args, model, runid: int) -> tuple[int, dict]:
     all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
                  "total_tokens": 0, "requests": 0}
 
+    tag_chars = db.get_param("check", "tag_context_chars", 20_000)
+
     for name, files in jobs:
         if not files:
             print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
             continue
         chunks = chunk_files(files, budget=max_chars,
                              project_name=name,
-                             full_headers=args.full_headers)
+                             full_headers=args.full_headers,
+                             tag_chars=tag_chars)
 
         tag = "_notest" if (args.no_tests and not args.file) else ""
         if args.file:
