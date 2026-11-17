@@ -61,7 +61,7 @@ extern const char *const *checker_versions(void);
  * @param res   Result of the invariant (false = violated).
  * @param msg   printf-style message.
  * @param ...   Args for @p msg.
- * @return      Number of characters written to @p out .
+ * @return      Number of characters written to @p out (0 if @p out is NULL).
  */
 int inv_fprintf_int(FILE *restrict out, const char *restrict expr,
                     bool res, const char *restrict msg, ...)
