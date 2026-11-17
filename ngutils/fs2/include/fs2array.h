@@ -14,6 +14,14 @@ typedef struct fs2array {
 /** Canonical empty fs2array (no allocation). */
 #define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
 
+/**
+ * @brief Mark a slot as a hole (FS2EMPTY + FS2_NULL_ARRAY_ELEMENT flag).
+ *
+ * The caller must have already `fs2_free`d the slot — this only resets
+ * the shell to `FS2()` and sets the hole sentinel flag.
+ *
+ * @param slot  Non-NULL pointer to the fs2 slot to turn into a hole.
+ */
 static inline void
 fs2arr_set_hole(fs2 *slot) {
     *slot = FS2();
@@ -72,12 +80,49 @@ fs2arr_init(size_t cnt);
 extern fs2array
 fs2arr_clone(const fs2array *src);
 
+/**
+ * @brief Exact (position-preserving) deep copy of an fs2array.
+ *
+ * Unlike `fs2arr_clone` (which compacts and drops holes), this preserves
+ * the full layout: `hwm`, slot-by-slot hole positions, and `size` are all
+ * replicated. Result has `hwm == src->hwm`, `count == src->count`,
+ * `size >= src->hwm`. Elements are deep-copied — mutating one array does
+ * not affect the other.
+ *
+ * @param src  fs2array to clone (NULL → `invfatal`).
+ * @return     New fs2array; free with `fs2arr_free`.
+ * @warning    `invfatal` (SIGABRT) if @p src is NULL.
+ * @warning    `sysraise` (OOM) if allocation fails.
+ */
 extern fs2array
 fs2arr_cloneexact(const fs2array *src);
 
+/**
+ * @brief Ensure capacity for at least @p need elements.
+ *
+ * Grows `a->size` by power-of-2 (floor `FS2_MIN_ALLOC`) via `realloc`.
+ * No-op if current `size >= need`. New slots (old `size` … new `size`)
+ * are initialised to holes. `hwm` / `count` unchanged.
+ *
+ * @param a     Non-NULL fs2array.
+ * @param need  Target minimum capacity in elements.
+ * @return      `a->arr` (convenience for chaining).
+ * @warning     `invfatal` (SIGABRT) if @p a is NULL.
+ * @warning     `sysraise` (OOM / overflow) if `realloc` fails.
+ */
 extern fs2 *
 fs2arr_reserve(fs2array *a, size_t need);
 
+/**
+ * @brief Free all resources held by an fs2array and reset to canonical.
+ *
+ * Frees every live element (via `fs2arr_cleanall`), then `free`s the
+ * backing buffer, and resets the struct to `FS2ARR()`. The struct itself
+ * is never freed — only its heap buffer — so it is safe to call on a
+ * stack-allocated array or a canonical one.
+ *
+ * @param arr  fs2array to free (NULL → no-op, returns silently).
+ */
 extern void
 fs2arr_free(fs2array *arr);
 
@@ -98,25 +143,63 @@ fs2arr_free(fs2array *arr);
 size_t
 fs2arr_clean(fs2array *a, size_t from, size_t to);
 
-extern void 
+/**
+ * @brief Free all live elements and reset `hwm` / `count` to 0.
+ *
+ * Equivalent to `fs2arr_clean(a, 0, a->hwm)` followed by
+ * `a->hwm = a->count = 0`. The backing buffer (`a->arr`, `a->size`) is
+ * kept — capacity is preserved for future pushes. Canonical
+ * (`arr == NULL`) → no-op.
+ *
+ * @param a  Non-NULL fs2array.
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
+extern void
 fs2arr_cleanall(fs2array *a);
 
 /**
- * @brief Find the first FS2EMPTY slot in [0, len).
+ * @brief Find the first hole slot in [0, hwm).
  *
- * holes in [0, len) can appear when a slot is manually
- * cleared or (in a future non-shifting detach) after an element is removed
- * without compacting. Returns SIZE_MAX if no hole.
+ * Holes in [0, hwm) appear after `fs2arr_detachto` or manual slot
+ * clearing. Returns the index of the first hole, or **-1** if the
+ * logical region is fully live.
  *
- * @note Holes within [len, sz) are the padding region and are excluded —
- *       that's push territory, not reuse.
+ * @note Holes in the padding [hwm, size) are excluded — that is push
+ *       territory, not reuse.
+ *
+ * @param a  Non-NULL fs2array.
+ * @return   Index of first hole in [0, hwm), or -1 if none.
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
  */
 extern ptrdiff_t
 fs2arr_find_tillhwm(const fs2array *a);
 
-size_t 
+/**
+ * @brief Trim trailing holes from `hwm` (logical shrink from the tail).
+ *
+ * While `a->arr[a->hwm - 1]` is a hole, `hwm` is decremented. No-op if
+ * the last logical slot is live. `size` / `count` unchanged.
+ *
+ * @param a  Non-NULL fs2array.
+ * @return   New value of `hwm`.
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
+size_t
 fs2arr_synchwm(fs2array *a);
 
+/**
+ * @brief Shrink the backing buffer to exactly `hwm` elements.
+ *
+ * `realloc`s `a->arr` to `hwm * sizeof(fs2)`. Internal holes are
+ * preserved (only the tail padding is trimmed). If `hwm == 0` the buffer
+ * is freed entirely and the array becomes canonical. If `hwm == size`
+ * this is a no-op.
+ *
+ * @param a  Non-NULL fs2array.
+ * @return   true on success or no-op; false if `realloc` fails
+ *           (original buffer remains valid).
+ * @warning  `invfatal` (SIGABRT) if @p a is NULL.
+ */
 bool
 fs2arr_shrink(fs2array *a);
 
@@ -201,6 +284,20 @@ fs2arr_push_sp(fs2array *a, fs2 *src) {
     return fs2arr_attach_sp(a, src, a->hwm);
 }
 
+/**
+ * @brief Append a heap-allocated fs2* to the end (auto-null source).
+ *
+ * Same as `fs2arr_push_sp` but takes `fs2 **`. After successful attach
+ * `*src` is set to NULL and the shell is freed — safe for `fs2_heap_*`
+ * / `fs2arr_heap_*` return values.
+ *
+ * @param a    Non-NULL fs2array.
+ * @param src  Non-NULL pointer to a heap `fs2 *` (auto-nulled on success).
+ * @return     Index of the appended element.
+ * @warning    `invfatal` (SIGABRT) if @p a or @p src is NULL.
+ * @note       Do not pass `&a->arr[i]` — if push triggers realloc,
+ *             the pointer becomes dangling.
+ */
 static inline ptrdiff_t
 fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
     invfatal(ERR_NULL_INPUT, a != NULL && src != NULL, "Null pointers");
@@ -209,12 +306,33 @@ fs2arr_push_dp(fs2array *a, fs2 **src) {     /* heap source, auto-null */
     return fs2arr_attach_dp(a, src, a->hwm);
 }
 
+/**
+ * @brief Generic push — dispatches on `_Generic` static type of @p src.
+ *
+ *   fs2 s = ...;            fs2arr_push(&a, &s);    // → push_sp
+ *   fs2 *p = fs2_heap_…();  fs2arr_push(&a, &p);   // → push_dp
+ *
+ * @param a    Non-NULL fs2array.
+ * @param src  `fs2 *` or `fs2 **` (any flavor).
+ * @return     Index of the appended element.
+ */
 #define fs2arr_push(a, src)                                               \
     _Generic((src),                                                       \
         fs2  *:  fs2arr_push_sp,                                          \
         fs2 **:  fs2arr_push_dp                                           \
     )((a), (src))
 
+/**
+ * @brief Append a C string to the array (convenience wrapper).
+ *
+ * Creates a temporary `fs2` from @p str via `fs2_fromstr`, pushes it,
+ * and the temporary is auto-freed (moved into the slot).
+ *
+ * @param a    Non-NULL fs2array.
+ * @param str  Non-NULL null-terminated string (NULL → `invfatal`).
+ * @return     Index of the appended element.
+ * @warning    `invfatal` (SIGABRT) if @p a or @p str is NULL.
+ */
 static inline ptrdiff_t
 fs2arr_pushstr(fs2array *restrict a, const char *restrict str) {
     fs2 tmp = fs2_fromstr(str);
@@ -325,8 +443,11 @@ fs2arr_equalexact(const fs2array *a, const fs2array *b);
 extern long
 fs2arr_techfprint(FILE *restrict out, const fs2array *restrict a, const char *restrict name);
 
+/** @brief Technical dump of @p a to stream @p out (macro shorthand). */
 #define FS2ARRTECHFPRINT(out, a)   fs2arr_techfprint((out), (a), #a)
+/** @brief Technical dump of @p a to `stdout`. */
 #define FS2ARRTECHPRINT(a)         fs2arr_techfprint(stdout, (a), #a)
+/** @brief Technical dump of @p a to the global `logfile` stream. */
 #define FS2ARRTECHLOG(a)           fs2arr_techfprint(logfile, (a), #a)
 
 /**
