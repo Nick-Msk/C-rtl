@@ -14,19 +14,22 @@ def cmd_summary(as_json: bool) -> int:
     if as_json:
         print(json.dumps(by, indent=2, ensure_ascii=False))
         return 0
-    cols = ["added", "proposed-to-fix", "analyze-by-dev",
-            "fixed", "rejected", "failed", "stale"]
-    missing = db.STATUSES - set(cols)
-    extra = set(cols) - db.STATUSES
-    if missing or extra:
-        print(f"warn: column list out of sync with db.STATUSES "
-              f"(missing={missing}, extra={extra})", file=sys.stderr)
-    print(f"{'project':<10} " + " ".join(f"{c:>16}" for c in cols))
+    cols = [s["name"] for s in db.all_statuses()]
+    print(f"{'project':<10}  " + "  ".join(f"{c:>16}" for c in cols))
     for proj, counts in by.items():
-        print(f"{proj:<10} " + " ".join(
+        print(f"{proj:<10}  " + "  ".join(
             f"{counts.get(c, 0):>16}" for c in cols))
     return 0
 
+def cmd_statuses(as_json: bool) -> int:
+    rows = db.all_statuses()
+    if as_json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return 0
+    print(f"{'name':<16} {'terminal':<9} descr")
+    for r in rows:
+        print(f"{r['name']:<16} {'yes' if r['terminal'] else '-':<9} {r['descr']}")
+    return 0
 
 def cmd_list(project: str | None, status: str | None,
              as_json: bool, keys_only: bool,
@@ -92,6 +95,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--project")
     ap.add_argument("--status", choices=sorted(db.STATUSES))
+    ap.add_argument("--statuses", action="store_true",
+                    help="show status dictionary (name, descr, terminal)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--list", action="store_true",
                     help="list individual issues (default: summary)")
@@ -106,6 +111,8 @@ def main() -> int:
 
     args = ap.parse_args()
 
+    if args.statuses:
+        return cmd_statuses(args.json)
     if not db.has_any_report():
         rel = db.DB_PATH.relative_to(db.ROOT)
         print(f"No data in {rel}.", file=sys.stderr)

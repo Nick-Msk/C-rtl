@@ -44,6 +44,8 @@ MODULES: dict[str, str] = {
     "report": "Report header formatting",
 }
 
+SCHEMA_VERSION = 11
+
 STATUS_ADDED    = "added"
 STATUS_PROPOSED = "proposed-to-fix"
 STATUS_ANALYZE  = "analyze-by-dev"
@@ -51,14 +53,24 @@ STATUS_FIXED    = "fixed"
 STATUS_REJECTED = "rejected"
 STATUS_FAILED   = "failed"
 STATUS_STALE    = "stale"
-STATUSES = {STATUS_ADDED, STATUS_PROPOSED, STATUS_ANALYZE,
-            STATUS_FIXED, STATUS_REJECTED, STATUS_FAILED, STATUS_STALE}
 
+# name -> (descr, terminal). Insertion order = column order in status.py.
+# descr is code-owned documentation (refreshed on every seed).
+# terminal is DB-owned policy: edit it in the DB, seeding never resets it.
+STATUSES_META: dict[str, tuple[str, bool]] = {
+    STATUS_ADDED:    ("found by ai-review, not triaged yet",        False),
+    STATUS_PROPOSED: ("validated local patch cached, not committed", False),
+    STATUS_ANALYZE:  ("non-local change, needs a human",             False),
+    STATUS_FIXED:    ("patch committed to a fix branch",             True),
+    STATUS_REJECTED: ("rejected by a human",                         True),
+    STATUS_FAILED:   ("LLM/validation/commit failed",                True),
+    STATUS_STALE:    ("superseded by a newer project report",        True),
+}
+STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
 
 SCHEMA_VERSION = 10
 SCHEMA_PATH = Path(__file__).resolve().parent / "config" / "check.sql"
 _schema_cache: str | None = None
-
 
 def _schema_sql() -> str:
     """Load schema from config/check.sql. Cached after first read.
@@ -138,18 +150,33 @@ def split_finding_id(fid: str) -> tuple[int, int]:
         return int(a), int(b)
     return 1, TABLE_LOCAL_BASE + int(fid)
 
+# «Закрыто для автоматики»: конечные статусы + analyze-by-dev
+# (уже классифицировано, повторно не гоняем; --reprocess обходит).
+_RESOLVED_SQL = (
+    "(status IN (SELECT name FROM statuses WHERE terminal = 1) "
+    f"OR status = '{STATUS_ANALYZE}')"
+)
+
+
 def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
-    """Keys to skip on next --apply: stale (superseded), needs-review
-    (already classified), fixed, rejected. Use --reprocess to override."""
     rel = _rel(report_path)
     with connect() as con:
         rows = con.execute(
-            "SELECT chunk_id, local_id FROM issue WHERE "
-            "report_id = (SELECT id FROM report WHERE path = ?) "
-            "AND status IN (?, ?, ?, ?)",
-            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED,
-             STATUS_STALE)).fetchall()
+            "SELECT chunk_id, local_id FROM issue "
+            "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
+            f"AND {_RESOLVED_SQL}", (rel,)).fetchall()
     return {(r["chunk_id"], r["local_id"]) for r in rows}
+
+
+def resolved_finding_ids(report_path: Path | str) -> set[str]:
+    """Тот же предикат, что и resolved_finding_keys (раньше расходились)."""
+    rel = _rel(report_path)
+    with connect() as con:
+        rows = con.execute(
+            "SELECT finding_id FROM issue "
+            "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
+            f"AND {_RESOLVED_SQL}", (rel,)).fetchall()
+    return {r["finding_id"] for r in rows}
 
 def _rel(path: Path | str) -> str:
     p = Path(path)
@@ -170,6 +197,7 @@ def connect():
         v = con.execute("PRAGMA user_version").fetchone()[0]
         if v == 0:
             con.executescript(_schema_sql())
+            _seed_statuses(con)
             con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         elif v != SCHEMA_VERSION:
             raise RuntimeError(
@@ -332,8 +360,9 @@ def close_period(runid: int) -> tuple[int, list[str]]:
                 f"  fix_branch = NULL, fix_commit = NULL, "
                 f"  fix_subject = NULL, dt = ? WHERE "
                 f"  report_id IN ({ph_old}) "
-                f"  AND status != ?",
-                (STATUS_STALE, now, *older, STATUS_FIXED))
+                f"  AND status NOT IN "
+                f"      (SELECT name FROM statuses WHERE terminal = 1)",
+                (STATUS_STALE, now, *older))
             total += cur.rowcount
 
     return total, branches
@@ -365,18 +394,6 @@ def update_issue_status(report_path, finding, status, *,
              fix_branch, fix_commit, fix_subject,
              rel, chunk_id, local_id))
         return cur.rowcount > 0
-
-def resolved_finding_ids(report_path: Path | str) -> set[str]:
-    """Return finding ids whose status is 'fixed' or 'rejected'."""
-    rel = _rel(report_path)
-    with connect() as con:
-        rows = con.execute(
-            "SELECT finding_id FROM issue WHERE "
-            "report_id = (SELECT id FROM report WHERE path = ?) "
-            "AND status IN (?, ?, ?)",
-            (rel, STATUS_ANALYZE, STATUS_FIXED, STATUS_REJECTED)).fetchall()
-    return {r["finding_id"] for r in rows}
-
 
 def get_status(report_path: Path | str, finding) -> str | None:
     try:
@@ -540,6 +557,20 @@ def clear_proposal(report_path: Path | str, finding,
                 (seq, rel, chunk_id, local_id))
         return cur.rowcount
 
+def _seed_statuses(con: sqlite3.Connection) -> None:
+    """Ensure all known statuses exist; refresh descr, preserve terminal.
+
+    descr comes from code (docs must follow the code, e.g. after a
+    translation change). terminal is local policy — a user may flip
+    'failed' to 0 to allow retries, and seeding must not undo that.
+    """
+    for name, (descr, terminal) in STATUSES_META.items():
+        con.execute(
+            "INSERT INTO statuses (name, descr, terminal) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET descr = excluded.descr",
+            (name, descr, int(terminal)))
+
 def _seed_modules(con: sqlite3.Connection) -> None:
     """Insert missing modules. Idempotent."""
     for name, descr in MODULES.items():
@@ -566,12 +597,41 @@ def seed_defaults() -> None:
     """
     try:
         with connect() as con:
+            _seed_statuses(con)
             _seed_modules(con)
             _seed_params(con)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: seed_defaults failed: {exc}",
               file=sys.stderr)
 
+def all_statuses() -> list[dict]:
+    """Справочник в порядке вставки — для status.py."""
+    with connect() as con:
+        return [dict(r) for r in con.execute(
+            "SELECT name, descr, terminal FROM statuses ORDER BY rowid")]
+
+
+_terminal_cache: frozenset[str] | None = None
+
+
+def terminal_statuses() -> frozenset[str]:
+    """Конечные статусы из БД. Кэш на процесс; при битой БД — fallback
+    на STATUSES_META (БД не должна ронять пайплайн)."""
+    global _terminal_cache
+    if _terminal_cache is None:
+        fallback = frozenset(n for n, (_, t) in STATUSES_META.items() if t)
+        try:
+            with connect() as con:
+                rows = con.execute(
+                    "SELECT name FROM statuses WHERE terminal = 1").fetchall()
+            _terminal_cache = frozenset(r["name"] for r in rows) or fallback
+        except Exception:  # noqa: BLE001
+            return fallback        # ошибку не кэшируем
+    return _terminal_cache
+
+
+def is_terminal(status: str | None) -> bool:
+    return status is not None and status in terminal_statuses()
 
 def get_param(category: str, name: str, default):
     """Return typed value from params. Falls back to `default`."""

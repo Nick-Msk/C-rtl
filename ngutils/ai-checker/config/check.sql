@@ -1,10 +1,16 @@
--- ai-checker schema (v10)
+-- ai-checker schema (v11)
 -- Loaded by db._schema_sql() when creating a fresh check.db.
 -- Version tracked in db.SCHEMA_VERSION and PRAGMA user_version.
 --
 -- To regenerate from scratch:
 --   rm config/check.db*
 --   make ai-check-<proj>
+
+CREATE TABLE IF NOT EXISTS statuses (
+    name     TEXT PRIMARY KEY,
+    descr    TEXT NOT NULL,
+    terminal INTEGER NOT NULL DEFAULT 0 CHECK (terminal IN (0, 1))
+);
 
 CREATE TABLE IF NOT EXISTS base_commit (
     sha         TEXT PRIMARY KEY,
@@ -51,10 +57,7 @@ CREATE TABLE IF NOT EXISTS issue (
     section     TEXT NOT NULL,
     title       TEXT NOT NULL,
     text        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'added'
-                CHECK (status IN ('added','proposed-to-fix',
-                                          'analyze-by-dev','fixed',
-                                          'rejected','failed','stale')),
+    status      TEXT NOT NULL DEFAULT 'added' REFERENCES statuses(name),
     reason      TEXT,
     direction   TEXT,
     fix_branch  TEXT,

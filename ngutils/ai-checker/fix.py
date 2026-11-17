@@ -521,16 +521,14 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
             f"Full finding:\n{finding['text']}\n\n"
             f"Applied by ai-checker/fix.py\n")
 
-_TERMINAL = {db.STATUS_FIXED, db.STATUS_REJECTED}
-
 def _db_set_if_not_fixed(report_path: Path, finding: dict,
                          status: str, **kw) -> None:
-    """_db_set, but never downgrades fixed/rejected to something else."""
+    """_db_set, но не понижает конечный статус (statuses.terminal = 1)."""
     try:
         cur = db.get_status(report_path, finding)
     except Exception:  # noqa: BLE001
         cur = None
-    if cur in _TERMINAL:
+    if db.is_terminal(cur):
         return
     _db_set(report_path, finding, status, **kw)
 
