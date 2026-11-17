@@ -635,15 +635,47 @@ fs2slice_charsearch(const fs2slice *s, char ch, fs2_chr_raw_fn fn) {
               (unsigned char)ch);
 }
 
+/**
+ * @brief Find the first occurrence of @p ch in the slice (forward).
+ *
+ * @param s  Non-NULL, non-zombie slice.
+ * @param ch Byte to find.
+ * @return   Slice-relative 0-based offset, or -1 if not found.
+ * @warning  `invfatal` (SIGABRT) if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_chr(const fs2slice *s, char ch)
     { return fs2slice_charsearch(s, ch, __fs2_chr_raw);    }
 
+/**
+ * @brief Find the first occurrence of @p ch, case-insensitive (forward).
+ *
+ * @param s  Non-NULL, non-zombie slice.
+ * @param ch Byte to find (ASCII; upper/lower match).
+ * @return   Slice-relative 0-based offset, or -1.
+ * @warning  `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_chr_ci(const fs2slice *s, char ch)
     { return fs2slice_charsearch(s, ch, __fs2_chr_raw_ci); }
 
+/**
+ * @brief Find the last occurrence of @p ch in the slice (backward).
+ *
+ * @param s  Non-NULL, non-zombie slice.
+ * @param ch Byte to find.
+ * @return   Slice-relative 0-based offset, or -1.
+ * @warning  `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_rchr(const fs2slice *s, char ch)
     { return fs2slice_charsearch(s, ch, __fs2_rchr_raw);   }
 
+/**
+ * @brief Find the last occurrence of @p ch, case-insensitive (backward).
+ *
+ * @param s  Non-NULL, non-zombie slice.
+ * @param ch Byte to find (ASCII; upper/lower match).
+ * @return   Slice-relative 0-based offset, or -1.
+ * @warning  `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_rchr_ci(const fs2slice *s, char ch)
     { return fs2slice_charsearch(s, ch, __fs2_rchr_raw_ci);}
 
@@ -690,31 +722,110 @@ extern ptrdiff_t
 fs2slice_charsearch_nth(const fs2slice *s, char ch, size_t k,
                         size_t lim, fs2_chr_raw_fn fn, bool forward);
 
-// --- Forward --- 
+/* --- Forward (head → tail) --- */
 
+/**
+ * @brief Find the @p k-th (1-based) occurrence of @p ch, scanning
+ *        from the head of the slice toward the tail.
+ *
+ * @param s   Non-NULL, non-zombie slice.
+ * @param ch  Byte to find.
+ * @param k   1-based occurrence number (0 → -1).
+ * @return    Slice-relative 0-based offset, or -1 if fewer than @p k hits.
+ * @warning   `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_chr_nth(const fs2slice *s, char ch, size_t k)
     { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_chr_raw, true); }
 
+/**
+ * @brief Like `fs2slice_chr_nth` but case-insensitive (ASCII).
+ *
+ * @param s   Non-NULL, non-zombie slice.
+ * @param ch  Byte to find (upper/lower match).
+ * @param k   1-based occurrence number.
+ * @return    Slice-relative offset, or -1.
+ * @warning   `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_chr_nth_ci(const fs2slice *s, char ch, size_t k)
     { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_chr_raw_ci, true); }
 
+/**
+ * @brief Like `fs2slice_chr_nth` but examines at most @p lim bytes
+ *        from the head of the slice.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param ch   Byte to find.
+ * @param k    1-based occurrence number.
+ * @param lim  Max bytes to examine (clamped to slice length).
+ * @return     Slice-relative offset, or -1.
+ * @warning    `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_nchr_nth(const fs2slice *s, char ch, size_t k, size_t lim)
     { return fs2slice_charsearch_nth(s, ch, k, lim, __fs2_chr_raw, true); }
 
+/**
+ * @brief Like `fs2slice_nchr_nth` but case-insensitive.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param ch   Byte to find.
+ * @param k    1-based occurrence number.
+ * @param lim  Max bytes to examine.
+ * @return     Slice-relative offset, or -1.
+ * @warning    `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_nchr_nth_ci(const fs2slice *s, char ch, size_t k, size_t lim)
     { return fs2slice_charsearch_nth(s, ch, k, lim, __fs2_chr_raw_ci, true); }
 
-// --- Backward --- 
+/* --- Backward (tail → head) --- */
 
+/**
+ * @brief Find the @p k-th occurrence of @p ch from the tail (k=1 = last).
+ *
+ * @param s   Non-NULL, non-zombie slice.
+ * @param ch  Byte to find.
+ * @param k   1-based occurrence number (1 = last, 2 = second-to-last, …).
+ * @return    Slice-relative 0-based offset, or -1.
+ * @warning   `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_rchr_nth(const fs2slice *s, char ch, size_t k)
     { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_rchr_raw,    false); }
 
+/**
+ * @brief Like `fs2slice_rchr_nth` but case-insensitive.
+ *
+ * @param s   Non-NULL, non-zombie slice.
+ * @param ch  Byte to find.
+ * @param k   1-based occurrence from the tail.
+ * @return    Slice-relative offset, or -1.
+ * @warning   `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_rchr_nth_ci(const fs2slice *s, char ch, size_t k)
     { return fs2slice_charsearch_nth(s, ch, k, SIZE_MAX, __fs2_rchr_raw_ci, false); }
 
+/**
+ * @brief Like `fs2slice_rchr_nth` but examines at most @p lim bytes
+ *        from the tail.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param ch   Byte to find.
+ * @param k    1-based occurrence from the tail.
+ * @param lim  Max bytes to examine (clamped to slice length).
+ * @return     Slice-relative offset, or -1.
+ * @warning    `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_nrchr_nth(const fs2slice *s, char ch, size_t k, size_t lim)
     { return fs2slice_charsearch_nth(s, ch, k, lim,      __fs2_rchr_raw,    false); }
 
+/**
+ * @brief Like `fs2slice_nrchr_nth` but case-insensitive.
+ *
+ * @param s    Non-NULL, non-zombie slice.
+ * @param ch   Byte to find.
+ * @param k    1-based occurrence from the tail.
+ * @param lim  Max bytes to examine.
+ * @return     Slice-relative offset, or -1.
+ * @warning    `invfatal` if @p s is NULL; `userraise` on zombie.
+ */
 static inline ptrdiff_t fs2slice_nrchr_nth_ci(const fs2slice *s, char ch, size_t k, size_t lim)
     { return fs2slice_charsearch_nth(s, ch, k, lim,      __fs2_rchr_raw_ci, false); }
 
@@ -882,24 +993,70 @@ fs2slice_tolower_new(const fs2slice *sl) {
     return r;
 }
 
+/**
+ * @brief New owned fs2 = slice content right-padded to @p len.
+ *
+ * Copies the slice content, then right-pads with @p pad up to total
+ * length @p len. Slice and parent are untouched.
+ *
+ * @param sl    Non-NULL slice.
+ * @param len   Desired total length after padding.
+ * @param pad   Non-NULL padding source (an #fs2).
+ * @return      New owned #fs2; caller frees with `fs2_free`.
+ * @warning `invfatal` (SIGABRT) if @p sl is NULL.
+ */
 static inline fs2
 fs2slice_rpad_new(const fs2slice *restrict sl, size_t len, const fs2 *restrict pad) {
     fs2 r = fs2slice_to_owned(sl);
     return *fs2_rpad(&r, len, pad);
 }
 
+/**
+ * @brief New owned fs2 = slice content right-padded to @p len with a C-string.
+ *
+ * Like `fs2slice_rpad_new` but the padding source is a NUL-terminated string.
+ *
+ * @param sl      Non-NULL slice.
+ * @param len     Desired total length after padding.
+ * @param padstr  Non-NULL padding string.
+ * @return        New owned #fs2; caller frees with `fs2_free`.
+ * @warning `invfatal` (SIGABRT) if @p sl is NULL.
+ */
 static inline fs2
 fs2slice_rpadstr_new(const fs2slice *restrict sl, size_t len, const char *restrict padstr) {
     fs2 r = fs2slice_to_owned(sl);
     return *fs2_rpadstr(&r, len, padstr);
 }
 
+/**
+ * @brief New owned fs2 = slice content left-padded to @p len.
+ *
+ * Copies the slice content, then left-pads with @p pad up to total
+ * length @p len. Slice and parent are untouched.
+ *
+ * @param sl    Non-NULL slice.
+ * @param len   Desired total length after padding.
+ * @param pad   Non-NULL padding source (an #fs2).
+ * @return      New owned #fs2; caller frees with `fs2_free`.
+ * @warning `invfatal` (SIGABRT) if @p sl is NULL.
+ */
 static inline fs2
 fs2slice_lpad_new(const fs2slice *restrict sl, size_t len, const fs2 *restrict pad) {
     fs2 r = fs2slice_to_owned(sl);
     return *fs2_lpad(&r, len, pad);
 }
 
+/**
+ * @brief New owned fs2 = slice content left-padded to @p len with a C-string.
+ *
+ * Like `fs2slice_lpad_new` but the padding source is a NUL-terminated string.
+ *
+ * @param sl      Non-NULL slice.
+ * @param len     Desired total length after padding.
+ * @param padstr  Non-NULL padding string.
+ * @return        New owned #fs2; caller frees with `fs2_free`.
+ * @warning `invfatal` (SIGABRT) if @p sl is NULL.
+ */
 static inline fs2
 fs2slice_lpadstr_new(const fs2slice *restrict sl, size_t len, const char *restrict padstr) {
     fs2 r = fs2slice_to_owned(sl);
