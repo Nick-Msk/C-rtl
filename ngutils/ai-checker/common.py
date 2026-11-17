@@ -58,6 +58,18 @@ FINDING_HEADER_SPLIT = re.compile(
 TABLE_ROW_RE = re.compile(r"^[ \t]*\|(.+)\|[ \t]*$", re.MULTILINE)
 TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 
+# A finding whose whole verdict is "the code is fine" is not a finding.
+# Anchored at the END of the text and preceded by a sentence/cell
+# boundary, so "Всё ок, но ..." or "проверить, что всё ок" survive.
+_NO_OP_RE = re.compile(
+    r"(?:^|[.!?;:]\s+|\n)\s*"
+    r"(?:вс[ёе]\s+(?:ок|ok|в\s+порядке|корректно|хорошо)"
+    r"|замечаний\s+нет|нет\s+замечаний"
+    r"|проблем\s+не\s+(?:найдено|обнаружено)"
+    r"|no\s+issues?(?:\s+found)?|looks\s+good|lgtm)"
+    r"\s*[.!]?\s*$",
+    re.IGNORECASE)
+
 FILE_REF_RE = re.compile(
     r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
 
@@ -205,13 +217,15 @@ def parse_findings(report_text: str) -> list[dict]:
     """Split report into findings with guaranteed-unique ids.
 
     ids are assigned here, not taken from the text: '<chunk>/<n>'
-    for headers and lists, '<chunk>/<1000+n>' for tables. This is
-    independent of what the model wrote ('### 1.', '### 1/1.', '| 5 |').
+    for headers and lists, '<chunk>/<1000+n>' for tables.
+    An id is reserved BEFORE the no-op filter, so dropping a row
+    never renumbers the rows after it (ids are DB keys).
     """
     targets = {"Критично", "Важно", "Мелочи"}
     findings: list[dict] = []
     current_chunk = 1
     counters: dict[tuple[int, str], int] = {}
+
     sections = re.split(r"^## ", report_text, flags=re.MULTILINE)
     for sec in sections:
         m = re.match(r"^(\S+)", sec)
@@ -235,39 +249,36 @@ def parse_findings(report_text: str) -> list[dict]:
                 return f"{_chunk}/{TABLE_LOCAL_BASE + n}"
             return f"{_chunk}/{n}"
 
+        def add(kind: str, text: str,
+                _name: str = name, _chunk: int = current_chunk) -> None:
+            if len(text) < 20:
+                return
+            fid = next_id(kind)          # reserve the id even if we drop it
+            if _NO_OP_RE.search(text):
+                return
+            findings.append({"section": _name,
+                             "id": fid,
+                             "text": text,
+                             "chunk": _chunk,
+                             "kind": kind})
+
         matches = list(FINDING_HEADER_SPLIT.finditer(body))
         if matches:
             for i, match in enumerate(matches):
-                end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
-                text = body[match.end():end].strip()
-                if len(text) < 20:
-                    continue
-                findings.append({"section": name,
-                                 "id": next_id("header"),
-                                 "text": text,
-                                 "chunk": current_chunk,
-                                 "kind": "header"})
+                end = (matches[i + 1].start()
+                       if i + 1 < len(matches) else len(body))
+                add("header", body[match.end():end].strip())
             continue
 
         table = _parse_table_rows(body)
         if table:
             for _fid, text in table:
-                if len(text) >= 20:
-                    findings.append({"section": name,
-                                     "id": next_id("table"),
-                                     "text": text,
-                                     "chunk": current_chunk,
-                                     "kind": "table"})
+                add("table", text)
             continue
 
         for item in ITEM_SEP.split(body)[1:]:
-            text = item.strip()
-            if len(text) >= 20:
-                findings.append({"section": name,
-                                 "id": next_id("list"),
-                                 "text": text,
-                                 "chunk": current_chunk,
-                                 "kind": "list"})
+            add("list", item.strip())
+
     return findings
 
 def iter_findings(report_path: Path,
