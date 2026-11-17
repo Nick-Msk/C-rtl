@@ -2000,8 +2000,17 @@ fs2_instr_str_ci(const fs2 *restrict str, const char *restrict pattern) {
  */
 extern fs2 *
 fs2_replace(fs2 *restrict s, const fs2 *restrict pat, const fs2 *restrict repl);
+
 // wrapper, c-str ports
 // fs2 -> c-str
+/**
+ * @brief Replace all non-overlapping occurrences of @p pat (fs2) with a C-string @p repl.
+ *
+ * @param s       Non-NULL fs2 (ALLOC). Modified.
+ * @param pat     Non-NULL fs2 pattern.
+ * @param repl    Non-NULL NUL-terminated replacement string.
+ * @return        @p s.
+ */
 static inline fs2 *
 fs2_replace_fromstr(fs2 *restrict s, const fs2 *restrict pat, const char *restrict repl) {
     fs2 tmp = _fs2_wrap(repl);
@@ -2038,40 +2047,91 @@ fs2_replace_cstr(fs2 *restrict s, const char *restrict pat, const char *restrict
 extern fs2 *
 fs2_trim_common(fs2 *restrict s, const fs2 *restrict pattern, bool left, bool right);
 
+/**
+ * @brief Trim characters from the set @p pattern at **both** edges of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL fs2 — character set to remove from both ends.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_trim(fs2 *restrict s, const fs2 *restrict pattern) {
     return fs2_trim_common(s, pattern, true, true);
 }
 
+/**
+ * @brief Trim characters from the set @p pattern at the **left** edge of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL fs2 — character set to remove from the start.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_ltrim(fs2 *restrict s, const fs2 *restrict pattern) {
     return fs2_trim_common(s, pattern, true, false);
 }
 
+/**
+ * @brief Trim characters from the set @p pattern at the **right** edge of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL fs2 — character set to remove from the end.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_rtrim(fs2 *restrict s, const fs2 *restrict pattern) {
     return fs2_trim_common(s, pattern, false, true);
 }
 
 /* c-string pattern wrappers */
+/**
+ * @brief Trim characters from a C-string set @p pattern at both edges of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL NUL-terminated character set.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_trim_str(fs2 *restrict s, const char *restrict pattern) {
     fs2 tmp = _fs2_wrap(pattern);
     return fs2_trim(s, &tmp);
 }
 
+/**
+ * @brief Trim characters from a C-string set @p pattern at the left edge of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL NUL-terminated character set.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_ltrim_str(fs2 *restrict s, const char *restrict pattern) {
     fs2 tmp = _fs2_wrap(pattern);
     return fs2_ltrim(s, &tmp);
 }
 
+/**
+ * @brief Trim characters from a C-string set @p pattern at the right edge of @p s.
+ *
+ * @param s        Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param pattern  Non-NULL NUL-terminated character set.
+ * @return         @p s.
+ */
 static inline fs2 *
 fs2_rtrim_str(fs2 *restrict s, const char *restrict pattern) {
     fs2 tmp = _fs2_wrap(pattern);
     return fs2_rtrim(s, &tmp);
 }
 
+/**
+ * @brief Check whether @p s starts with @p prefix (case-sensitive).
+ *
+ * An empty prefix matches any string (returns true).
+ *
+ * @param s       Non-NULL fs2 haystack.
+ * @param prefix  Non-NULL fs2 prefix.
+ * @return        true if @p s begins with @p prefix.
+ */
 static inline bool
 fs2_starts_with(const fs2 *restrict s, const fs2 *restrict prefix) {
     invfatal(ERR_NULL_INPUT, s != NULL && prefix != NULL, 
@@ -2084,6 +2144,15 @@ fs2_starts_with(const fs2 *restrict s, const fs2 *restrict prefix) {
     return memcmp(s->v, prefix->v, prefix->len) == 0;
 }
 
+/**
+ * @brief Check whether @p s ends with @p suffix (case-sensitive).
+ *
+ * An empty suffix matches any string (returns true).
+ *
+ * @param s       Non-NULL fs2 haystack.
+ * @param suffix  Non-NULL fs2 suffix.
+ * @return        true if @p s ends with @p suffix.
+ */
 static inline bool
 fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
     invfatal(ERR_NULL_INPUT, s != NULL && suffix != NULL, 
@@ -2097,12 +2166,26 @@ fs2_ends_with(const fs2 *restrict s, const fs2 *restrict suffix) {
 }
 
 /* c-string wrappers */
+/**
+ * @brief Check whether @p s starts with a C-string @p prefix.
+ *
+ * @param s       Non-NULL fs2 haystack.
+ * @param prefix  Non-NULL NUL-terminated prefix.
+ * @return        true if @p s begins with @p prefix.
+ */
 static inline bool
 fs2_starts_with_str(const fs2 *restrict s, const char *restrict prefix) {
     fs2 tmp = _fs2_wrap(prefix);
     return fs2_starts_with(s, &tmp);
 }
 
+/**
+ * @brief Check whether @p s ends with a C-string @p suffix.
+ *
+ * @param s       Non-NULL fs2 haystack.
+ * @param suffix  Non-NULL NUL-terminated suffix.
+ * @return        true if @p s ends with @p suffix.
+ */
 static inline bool
 fs2_ends_with_str(const fs2 *restrict s, const char *restrict suffix) {
     fs2 tmp = _fs2_wrap(suffix);
@@ -2134,9 +2217,13 @@ fs2_contains_str(const fs2 *restrict s, const char *restrict pat) {
 }
 
 /**
- * @return Number of non-overlapping occurrences of @p pat.
- *         Returns 0 if @p pat is empty (unlike Python's len+1, which
- *         has no practical use and would require special-casing).
+ * @brief Count non-overlapping occurrences of @p pat in @p s.
+ *
+ * @param s    Non-NULL fs2 haystack.
+ * @param pat  Non-NULL fs2 needle (empty → 0).
+ * @return     Number of non-overlapping occurrences.
+ *             Returns 0 if @p pat is empty (unlike Python's len+1, which
+ *             has no practical use and would require special-casing).
  */
 static inline size_t
 fs2_count(const fs2 *restrict s, const fs2 *restrict pat) {
@@ -2169,15 +2256,39 @@ fs2_count_str(const fs2 *restrict s, const char *restrict pat) {
 }
 
 // Repeat  Stack from fs2
+/**
+ * @brief Return a stack-allocated fs2 consisting of @p s repeated @p n times.
+ *
+ * "ab" + n=3 → "ababab". n=0 → empty.
+ *
+ * @param s  Non-NULL fs2 (any flavor). Not modified.
+ * @param n  Number of repetitions.
+ * @return   New stack fs2.
+ */
 extern fs2
 fs2_repeat_new(const fs2 *restrict s, size_t n);
 
 // in-place
+/**
+ * @brief Replace @p s with the string formed by repeating its content @p n times.
+ *
+ * "ab" + n=3 → "ababab". n=0 → empty.
+ *
+ * @param s  Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param n  Number of repetitions.
+ * @return   @p s.
+ */
 extern fs2 *
 fs2_repeat(fs2 *restrict s, size_t n);
 
 /* ========== Heap from fs2 ========== */
-
+/**
+ * @brief Return a heap-allocated fs2 consisting of @p s repeated @p n times.
+ *
+ * @param s  Non-NULL fs2 (any flavor). Not modified.
+ * @param n  Number of repetitions.
+ * @return   New heap fs2. Caller must free.
+ */
 static inline fs2 *
 fs2_heap_repeat(const fs2 *restrict s, size_t n) {
     fs2 tmp = fs2_repeat_new(s, n);
@@ -2185,7 +2296,13 @@ fs2_heap_repeat(const fs2 *restrict s, size_t n) {
 }
 
 /* ========== Stack from c-string ========== */
-
+/**
+ * @brief Return a stack-allocated fs2 consisting of a C-string @p s repeated @p n times.
+ *
+ * @param s  Non-NULL NUL-terminated string.
+ * @param n  Number of repetitions.
+ * @return   New stack fs2.
+ */
 static inline fs2
 fs2_repeat_str_new(const char *restrict s, size_t n) {
     fs2 tmp = _fs2_wrap(s);
@@ -2193,7 +2310,13 @@ fs2_repeat_str_new(const char *restrict s, size_t n) {
 }
 
 /* ========== Heap from c-string ========== */
-
+/**
+ * @brief Return a heap-allocated fs2 consisting of a C-string @p s repeated @p n times.
+ *
+ * @param s  Non-NULL NUL-terminated string.
+ * @param n  Number of repetitions.
+ * @return   New heap fs2. Caller must free.
+ */
 static inline fs2 *
 fs2_heap_repeat_str(const char *restrict s, size_t n) {
     fs2 tmp = fs2_repeat_str_new(s, n);
@@ -2278,6 +2401,16 @@ fs2_strip_suffix_str(fs2 *restrict s, const char *restrict suffix) {
 
 /* ==================== Stack constructor ==================== */
 
+/**
+ * @brief Return a stack-allocated copy of @p src with @p prefix removed.
+ *
+ * No-op (returns a clone) if @p src does not start with @p prefix, or if
+ * @p prefix is empty.
+ *
+ * @param src     Non-NULL fs2 (any flavor). Not modified.
+ * @param prefix  Non-NULL fs2 prefix to strip.
+ * @return        New stack fs2.
+ */
 static inline fs2
 fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
     invfatal(ERR_NULL_INPUT, src != NULL && prefix != NULL, "Null pointers %p %p", src, prefix);
@@ -2292,6 +2425,16 @@ fs2_strip_prefix_new(const fs2 *restrict src, const fs2 *restrict prefix) {
     return fs2_substr_new(src, prefix->len, src->len - prefix->len);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p src with @p suffix removed.
+ *
+ * No-op (returns a clone) if @p src does not end with @p suffix, or if
+ * @p suffix is empty.
+ *
+ * @param src     Non-NULL fs2 (any flavor). Not modified.
+ * @param suffix  Non-NULL fs2 suffix to strip.
+ * @return        New stack fs2.
+ */
 static inline fs2
 fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
     invfatal(ERR_NULL_INPUT, src != NULL && suffix != NULL, "Null pointers %p %p", src, suffix);
@@ -2305,12 +2448,26 @@ fs2_strip_suffix_new(const fs2 *restrict src, const fs2 *restrict suffix) {
     return fs2_substr_new(src, 0, src->len - suffix->len);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p src with a C-string @p prefix removed.
+ *
+ * @param src     Non-NULL fs2 (any flavor). Not modified.
+ * @param prefix  Non-NULL NUL-terminated prefix to strip.
+ * @return        New stack fs2.
+ */
 static inline fs2
 fs2_strip_prefix_str_new(const fs2 *restrict src, const char *restrict prefix) {
     fs2 tmp = _fs2_wrap(prefix);
     return fs2_strip_prefix_new(src, &tmp);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p src with a C-string @p suffix removed.
+ *
+ * @param src     Non-NULL fs2 (any flavor). Not modified.
+ * @param suffix  Non-NULL NUL-terminated suffix to strip.
+ * @return        New stack fs2.
+ */
 static inline fs2
 fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
     fs2 tmp = _fs2_wrap(suffix);
@@ -2336,6 +2493,14 @@ fs2_strip_suffix_str_new(const fs2 *restrict src, const char *restrict suffix) {
 extern fs2 *
 fs2_initcap(fs2 *s);
 
+/**
+ * @brief Return a stack-allocated copy of @p s with initcap applied.
+ *
+ * Does NOT modify @p s.
+ *
+ * @param s  Non-NULL fs2 (any flavor). Not modified.
+ * @return   New stack fs2 with first letter of each word capitalized.
+ */
 static inline fs2
 fs2_initcap_new(const fs2 *s) {
     fs2 res = fs2_clone(s);
@@ -2462,6 +2627,13 @@ fs2_split_part_str(const fs2 *restrict s, const char *restrict delim, ptrdiff_t 
 extern fs2 *
 fs2_removeall(fs2 *restrict s, const fs2 *restrict chars);
 
+/**
+ * @brief Remove all occurrences of any byte from a C-string @p chars set.
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param chars  Non-NULL NUL-terminated byte set to remove.
+ * @return       @p s.
+ */
 static inline fs2 *
 fs2_removeal_str(fs2 *restrict s, const char *restrict chars) {
     fs2     tmp = _fs2_wrap(chars); // no allocation here: no need to fs2_free()
@@ -2513,6 +2685,19 @@ extern fs2 *
 fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict src);
 
 // macro support
+/**
+ * @brief Convenience macro: append a variadic list of fs2 to @p dst, joined by @p delim.
+ *
+ * Expands to `fs2_concatall(dst, delim, (const fs2* const[]){ __VA_ARGS__, NULL })`.
+ *
+ * @code
+ *   FS2CONCAT(result, ", ", a, b, c);
+ * @endcode
+ *
+ * @param dst    Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim  fs2 delimiter (NULL or empty → no delimiter).
+ * @param ...    One or more fs2 values.
+ */
 #define FS2CONCAT(dst, delim, ...) \
     fs2_concatall( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
 
@@ -2528,6 +2713,15 @@ fs2_concatall(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restrict s
 extern fs2 *
 fs2_concatall_str(fs2 *restrict dst, const char *delim, const char * const *restrict src);
 
+/**
+ * @brief Convenience macro: append a variadic list of C-strings to @p dst, joined by @p delim.
+ *
+ * Expands to `fs2_concatall_str(dst, delim, (const char* const[]){ __VA_ARGS__, NULL })`.
+ *
+ * @param dst    Non-NULL fs2 (ALLOC or LOCAL). Appended to.
+ * @param delim  C-string delimiter (NULL or empty → no delimiter).
+ * @param ...    One or more C-string values.
+ */
 #define FS2CONCATSTR(dst, delim, ...) \
     fs2_concatall_str( (dst), (delim), (const char* const[]) { __VA_ARGS__, NULL} )
 
@@ -2548,6 +2742,16 @@ fs2_concatall_new(fs2 *restrict dst, const fs2 *delim, const fs2 * const *restri
     return *fs2_concatall(&res, delim, src);
 }
 
+/**
+ * @brief Convenience macro: append a variadic list of fs2 to a **new** stack fs2, joined by @p delim.
+ *
+ * Returns a new stack-allocated fs2; does NOT modify @p dst.
+ *
+ * @param dst    Non-NULL fs2 (any flavor). Not modified.
+ * @param delim  fs2 delimiter (NULL or empty → no delimiter).
+ * @param ...    One or more fs2 values.
+ * @return       New stack fs2.
+ */
 #define FS2CONCAT_NEW(dst, delim, ...) \
     fs2_concatall_new( (dst), (delim), (const fs2 * const[]) { __VA_ARGS__, NULL} )
 
@@ -2568,6 +2772,16 @@ fs2_concatall_str_new(fs2 *restrict dst, const char *delim, const char * const *
     return *fs2_concatall_str(&res, delim, src);
 }
 
+/**
+ * @brief Convenience macro: append a variadic list of C-strings to a **new** stack fs2, joined by @p delim.
+ *
+ * Returns a new stack-allocated fs2; does NOT modify @p dst.
+ *
+ * @param dst    Non-NULL fs2 (any flavor). Not modified.
+ * @param delim  C-string delimiter (NULL or empty → no delimiter).
+ * @param ...    One or more C-string values.
+ * @return       New stack fs2.
+ */
 #define FS2CONCAT_STR_NEW(dst, delim, ...) \
     fs2_concatall_str_new( (dst), (delim), (const char * const[]) { __VA_ARGS__, NULL} )
 
@@ -2706,12 +2920,31 @@ fs2_isascii(const fs2 *restrict s) {
 extern fs2 *
 fs2_normalize_whitespace(fs2 *restrict s);
 
+/**
+ * @brief Return a stack-allocated copy of @p s with whitespace normalized.
+ *
+ * Does NOT modify @p s.
+ *
+ * @param s  Non-NULL fs2 (any flavor). Not modified.
+ * @return   New stack fs2.
+ */
 static inline fs2
 fs2_normalize_whitespace_new(const fs2 *restrict s) {
     fs2 res = fs2_clone(s);
     return *fs2_normalize_whitespace(&res);
 }
 
+/**
+ * @brief Center @p s within @p width, padding both sides with @p pad.
+ *
+ * If width < s->len, the string is truncated. If width == s->len or pad is
+ * empty, no change. Extra padding goes to the left (left-biased centering).
+ *
+ * @param s      Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param width  Target total length.
+ * @param pad    Non-NULL non-empty fs2 pad pattern.
+ * @return       @p s.
+ */
 extern fs2 *
 fs2_center(fs2 *restrict s, size_t width, const fs2 *restrict pad);
 
@@ -2732,6 +2965,15 @@ fs2_center_str(fs2 *restrict s, size_t width, const char *restrict pad) {
     return fs2_center(s, width, &tmp);
 }
 
+/**
+ * @brief Return a stack-allocated copy of @p s centered within @p width,
+ *         padded with @p pad.
+ *
+ * @param s      Non-NULL fs2 (any flavor). Not modified.
+ * @param width  Target total length.
+ * @param pad    Non-NULL non-empty fs2 pad pattern.
+ * @return       New stack fs2.
+ */
 static inline fs2
 fs2_center_new(const fs2 *restrict s, size_t width, const fs2 *restrict pad) {
     fs2 res = fs2_clone(s);
@@ -2753,6 +2995,15 @@ fs2_center_strnew(const fs2 *restrict s, size_t width, const char *restrict pad)
     return *fs2_center_str(&res, width, pad);
 }
 
+/**
+ * @brief Replace consecutive runs of @p ch with a single @p ch in place.
+ *
+ * "aaabbbcaa" + ch='a' → "abbbca".
+ *
+ * @param s   Non-NULL fs2 (ALLOC or LOCAL). Modified.
+ * @param ch  Character whose consecutive runs to collapse.
+ * @return    @p s.
+ */
 extern fs2 *
 fs2_squeeze(fs2 *restrict s, int ch);
 
