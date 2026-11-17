@@ -83,7 +83,7 @@ LOCAL - all rules must hold, otherwise needs_review:
   4. No new #include. Fixing a typo in an existing include is fine.
   5. Correct without touching any other file, and idempotent.
   6. Total changed lines (added + removed, summed over all entries and
-     multiplied by count) <= 20.
+     multiplied by count) <= @MAX_DIFF@.
 
 Typical local fixes: missing NULL check, missing free/fclose on an error path,
 off-by-one, uninitialised variable, wrong constant or format specifier, typo.
@@ -678,7 +678,7 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
 
     chunk_usage: dict = {}
     messages = [
-        {"role": "system", "content": CLASSIFY_SYSTEM},
+        {"role": "system", "content": classify_system(ctx)},
         {"role": "user",   "content": build_prompt(finding, project, files,
                                                    budget=ctx["max_source"])},
     ]
@@ -1208,7 +1208,9 @@ def _run(args, model: str,
     return 0, state["all_usage"]
 
 def classify_system(ctx: dict) -> str:
-    return CLASSIFY_SYSTEM.replace("<= 20.", f"<= {ctx['max_diff_lines']}.")
+    """Render CLASSIFY_SYSTEM with the live fix.max_diff_lines from DB."""
+    
+    return CLASSIFY_SYSTEM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
 
 def main() -> int:
     ap = argparse.ArgumentParser(
