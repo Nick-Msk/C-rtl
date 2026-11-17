@@ -6,6 +6,10 @@
 --   rm config/check.db*
 --   make ai-check-<proj>
 
+-- Single source of truth for issue statuses.
+-- terminal = 1: final state — automation never overwrites it and
+-- never picks such an issue up for reprocessing.
+-- descr is refreshed from db.STATUSES_META; terminal is local policy.
 CREATE TABLE IF NOT EXISTS statuses (
     name     TEXT PRIMARY KEY,
     descr    TEXT NOT NULL,

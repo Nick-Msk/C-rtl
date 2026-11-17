@@ -1042,8 +1042,8 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
             kept.append(f)
 
     n = len(findings) - len(kept)
-    print(f"  skip {n} already-resolved "
-          f"(fixed/rejected/analyze-by-dev); "
+    names = "/".join(sorted(db.terminal_statuses() | {db.STATUS_ANALYZE}))
+    print(f"  skip {n} already-resolved ({names}); "
           f"use --reprocess to include", file=sys.stderr)
     if not kept:
         print("  nothing left after resolved filter")
@@ -1271,8 +1271,8 @@ def main() -> int:
                     help="FIXLIST: '1/1, 1/3-5, 1/1001-1011, 1/*, *'. "
                          "chunk/local; local>=1000 = Мелочи. default: all")
     ap.add_argument("--reprocess", action="store_true",
-                    help="re-process findings already marked "
-                         "fixed/rejected in the DB")
+                    help="re-process findings already in a terminal "
+                         "status (or analyze-by-dev) in the DB")
     ap.add_argument("--refetch", action="store_true",
                     help="ignore cached proposal; re-query the LLM")
     args = ap.parse_args()
