@@ -38,6 +38,9 @@ common_version(void)
 long
 calcnewsize(Tincrease t, long n)
 {
+    if (n < 0)
+        return -1;
+
     long sz = n;
 
     switch (t) {
