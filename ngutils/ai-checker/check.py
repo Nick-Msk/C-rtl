@@ -50,6 +50,9 @@ SYSTEM_PROMPT = """\
 ## Что хорошо
 
 Не выдумывай проблем. Если код в порядке — так и скажи.
+Если тела вызываемой функции нет в контексте — НЕ выводи её семантику
+из имени. Не сообщай о баге, который опирается на такое предположение;
+если сомневаешься, вынеси это вопросом в "Мелочи", а не в "Критично".
 
 The `_types.h` block contains type definitions, constructor macros, and bodies 
 of functions marked with `[[core]]` or `[[constructor]]`—these are the ONLY places 
