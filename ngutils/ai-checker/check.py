@@ -51,11 +51,13 @@ SYSTEM_PROMPT = """\
 
 Не выдумывай проблем. Если код в порядке — так и скажи.
 
-The context below starts with a block titled "_types.h" containing
-ALL struct/union/enum/typedef declarations from this project's
-headers, extracted verbatim. Use it to look up any type you need.
-Do not claim you cannot see a header — the relevant type
-declarations are right there in that block.
+The `_types.h` block contains type definitions, constructor macros, and bodies 
+of functions marked with `[[core]]` or `[[constructor]]`—these are the ONLY places 
+where struct invariants are established or modified. Treat them as axioms: 
+if an invariant holds there, do not report a violation of it in the caller code. 
+If the body of a called function is not provided in the context, 
+DO NOT infer its semantics from its name. Do not report any bug that relies on such an assumption.
+
 """
 
 def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,

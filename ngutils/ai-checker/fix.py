@@ -85,13 +85,6 @@ LOCAL - all rules must hold, otherwise needs_review:
   6. Total changed lines (added + removed, summed over all entries and
      multiplied by count) <= @MAX_DIFF@.
 
-The `_types.h` block contains type definitions, constructor macros, and bodies 
-of functions marked with `[[core]]` or `[[constructor]]`—these are the ONLY places 
-where struct invariants are established or modified. Treat them as axioms: 
-if an invariant holds there, do not report a violation of it in the caller code. 
-If the body of a called function is not provided in the context, 
-DO NOT infer its semantics from its name. Do not report any bug that relies on such an assumption.
-
 Typical local fixes: missing NULL check, missing free/fclose on an error path,
 off-by-one, uninitialised variable, wrong constant or format specifier, typo.
 
