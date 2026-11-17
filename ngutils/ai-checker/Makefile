@@ -12,10 +12,16 @@
 
 ROOT := $(abspath $(CURDIR)/..)
 
-# Same discovery as the root Makefile. ai-checker now HAS a Makefile,
-# so it must be filtered out: it is a tool, not a library project.
-PROJECTS := $(patsubst $(ROOT)/%/Makefile,%,$(wildcard $(ROOT)/*/Makefile))
-PROJECTS := $(filter-out skeleton ai-checker,$(PROJECTS))
+# Build projects need a Makefile; AI projects need sources. Mirror
+# common.discover_projects(): a dir with src/ or include/, minus the
+# blacklist. A WIP project without a Makefile (path/) is still
+# reviewable, and 'make cloneproj NAME=x' adds ai-*-x targets for free.
+# Keep AI_EXCLUDE in sync with common.EXCLUDE_DIRS.
+AI_EXCLUDE := build bkp docs scripts ai-checker skeleton
+
+ALL_DIRS := $(patsubst $(ROOT)/%/,%,$(wildcard $(ROOT)/*/))
+PROJECTS := $(sort $(foreach p,$(filter-out $(AI_EXCLUDE),$(ALL_DIRS)),\
+    $(if $(wildcard $(ROOT)/$(p)/src $(ROOT)/$(p)/include),$(p))))
 
 MAKEFLAGS += --no-print-directory
 
