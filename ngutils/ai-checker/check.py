@@ -273,67 +273,6 @@ def format_usage_md(u: dict) -> str:
     return (f"**Token usage:** {p:,} prompt / {c:,} completion / "
             f"{t:,} total  ({u['requests']} request(s))")
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--all", action="store_true",
-                   help="review every discovered project (default)")
-    g.add_argument("--project", help="review a single project by name")
-    g.add_argument("--file", help="review a single source file")
-
-    ap.add_argument("--model", default="")
-    ap.add_argument("--base-url", default="")
-
-    ap.add_argument("--no-tests", action="store_true",
-                    help="exclude test/ directories from the review")
-    ap.add_argument("--no-stream", action="store_true")
-    ap.add_argument("--models", action="store_true",
-                    help="list models loaded in LM Studio")
-
-    ap.add_argument("--full-headers", action="store_true",
-                    help="include full header text instead of extracting "
-                         "only struct/union/enum/typedef declarations")
-    args = ap.parse_args()
-
-    args.base_url = llm.resolve_url(args.base_url)
-
-    if args.models:
-        models = llm.check_health(args.base_url)
-        for m in models:
-            print(m)
-        return 0
-
-    llm.check_health(args.base_url)  # exits on error
-    try:
-        model = llm.resolve_model(args.base_url, args.model)
-    except llm.LLMError as e:
-        sys.exit(f"ERROR: {e}")
-    print(f"[ai-checker] endpoint={args.base_url} model={model}",
-          file=sys.stderr)
-
-    lock_fd = acquire_lock()
-    try:
-        runid = db.llmrun_start(kind="check", url=args.base_url,
-                                name=model)
-        print(f"[ai-checker] runid={runid}", file=sys.stderr)
-
-        try:
-            rc, usage = _run_checks(args, model, runid)
-        except BaseException:
-            db.llmrun_finish(runid, status="failed")
-            raise
-
-        db.llmrun_finish(runid, status="ok",
-                         in_tokens=usage["prompt_tokens"],
-                         out_tokens=usage["completion_tokens"],
-                         requests=usage["requests"])
-
-        if rc == 0:
-            _cleanup_old_branches(runid)
-
-        return rc
-    finally:
-        release_lock(lock_fd)
 
 def _cleanup_old_branches(runid: int) -> None:
     """After a successful check, close the previous period and clean
@@ -532,6 +471,73 @@ def _run_checks(args, model, runid: int) -> tuple[int, dict]:
             all_usage[k] += usage.get(k, 0)
 
     return 0, all_usage
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--all", action="store_true",
+                   help="review every discovered project (default)")
+    g.add_argument("--project", help="review a single project by name")
+    g.add_argument("--file", help="review a single source file")
+
+    ap.add_argument("--model", default="")
+    ap.add_argument("--base-url", default="")
+
+    ap.add_argument("--no-tests", action="store_true",
+                    help="exclude test/ directories from the review")
+    ap.add_argument("--no-stream", action="store_true")
+    ap.add_argument("--models", action="store_true",
+                    help="list models loaded in LM Studio")
+
+    ap.add_argument("--full-headers", action="store_true",
+                    help="include full header text instead of extracting "
+                         "only struct/union/enum/typedef declarations")
+    args = ap.parse_args()
+
+    args.base_url = llm.resolve_url(args.base_url)
+
+    if args.models:
+        models = llm.check_health(args.base_url)
+        for m in models:
+            print(m)
+        return 0
+
+    llm.check_health(args.base_url)  # exits on error
+    try:
+        model = llm.resolve_model(args.base_url, args.model)
+    except llm.LLMError as e:
+        sys.exit(f"ERROR: {e}")
+    print(f"[ai-checker] endpoint={args.base_url} model={model}",
+          file=sys.stderr)
+
+    lock_fd = acquire_lock()
+    try:
+        runid = db.llmrun_start(kind="check", url=args.base_url,
+                                name=model)
+        print(f"[ai-checker] runid={runid}", file=sys.stderr)
+
+        try:
+            rc, usage = _run_checks(args, model, runid)
+        except BaseException:
+            db.llmrun_finish(runid, status="failed")
+            raise
+
+        db.llmrun_finish(runid, status="ok",
+                         in_tokens=usage["prompt_tokens"],
+                         out_tokens=usage["completion_tokens"],
+                         requests=usage["requests"])
+
+        print(f"[ai-checker] tokens: "
+              f"{usage['prompt_tokens']:,} in / "
+              f"{usage['completion_tokens']:,} out "
+              f"({usage['requests']} request(s))", file=sys.stderr)
+        if rc == 0:
+            _cleanup_old_branches(runid)
+
+        return rc
+    finally:
+        release_lock(lock_fd)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

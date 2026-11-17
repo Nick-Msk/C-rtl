@@ -1222,11 +1222,10 @@ def _print_final_summary(state: dict) -> None:
               f"{state['base_branch'] or 'master'}")
 
     u = state["all_usage"]
-    if u["requests"]:
-        print(f"\n[ai-fixer] total across projects: "
-              f"{u['prompt_tokens']:,} in / "
-              f"{u['completion_tokens']:,} out "
-              f"({u['requests']} request(s))")
+    print(f"\n[ai-fixer] tokens: "
+          f"{u['prompt_tokens']:,} in / "
+          f"{u['completion_tokens']:,} out "
+          f"({u['requests']} request(s))")
 
 def _run(args, model: str, 
          jobs: list[tuple[str, Path, Path]],
