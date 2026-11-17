@@ -8,7 +8,6 @@ import sys
 import db
 import gitutil
 
-
 def cmd_summary(as_json: bool) -> int:
     by = db.summary_by_project_status()
     if as_json:

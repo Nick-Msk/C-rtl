@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from common import ROOT, parse_findings
+from common import OUT_ROOT, ROOT, parse_findings
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -53,18 +53,20 @@ STATUS_FIXED    = "fixed"
 STATUS_REJECTED = "rejected"
 STATUS_FAILED   = "failed"
 STATUS_STALE    = "stale"
+STATUS_NO_ACTION = "no-action"
 
 # name -> (descr, terminal). Insertion order = column order in status.py.
 # descr is code-owned documentation (refreshed on every seed).
 # terminal is DB-owned policy: edit it in the DB, seeding never resets it.
 STATUSES_META: dict[str, tuple[str, bool]] = {
-    STATUS_ADDED:    ("found by ai-review, not triaged yet",        False),
-    STATUS_PROPOSED: ("validated local patch cached, not committed", False),
-    STATUS_ANALYZE:  ("non-local change, needs a human",             False),
-    STATUS_FIXED:    ("patch committed to a fix branch",             True),
-    STATUS_REJECTED: ("rejected by a human",                         True),
-    STATUS_FAILED:   ("LLM/validation/commit failed",                True),
-    STATUS_STALE:    ("superseded by a newer project report",        True),
+    STATUS_ADDED:       ("found by ai-review, not triaged yet",         False),
+    STATUS_PROPOSED:    ("validated local patch cached, not committed", False),
+    STATUS_ANALYZE:     ("non-local change, needs a human",             False),
+    STATUS_FIXED:       ("patch committed to a fix branch",             True),
+    STATUS_REJECTED:    ("rejected by a human",                         True),
+    STATUS_FAILED:      ("LLM/validation/commit failed",                True),
+    STATUS_STALE:       ("superseded by a newer project report",        True),
+    STATUS_NO_ACTION:   ("classifier verified: not a defect",           True),
 }
 STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
 
@@ -140,7 +142,7 @@ def ensure_report(report_path: Path | str, *, project: str,
                   kind=kind, started=started, duration_s=None,
                   findings=findings, runid=runid)
     print(f"[ai-checker] db: adopted {rel} "
-          f"({len(findings)} issue(s), runid={runid}, no LLM calls)",
+          f"({len(findings)} issue(s), runid={runid})",
           file=sys.stderr)
     return runid
 

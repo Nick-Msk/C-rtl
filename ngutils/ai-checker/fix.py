@@ -674,6 +674,11 @@ def _classify_with_llm(finding: dict, full_key: str, project: Path,
     cls = verdict.get("class", "needs_review")
     reason = verdict.get("reason", "")
 
+    if cls == "no_action":
+        print(f"  NO ACTION: {reason}")
+        _db_set(report_path, finding, db.STATUS_NO_ACTION, reason=reason)
+        return None
+
     if cls != "local":
         print(f"  NEEDS REVIEW: {reason}")
         if verdict.get("direction"):
