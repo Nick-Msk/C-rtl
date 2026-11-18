@@ -163,31 +163,22 @@ def scan(text: str, path: str = "") -> Header:
     return Header(path, text, has_file_block, frozenset(file_tags), symbols)
 
 
-def build_block(headers: list[Path], budget: int,
-                *, root: Path | None = None) -> tuple[str, dict]:
+def build_block(scanned: list[Header], budget: int) -> tuple[str, dict]:
     """(context block, stats). Deterministic: same headers + budget ->
     identical bytes, so the server can reuse the KV cache across chunks.
     Never make this depend on the chunk contents.
     """
-    scanned: list[Header] = []
-    for h in headers:
-        try:
-            text = h.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        try:
-            disp = str(h.relative_to(root)) if root else str(h)
-        except ValueError:
-            disp = str(h)
-        scanned.append(scan(text, disp))
-
+    
+    # Build a flat list of (bucket, key, rendered_body, header_index)
     items = [(s.bucket(hd.tags), (hi, s.name), s.render(), hi)
              for hi, hd in enumerate(scanned) for s in hd.symbols]
+    # Cost of the "/* === from <path> === */" header per file.
     hdr_cost = [len(f"/* === from {hd.path} === */") + 2
                 for hd in scanned]
-    paid: set[int] = set()
+    paid: set[int] = set()            # files whose header we already paid for
     chosen: set[tuple[int, str]] = set()
     used, dropped = 0, []
+    # Select in bucket priority order; within a bucket, preserve file order.
     for bucket in BUCKETS:
         for b, key, body, hi in items:
             if b != bucket or key in chosen:
