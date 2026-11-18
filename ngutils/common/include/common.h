@@ -166,7 +166,8 @@ static inline int cupper(int c, bool upper) { return upper ? toupper(c) : c; }
  * helpers cover the ranges used in test-data generation.
  * ------------------------------------------------------------------------- */
 
-/** @brief Uniform random int in @c [0, max] (inclusive). */
+/** @brief Uniform random int in @c [0, max] (inclusive).
+ *  @note Not thread-safe: relies on the shared @c rand() state. */
 static inline int
 rndint(int max)
 {
