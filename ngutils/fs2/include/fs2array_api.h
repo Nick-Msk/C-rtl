@@ -1,3 +1,9 @@
+/**
+ * @file fs2array_api.h
+ * @brief Algorithms on `fs2array`: sort, merge, unique, reverse, search,
+ *        join, split, concat, and construction helpers.
+ */
+
 #ifndef FS2ARRAY_API_H
 #define FS2ARRAY_API_H
 

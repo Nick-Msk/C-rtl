@@ -1,6 +1,8 @@
-/* ══════════════════════════════════════════════════════════════════════════
- * Internal view helpers (zero-copy STATIC wrappers).
- *
+/**
+ * @file fs2_internal_utils.h
+ * @brief Internal zero-copy view helpers (`_fs2_wrap`) and positioned
+ *        vsprintf; guarded by `FS2_INTERNAL_UTILS`.
+ * 
  * ⚠ VIEW SEMANTICS: result aliases `str`. `str` must outlive every use.
  * Do NOT pass the result as both dst and src to mutators (restrict → UAF).
  * Do NOT use after `str` goes out of scope.
@@ -8,7 +10,8 @@
  * Exposed only when FS2_INTERNAL_UTILS is defined (by fs2_api.h, or by
  * the .c implementation). Application code should NOT call these directly —
  * use fs2_fromstr (owned copy) or _fs2_wrap (from fs2_utils.h, if provided).
- * ══════════════════════════════════════════════════════════════════════════ */
+ * @note `[[core-header]]`
+ */
 #ifndef __FS2_WRAP_INTERNAL_H
 #define __FS2_WRAP_INTERNAL_H
 

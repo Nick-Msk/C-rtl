@@ -1,3 +1,11 @@
+/**
+ * @file fs2array.h
+ * @brief Core type `fs2array` — growable vector of #fs2 slots with hole
+ *        bookkeeping (size / hwm / count), push/attach/detach, compact,
+ *        sync, shrink, clone, validate.
+ * @note `[[core-header]]` whole header is the invariant surface.
+*/
+
 #ifndef FS2ARRAY_H
 #define FS2ARRAY_H
 
