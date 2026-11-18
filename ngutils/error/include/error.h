@@ -232,9 +232,9 @@ typedef struct {
  * @note The format string is validated at compile-time via
  *       `__attribute__((format(printf, 3, 4)))`.
  *
- * @note This function does **not** return normally when a TRY() block
- *       is active (it longjmps). When no TRY() is active it returns
- *       after raising SIGINT.
+ * @note This function does **not** return under any circumstances.
+ *       When a TRY() block is active it longjmps; when no TRY() is
+ *       active it raises SIGINT (or aborts).
  */
 extern void
 err_raise(ErrorType tp, int errcode, const char *msg, ...)  
