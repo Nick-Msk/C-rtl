@@ -45,7 +45,7 @@ MODULES: dict[str, str] = {
     "report": "Report header formatting",
 }
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 10
 
 STATUS_ADDED    = "added"
 STATUS_PROPOSED = "proposed-to-fix"
@@ -55,6 +55,10 @@ STATUS_REJECTED = "rejected"
 STATUS_FAILED   = "failed"
 STATUS_STALE    = "stale"
 STATUS_NO_ACTION = "no-action"
+STATUS_SUPPRESSED = "suppressed"
+# entry in STATUSES_META:
+#   STATUS_SUPPRESSED: ("matches an earlier rejected/no-action finding; "
+#                       "decision carried forward", True),
 
 # name -> (descr, terminal). Insertion order = column order in status.py.
 # descr is code-owned documentation (refreshed on every seed).
@@ -65,13 +69,13 @@ STATUSES_META: dict[str, tuple[str, bool]] = {
     STATUS_ANALYZE:     ("non-local change, needs a human",             False),
     STATUS_FIXED:       ("patch committed to a fix branch",             True),
     STATUS_REJECTED:    ("rejected by a human",                         True),
-    STATUS_FAILED:      ("LLM/validation/commit failed",                True),
+    STATUS_FAILED:      ("LLM/validation/commit failed",                True),  #TODO rework
     STATUS_STALE:       ("superseded by a newer project report",        True),
     STATUS_NO_ACTION:   ("classifier verified: not a defect",           True),
+    STATUS_SUPPRESSED:  ("matches an earlier rejected/no-action finding; decision carried forward", True)
 }
 STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
 
-SCHEMA_VERSION = 10
 SCHEMA_PATH = Path(__file__).resolve().parent / "config" / "check.sql"
 _schema_cache: str | None = None
 
