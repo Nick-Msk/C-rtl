@@ -13,24 +13,29 @@ def cmd_summary(as_json: bool) -> int:
     by = db.summary_by_project_status()
     runids = db.latest_runid_by_project()
     if as_json:
+        out = {}
         for proj, counts in by.items():
             counts["_runid"] = runids.get(proj)
-        print(json.dumps(by, indent=2, ensure_ascii=False))
+            counts["_status"] = db.project_aggregate_status(counts)
+            out[proj] = counts
+        print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
     cols = ["added", "proposed-to-fix", "analyze-by-dev",
-            "fixed", "rejected", "failed", "stale"]
+            "fixed", "rejected", "failed", "stale", "no-action"]
     missing = db.STATUSES - set(cols)
     extra = set(cols) - db.STATUSES
     if missing or extra:
         print(f"warn: column list out of sync with db.STATUSES "
               f"(missing={missing}, extra={extra})", file=sys.stderr)
-    # Wider first column: 'project(NN)' can be up to ~13 chars
-    print(f"{'project':<14}  " + "  ".join(f"{c:>16}" for c in cols))
+    # Wider first column: 'project(NN)' + aggregate status
+    print(f"{'project':<14} {'status':<14}  "
+          + "  ".join(f"{c:>14}" for c in cols))
     for proj, counts in by.items():
         rid = runids.get(proj)
-        label = f"{proj} ({rid})" if rid else proj
-        print(f"{label:<14}  " + "  ".join(
-            f"{counts.get(c, 0):>16}" for c in cols))
+        label = f"{proj}({rid})" if rid else proj
+        agg = db.project_aggregate_status(counts)
+        print(f"{label:<14} {agg:<14}  "
+              + "  ".join(f"{counts.get(c, 0):>14}" for c in cols))
     return 0
 
 def cmd_statuses(as_json: bool) -> int:

@@ -776,6 +776,30 @@ def summary_by_project_status() -> dict[str, dict[str, int]]:
         out.setdefault(r["project"], {})[r["status"]] = r["n"]
     return out
 
+def project_aggregate_status(counts: dict[str, int]) -> str:
+    """Single status for a project based on its issue counts.
+
+    Priority (highest first):
+      needs-review   — any issue needs a human (analyze-by-dev, failed)
+      in-progress    — has proposed-to-fix or raw 'added'
+      solved         — only terminal (fixed/rejected/stale/no-action)
+      empty          — no issues at all
+    """
+    if not counts:
+        return "empty"
+    attention = counts.get(STATUS_ANALYZE, 0) + counts.get(STATUS_FAILED, 0)
+    active    = counts.get(STATUS_ADDED, 0) + counts.get(STATUS_PROPOSED, 0)
+    terminal  = (counts.get(STATUS_FIXED, 0) + counts.get(STATUS_REJECTED, 0)
+                 + counts.get(STATUS_STALE, 0)
+                 + counts.get(STATUS_NO_ACTION, 0))
+    if attention > 0:
+        return "needs-review"
+    if active > 0:
+        return "in-progress"
+    if terminal > 0:
+        return "solved"
+    return "empty"
+
 def finding_full_key(finding: dict, runid: int) -> str:
     """'<runid>/<chunk>/<local>' — globally unique across runs."""
     chunk, local = issue_key(finding)
