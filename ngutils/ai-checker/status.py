@@ -11,13 +11,25 @@ import gitutil
 
 def cmd_summary(as_json: bool) -> int:
     by = db.summary_by_project_status()
+    runids = db.latest_runid_by_project()
     if as_json:
+        for proj, counts in by.items():
+            counts["_runid"] = runids.get(proj)
         print(json.dumps(by, indent=2, ensure_ascii=False))
         return 0
-    cols = [s["name"] for s in db.all_statuses()]
-    print(f"{'project':<10}  " + "  ".join(f"{c:>16}" for c in cols))
+    cols = ["added", "proposed-to-fix", "analyze-by-dev",
+            "fixed", "rejected", "failed", "stale"]
+    missing = db.STATUSES - set(cols)
+    extra = set(cols) - db.STATUSES
+    if missing or extra:
+        print(f"warn: column list out of sync with db.STATUSES "
+              f"(missing={missing}, extra={extra})", file=sys.stderr)
+    # Wider first column: 'project(NN)' can be up to ~13 chars
+    print(f"{'project':<14}  " + "  ".join(f"{c:>16}" for c in cols))
     for proj, counts in by.items():
-        print(f"{proj:<10}  " + "  ".join(
+        rid = runids.get(proj)
+        label = f"{proj} ({rid})" if rid else proj
+        print(f"{label:<14}  " + "  ".join(
             f"{counts.get(c, 0):>16}" for c in cols))
     return 0
 

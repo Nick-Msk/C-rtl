@@ -523,6 +523,20 @@ def save_proposal(report_path, finding, *,
              _now_iso()))
         return True
 
+def latest_runid_by_project() -> dict[str, int]:
+    """Most recent check-runid per project (from report.run_id).
+
+    Used by 'make ai-status' to label each row as 'project(N)' so the
+    numbers are tied to a concrete run. Stale reports do not contribute —
+    MAX picks the newest report per project.
+    """
+    with connect() as con:
+        rows = con.execute(
+            "SELECT project, MAX(run_id) AS rid "
+            "FROM report GROUP BY project"
+        ).fetchall()
+    return {r["project"]: r["rid"] for r in rows if r["rid"]}
+
 def report_runid(report_path: Path | str) -> int | None:
     """Return report.run_id for this report, or None (legacy / not ingested)."""
 
