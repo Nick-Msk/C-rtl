@@ -657,15 +657,42 @@ def _seed_modules(con: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO modules (name, descr) VALUES (?, ?)",
             (name, descr))
 
+def _param_str(value) -> str:
+    """Canonical storage form: booleans as '1'/'0' (never 'True'/'False'),
+    so value and default_value render identically in ai-config."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
 def _seed_params(con: sqlite3.Connection) -> None:
-    """Insert missing default params. Idempotent."""
+    """Insert missing params; normalize legacy bool spellings. Idempotent.
+
+    default_value is code-owned -> always refreshed to canonical.
+    A user-set value keeps its meaning: only legacy 'true'/'false' are
+    rewritten to '1'/'0'; an explicit '1'/'0' is left untouched.
+    """
     now = _now_iso()
     for (cat, name), default in DEFAULTS.items():
+        sv = _param_str(default)
         con.execute(
             "INSERT OR IGNORE INTO params "
             "(module, name, value, default_value, dt) "
             "VALUES (?, ?, ?, ?, ?)",
-            (cat, name, str(default), str(default), now))
+            (cat, name, sv, sv, now))
+        if isinstance(default, bool):
+            con.execute(
+                "UPDATE params SET default_value = ? "
+                "WHERE module = ? AND name = ?",
+                (sv, cat, name))
+            con.execute(
+                "UPDATE params SET value = '1' "
+                "WHERE module = ? AND name = ? AND lower(value) = 'true'",
+                (cat, name))
+            con.execute(
+                "UPDATE params SET value = '0' "
+                "WHERE module = ? AND name = ? AND lower(value) = 'false'",
+                (cat, name))
 
 def seed_defaults() -> None:
     """Public entry point: ensure all known params exist.
