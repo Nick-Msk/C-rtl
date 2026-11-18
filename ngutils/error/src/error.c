@@ -267,11 +267,13 @@ err_fprinterr(FILE *restrict out, const Error *err)
  */
 void
 err_clean(bool force){
-	if (force && !err_isinit())
-    	free(g_error);
-    g_error = g_error_init;
+    if (force) {
+        if (!err_isinit())
+            free(g_error);
+        g_error    = g_error_init;
+        g_allocerr = ERROR_INIT_COUNT;
+    }
     g_currerr = 0;
-	g_allocerr = ERROR_INIT_COUNT;
 }
 
 /**
