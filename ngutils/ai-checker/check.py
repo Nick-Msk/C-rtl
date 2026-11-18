@@ -34,6 +34,7 @@ from report import (
     format_header_md,
     merge_usage,
     new_usage,
+    usage_line
 )
 from sysinfo import system_info
 
