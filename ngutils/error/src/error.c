@@ -366,6 +366,7 @@ int
 err_fprintstacktrace(FILE *out)
 {
 	int		res = 0;
+	if (!out) return -1;
 	err_ensurebuf();
 	logauto(g_currerr);
 
