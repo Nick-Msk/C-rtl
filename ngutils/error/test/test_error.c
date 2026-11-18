@@ -42,6 +42,7 @@ TestSuite(error_trace,      .init = setup, .fini = teardown);
 TestSuite(error_sys,        .init = setup, .fini = teardown);
 TestSuite(error,            .init = setup, .fini = teardown);   /* version tests */
 TestSuite(error_stack,      .init = setup, .fini = teardown);
+TestSuite(error_threads,    .init = setup, .fini = teardown);
 
 /* -------------------------------------------------------------------------
  * Version
