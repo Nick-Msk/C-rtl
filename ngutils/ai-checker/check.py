@@ -73,7 +73,8 @@ DO NOT infer its semantics from its name. Do not report any bug that relies on s
 def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
                 project_name: str = "",
                 full_headers: bool = False,
-                tag_chars: int = 0
+                tag_chars: int = 0,
+                carry_hint: bool = True
                 ) -> list[list[tuple[Path | None, str]]]:
     """Pack source files into chunks.
 
@@ -127,6 +128,10 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
             )
         else:
             types_block = ""
+
+    hint = suppression_hint(project_name, enabled=carry_hint)
+    if hint:
+        types_block += hint
 
     types_size = len(types_block)
 
@@ -286,10 +291,25 @@ def build_types_digest(headers: list[Path]) -> str:
             parts.append(f"/* === from {h.relative_to(ROOT)} === */\n{digest}")
     return "\n\n".join(parts)
 
+
 def build_user_prompt(project: str, chunk: list[tuple[Path, str]]) -> str:
     return f"Проект: `{project}`. Проведи ревью исходников ниже.\n" + \
            "\n".join(b for _, b in chunk)
 
+
+def suppression_hint(project: str, *, enabled: bool) -> str:
+    if not enabled or not db.get_param("check", "suppress_hint", True):
+        return ""
+    try:
+        rows = db.standing_decisions(project)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not rows:
+        return ""
+    lines = "\n".join(f"- {r['title']}" for r in rows)
+    return ("\n### Ранее отклонённые замечания по этому проекту\n"
+            "Не повторяй их, если соответствующий код не изменился:\n"
+            f"{lines}\n")
 
 
 def format_usage_md(u: dict) -> str:
@@ -493,6 +513,19 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
         print(f"[ai-checker] warn: db ingest failed: {exc}",
               file=sys.stderr)
 
+    if not args.no_carry:
+        try:
+            suppressed = db.carry_decisions(ctx["name"], ctx["report"])
+            for s in suppressed:
+                print(f"[ai-checker] {s['key']} suppressed "
+                      f"(← {s['carried_from']}, score {s['score']:.2f}): "
+                      f"{s['title'][:60]}", file=sys.stderr)
+            if suppressed:
+                print(f"[ai-checker] {len(suppressed)} finding(s) suppressed "
+                      f"by earlier decisions", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ai-checker] warn: carry failed: {exc}", file=sys.stderr)
+
     ctx["report"].write_text(header + body_text, encoding="utf-8")
 
     moved = rotate_reports(ctx["sub"])
@@ -518,7 +551,8 @@ def _process_project(name: str, files: list[Path], args,
     chunks = chunk_files(files, budget=state["max_chars"],
                          project_name=name,
                          full_headers=args.full_headers,
-                         tag_chars=state["tag_chars"])
+                         tag_chars=state["tag_chars"],
+                         carry_hint=not args.no_carry)
 
     if args.no_tests and not args.file:
         print(f"[ai-checker] {name}: --no-tests, test/ excluded",
@@ -583,6 +617,9 @@ def main() -> int:
     ap.add_argument("--full-headers", action="store_true",
                     help="include full header text instead of extracting "
                          "only struct/union/enum/typedef declarations")
+    ap.add_argument("--no-carry", action="store_true",
+                    help="ignore earlier rejected/no-action decisions: "
+                         "no suppression hint, no carried statuses")
     args = ap.parse_args()
 
     args.base_url = llm.resolve_url(args.base_url)

@@ -6,7 +6,9 @@ just because the DB is broken.
 """
 from __future__ import annotations
 
+import difflib
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -14,7 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from common import ROOT, parse_findings
+from common import FILE_REF_RE, ROOT, parse_findings
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -28,6 +30,9 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("check", "max_chars"):         80_000,
     ("check", "temperature"):       0.2,
     ("check", "tag_context_chars"): 20_000,
+    ("check", "carry_statuses"):    "rejected,no-action",
+    ("check", "carry_similarity"):  0.80,
+    ("check", "suppress_hint"):     True,
     ("fix",   "max_source_chars"):  100_000,
     ("fix",   "default_limit"):     50,
     ("fix",   "max_diff_lines"):    20,
@@ -45,7 +50,7 @@ MODULES: dict[str, str] = {
     "report": "Report header formatting",
 }
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 STATUS_ADDED    = "added"
 STATUS_PROPOSED = "proposed-to-fix"
@@ -56,9 +61,6 @@ STATUS_FAILED   = "failed"
 STATUS_STALE    = "stale"
 STATUS_NO_ACTION = "no-action"
 STATUS_SUPPRESSED = "suppressed"
-# entry in STATUSES_META:
-#   STATUS_SUPPRESSED: ("matches an earlier rejected/no-action finding; "
-#                       "decision carried forward", True),
 
 # name -> (descr, terminal). Insertion order = column order in status.py.
 # descr is code-owned documentation (refreshed on every seed).
@@ -93,7 +95,6 @@ def _schema_sql() -> str:
 
 def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-
 
 
 def ensure_report(report_path: Path | str, *, project: str,
@@ -821,7 +822,10 @@ def list_issues(project: str | None = None,
     q = ("SELECT r.project, r.id AS report_id, "
          "r.started AS report_started, i.runid AS check_runid, "
          "i.chunk_id, i.local_id, i.section, i.finding_id, i.status, "
-         "i.title, i.fix_branch, i.fix_commit, i.fix_subject, i.dt "
+         "i.title, i.fix_branch, i.fix_commit, i.fix_subject, i.dt, "
+         "i.carried_from, i.carry_score, "
+         "(SELECT s.runid || '/' || s.chunk_id || '/' || s.local_id "
+         " FROM issue s WHERE s.id = i.carried_from) AS carried_key "
          "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
     params: list = []
 
@@ -881,3 +885,109 @@ def llmruns_list(limit: int = 20) -> list[dict]:
             "FROM llmruns ORDER BY runid DESC LIMIT ?",
             (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+_CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+
+
+def _carry_set() -> set[str]:
+    raw = get_param("check", "carry_statuses", "rejected,no-action")
+    s = {x.strip() for x in raw.split(",") if x.strip()}
+    return s | {STATUS_SUPPRESSED} if s else set()
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[`*_#>|]", "", text.lower())).strip()
+
+
+def carry_score(a: str, b: str) -> float:
+    """0..1 similarity: half token-Jaccard on code anchors, half text ratio.
+
+    Anchors = file refs + identifiers inside `backticked` spans. Prose
+    wording drifts between runs; code anchors do not.
+    """
+    def anchors(t):
+        files = set(FILE_REF_RE.findall(t))
+        ids = {m for span in _CODE_SPAN_RE.findall(t)
+               for m in _IDENT_RE.findall(span)}
+        return files | ids
+    ta, tb = anchors(a), anchors(b)
+    jac = len(ta & tb) / len(ta | tb) if (ta | tb) else 0.0
+    seq = difflib.SequenceMatcher(None, _norm(a), _norm(b)).ratio()
+    return 0.5 * jac + 0.5 * seq
+
+
+def standing_decisions(project: str, limit: int = 20) -> list[dict]:
+    """Currently-standing rejections, newest per decision-root, for the hint."""
+    carry = _carry_set()
+    if not carry:
+        return []
+    with connect() as con:
+        rows = con.execute(
+            "SELECT i.title, i.status, "
+            "  COALESCE(i.carried_from, i.id) AS root "
+            "FROM issue i JOIN report r ON r.id = i.report_id "
+            "WHERE r.project = ? ORDER BY i.id DESC", (project,)).fetchall()
+    seen: set[int] = set()
+    out: list[dict] = []
+    for r in rows:
+        if r["root"] in seen:
+            continue
+        seen.add(r["root"])
+        if r["status"] in carry:
+            out.append({"title": r["title"]})
+            if len(out) >= limit:
+                break
+    return out
+
+def carry_decisions(project: str, report_path: Path | str) -> list[dict]:
+    """Suppress fresh 'added' issues matching a standing decision.
+    
+    Returns list of suppressed issues with keys:
+      {"key": "runid/chunk/local", "title": "...", "carried_from": "...", "score": 0.85}
+    """
+    carry = _carry_set()
+    if not carry:
+        return []
+    min_score = get_param("check", "carry_similarity", 0.80)
+    rel = _rel(report_path)
+    now = _now_iso()
+    suppressed: list[dict] = []
+    
+    with connect() as con:
+        r = con.execute("SELECT id, run_id FROM report WHERE path = ?",
+                        (rel,)).fetchone()
+        if not r:
+            return []
+        rid, runid = r["id"], r["run_id"]
+        
+        fresh = con.execute(
+            "SELECT id, chunk_id, local_id, title, text FROM issue "
+            "WHERE report_id = ? AND status = 'added'", (rid,)).fetchall()
+        history = con.execute(
+            "SELECT i.id, i.runid, i.chunk_id, i.local_id, i.text, i.status "
+            "FROM issue i JOIN report r ON r.id = i.report_id "
+            "WHERE r.project = ? AND i.report_id != ? "
+            "ORDER BY i.id DESC", (project, rid)).fetchall()
+        
+        for f in fresh:
+            for o in history:
+                s = carry_score(f["text"], o["text"])
+                if s < min_score:
+                    continue
+                if o["status"] in carry:
+                    con.execute(
+                        "UPDATE issue SET status = ?, carried_from = ?, "
+                        "  carry_score = ?, dt = ?, "
+                        "  reason = COALESCE(reason, ?) WHERE id = ?",
+                        (STATUS_SUPPRESSED, o["id"], round(s, 3), now,
+                         f"carried from run {o['runid']} (score {s:.2f})",
+                         f["id"]))
+                    suppressed.append({
+                        "key": f"{runid}/{f['chunk_id']}/{f['local_id']}",
+                        "title": f["title"],
+                        "carried_from": f"{o['runid']}/{o['chunk_id']}/{o['local_id']}",
+                        "score": s,
+                    })
+                    break
+    return suppressed

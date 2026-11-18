@@ -94,6 +94,9 @@ def cmd_list(project: str | None, status: str | None,
                 print(f"      {r['fix_commit']}  (branch deleted)")
             if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
+        if r.get("carried_key"):
+            print(f"      ← carried from {r['carried_key']} "
+                  f"(score {r['carry_score']:.2f})")
     return 0
 
 def cmd_runs(limit: int, as_json: bool) -> int:

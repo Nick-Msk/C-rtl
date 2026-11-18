@@ -60,12 +60,14 @@ DEL_BRANCHES_ARGS = $(if $(FORCE),--force,) $(if $(DRY_RUN),--dry-run,) \
         ai-arch ai-checker-arch \
         ai-fix ai-fix-commit ai-fix-file ai-fix-commit-file \
         ai-status ai-runs ai-del-branches ai-config ai-config-set \
+		ai-check-reset \
         $(addprefix ai-check-,$(PROJECTS)) \
         $(addprefix ai-check-notest-,$(PROJECTS)) \
         $(addprefix ai-fix-,$(PROJECTS)) \
         $(addprefix ai-fix-commit-,$(PROJECTS)) \
         $(addprefix ai-status-,$(PROJECTS)) \
-        $(addprefix ai-del-branches-,$(PROJECTS))
+        $(addprefix ai-del-branches-,$(PROJECTS)) \
+		$(addprefix ai-check-reset-,$(PROJECTS))
 
 # ── review ──────────────────────────────────────────────────────────
 # Reports: build/ai-checker/<project>/<YYYY-MM-DD_HH-MM-SS>[_notest].md
@@ -161,6 +163,18 @@ ai-config-set:
 	    exit 1; }
 	@uv run python params.py set $(MODULE) $(NAME) $(VALUE)
 
+ai-check-reset:
+	@$(UV_RUN) check.py --all --no-carry $(AI_CHECK_EXTRA)
+
+$(addprefix ai-check-reset-,$(PROJECTS)): ai-check-reset-%:
+	@echo "==> ai-check-reset $*"
+	@$(UV_RUN) check.py --project $* --no-carry $(AI_CHECK_EXTRA)
+
+#TODO: not sure
+ai-reject:
+	@test -n "$(KEY)" || { echo "usage: make ai-reject KEY=21/1/1 [REASON='...']" >&2; exit 1; }
+	@uv run python decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
+
 # ── help ────────────────────────────────────────────────────────────
 
 ai-help:
@@ -168,6 +182,9 @@ ai-help:
 	@echo ""
 	@echo "  make ai-check                 AI review of all projects"
 	@echo "  make ai-check-<n>             AI review of one project"
+	@echo "  make ai-check-reset           AI review of all projects with resetting suppressed"
+	@echo "  make ai-check-reset-<n>       AI review of one project with resetting suppressed"
+	@echo ""
 	@echo "  make ai-check-notest[-<n>]    same, skip test/ dirs"
 	@echo "  make ai-check-file F=<p>      AI review of one file"
 	@echo "  make ai-models                list models in LM Studio"
