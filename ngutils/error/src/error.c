@@ -231,6 +231,8 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 				vsnprintf(err->msg + len + 2,
 						sizeof err->msg - len - 3, msg, ap);
 				err->msg[ERR_MESSAGE_MAX_LENGTH - 1] = '\0';
+			} else {
+				logsimple("ERR_SYS: strerror too long, user msg discarded");
 			}
 		break;
 		default:
