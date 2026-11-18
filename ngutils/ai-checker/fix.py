@@ -51,7 +51,7 @@ from gitutil import (
     git_clean_check,
     make_fix_branch_name,
 )
-from report import format_header_md
+from report import format_header_md, merge_usage, new_usage, usage_line
 from sysinfo import system_info
 
 MAX_DIFF_LINES = 20
@@ -948,8 +948,7 @@ def _prepare_run(args) -> dict:
         "base_sha": base_sha,
         "ts": ts,
         "sysinfo": sysinfo,
-        "all_usage": {"prompt_tokens": 0, "completion_tokens": 0,
-                      "total_tokens": 0, "requests": 0},
+        "all_usage": new_usage(),
         "created_all": [],
     }
 
@@ -1072,8 +1071,7 @@ def _process_project(label: str, report_path: Path, project: Path,
         ctx["finding_durs"].append(time.perf_counter() - t_finding)
     dt = time.perf_counter() - t0
 
-    for k in state["all_usage"]:
-        state["all_usage"][k] += ctx["usage"].get(k, 0)
+    merge_usage(state["all_usage"], ctx["usage"])
 
     report_out = _write_fix_report(label, report_path, started, dt,
                                     ctx, args, applied, skipped,
@@ -1186,8 +1184,7 @@ def _print_final_summary(state: dict) -> None:
         for label, _run_id, applied in state["created_all"]:
             for c in applied:
                 print(f"  {c['branch']:<32}  {label:<8}  id={c['id']}")
-        print(f"[ai-fixer] return to base:  git checkout "
-              f"{state['base_branch'] or 'master'}")
+        print("\n" + usage_line("ai-fixer", state["all_usage"]))
 
     u = state["all_usage"]
     total_prompt_chars = sum(ctx.get("prompt_chars", 0) for ctx in state.get("contexts", []))

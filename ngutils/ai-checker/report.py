@@ -1,8 +1,46 @@
 """Shared report header formatting for check.py and fix.py."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
+USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens", "requests")
+
+
+def new_usage() -> dict:
+    """Empty LLM usage accumulator. Identical shape in check.py and fix.py."""
+    return {k: 0 for k in USAGE_KEYS}
+
+
+def add_chunk_usage(dst: dict, chunk: dict) -> dict:
+    """Fold ONE server response into dst and count the request.
+
+    The server reports token counts only; 'requests' is ours, so it is
+    always incremented by exactly one here (never read from chunk).
+    """
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        dst[k] = dst.get(k, 0) + chunk.get(k, 0)
+    dst["requests"] = dst.get("requests", 0) + 1
+    return dst
+
+
+def merge_usage(dst: dict, src: dict) -> dict:
+    """Run-level rollup: dst += src, in place. Missing keys count as 0."""
+    for k in USAGE_KEYS:
+        dst[k] = dst.get(k, 0) + src.get(k, 0)
+    return dst
+
+
+def usage_line(prefix: str, u: dict) -> str:
+    """'[ai-checker] tokens: 12,179 in / 6,973 out (1 request(s))'.
+
+    Returns a string instead of printing: check.py logs to stderr,
+    fix.py to stdout — the caller keeps its own stream.
+    """
+    return (f"[{prefix}] tokens: "
+            f"{u.get('prompt_tokens', 0):,} in / "
+            f"{u.get('completion_tokens', 0):,} out "
+            f"({u.get('requests', 0)} request(s))")
 
 def fmt_dur(sec: float) -> str:
     if sec < 60:

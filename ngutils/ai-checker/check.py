@@ -28,7 +28,13 @@ from common import (
     renumber_findings,
     rotate_reports,
 )
-from report import fmt_dur, format_header_md
+from report import (
+    add_chunk_usage,
+    fmt_dur,
+    format_header_md,
+    merge_usage,
+    new_usage,
+)
 from sysinfo import system_info
 
 SYSTEM_PROMPT = """\
@@ -344,168 +350,217 @@ def _cleanup_old_branches(runid: int) -> None:
             print(f"      ... and {len(not_merged) - 5} more",
                   file=sys.stderr)
 
-def _run_checks(args, model, runid: int) -> tuple[int, dict]:
-    OUT_ROOT.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    stream = not args.no_stream
+# ── run setup ──────────────────────────────────────────────────────
 
+def _prepare_run(args) -> dict:
+    """One-time setup shared by every project in this invocation."""
+    OUT_ROOT.mkdir(parents=True, exist_ok=True)
     sysinfo = system_info()
     db.seed_defaults()
-    temperature = db.get_param("check", "temperature", 0.2)
-    max_chars = db.get_param("check", "max_chars", MAX_CHARS)
 
     try:
         (OUT_ROOT / "_machine.json").write_text(
             json.dumps(sysinfo, indent=2, ensure_ascii=False),
             encoding="utf-8")
-    except OSError as e:
-        print(f"[ai-checker] warn: cannot write _machine.json: {e}",
+    except OSError as exc:
+        print(f"[ai-checker] warn: cannot write _machine.json: {exc}",
               file=sys.stderr)
+
     print(f"[ai-checker] host={sysinfo['host']}  "
           f"cpu={sysinfo['cpu']} ({sysinfo['cores']})  "
           f"ram={sysinfo['ram']}", file=sys.stderr)
 
-    projects = discover_projects()
-    if args.project:
-        projects = [p for p in projects if p.name == args.project]
-        if not projects:
-            sys.exit(f"ERROR: unknown project '{args.project}'")
+    return {
+        # ONE timestamp for the whole run: every project reviewed in
+        # this invocation must land in the same dated report set.
+        "ts": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        "stream": not args.no_stream,
+        "sysinfo": sysinfo,
+        "temperature": db.get_param("check", "temperature", 0.2),
+        "max_chars": db.get_param("check", "max_chars", MAX_CHARS),
+        "tag_chars": db.get_param("check", "tag_context_chars", 20_000),
+        "all_usage": new_usage(),
+    }
+
+
+def _resolve_jobs(args) -> list[tuple[str, list[Path]]]:
+    """(label, files) pairs: one per project, or a single --file."""
     if args.file:
         f = Path(args.file)
         if not f.is_absolute():
             f = (Path.cwd() / f).resolve()
         if not f.is_file():
             sys.exit(f"ERROR: file not found: {f}")
-        jobs = [(f.stem, [f])]
+        return [(f.stem, [f])]
+
+    projects = discover_projects()
+    if args.project:
+        projects = [p for p in projects if p.name == args.project]
+        if not projects:
+            sys.exit(f"ERROR: unknown project '{args.project}'")
+    return [(p.name, gather_files(p, include_tests=not args.no_tests))
+            for p in projects]
+
+
+# ── per-project state ──────────────────────────────────────────────
+
+def _build_ctx(name: str, args, model: str, state: dict) -> dict:
+    """Per-project accumulator. Report paths are pure path math here —
+    no directory is created until _process_project decides to write."""
+    tag = "_notest" if (args.no_tests and not args.file) else ""
+    if args.file:
+        sub = OUT_ROOT / "_files"
+        report = sub / f"{state['ts']}_{name}{tag}.md"
     else:
-        jobs = [(p.name, gather_files(p, include_tests=not args.no_tests))
-                for p in projects]
+        sub = OUT_ROOT / name
+        report = sub / f"{state['ts']}{tag}.md"
+
+    return {
+        "name": name,
+        "model": model,
+        "sub": sub,
+        "report": report,
+        "report_rel": report.relative_to(ROOT),
+        "usage": new_usage(),
+        "chunk_durs": [],
+        "chunk_chars": [],
+        "body": [],
+        "started": None,
+    }
+
+
+# ── one LLM request ────────────────────────────────────────────────
+
+def _stream_chunk(args, chunk, i: int, n: int,
+                  ctx: dict, state: dict) -> None:
+    """Send one chunk, echo the stream, record duration + usage."""
+    user = build_user_prompt(ctx["name"], chunk)
+    chars = len(SYSTEM_PROMPT) + len(user)
+    lines = SYSTEM_PROMPT.count("\n") + user.count("\n")
+    ctx["chunk_chars"].append(chars)
+
+    chunk_usage: dict = {}
+    t0 = time.perf_counter()
+    try:
+        for piece in llm.chat(args.base_url, ctx["model"],
+                              [{"role": "system", "content": SYSTEM_PROMPT},
+                               {"role": "user",   "content": user}],
+                              temperature=state["temperature"],
+                              stream=state["stream"],
+                              usage_out=chunk_usage):
+            sys.stdout.write(piece)
+            sys.stdout.flush()
+            ctx["body"].append(piece)
+    except Exception as exc:  # noqa: BLE001
+        ctx["chunk_durs"].append(time.perf_counter() - t0)
+        msg = f"\n\n[error: {exc}]\n"
+        print(msg)
+        ctx["body"].append(msg)
+        return
+
+    dt = time.perf_counter() - t0
+    ctx["chunk_durs"].append(dt)
+    add_chunk_usage(ctx["usage"], chunk_usage)
+    print(f"\n[ai-checker]   chunk {i}/{n}: "
+          f"{fmt_dur(dt)}  {chars:,} chars/{lines:,} lines  "
+          f"prompt={chunk_usage.get('prompt_tokens', 0):,}  "
+          f"completion={chunk_usage.get('completion_tokens', 0):,}",
+          file=sys.stderr)
+
+
+# ── persistence ────────────────────────────────────────────────────
+
+def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
+                      total_dur: float) -> None:
+    """Parse findings -> DB, write the .md, rotate older reports."""
+    body_text = renumber_findings("".join(ctx["body"]))
+    header = format_header_md(ctx["name"], ctx["model"], args.base_url,
+                              ctx["started"], total_dur,
+                              ctx["chunk_durs"], ctx["usage"],
+                              state["sysinfo"])
+    kind = "file" if args.file else ("notest" if args.no_tests else "full")
+
+    try:
+        findings = parse_findings(body_text)
+        db.ingest_report(project=ctx["name"], report_path=ctx["report"],
+                         model=ctx["model"], kind=kind,
+                         started=ctx["started"], duration_s=total_dur,
+                         findings=findings, runid=runid)
+        print(f"[ai-checker] db: ingested {len(findings)} issue(s)",
+              file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: db ingest failed: {exc}",
+              file=sys.stderr)
+
+    ctx["report"].write_text(header + body_text, encoding="utf-8")
+
+    moved = rotate_reports(ctx["sub"])
+    if moved:
+        print(f"[ai-checker] rotated {len(moved)} older report(s) "
+              f"-> {ctx['sub'].relative_to(ROOT)}/hist/", file=sys.stderr)
+
+
+def _print_project_summary(ctx: dict, total_dur: float) -> None:
+    u = ctx["usage"]
+    print(f"[ai-checker] done: {ctx['name']} -> {ctx['report_rel']}  "
+          f"[{fmt_dur(total_dur)} · "
+          f"{sum(ctx['chunk_chars']):,} chars · "
+          f"{u['prompt_tokens']:,} in / {u['completion_tokens']:,} out]",
+          file=sys.stderr)
+
+
+# ── project loop ───────────────────────────────────────────────────
+
+def _process_project(name: str, files: list[Path], args,
+                     runid: int, state: dict) -> None:
+    ctx = _build_ctx(name, args, state["model"], state)
+    chunks = chunk_files(files, budget=state["max_chars"],
+                         project_name=name,
+                         full_headers=args.full_headers,
+                         tag_chars=state["tag_chars"])
+
+    if args.no_tests and not args.file:
+        print(f"[ai-checker] {name}: --no-tests, test/ excluded",
+              file=sys.stderr)
+    print(f"[ai-checker] {name}: {len(files)} files, "
+          f"{len(chunks)} chunk(s) -> {ctx['report_rel']}", file=sys.stderr)
+
+    ctx["sub"].mkdir(parents=True, exist_ok=True)
+    ctx["started"] = datetime.now()
+    t_start = time.perf_counter()
+
+    n = len(chunks)
+    for i, chunk in enumerate(chunks, 1):
+        if n > 1:
+            hdr = f"## Part {i}/{n}\n\n"
+            ctx["body"].append(hdr)
+            sys.stdout.write(hdr)
+        _stream_chunk(args, chunk, i, n, ctx, state)
+        ctx["body"].append("\n\n")
+        print()
+
+    total_dur = time.perf_counter() - t_start
+    _ingest_and_write(ctx, state, args, runid, total_dur)
+    _print_project_summary(ctx, total_dur)
+    merge_usage(state["all_usage"], ctx["usage"])
+
+
+def _run_checks(args, model: str, runid: int) -> tuple[int, dict]:
+    state = _prepare_run(args)
+    state["model"] = model
+
+    jobs = _resolve_jobs(args)
     if not jobs:
         sys.exit(f"ERROR: no projects found under {ROOT}")
 
-    all_usage = {"prompt_tokens": 0, "completion_tokens": 0,
-                 "total_tokens": 0, "requests": 0}
-
-    tag_chars = db.get_param("check", "tag_context_chars", 20_000)
-
     for name, files in jobs:
         if not files:
-            print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
+            print(f"[ai-checker] {name}: no sources, skipped",
+                  file=sys.stderr)
             continue
-        chunks = chunk_files(files, budget=max_chars,
-                             project_name=name,
-                             full_headers=args.full_headers,
-                             tag_chars=tag_chars)
+        _process_project(name, files, args, runid, state)
 
-        tag = "_notest" if (args.no_tests and not args.file) else ""
-        if args.file:
-            sub = OUT_ROOT / "_files"
-            report = sub / f"{ts}_{name}{tag}.md"
-        else:
-            sub = OUT_ROOT / name
-            report = sub / f"{ts}{tag}.md"
-        sub.mkdir(parents=True, exist_ok=True)
-        report_rel = report.relative_to(ROOT)
-
-        if args.no_tests and not args.file:
-            print(f"[ai-checker] {name}: --no-tests, test/ excluded",
-                  file=sys.stderr)
-        print(f"[ai-checker] {name}: {len(files)} files, "
-              f"{len(chunks)} chunk(s) -> {report_rel}", file=sys.stderr)
-
-        t_start = time.perf_counter()
-        started = datetime.now()
-        chunk_durs: list[float] = []
-        usage = {"prompt_tokens": 0, "completion_tokens": 0,
-                 "total_tokens": 0, "requests": 0}
-        body: list[str] = []
-
-        chunk_chars_list = []
-
-        for i, chunk in enumerate(chunks, 1):
-            if len(chunks) > 1:
-                hdr = f"## Part {i}/{len(chunks)}\n\n"
-                body.append(hdr)
-                sys.stdout.write(hdr)
-            user = build_user_prompt(name, chunk)
-
-            user = build_user_prompt(name, chunk)
-            chunk_chars = len(SYSTEM_PROMPT) + len(user)
-            chunk_lines = SYSTEM_PROMPT.count('\n') + user.count('\n')
-            chunk_chars_list.append(chunk_chars)
-
-            chunk_usage: dict = {}
-            t0 = time.perf_counter()
-            try:
-                for piece in llm.chat(args.base_url, model,
-                                      [{"role": "system", "content": SYSTEM_PROMPT},
-                                       {"role": "user",   "content": user}],
-                                      temperature=temperature,
-                                      stream=stream, usage_out=chunk_usage):
-                    sys.stdout.write(piece)
-                    sys.stdout.flush()
-                    body.append(piece)
-                dt = time.perf_counter() - t0
-                chunk_durs.append(dt)
-                for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                    usage[k] += chunk_usage.get(k, 0)
-                usage["requests"] += 1
-                print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
-                    f"{fmt_dur(dt)}  {chunk_chars:,} chars/{chunk_lines:,} lines  "
-                    f"prompt={chunk_usage.get('prompt_tokens', 0):,}  "
-                    f"completion={chunk_usage.get('completion_tokens', 0):,}",
-                    file=sys.stderr)
-            except Exception as e:  # noqa: BLE001
-                dt = time.perf_counter() - t0
-                chunk_durs.append(dt)
-                msg = f"\n\n[error: {e}]\n"
-                print(msg)
-                body.append(msg)
-            body.append("\n\n")
-            print()
-
-        total_dur = time.perf_counter() - t_start
-        header = format_header_md(name, model, args.base_url, started,
-                                  total_dur, chunk_durs, usage, sysinfo)
-        body_text = renumber_findings("".join(body))
-
-        kind = "file" if args.file else ("notest" if args.no_tests else "full")
-        try:
-            ingest_findings = parse_findings(body_text)
-            db.ingest_report(
-                project=name,
-                report_path=report,
-                model=model,
-                kind=kind,
-                started=started,
-                duration_s=total_dur,
-                findings=ingest_findings,
-                runid=runid,
-            )
-            print(f"[ai-checker] db: ingested {len(ingest_findings)} "
-                  f"issue(s)", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001
-            print(f"[ai-checker] warn: db ingest failed: {e}",
-                  file=sys.stderr)
-
-        report.write_text(header + body_text, encoding="utf-8")
-
-        moved = rotate_reports(sub)
-        if moved:
-            print(f"[ai-checker] rotated {len(moved)} older report(s) "
-                  f"-> {sub.relative_to(ROOT)}/hist/", file=sys.stderr)
-            
-        total_chars = sum(chunk_chars_list)
-        print(f"[ai-checker] done: {name} -> {report_rel}  "
-              f"[{fmt_dur(total_dur)} · "
-              f"{total_chars:,} chars · "
-              f"{usage['prompt_tokens']:,} in / "
-              f"{usage['completion_tokens']:,} out]", file=sys.stderr)
-
-        for k in all_usage:
-            all_usage[k] += usage.get(k, 0)
-
-    return 0, all_usage
+    return 0, state["all_usage"]
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -562,10 +617,7 @@ def main() -> int:
                          out_tokens=usage["completion_tokens"],
                          requests=usage["requests"])
 
-        print(f"[ai-checker] tokens: "
-              f"{usage['prompt_tokens']:,} in / "
-              f"{usage['completion_tokens']:,} out "
-              f"({usage['requests']} request(s))", file=sys.stderr)
+        print(usage_line("ai-checker", usage), file=sys.stderr)
         if rc == 0:
             _cleanup_old_branches(runid)
 
