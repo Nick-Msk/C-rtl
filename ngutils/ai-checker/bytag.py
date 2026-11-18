@@ -62,6 +62,7 @@ class Symbol:
 class Header:
     path: str
     text: str 
+    has_file_block: bool
     tags: frozenset[str]
     symbols: list[Symbol]
 
@@ -128,10 +129,12 @@ def scan(text: str, path: str = "") -> Header:
     file_tags: set[str] = set()
     symbols: list[Symbol] = []
     seen: set[str] = set()
+    has_file_block = False
     for m in DOC_RE.finditer(text):
         block = m.group(1)
         tags = frozenset(t for t in TAG_RE.findall(block) if t in KNOWN_TAGS)
         if "@file" in block:
+            has_file_block = True
             file_tags |= tags
             continue
         got = _grab(text[m.end():])
@@ -157,7 +160,7 @@ def scan(text: str, path: str = "") -> Header:
         symbols.append(Symbol(name, kind, body, _contract(block), tags,
                               text.count("\n", 0, m.start()) + 1))
         
-    return Header(path, text, frozenset(file_tags), symbols)
+    return Header(path, text, has_file_block, frozenset(file_tags), symbols)
 
 
 def build_block(headers: list[Path], budget: int,
@@ -297,15 +300,35 @@ def cmd_missing(headers: list[Header]) -> int:
     known: set[str] = set()
     for hd in headers:
         known |= {s.name for s in hd.symbols}
-    total = 0
+
+    # File-level: no @file block at all
+    missing_file = [hd for hd in headers if not hd.has_file_block]
+    if missing_file:
+        print("--- files without @file block "
+              f"({len(missing_file)}) ---")
+        for hd in missing_file:
+            print(f"{hd.path:<32} (no @file — "
+                  f"[[core-header]] cannot be placed here)")
+        print()
+
+    # Symbol-level: existing check
+    sym_issues = []
     for hd in headers:
         for name in missing_docs(hd.text, known):
-            print(f"{hd.path}: {name}")
-            total += 1
+            sym_issues.append((hd.path, name))
+    if sym_issues:
+        print("--- symbols without a doc block "
+              f"({len(sym_issues)}) ---")
+        for path, name in sym_issues:
+            print(f"{path}: {name}")
+        print()
+
+    total = len(missing_file) + len(sym_issues)
     if total:
-        print(f"/* {total} undocumented symbol(s) */", file=sys.stderr)
+        print(f"/* {total} documentation issue(s) */", file=sys.stderr)
         return 1
-    print("/* all project-prefixed symbols have a doc block */",
+    print("/* all project headers have @file and all "
+          "project-prefixed symbols have a doc block */",
           file=sys.stderr)
     return 0
 
