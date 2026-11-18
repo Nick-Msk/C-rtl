@@ -91,7 +91,9 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
     else:
         content_files = sources
         digest = build_types_digest(headers)
-        tagged, st = bytag.build_block(headers, tag_chars, root=ROOT)
+        scanned = bytag.load_headers(headers, root=ROOT)
+        tagged, st = bytag.build_block(scanned, tag_chars)
+        
         if st["dropped"]:
             print(f"[ai-checker] ERROR: tag context over budget "
                   f"({st['bytes']}/{tag_chars}), dropped "
