@@ -10,6 +10,20 @@
 
 // Utilities
 
+/**
+ * @brief Fill a boolean lookup table from a C string.
+ *
+ * Marks each unique character in @p chars (treated as unsigned char indices)
+ * in @p tbl. Characters with index >= @p cnt are silently skipped.
+ *
+ * @param tbl    Lookup table to populate (caller-allocated, must be zeroed).
+ * @param cnt    Size of the table (e.g. 256 for full byte range).
+ * @param chars  NUL-terminated string listing characters to mark.
+ * @return       Number of unique characters actually marked.
+ *
+ * @pre    tbl is not NULL and has at least @p cnt elements.
+ * @pre    chars is not NULL and is a valid NUL-terminated string.
+ */
 static inline size_t
 fs2_fill_table(bool *restrict tbl,  size_t cnt, const char *restrict chars) {
     size_t total = 0UL;
@@ -1178,6 +1192,24 @@ fs2_tryparse_ushort(const fs2 *restrict s, unsigned short *restrict out, bool st
 typedef char *(*fs2_findfn_t)(const char *haystack,
                                     const char *needle);
 
+/**
+ * @brief Find the @p nth occurrence of @p pattern in @p str (internal helper).
+ *
+ * Shared implementation for fs2_instr_pos_nth and fs2_instr_pos_ci_nth.
+ * Uses the supplied @p find callback (strstr / strcasestr) to locate
+ * occurrences starting from @p pos.
+ *
+ * @param str       Haystack (must be valid, non-NULL).
+ * @param pattern   Needle (must be non-NULL; may be empty).
+ * @param pos       Search start offset within str.
+ * @param nth       1-based occurrence number to locate (0 → not found).
+ * @param find      Matching callback: haystack, needle → hit or NULL.
+ * @return          Offset of the nth occurrence, or -1 if not found.
+ *
+ * @pre    str and pattern are not NULL (enforced via `invfatal`).
+ * @note   Internal use — no range/bounds checking beyond what the callback
+ *         provides. Callers must validate inputs beforehand.
+ */
 static inline ptrdiff_t
 fs2_instr_pos_common_nth(const fs2 *restrict str, const fs2 *restrict pattern,
                        size_t pos, size_t nth, fs2_findfn_t find) {

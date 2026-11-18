@@ -5,7 +5,23 @@
 
 // utilities
 
-// formatting and setup length, assumption - [0 - from) already formatted
+/**
+ * @brief Set slots [from, to) in the array to FS2EMPTY (hole markers).
+ *
+ * Initializes a physical range of slots to the canonical empty state.
+ * Does NOT free any existing data — caller must ensure [from, to) is
+ * either freshly allocated or already cleared.
+ *
+ * @param a     Non-NULL fs2array.
+ * @param from  First slot index (inclusive).
+ * @param to    One past the last slot index (exclusive).
+ *
+ * @pre    from < to.
+ * @pre    to <= a->size.
+ * @note   Internal use only.
+ *
+ * @warning `userraise` (ERR_OUT_OF_RANGE) if to > a->size.
+ */
 static void 
 fs2arr_initempty(fs2array *a, size_t from, size_t to) {
     if (to > a->size)
@@ -221,8 +237,25 @@ fs2arr_find_tillhwm(const fs2array *a) {
     return -1;
 }
 
-// internal plugger, no checking at all 
-// a != NULL, src != NULL, idx < a->size, slot[idx] — hole.
+/**
+ * @brief Place a string into a specific array slot (internal helper).
+ *
+ * Moves the value from @p src into slot @p idx via fs2_move, increments
+ * the live count, and grows hwm if needed. No input validation is
+ * performed — the caller is responsible for all checks.
+ *
+ * @param a      Non-NULL fs2array (caller-validated).
+ * @param src    Source string to move into the slot (caller-validated non-NULL).
+ * @param idx    Target slot index. Must satisfy idx < a->size and the
+ *               slot must currently be a hole (caller-validated).
+ * @return       The slot index (for chaining).
+ *
+ * @pre    a != NULL, src != NULL.
+ * @pre    idx < a->size.
+ * @pre    slot[idx] is a hole (FS2EMPTY).
+ * @note   Internal use only. Public wrappers (fs2arr_attach_sp,
+ *         fs2arr_attach_dp) perform all validation before calling this.
+ */
 static ptrdiff_t
 fs2arr_plug(fs2array *a, fs2 *src, size_t idx) {
     if (idx >= a->hwm)
