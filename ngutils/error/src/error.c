@@ -373,10 +373,13 @@ err_fprintstacktrace(FILE *out)
 	logauto(g_currerr);
 
 	res += fprintf(out, "\n------------- PRINT STACK TRACE START -----------\n\n");
+	if (res < 0) return logautoret(res);
 	for (int i = 0; i < g_currerr; i++)
 	{
 		res += fprintf(out, "[%4d]: ", i);
+		if (res < 0) break;
 		res += err_fprinterr(out, g_error + i);
+		if (res < 0) break;
 	}
 
 	res += fprintf(out, "\n------------- PRINT STACK TRACE END -------------\n\n");
