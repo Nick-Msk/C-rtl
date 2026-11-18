@@ -11,7 +11,17 @@ typedef struct fs2array {
     size_t       count;    // total count of valid elements
 } fs2array;
 
-/** Canonical empty fs2array (no allocation). */
+/**
+ * @brief Canonical empty fs2array (no allocation).
+ *
+ * Equivalent to `(fs2array){0}` — all fields zero, `arr == NULL`.
+ * `fs2arr_free` is a no-op; `fs2arr_reserve` will allocate on first use.
+ *
+ * @code
+ *   fs2array a = FS2ARR();
+ *   fs2arr_reserve(&a, 64);
+ * @endcode
+ */
 #define FS2ARR()  (fs2array){ .arr = NULL, .hwm = 0, .size = 0, .count = 0 }
 
 /**
