@@ -201,7 +201,7 @@ test_buf_contains(const char *buf, size_t buflen, const char *needle)
  * @param prefix  Test-specific prefix (e.g. "test_fs2").
  * @param suffix  Optional suffix (may be NULL).
  * @param ext     Extension without dot (e.g. "log", "txt").
- * @return        Number of chars written, excluding NUL.
+ * @return        Number of chars that would have been written (excluding NUL); ≥ cap if truncated.
  */
 static inline int
 test_tmpname(char *out, size_t cap,
