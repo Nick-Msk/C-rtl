@@ -19,6 +19,7 @@
  * Concurrent read+write on the same fs2 requires external
  * locking (e.g. pthread_mutex). The library's internal counters
  * (alloc/free) are atomic and safe across threads.
+ * @note `[[core-header]]`
  */
 
 #ifndef FS2_H
