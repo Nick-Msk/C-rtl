@@ -460,7 +460,19 @@ fs2_cant_copy(fs2 *dst, size_t dstpos, const fs2 *src, size_t srcpos, size_t len
     return false;
 }
 
-/* Guard: abort if any slice references this fs2. */
+/**
+ * @brief Guard: abort if any slice (borrow) references this fs2.
+ *
+ * Raises if `s->borrow != 0`, indicating that one or more slices
+ * (fs2slice) still reference this fs2. The caller must free all
+ * slices before performing the operation.
+ *
+ * @param s  Non-NULL fs2.
+ * @return   false always (assert-style; return value for expression use).
+ *
+ * @warning  `invfatal` if @p s is NULL.
+ * @raise    `userraise` (ERR_FS2SLICE_BORROWED) if `s->borrow != 0`.
+ */
 static inline bool
 fs2_require_unborrowed(const fs2 *s) {
     invfatal(ERR_NULL_INPUT, s != NULL, "Null fs2");
@@ -1428,12 +1440,48 @@ fs2_cmp_desc_nullafter_wrap(const void *str1, const void *str2);
 extern long                
 fs2_techfprint(FILE *restrict out, const fs2 *restrict s, const char *restrict name);
 
+/**
+ * @brief Print a one-line technical dump of @p s to a custom stream.
+ *
+ * Stringifies the variable name for the label.
+ *
+ * @code
+ *   FS2TECHFPRINT(stderr, myfs);
+ * @endcode
+ *
+ * @param out  Output stream.
+ * @param s    fs2 to print.
+ */
 #define  FS2TECHFPRINT(out, s) \
         fs2_techfprint( (out), (s), #s)
 
+/**
+ * @brief Print a one-line technical dump of @p s to stdout.
+ *
+ * Convenience wrapper around fs2_techfprint with `stdout` as the stream.
+ *
+ * @code
+ *   FS2TECHPRINT(myfs);
+ * @endcode
+ *
+ * @param s  fs2 to print.
+ */
 #define  FS2TECHPRINT(s) \
         fs2_techfprint(stdout, (s), #s)        
 
+/**
+ * @brief Print a one-line technical dump of @p s to the global `logfile` stream.
+ *
+ * Convenience wrapper around fs2_techfprint with the global `logfile`
+ * (from `common.h`) as the stream.
+ *
+ * @code
+ *   FS2TECHLOG(myfs);
+ * @endcode
+ *
+ * @param s  fs2 to print.
+ * @note     Requires `logfile` to be in scope (provided by common.h).
+ */
 #define  FS2TECHLOG(s) \
         fs2_techfprint(logfile, (s), #s)        
 
@@ -1471,7 +1519,32 @@ fs2_techdump(FILE *restrict out, const fs2 *restrict s, const char *restrict nam
 bool
 fs2_techdump_file(const fs2 *restrict s, const char *restrict name, const char *restrict path);
 
+/**
+ * @brief Dump the full content of @p s to a custom stream.
+ *
+ * Stringifies the variable name for the label.
+ *
+ * @code
+ *   FS2TECHDUMP(stderr, myfs);
+ * @endcode
+ *
+ * @param out  Output stream.
+ * @param s    fs2 to dump.
+ */
 #define FS2TECHDUMP(out, s)        fs2_techdump((out), (s), #s)
+
+/**
+ * @brief Dump the full content of @p s to a file.
+ *
+ * Opens @p path in binary write mode, dumps, and logs the result.
+ *
+ * @code
+ *   FS2TECHDUMPFILE(myfs, "dump.bin");
+ * @endcode
+ *
+ * @param s     fs2 to dump.
+ * @param path  Destination file path.
+ */
 #define FS2TECHDUMPFILE(s, path)   fs2_techdump_file((s), #s, (path))
 
 /**
@@ -1544,6 +1617,21 @@ fs2_validate(FILE *restrict out, const fs2 *restrict s);
 bool                
 fs2_techcmp(const fs2 *s1, const fs2 *s2);
 
+/**
+ * @brief Emergency dump: auto-generates a filename, writes full content,
+ *        logs the resulting path, and returns it.
+ *
+ * Stringifies the variable name for the label.
+ *
+ * @code
+ *   const char *path = FS2TECHDUMP_EMERGENCY(myfs);
+ * @endcode
+ *
+ * @param s  fs2 to dump.
+ * @return   Thread-local path string, or NULL on failure.
+ *
+ * @note     Not async-signal-safe. See fs2_techdump_emergency.
+ */
 #define FS2TECHDUMP_EMERGENCY(s)  fs2_techdump_emergency((s), #s)
 
 /* ─────────────────────────────────────────────────────────────────────────
