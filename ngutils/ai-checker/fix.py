@@ -677,10 +677,14 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
     """Return (verdict_dict, None) or (None, error_string)."""
 
     chunk_usage: dict = {}
+
+    user_content = build_prompt(finding, project, files, budget=ctx["max_source"])
+    ctx["prompt_chars"] += len(CLASSIFY_SYSTEM) + len(user_content)
+    ctx["prompt_lines"] += CLASSIFY_SYSTEM.count('\n') + user_content.count('\n')
+
     messages = [
-        {"role": "system", "content": classify_system(ctx)},
-        {"role": "user",   "content": build_prompt(finding, project, files,
-                                                   budget=ctx["max_source"])},
+        {"role": "system", "content": CLASSIFY_SYSTEM},
+        {"role": "user",   "content": user_content},
     ]
     try:
         raw = llm.chat_once(args.base_url, model, messages,
@@ -1034,12 +1038,16 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "max_diff_lines": max_diff,
         "fix_temp": fix_temp,
         "proposed": [],
+        "prompt_chars": 0,
+        "prompt_lines": 0,
     }
 
 def _process_project(label: str, report_path: Path, project: Path,
                      findings: list[dict], args, model: str,
                      ctx: dict, state: dict) -> None:
     """Iterate findings, then print summary and persist outputs."""
+
+    state.setdefault("contexts", []).append(ctx)
     applied: list[dict] = []
     skipped: list[str] = []
     needs_review: list[dict] = []
@@ -1095,6 +1103,7 @@ def _print_project_summary(label: str, ctx: dict,
           f"{ctx['ready']} ready (not committed), "
           f"{len(skipped)} skipped, "
           f"{len(needs_review)} needs review, {dt:.1f}s, "
+          f"{ctx['prompt_chars']:,} chars/{ctx['prompt_lines']:,} lines,  "
           f"{ctx['usage']['prompt_tokens']:,} in / "
           f"{ctx['usage']['completion_tokens']:,} out")
     print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
@@ -1181,10 +1190,13 @@ def _print_final_summary(state: dict) -> None:
               f"{state['base_branch'] or 'master'}")
 
     u = state["all_usage"]
-    print(f"\n[ai-fixer] tokens: "
-          f"{u['prompt_tokens']:,} in / "
-          f"{u['completion_tokens']:,} out "
-          f"({u['requests']} request(s))")
+    total_prompt_chars = sum(ctx.get("prompt_chars", 0) for ctx in state.get("contexts", []))
+    if total_prompt_chars:
+        print(f"[ai-fixer] total context: {total_prompt_chars:,} chars")
+    print(f"[ai-fixer] tokens: "
+        f"{u['prompt_tokens']:,} in / "
+        f"{u['completion_tokens']:,} out "
+        f"({u['requests']} request(s))")
 
 def _run(args, model: str, 
          jobs: list[tuple[str, Path, Path]],

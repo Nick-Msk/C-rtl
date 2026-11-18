@@ -93,7 +93,7 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
         digest = build_types_digest(headers)
         scanned = bytag.load_headers(headers, root=ROOT)
         tagged, st = bytag.build_block(scanned, tag_chars)
-        
+
         if st["dropped"]:
             print(f"[ai-checker] ERROR: tag context over budget "
                   f"({st['bytes']}/{tag_chars}), dropped "
@@ -420,12 +420,20 @@ def _run_checks(args, model, runid: int) -> tuple[int, dict]:
                  "total_tokens": 0, "requests": 0}
         body: list[str] = []
 
+        chunk_chars_list = []
+
         for i, chunk in enumerate(chunks, 1):
             if len(chunks) > 1:
                 hdr = f"## Part {i}/{len(chunks)}\n\n"
                 body.append(hdr)
                 sys.stdout.write(hdr)
             user = build_user_prompt(name, chunk)
+
+            user = build_user_prompt(name, chunk)
+            chunk_chars = len(SYSTEM_PROMPT) + len(user)
+            chunk_lines = SYSTEM_PROMPT.count('\n') + user.count('\n')
+            chunk_chars_list.append(chunk_chars)
+
             chunk_usage: dict = {}
             t0 = time.perf_counter()
             try:
@@ -443,9 +451,10 @@ def _run_checks(args, model, runid: int) -> tuple[int, dict]:
                     usage[k] += chunk_usage.get(k, 0)
                 usage["requests"] += 1
                 print(f"\n[ai-checker]   chunk {i}/{len(chunks)}: "
-                      f"{fmt_dur(dt)}  prompt={chunk_usage.get('prompt_tokens', 0):,}  "
-                      f"completion={chunk_usage.get('completion_tokens', 0):,}",
-                      file=sys.stderr)
+                    f"{fmt_dur(dt)}  {chunk_chars:,} chars/{chunk_lines:,} lines  "
+                    f"prompt={chunk_usage.get('prompt_tokens', 0):,}  "
+                    f"completion={chunk_usage.get('completion_tokens', 0):,}",
+                    file=sys.stderr)
             except Exception as e:  # noqa: BLE001
                 dt = time.perf_counter() - t0
                 chunk_durs.append(dt)
@@ -485,9 +494,11 @@ def _run_checks(args, model, runid: int) -> tuple[int, dict]:
         if moved:
             print(f"[ai-checker] rotated {len(moved)} older report(s) "
                   f"-> {sub.relative_to(ROOT)}/hist/", file=sys.stderr)
-
+            
+        total_chars = sum(chunk_chars_list)
         print(f"[ai-checker] done: {name} -> {report_rel}  "
               f"[{fmt_dur(total_dur)} · "
+              f"{total_chars:,} chars · "
               f"{usage['prompt_tokens']:,} in / "
               f"{usage['completion_tokens']:,} out]", file=sys.stderr)
 
