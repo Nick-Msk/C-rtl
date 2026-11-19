@@ -8,9 +8,10 @@ from __future__ import annotations
 import os
 import re
 import sys
-import workspace 
 from functools import lru_cache
 from pathlib import Path
+
+import workspace
 
 # ── Paths ────────────────────────────────────────────────────────────
 HERE = Path(__file__).resolve().parent
@@ -171,17 +172,6 @@ def release_lock(fd) -> None:
         pass
     finally:
         fd.close()
-
-
-# ── Discovery ────────────────────────────────────────────────────────
-def discover_projects() -> list[Path]:
-    out: list[Path] = []
-    for p in sorted(ROOT.iterdir()):
-        if not p.is_dir() or p.name in EXCLUDE_DIRS or p.name.startswith("."):
-            continue
-        if (p / "include").is_dir() or (p / "src").is_dir():
-            out.append(p)
-    return out
 
 
 def lang_of(f: Path) -> str:
