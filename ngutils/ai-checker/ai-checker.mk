@@ -81,6 +81,8 @@ ai-arch:  ## pack reports into ai-checker-reports.tar.zst
 	@test -d $(REPORTS_DIR) || { echo "nothing to archive"; exit 0; }
 	@tar -C $(ROOT)/build --zstd -cf "$(REPORTS_TAR)" ai-checker
 
+.PHONY: ai-help _ai_targets
+
 ai-help:  ## full AI help (knobs, examples, env vars)
 	@echo "ai-checker — AI review / fix / status pipeline"
 	@echo ""
@@ -98,3 +100,21 @@ ai-help:  ## full AI help (knobs, examples, env vars)
 	@echo "  FORCE=1 DRY_RUN=1        (ai-del-branches)"
 	@echo "  LMSTUDIO_URL=... QWEN_MODEL=..."
 
+# Machine-readable target list for shell completion.
+# Concrete ai-* targets + per-project expansion. Projects come from
+# AI_PROJECTS (set by the embedding Makefile); if empty, ask workspace.
+_ai_targets:
+	@grep -hE '^ai-[a-zA-Z0-9_-]+:' $(MAKEFILE_LIST) | \
+	    sed 's/:.*//' | sort -u | grep -v '^_'
+	@projs="$(AI_PROJECTS)"; \
+	 if [ -z "$$projs" ]; then \
+	   projs=$$(uv run python -c \
+	     "import workspace; print(' '.join(workspace.project_names() or []))" \
+	     2>/dev/null); \
+	 fi; \
+	 for p in $$projs; do \
+	   for t in ai-check ai-check-notest ai-check-reset ai-fix \
+	            ai-fix-commit ai-status ai-del-branches; do \
+	     echo "$$t-$$p"; \
+	   done; \
+	 done

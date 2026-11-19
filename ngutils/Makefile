@@ -77,10 +77,11 @@ help:
 	@echo "  make asan_check   				rebuild with ASan + UBSan (macOS + Linux)"
 	@echo "  make asan_leak    				ASan + LSan (Linux only; error skipped)"
 	@echo ""
-	@echo "AI (ai-checker):"
-	@grep -hE '^ai-[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | \
-	    sed 's/:.*## /\t/' | sort -u | \
-	    awk -F'\t' '{gsub(/%/,"<n>",$$1); printf "  make %-28s %s\n",$$1,$$2}'
+	@$(MAKE) --no-print-directory ai-help
+# 	@echo "AI (ai-checker):"
+# 	@grep -hE '^ai-[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | \
+# 	    sed 's/:.*## /\t/' | sort -u | \
+# 	    awk -F'\t' '{gsub(/%/,"<n>",$$1); printf "  make %-28s %s\n",$$1,$$2}'
 	@echo ""
 	@echo "  make ai-help              full AI help (knobs, examples)"
 	@echo ""
@@ -162,11 +163,6 @@ $(addprefix analyze-test-,$(PROJECTS)): analyze-test-%:
 $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
-
-# --- AI (delegated to ai-checker/ai-checker.mk ) ---
-#
-AI_CHECKER_DIR := $(abspath ./ai-checker)
-include $(AI_CHECKER_DIR)/ai-checker.mk
 
 # --- docs ---
 
@@ -291,15 +287,19 @@ asan_leak:
 	    done; \
 	fi
 
-.PHONY: _targets
+# --- AI (delegated to ai-checker/ai-checker.mk ) ---
+#
+AI_CHECKER_DIR := $(abspath ./ai-checker)
+include $(AI_CHECKER_DIR)/ai-checker.mk
+
+AI_PROJECTS := $(PROJECTS)
+
 _targets:
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:' $(MAKEFILE_LIST) | \
-	    sed 's/:.*//' | sort -u | grep -v '^_'
+	    sed 's/:.*//' | sort -u | grep -v '^_' | grep -v '^ai-'
 	@for p in $(PROJECTS); do \
-	    for t in $(FORWARD_TARGETS) lib librelease clean \
-	             ai-check ai-check-notest ai-fix ai-fix-commit \
-	             ai-status ai-del-branches; do \
+	    for t in $(FORWARD_TARGETS) lib librelease clean; do \
 	        echo "$$t-$$p"; \
 	    done; \
 	done
-	
+	@$(MAKE) --no-print-directory _ai_targets
