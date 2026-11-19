@@ -20,8 +20,9 @@ def cmd_summary(as_json: bool) -> int:
             out[proj] = counts
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
-    cols = ["added", "proposed-to-fix", "analyze-by-dev",
-            "fixed", "rejected", "failed", "stale", "no-action"]
+    
+    cols = [s["name"] for s in db.all_statuses()]
+
     missing = db.STATUSES - set(cols)
     extra = set(cols) - db.STATUSES
     if missing or extra:
