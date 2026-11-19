@@ -78,7 +78,11 @@ STATUSES_META: dict[str, tuple[str, bool]] = {
 }
 STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
 
-SCHEMA_PATH = Path(__file__).resolve().parent / "config" / "check.sql"
+_HERE   = Path(__file__).resolve().parent        # .../ai-checker/src
+_CONFIG = _HERE.parent / "config"                # .../ai-checker/config
+DB_PATH    = _CONFIG / "check.db"
+SCHEMA_PATH = _CONFIG / "check.sql"
+
 _schema_cache: str | None = None
 
 def _schema_sql() -> str:

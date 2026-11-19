@@ -8,6 +8,7 @@ AI_RUN = cd "$(AI_CHECKER_DIR)" && \
 	AI_CHECKER_ROOT="$(AI_CHECKER_ROOT)" \
 	AI_CHECKER_CONFIG="$(AI_CHECKER_CONFIG)" \
 	AI_CHECKER_PROJECTS="$(AI_CHECKER_PROJECTS)" \
+	PYTHONPATH="$(AI_CHECKER_DIR)/src" \
 	uv run python
 
 
@@ -27,52 +28,52 @@ AI_FIX_ARGS   = $(AI_FIX_BASE)
 AI_FIX_COMMIT = $(AI_FIX_BASE) --apply
 
 ai-check:  ## AI review of all projects (LM Studio)
-	@$(AI_RUN) check.py --all $(AI_CHECK_EXTRA)
+	@$(AI_RUN) src/check.py --all $(AI_CHECK_EXTRA)
 
 ai-check-notest:  ## AI review, skip test/ dirs
-	@$(AI_RUN) check.py --all --no-tests $(AI_CHECK_EXTRA)
+	@$(AI_RUN) src/check.py --all --no-tests $(AI_CHECK_EXTRA)
 
 ai-check-%:  ## AI review of one project
-	@$(AI_RUN) check.py --project $* $(AI_CHECK_EXTRA)
+	@$(AI_RUN) src/check.py --project $* $(AI_CHECK_EXTRA)
 
 ai-check-notest-%:  ## AI review of one project, skip test/
-	@$(AI_RUN) check.py --project $* --no-tests $(AI_CHECK_EXTRA)
+	@$(AI_RUN) src/check.py --project $* --no-tests $(AI_CHECK_EXTRA)
 
 ai-fix:  ## dry-run: propose local fixes, all projects
-	@$(AI_RUN) fix.py --all $(AI_FIX_ARGS)
+	@$(AI_RUN) src/fix.py --all $(AI_FIX_ARGS)
 
 ai-fix-%:  ## dry-run, one project
-	@$(AI_RUN) fix.py --project $* $(AI_FIX_ARGS)
+	@$(AI_RUN) src/fix.py --project $* $(AI_FIX_ARGS)
 
 ai-fix-commit:  ## apply + one branch per fix, all projects
-	@$(AI_RUN) fix.py --all $(AI_FIX_COMMIT)
+	@$(AI_RUN) src/fix.py --all $(AI_FIX_COMMIT)
 
 ai-fix-commit-%:  ## apply + commit, one project
-	@$(AI_RUN) fix.py --project $* $(AI_FIX_COMMIT)
+	@$(AI_RUN) src/fix.py --project $* $(AI_FIX_COMMIT)
 
 ai-status:  ## per-project status summary from check.db
-	@$(AI_RUN) status.py $(AI_STATUS_ARGS)
+	@$(AI_RUN) src/status.py $(AI_STATUS_ARGS)
 
 ai-status-%:  ## list issues of one project
-	@$(AI_RUN) status.py --project $* --list $(AI_STATUS_ARGS)
+	@$(AI_RUN) src/status.py --project $* --list $(AI_STATUS_ARGS)
 
 ai-runs:  ## recent LLM runs (llmruns table)
-	@$(AI_RUN) status.py --runs $(AI_STATUS_ARGS)
+	@$(AI_RUN) src/status.py --runs $(AI_STATUS_ARGS)
 
 ai-config:  ## list tunable params from check.db
-	@$(AI_RUN) params.py $(AI_CONFIG_ARGS)
+	@$(AI_RUN) src/params.py $(AI_CONFIG_ARGS)
 
 ai-config-set:  ## set param: MODULE= NAME= VALUE=
-	@$(AI_RUN) params.py set $(MODULE) $(NAME) $(VALUE)
+	@$(AI_RUN) src/params.py set $(MODULE) $(NAME) $(VALUE)
 
 ai-del-branches:  ## delete merged ai-checker-* branches
-	@$(AI_RUN) gitutil.py --all $(DEL_BRANCHES_ARGS)
+	@$(AI_RUN) src/gitutil.py --all $(DEL_BRANCHES_ARGS)
 
 ai-del-branches-%:  ## same, one project
-	@$(AI_RUN) gitutil.py --project $* $(DEL_BRANCHES_ARGS)
+	@$(AI_RUN) src/gitutil.py --project $* $(DEL_BRANCHES_ARGS)
 
 ai-reject:  ## reject finding: KEY=runid/chunk/local [REASON=...]
-	@$(AI_RUN) decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
+	@$(AI_RUN) src/decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
 
 ai-models:  ## list models loaded in LM Studio
 	@LMSTUDIO_URL="$(LMSTUDIO_URL)" uv run python check.py --models
@@ -108,7 +109,8 @@ _ai_targets:
 	    sed 's/:.*//' | sort -u | grep -v '^_'
 	@projs="$(AI_PROJECTS)"; \
 	 if [ -z "$$projs" ]; then \
-	   projs=$$(uv run python -c \
+	   projs=$$(cd "$(AI_CHECKER_DIR)" && PYTHONPATH=src \
+	   	  uv run python -c \
 	     "import workspace; print(' '.join(workspace.project_names() or []))" \
 	     2>/dev/null); \
 	 fi; \

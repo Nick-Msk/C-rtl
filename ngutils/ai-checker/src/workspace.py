@@ -50,7 +50,8 @@ def root() -> Path:
     env = os.environ.get("AI_CHECKER_ROOT")
     if env:
         return Path(env).resolve()
-    return HERE.parent                      # legacy nested layout
+    # legacy nested layout; HERE is src/ now, so go two levels up
+    return HERE.parent.parent if HERE.name == "src" else HERE.parent
 
 
 def project_names() -> list[str] | None:
