@@ -134,7 +134,7 @@ try_parse_ulong(const char *restrict str, unsigned long *restrict res)
      * valid unsigned wrap-around, which is almost never what the
      * caller meant. */
     const char *p = str;
-    while (*p == ' ' || *p == '\t')
+    while (isspace((unsigned char)*p))
         p++;
     if (*p == '-')
         return false;
