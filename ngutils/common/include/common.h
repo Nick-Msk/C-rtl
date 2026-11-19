@@ -139,6 +139,8 @@ round_up_2(unsigned long val)
  * @param t  Growth strategy.
  * @param n  Requested minimum size.
  * @return   Target size, or -1 for an unknown strategy.
+ * @note     For SIZE_POWER2 the result is only well-defined while the
+ *           next power of two fits in a signed long (i.e. ≤ LONG_MAX).
  */
 long calcnewsize(Tincrease t, long n);
 
