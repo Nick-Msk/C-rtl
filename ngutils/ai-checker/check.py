@@ -298,14 +298,32 @@ def build_user_prompt(project: str, chunk: list[tuple[Path, str]]) -> str:
 
 
 def suppression_hint(project: str, *, enabled: bool) -> str:
-    if not enabled or not db.get_param("check", "suppress_hint", True):
+    """Previously-rejected findings as a 'do not repeat' block.
+
+    Two INDEPENDENT switches, both must allow it:
+      enabled=False            <- --no-carry (this run ignores history)
+      check.suppress_hint = 0  <- persistent config
+    """
+    if not enabled:
+        print(f"[ai-checker] {project}: suppression hint OFF (--no-carry)",
+              file=sys.stderr)
+        return ""
+    if not db.get_param("check", "suppress_hint", True):
+        print(f"[ai-checker] {project}: suppression hint OFF "
+              f"(check.suppress_hint=0)", file=sys.stderr)
         return ""
     try:
         rows = db.standing_decisions(project)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: standing_decisions failed: {exc}",
+              file=sys.stderr)
         return ""
     if not rows:
+        print(f"[ai-checker] {project}: suppression hint ON, "
+              f"no standing decisions", file=sys.stderr)
         return ""
+    print(f"[ai-checker] {project}: suppression hint ON "
+          f"({len(rows)} standing decision(s))", file=sys.stderr)
     lines = "\n".join(f"- {r['title']}" for r in rows)
     return ("\n### Ранее отклонённые замечания по этому проекту\n"
             "Не повторяй их, если соответствующий код не изменился:\n"
