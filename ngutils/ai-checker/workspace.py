@@ -8,6 +8,7 @@ The reviewed repo is declared by the embedding project, in priority:
 The config runs at IMPORT time, before common.py computes ROOT.
 """
 from __future__ import annotations
+
 import os
 import runpy
 from pathlib import Path
