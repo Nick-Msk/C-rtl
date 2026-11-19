@@ -140,45 +140,54 @@ def _apply_edit(path: Path, old: str, new: str) -> bool:
 
 def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
                    edits: list[tuple[Path, str, str]], msg: str) -> str:
-    """Create branch from base_sha, apply all edits, commit, return to base.
+    """Create branch from base_sha, apply edits, commit, return to base.
 
-    Clean-tree invariant is enforced by git_clean_check before this
-    runs. On any failure (checkout, edit, add, commit) the partial
-    branch is deleted and the tree is reset to base_branch.
+    Invariant: on return (success OR failure) HEAD is back on base.
+    On failure the branch is deleted and the tree reset. reset --hard
+    is safe here: git_clean_check guaranteed a clean tree on entry and
+    we are on a fresh branch pointing at base_sha.
     """
+    base = base_branch or "master"
     r = git("checkout", "-b", branch_name, base_sha, check=False)
     if r.returncode != 0:
         raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
 
-    def _cleanup(reason: str) -> None:
-        git("reset", "--hard", check=False)
-        git("checkout", base_branch, check=False)
-        git("branch", "-D", branch_name, check=False)
-        raise RuntimeError(reason)
+    ok = False
+    try:
+        rels = [str(p.relative_to(ROOT)) for p, _, _ in edits]
 
-    for path, old, new in edits:
-        if not _apply_edit(path, old, new):
-            _cleanup(f"apply_edit failed on {path.relative_to(ROOT)}")
+        for path, old, new in edits:
+            if not _apply_edit(path, old, new):
+                raise RuntimeError(
+                    f"apply_edit failed on {path.relative_to(ROOT)}")
 
-    for path, _, _ in edits:
-        rel = str(path.relative_to(ROOT))
-        r = git("add", "--", rel, check=False)
+        r = git("add", "--", *rels, check=False)
         if r.returncode != 0:
-            _cleanup(f"git add failed for {rel}: {r.stderr.strip()}")
+            raise RuntimeError(f"git add failed: {r.stderr.strip()}")
 
-    r = git("commit", "-F", "-", input=msg, check=False)
-    if r.returncode != 0:
-        _cleanup(f"git commit failed: {r.stderr.strip()}")
+        r = git("commit", "-F", "-", input=msg, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(f"git commit failed: {r.stderr.strip()}")
 
-    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+        r = git("rev-parse", "--short", "HEAD", check=False)
+        sha = r.stdout.strip()
+        if r.returncode != 0 or not sha:
+            raise RuntimeError("commit made but cannot resolve sha")
 
-    r = git("checkout", base_branch, check=False)
-    if r.returncode != 0:
-        # The commit exists; only the return-to-base failed.
-        raise RuntimeError(
-            f"commit {sha} on {branch_name} succeeded, "
-            f"but 'git checkout {base_branch}' failed: {r.stderr.strip()}")
-    return sha
+        ok = True                      # <-- без этого ветка удаляется
+        return sha
+    finally:
+        if not ok:
+            # Сносит и индекс, и рабочее дерево (add мог уже пройти).
+            git("reset", "--hard", "-q", check=False)
+        r = git("checkout", "-q", base, check=False)
+        if r.returncode != 0:
+            print(f"[gitutil] ERROR: cannot return to {base}: "
+                  f"{r.stderr.strip()}; HEAD is left on {branch_name}",
+                  file=sys.stderr)
+        if not ok:
+            git("branch", "-D", branch_name, check=False)
+    
 
 def branches_exist(names: list[str]) -> set[str]:
     """Return the subset of `names` that exist as local branches.
