@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from common import ROOT
 
 
 def git(*args: str, input: str | None = None,

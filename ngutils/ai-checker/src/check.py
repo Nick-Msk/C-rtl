@@ -32,9 +32,11 @@ from report import (
     add_chunk_usage,
     fmt_dur,
     format_header_md,
+    measure,
     merge_usage,
     new_usage,
     usage_line,
+    volume_str,
 )
 from sysinfo import system_info
 
@@ -473,9 +475,11 @@ def _build_ctx(name: str, args, model: str, state: dict) -> dict:
 def _stream_chunk(args, chunk, i: int, n: int,
                   ctx: dict, state: dict) -> None:
     """Send one chunk, echo the stream, record duration + usage."""
+  
     user = build_user_prompt(ctx["name"], chunk)
-    chars = len(SYSTEM_PROMPT) + len(user)
-    lines = SYSTEM_PROMPT.count("\n") + user.count("\n")
+    chars, lines = measure(SYSTEM_PROMPT, user)
+    ctx["usage"]["chars"] += chars
+    ctx["usage"]["lines"] += lines
     ctx["chunk_chars"].append(chars)
 
     chunk_usage: dict = {}
@@ -555,7 +559,7 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
 def _print_project_summary(ctx: dict, total_dur: float) -> None:
     u = ctx["usage"]
     print(f"[ai-checker] done: {ctx['name']} -> {ctx['report_rel']}  "
-          f"[{fmt_dur(total_dur)} · "
+          f"[{fmt_dur(total_dur)} · {volume_str(u)} · "
           f"{sum(ctx['chunk_chars']):,} chars · "
           f"{u['prompt_tokens']:,} in / {u['completion_tokens']:,} out]",
           file=sys.stderr)
@@ -606,13 +610,18 @@ def _run_checks(args, model: str, runid: int) -> tuple[int, dict]:
     if not jobs:
         sys.exit(f"ERROR: no projects found under {ROOT}")
 
+    done = 0
     for name, files in jobs:
         if not files:
-            print(f"[ai-checker] {name}: no sources, skipped",
-                  file=sys.stderr)
+            print(f"[ai-checker] {name}: no sources, skipped", file=sys.stderr)
             continue
         _process_project(name, files, args, runid, state)
+        done += 1
 
+    # Per-project 'done:' lines already carry the numbers; a run total
+    # adds information only when several projects were aggregated.
+    if done > 1:
+        print(usage_line("ai-checker", state["all_usage"]), file=sys.stderr)
     return 0, state["all_usage"]
 
 def main() -> int:

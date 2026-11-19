@@ -5,12 +5,53 @@ from __future__ import annotations
 from datetime import datetime
 
 USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens", "requests")
+VOLUME_KEYS = ("chars", "lines")
 
 
 def new_usage() -> dict:
-    """Empty LLM usage accumulator. Identical shape in check.py and fix.py."""
-    return {k: 0 for k in USAGE_KEYS}
+    """Empty accumulator: server token counters + our prompt volume."""
+    return dict.fromkeys((*USAGE_KEYS, *VOLUME_KEYS), 0)
 
+
+def measure(*texts: str) -> tuple[int, int]:
+    """(chars, lines) of a prompt assembled from these message parts.
+
+    Newlines are summed across parts, +1 for the last line, so a
+    system+user prompt is measured the same way as a single string.
+    """
+    return (sum(len(t) for t in texts),
+            sum(t.count("\n") for t in texts) + 1)
+
+
+def merge_usage(dst: dict, src: dict) -> dict:
+    """Run-level rollup: dst += src (tokens AND volume), in place."""
+    for k in (*USAGE_KEYS, *VOLUME_KEYS):
+        dst[k] = dst.get(k, 0) + src.get(k, 0)
+    return dst
+
+
+def volume_str(u: dict) -> str:
+    """'39,842 chars / 1,050 lines', or '' when nothing was measured."""
+    if not u.get("chars"):
+        return ""
+    s = f"{u['chars']:,} chars"
+    if u.get("lines"):
+        s += f" / {u['lines']:,} lines"
+    return s
+
+
+def usage_line(prefix: str, u: dict, *, label: str = "total") -> str:
+    """One-line summary: prompt volume + tokens + request count.
+
+    '[ai-checker] total: 39,842 chars / 1,050 lines · 12,443 in / 10,954 out (1 request(s))'
+    Returns a string: check.py logs to stderr, fix.py to stdout.
+    """
+    vol = volume_str(u)
+    return (f"[{prefix}] {label}: "
+            + (f"{vol} · " if vol else "")
+            + f"{u.get('prompt_tokens', 0):,} in / "
+              f"{u.get('completion_tokens', 0):,} out "
+              f"({u.get('requests', 0)} request(s))")
 
 def add_chunk_usage(dst: dict, chunk: dict) -> dict:
     """Fold ONE server response into dst and count the request.
@@ -23,24 +64,6 @@ def add_chunk_usage(dst: dict, chunk: dict) -> dict:
     dst["requests"] = dst.get("requests", 0) + 1
     return dst
 
-
-def merge_usage(dst: dict, src: dict) -> dict:
-    """Run-level rollup: dst += src, in place. Missing keys count as 0."""
-    for k in USAGE_KEYS:
-        dst[k] = dst.get(k, 0) + src.get(k, 0)
-    return dst
-
-
-def usage_line(prefix: str, u: dict) -> str:
-    """'[ai-checker] tokens: 12,179 in / 6,973 out (1 request(s))'.
-
-    Returns a string instead of printing: check.py logs to stderr,
-    fix.py to stdout — the caller keeps its own stream.
-    """
-    return (f"[{prefix}] tokens: "
-            f"{u.get('prompt_tokens', 0):,} in / "
-            f"{u.get('completion_tokens', 0):,} out "
-            f"({u.get('requests', 0)} request(s))")
 
 def fmt_dur(sec: float) -> str:
     if sec < 60:

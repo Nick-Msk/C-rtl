@@ -51,7 +51,15 @@ from gitutil import (
     git_clean_check,
     make_fix_branch_name,
 )
-from report import format_header_md, merge_usage, new_usage, usage_line
+from report import (
+    add_chunk_usage,
+    format_header_md,
+    measure,
+    merge_usage,
+    new_usage,
+    usage_line,
+    volume_str,
+)
 from sysinfo import system_info
 
 MAX_DIFF_LINES = 20
@@ -678,14 +686,14 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
 
     chunk_usage: dict = {}
 
+    system = classify_system(ctx)
     user_content = build_prompt(finding, project, files, budget=ctx["max_source"])
-    ctx["prompt_chars"] += len(CLASSIFY_SYSTEM) + len(user_content)
-    ctx["prompt_lines"] += CLASSIFY_SYSTEM.count('\n') + user_content.count('\n')
-
-    messages = [
-        {"role": "system", "content": CLASSIFY_SYSTEM},
-        {"role": "user",   "content": user_content},
-    ]
+    c, l = measure(system, user_content)
+    ctx["usage"]["chars"] += c
+    ctx["usage"]["lines"] += l
+    messages = [{"role": "system", "content": system},
+                {"role": "user",   "content": user_content}]
+    
     try:
         raw = llm.chat_once(args.base_url, model, messages,
                             temperature=ctx["fix_temp"],
@@ -694,7 +702,8 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
         return None, f"LLM: {exc}"
 
     for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
-        ctx["usage"][k] += chunk_usage.get(k, 0)
+        # ctx["usage"][k] += chunk_usage.get(k, 0)
+        add_chunk_usage(ctx["usage"], chunk_usage)  
     ctx["usage"]["requests"] += 1
 
     raw = raw.strip()
@@ -950,6 +959,7 @@ def _prepare_run(args) -> dict:
         "sysinfo": sysinfo,
         "all_usage": new_usage(),
         "created_all": [],
+        "projects_done": 0
     }
 
 def _issue_key_or_none(finding: dict) -> tuple[int, int] | None:
@@ -1030,15 +1040,12 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "seq": 0,
         "ready": 0,
         "model": model,
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0,
-                  "total_tokens": 0, "requests": 0},
+        "usage": new_usage(),
         "finding_durs": [],
         "max_source": max_source,
         "max_diff_lines": max_diff,
         "fix_temp": fix_temp,
         "proposed": [],
-        "prompt_chars": 0,
-        "prompt_lines": 0,
     }
 
 def _process_project(label: str, report_path: Path, project: Path,
@@ -1046,7 +1053,8 @@ def _process_project(label: str, report_path: Path, project: Path,
                      ctx: dict, state: dict) -> None:
     """Iterate findings, then print summary and persist outputs."""
 
-    state.setdefault("contexts", []).append(ctx)
+    state["projects_done"] += 1
+    merge_usage(state["all_usage"], ctx["usage"])
     applied: list[dict] = []
     skipped: list[str] = []
     needs_review: list[dict] = []
@@ -1096,12 +1104,12 @@ def _print_project_summary(label: str, ctx: dict,
                            applied: list[dict], skipped: list[str],
                            needs_review: list[dict], dt: float,
                            report_out: Path) -> None:
-    print(f"\n[ai-fixer] {label}: "
-          f"{len(applied)} applied, "
-          f"{ctx['ready']} ready (not committed), "
-          f"{len(skipped)} skipped, "
-          f"{len(needs_review)} needs review, {dt:.1f}s, "
-          f"{ctx['prompt_chars']:,} chars/{ctx['prompt_lines']:,} lines,  "
+    print(f"\n[ai-fixer] {label}:  "
+          f"{len(applied)} applied,  "
+          f"{ctx['ready']} ready (not committed),  "
+          f"{len(skipped)} skipped,  "
+          f"{len(needs_review)} needs review, {dt:.1f}s,  "
+          f"{volume_str(ctx['usage'])},  "
           f"{ctx['usage']['prompt_tokens']:,} in / "
           f"{ctx['usage']['completion_tokens']:,} out")
     print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
@@ -1184,16 +1192,13 @@ def _print_final_summary(state: dict) -> None:
         for label, _run_id, applied in state["created_all"]:
             for c in applied:
                 print(f"  {c['branch']:<32}  {label:<8}  id={c['id']}")
-        print("\n" + usage_line("ai-fixer", state["all_usage"]))
+        print(f"[ai-fixer] return to base:  git checkout "
+              f"{state['base_branch'] or 'master'}")
 
-    u = state["all_usage"]
-    total_prompt_chars = sum(ctx.get("prompt_chars", 0) for ctx in state.get("contexts", []))
-    if total_prompt_chars:
-        print(f"[ai-fixer] total context: {total_prompt_chars:,} chars")
-    print(f"[ai-fixer] tokens: "
-        f"{u['prompt_tokens']:,} in / "
-        f"{u['completion_tokens']:,} out "
-        f"({u['requests']} request(s))")
+    # Per-project lines already carry the numbers; a run total adds
+    # information only when several projects were aggregated.
+    if state.get("projects_done", 0) > 1:
+        print("\n" + usage_line("ai-fixer", state["all_usage"]))
 
 def _run(args, model: str, 
          jobs: list[tuple[str, Path, Path]],
