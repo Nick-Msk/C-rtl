@@ -101,4 +101,5 @@ Test(bool, version_is_top_of_list) {
     /* versions[0] is always the current version */
     cr_assert_str_eq(bool_version(), bool_versions()[0]);
     cr_assert_str_eq(bool_version(), BOOL_VERSION);
+    cr_assert_str_neq(bool_versions()[0], bool_versions()[1]);
 }
