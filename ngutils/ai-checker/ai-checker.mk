@@ -26,58 +26,75 @@ AI_FIX_BASE   = $(if $(FIXLIST),--only "$(FIXLIST)",) \
 AI_FIX_ARGS   = $(AI_FIX_BASE)
 AI_FIX_COMMIT = $(AI_FIX_BASE) --apply
 
-ai-check:            ; @$(AI_RUN) check.py --all $(AI_CHECK_EXTRA)
-ai-check-notest:     ; @$(AI_RUN) check.py --all --no-tests $(AI_CHECK_EXTRA)
-ai-check-%:          ; @$(AI_RUN) check.py --project $* $(AI_CHECK_EXTRA)
-ai-check-notest-%:   ; @$(AI_RUN) check.py --project $* --no-tests $(AI_CHECK_EXTRA)
-ai-fix-%:            ; @$(AI_RUN) fix.py --project $* $(AI_FIX_ARGS)
-ai-fix-commit-%:     ; @$(AI_RUN) fix.py --project $* $(AI_FIX_COMMIT)
-ai-status:           ; @$(AI_RUN) status.py $(AI_STATUS_ARGS)
-ai-status-%:         ; @$(AI_RUN) status.py --project $* --list $(AI_STATUS_ARGS)
-ai-config:           ; @$(AI_RUN) params.py $(AI_CONFIG_ARGS)
-ai-reject:           ; @$(AI_RUN) decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
+ai-check:  ## AI review of all projects (LM Studio)
+	@$(AI_RUN) check.py --all $(AI_CHECK_EXTRA)
 
-# ── help ────────────────────────────────────────────────────────────
+ai-check-notest:  ## AI review, skip test/ dirs
+	@$(AI_RUN) check.py --all --no-tests $(AI_CHECK_EXTRA)
 
-ai-help:
-	@echo "ai-checker (ROOT=$(ROOT))"
+ai-check-%:  ## AI review of one project
+	@$(AI_RUN) check.py --project $* $(AI_CHECK_EXTRA)
+
+ai-check-notest-%:  ## AI review of one project, skip test/
+	@$(AI_RUN) check.py --project $* --no-tests $(AI_CHECK_EXTRA)
+
+ai-fix:  ## dry-run: propose local fixes, all projects
+	@$(AI_RUN) fix.py --all $(AI_FIX_ARGS)
+
+ai-fix-%:  ## dry-run, one project
+	@$(AI_RUN) fix.py --project $* $(AI_FIX_ARGS)
+
+ai-fix-commit:  ## apply + one branch per fix, all projects
+	@$(AI_RUN) fix.py --all $(AI_FIX_COMMIT)
+
+ai-fix-commit-%:  ## apply + commit, one project
+	@$(AI_RUN) fix.py --project $* $(AI_FIX_COMMIT)
+
+ai-status:  ## per-project status summary from check.db
+	@$(AI_RUN) status.py $(AI_STATUS_ARGS)
+
+ai-status-%:  ## list issues of one project
+	@$(AI_RUN) status.py --project $* --list $(AI_STATUS_ARGS)
+
+ai-runs:  ## recent LLM runs (llmruns table)
+	@$(AI_RUN) status.py --runs $(AI_STATUS_ARGS)
+
+ai-config:  ## list tunable params from check.db
+	@$(AI_RUN) params.py $(AI_CONFIG_ARGS)
+
+ai-config-set:  ## set param: MODULE= NAME= VALUE=
+	@$(AI_RUN) params.py set $(MODULE) $(NAME) $(VALUE)
+
+ai-del-branches:  ## delete merged ai-checker-* branches
+	@$(AI_RUN) gitutil.py --all $(DEL_BRANCHES_ARGS)
+
+ai-del-branches-%:  ## same, one project
+	@$(AI_RUN) gitutil.py --project $* $(DEL_BRANCHES_ARGS)
+
+ai-reject:  ## reject finding: KEY=runid/chunk/local [REASON=...]
+	@$(AI_RUN) decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
+
+ai-models:  ## list models loaded in LM Studio
+	@LMSTUDIO_URL="$(LMSTUDIO_URL)" uv run python check.py --models
+
+ai-arch:  ## pack reports into ai-checker-reports.tar.zst
+	@test -d $(REPORTS_DIR) || { echo "nothing to archive"; exit 0; }
+	@tar -C $(ROOT)/build --zstd -cf "$(REPORTS_TAR)" ai-checker
+
+ai-help:  ## full AI help (knobs, examples, env vars)
+	@echo "ai-checker — AI review / fix / status pipeline"
 	@echo ""
-	@echo "  make ai-check                 AI review of all projects"
-	@echo "  make ai-check-<n>             AI review of one project"
-	@echo "  make ai-check-reset           AI review of all projects with resetting suppressed"
-	@echo "  make ai-check-reset-<n>       AI review of one project with resetting suppressed"
+	@grep -hE '^ai-[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | \
+	    sed 's/:.*## /\t/' | sort -u | \
+	    awk -F'\t' '{gsub(/%/,"<n>",$$1); printf "  make %-28s %s\n",$$1,$$2}'
 	@echo ""
-	@echo "  make ai-check-notest[-<n>]    same, skip test/ dirs"
-	@echo "  make ai-check-file F=<p>      AI review of one file"
-	@echo "  make ai-models                list models in LM Studio"
-	@echo "  make ai-arch                  pack reports into ai-checker-reports.tar.zst"
-	@echo ""
-	@echo "  make ai-fix[-<n>]             dry-run: propose local fixes"
-	@echo "  make ai-fix-commit[-<n>]      apply + one branch per fix"
-	@echo "  make ai-fix-file F=<p>        dry-run, one file's report"
-	@echo "  make ai-fix-commit-file F=<p> apply, one file's report"
-	@echo ""
-	@echo "  make ai-status                per-project status summary"
-	@echo "  make ai-status-<n>            list issues of one project"
-	@echo "  make ai-status AI_STATUS_ARGS='--statuses'"
-	@echo "  make ai-status AI_STATUS_ARGS='--status fixed --list'"
-	@echo "  make ai-runs [AI_STATUS_ARGS='--limit 50']"
-	@echo ""
-	@echo "  make ai-del-branches          delete merged ai-checker-* branches"
-	@echo "  make ai-del-branches-<n>      same, one project"
-	@echo "  make ai-del-branches FORCE=1  also unmerged"
-	@echo "  make ai-del-branches DRY_RUN=1"
-	@echo "  make ai-del-branches AI_DEL_CHECK_RUN=7"
-	@echo ""
-	@echo "  make ai-config [AI_CONFIG_ARGS=--long|--modules]"
-	@echo "  make ai-config-set MODULE=llm NAME=url VALUE=http://192.168.1.10:1234"
-	@echo ""
-	@echo "  FIXLIST=\"1/1, 1/7\"            only these findings (chunk/local)"
-	@echo "  AI_FIX_LIMIT=N                cap when FIXLIST is unset (default 50)"
-	@echo "  AI_FIX_REFETCH=1              ignore cached proposal, re-query LLM"
-	@echo "  AI_FIX_REPROCESS=1            revisit terminal statuses + analyze-by-dev"
-	@echo "  AI_CHECK_EXTRA='--full-headers'"
+	@echo "Knobs:"
+	@echo "  FIXLIST=\"1/1, 1/7\"       only these findings"
+	@echo "  AI_FIX_LIMIT=N           cap (default 50)"
+	@echo "  AI_FIX_REFETCH=1         ignore cached proposal"
+	@echo "  AI_FIX_REPROCESS=1       revisit terminal statuses"
+	@echo "  AI_STATUS_ARGS='--status fixed --list'"
+	@echo "  AI_CONFIG_ARGS=--long"
+	@echo "  FORCE=1 DRY_RUN=1        (ai-del-branches)"
 	@echo "  LMSTUDIO_URL=... QWEN_MODEL=..."
-	@echo ""
-	@echo "Projects:"
-	@for p in $(PROJECTS); do echo "  - $$p"; done
+

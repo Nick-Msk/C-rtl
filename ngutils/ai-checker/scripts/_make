@@ -1,0 +1,5 @@
+#compdef make
+local -a targets
+targets=(${(f)"$(make _targets 2>/dev/null)"})
+_describe 'target' targets
+
