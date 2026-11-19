@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS issue (
     direction   TEXT,
     fix_branch  TEXT,
     fix_commit  TEXT,
+    merge_commit TEXT,
     fix_subject TEXT,
     dt          TEXT NOT NULL,
     UNIQUE (report_id, chunk_id, local_id)
@@ -74,6 +75,20 @@ CREATE TABLE IF NOT EXISTS issue (
 CREATE INDEX IF NOT EXISTS idx_issue_runid ON issue(runid);
 CREATE INDEX IF NOT EXISTS idx_issue_status ON issue(status);
 CREATE INDEX IF NOT EXISTS idx_issue_report ON issue(report_id);
+
+CREATE TABLE ticket (
+    runid      INTEGER NOT NULL REFERENCES llmruns(runid), -- = issue.runid (check run)
+    issue_id   INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
+    tracker    TEXT NOT NULL,           -- 'jira' | 'github' | ...
+    key        TEXT NOT NULL,           -- 'NGUTILS-123'
+    url        TEXT,
+    remote_state TEXT,                  -- last status in Jira
+    intent     TEXT CHECK (intent IN ('merge','reject','rework','defer')),  -- NULL | 'merge' | 'reject' | 'rework'
+    intent_dt  TEXT,
+    synced_dt  TEXT NOT NULL,
+    PRIMARY KEY (tracker, key)
+);
+CREATE UNIQUE INDEX idx_ticket_issue ON ticket(issue_id, tracker);
 
 CREATE TABLE proposal_commit (
     runid           INTEGER NOT NULL REFERENCES llmruns(runid),

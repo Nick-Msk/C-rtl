@@ -26,6 +26,8 @@ AI_FIX_BASE   = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                 $(if $(AI_FIX_REPROCESS),--reprocess,)
 AI_FIX_ARGS   = $(AI_FIX_BASE)
 AI_FIX_COMMIT = $(AI_FIX_BASE) --apply
+AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(DELETE),--delete,) \
+                $(if $(KEY),--key "$(KEY)",)
 
 ai-check:  ## AI review of all projects (LM Studio)
 	@$(AI_RUN) src/check.py --all $(AI_CHECK_EXTRA)
@@ -50,6 +52,15 @@ ai-fix-commit:  ## apply + one branch per fix, all projects
 
 ai-fix-commit-%:  ## apply + commit, one project
 	@$(AI_RUN) src/fix.py --project $* $(AI_FIX_COMMIT)
+
+ai-merge:  ## merge fixed branches, all projects
+	@$(AI_RUN) src/merge.py --all $(AI_MERGE_ARGS)
+
+ai-merge-%:  ## merge fixed branches of one project
+	@$(AI_RUN) src/merge.py --project $* $(AI_MERGE_ARGS)
+
+ai-merge-sync:  ## reconcile only: record hand-merged branches
+	@$(AI_RUN) src/merge.py --all --sync-only
 
 ai-status:  ## per-project status summary from check.db
 	@$(AI_RUN) src/status.py $(AI_STATUS_ARGS)

@@ -351,6 +351,17 @@ def _cleanup_old_branches(runid: int) -> None:
     - git: delete branches that are ancestors of HEAD (safe merge);
       print a hint for unmerged ones.
     """
+    # Promote hand-merged branches BEFORE close_period collects and
+    # deletes them — otherwise a 'fixed' issue loses its branch.
+    try:
+        for r in db.fixed_issues():
+            if gitutil.is_merged(r["fix_branch"]):
+                sha = gitutil.git("rev-parse", "--short", "HEAD").stdout.strip()
+                db.mark_merged(r["id"], sha)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: merge reconcile failed: {exc}",
+              file=sys.stderr)
+        
     try:
         n_stale, branches = db.close_period(runid)
     except Exception as exc:  # noqa: BLE001

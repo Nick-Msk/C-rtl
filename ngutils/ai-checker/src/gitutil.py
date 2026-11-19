@@ -187,7 +187,47 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
                   file=sys.stderr)
         if not ok:
             git("branch", "-D", branch_name, check=False)
-    
+
+def branch_exists(name: str) -> bool:
+    r = git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}",
+            check=False)
+    return r.returncode == 0
+
+
+def is_merged(name: str, into: str = "HEAD") -> bool:
+    """True if branch is an ancestor of `into` (already merged)."""
+    if not branch_exists(name):
+        return False
+    return git("merge-base", "--is-ancestor", name, into,
+               check=False).returncode == 0
+
+
+def merge_fix(branch: str, *, delete: bool = False) -> tuple[str, bool]:
+    """Merge one fix branch into the current base. (sha, did_merge).
+
+    did_merge=False means it was already an ancestor — caller should
+    just record the fact. HEAD never leaves base: merge does not switch
+    branches, and on conflict we abort and re-raise.
+    """
+    git_clean_check()                      # clean tree, not detached
+    if not branch_exists(branch):
+        raise RuntimeError(f"no such branch: {branch}")
+
+    head = git("rev-parse", "--short", "HEAD").stdout.strip()
+    if is_merged(branch):
+        return head, False
+
+    r = git("merge", "--no-ff", "-m",
+            f"Merge {branch}\n\nAI-Branch: {branch}", branch, check=False)
+    if r.returncode != 0:
+        git("merge", "--abort", check=False)
+        raise RuntimeError(
+            f"merge conflict: {(r.stderr or r.stdout).strip()}")
+
+    sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+    if delete:
+        git("branch", "-d", branch, check=False)   # -d: refuses if unmerged
+    return sha, True 
 
 def branches_exist(names: list[str]) -> set[str]:
     """Return the subset of `names` that exist as local branches.

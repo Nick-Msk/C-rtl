@@ -61,22 +61,26 @@ STATUS_FAILED   = "failed"
 STATUS_STALE    = "stale"
 STATUS_NO_ACTION = "no-action"
 STATUS_SUPPRESSED = "suppressed"
+STATUS_MERGED = "merged"
 
 # name -> (descr, terminal). Insertion order = column order in status.py.
 # descr is code-owned documentation (refreshed on every seed).
 # terminal is DB-owned policy: edit it in the DB, seeding never resets it.
-STATUSES_META: dict[str, tuple[str, bool]] = {
-    STATUS_ADDED:       ("found by ai-review, not triaged yet",         False),
-    STATUS_PROPOSED:    ("validated local patch cached, not committed", False),
-    STATUS_ANALYZE:     ("non-local change, needs a human",             False),
-    STATUS_FIXED:       ("patch committed to a fix branch",             True),
-    STATUS_REJECTED:    ("rejected by a human",                         True),
-    STATUS_FAILED:      ("LLM/validation/commit failed",                True),  #TODO rework
-    STATUS_STALE:       ("superseded by a newer project report",        True),
-    STATUS_NO_ACTION:   ("classifier verified: not a defect",           True),
-    STATUS_SUPPRESSED:  ("matches an earlier rejected/no-action finding; decision carried forward", True)
+STATUSES_META: dict[str, tuple[str, bool, bool]] = {
+    STATUS_ADDED:      ("found by ai-review, not triaged yet",          False, False),
+    STATUS_PROPOSED:   ("validated local patch cached, not committed",  False, False),
+    STATUS_ANALYZE:    ("non-local change, needs a human",              False, True),
+    STATUS_FIXED:      ("committed to a fix branch, awaiting merge",    False, True),
+    STATUS_MERGED:     ("patch merged into the base branch",            True,  True),
+    STATUS_REJECTED:   ("rejected by a human",                          True,  True),
+    STATUS_FAILED:     ("LLM/validation/commit failed",                 True,  True),
+    STATUS_STALE:      ("superseded by a newer project report",         True,  True),
+    STATUS_NO_ACTION:  ("classifier verified: not a defect",            True,  True),
+    STATUS_SUPPRESSED: ("matches an earlier rejected/no-action finding",True,  True),
 }
 STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
+
+_RESOLVED_SQL = "status IN (SELECT name FROM statuses WHERE resolved = 1)"
 
 _HERE   = Path(__file__).resolve().parent        # .../ai-checker/src
 _CONFIG = _HERE.parent / "config"                # .../ai-checker/config
@@ -218,14 +222,6 @@ def split_finding_id(fid: str) -> tuple[int, int]:
         a, b = fid.split("/", 1)
         return int(a), int(b)
     return 1, TABLE_LOCAL_BASE + int(fid)
-
-# «Закрыто для автоматики»: конечные статусы + analyze-by-dev
-# (уже классифицировано, повторно не гоняем; --reprocess обходит).
-_RESOLVED_SQL = (
-    "(status IN (SELECT name FROM statuses WHERE terminal = 1) "
-    f"OR status = '{STATUS_ANALYZE}')"
-)
-
 
 def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
     rel = _rel(report_path)
@@ -430,7 +426,7 @@ def close_period(runid: int) -> tuple[int, list[str]]:
                 f"  fix_subject = NULL, dt = ? WHERE "
                 f"  report_id IN ({ph_old}) "
                 f"  AND status NOT IN "
-                f"      (SELECT name FROM statuses WHERE terminal = 1)",
+                f"      (SELECT name FROM statuses WHERE resolved = 1)",
                 (STATUS_STALE, now, *older))
             total += cur.rowcount
 
@@ -739,9 +735,52 @@ def terminal_statuses() -> frozenset[str]:
             return fallback        # ошибку не кэшируем
     return _terminal_cache
 
+def resolved_statuses() -> frozenset[str]:
+    """Конечные статусы из БД. Кэш на процесс; при битой БД — fallback
+    на STATUSES_META (БД не должна ронять пайплайн)."""
+    global _terminal_cache
+    if _terminal_cache is None:
+        fallback = frozenset(n for n, (_, t) in STATUSES_META.items() if t)
+        try:
+            with connect() as con:
+                rows = con.execute(
+                    "SELECT name FROM statuses WHERE resolved = 1").fetchall()
+            _terminal_cache = frozenset(r["name"] for r in rows) or fallback
+        except Exception:  # noqa: BLE001
+            return fallback        # ошибку не кэшируем
+    return _terminal_cache
+
 
 def is_terminal(status: str | None) -> bool:
     return status is not None and status in terminal_statuses()
+
+def _db_set_if_not_fixed(status: str | None) -> bool:
+    return status is not None and status not in resolved_statuses()
+
+def fixed_issues(project: str | None = None) -> list[dict]:
+    """Issues awaiting merge, oldest first (merge in commit order)."""
+    q = ("SELECT i.id, i.runid, i.chunk_id, i.local_id, i.section, "
+         "       i.title, i.fix_branch, i.fix_commit, r.project "
+         "FROM issue i JOIN report r ON r.id = i.report_id "
+         "WHERE i.status = ? AND i.fix_branch IS NOT NULL ")
+    params: list = [STATUS_FIXED]
+    if project:
+        q += "AND r.project = ? "
+        params.append(project)
+    q += "ORDER BY r.project, i.runid, i.chunk_id, i.local_id"
+    with connect() as con:
+        return [dict(r) for r in con.execute(q, params)]
+
+
+def mark_merged(issue_id: int, merge_commit: str) -> bool:
+    """fixed -> merged. Guarded by status so re-runs are idempotent."""
+    now = _now_iso()
+    with connect() as con:
+        cur = con.execute(
+            "UPDATE issue SET status = ?, merge_commit = ?, merged_dt = ?, "
+            "  dt = ? WHERE id = ? AND status = ?",
+            (STATUS_MERGED, merge_commit, now, now, issue_id, STATUS_FIXED))
+    return cur.rowcount > 0
 
 def get_param(category: str, name: str, default):
     """Return typed value from params. Falls back to `default`."""
@@ -825,6 +864,7 @@ def project_aggregate_status(counts: dict[str, int]) -> str:
         return "empty"
     attention = counts.get(STATUS_ANALYZE, 0) + counts.get(STATUS_FAILED, 0)
     active    = counts.get(STATUS_ADDED, 0) + counts.get(STATUS_PROPOSED, 0)
+    awaiting  = counts.get(STATUS_FIXED, 0)
     terminal  = (counts.get(STATUS_FIXED, 0) + counts.get(STATUS_REJECTED, 0)
                  + counts.get(STATUS_STALE, 0)
                  + counts.get(STATUS_NO_ACTION, 0))
@@ -832,6 +872,8 @@ def project_aggregate_status(counts: dict[str, int]) -> str:
         return "needs-review"
     if active > 0:
         return "in-progress"
+    if awaiting > 0:  
+        return "ready-to-merge"
     if terminal > 0:
         return "solved"
     return "empty"
