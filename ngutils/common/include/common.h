@@ -173,11 +173,13 @@ rndint(int max)
 {
     if (max <= 0)
         return 0;
-    int range = max + 1;
-    int limit = RAND_MAX - (RAND_MAX % range);
+    if (max >= RAND_MAX)
+        return rand();
+    unsigned range = (unsigned)max + 1;
+    unsigned limit = RAND_MAX - (RAND_MAX % range);
     int r;
-    do { r = rand(); } while (r >= limit);
-    return r % range;
+    do { r = rand(); } while ((unsigned)r >= limit);
+    return (int)(r % range);
 }
 
 /** @brief Random lowercase letter. */
