@@ -207,7 +207,7 @@ static inline int
 test_tmpname(char *out, size_t cap,
              const char *prefix, const char *suffix, const char *ext)
 {
-    if (!out || cap == 0)
+    if (!out || cap == 0 || !prefix || !ext)
         return 0;
     if (suffix && *suffix) {
         return snprintf(out, cap, "/tmp/%s_%d_%s.%s",
