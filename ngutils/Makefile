@@ -161,25 +161,10 @@ $(addprefix clean-,$(PROJECTS)): clean-%:
 	@echo "==> clean $*"
 	@$(MAKE) -C $* clean
 
-# --- AI (delegated to ai-checker/Makefile) ---
+# --- AI (delegated to ai-checker/ai-checker.mk ) ---
 #
-# Every ai-* target is forwarded verbatim, including per-project ones
-# (ai-check-fs2, ai-fix-commit-log, ...). Command-line variables
-# (FIXLIST, F, AI_STATUS_ARGS, FORCE, ...) reach the sub-make through
-# MAKEFLAGS automatically. Defaults for AI knobs live in
-# ai-checker/Makefile only — do not redefine them here.
-#
-# 'ai-force' is an empty phony prerequisite: .PHONY cannot take a
-# pattern, and without it make would skip the recipe whenever a file
-# or directory of the same name exists.
-
-AI_CHECKER := ai-checker
-
-.PHONY: ai-force
-ai-force: ;
-
-ai-%: ai-force
-	@$(MAKE) -C $(AI_CHECKER) $@
+AI_CHECKER_DIR := $(abspath ./ai-checker)
+include $(AI_CHECKER_DIR)/ai-checker.mk
 
 # --- docs ---
 

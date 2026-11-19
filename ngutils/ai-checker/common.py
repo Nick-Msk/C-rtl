@@ -8,13 +8,15 @@ from __future__ import annotations
 import os
 import re
 import sys
+import workspace 
 from functools import lru_cache
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-OUT_ROOT = ROOT / "build" / "ai-checker"
+ROOT = workspace.root()
+OUT_ROOT = Path(os.environ.get("AI_CHECKER_OUT")
+                or (ROOT / "build" / "ai-checker"))
 FIX_DIR = OUT_ROOT / "fixes"
 LOCK_PATH = OUT_ROOT / ".lock"
 
@@ -81,7 +83,23 @@ def allowed_top_dirs() -> frozenset[str]:
     is fixable immediately. skeleton/build/bkp stay out via EXCLUDE_DIRS.
     Cached per process — runs are short-lived.
     """
+
     return frozenset(p.name for p in discover_projects())
+
+def discover_projects() -> list[Path]:
+    names = workspace.project_names()
+    if names is not None:
+        return [ROOT / n for n in names
+                if (ROOT / n).is_dir()
+                and ((ROOT / n / "src").is_dir()
+                     or (ROOT / n / "include").is_dir())]
+    out: list[Path] = []                           # legacy auto-discover
+    for p in sorted(ROOT.iterdir()):
+        if not p.is_dir() or p.name in EXCLUDE_DIRS or p.name.startswith("."):
+            continue
+        if (p / "include").is_dir() or (p / "src").is_dir():
+            out.append(p)
+    return out
 
 def rotate_reports(project_dir: Path) -> list[Path]:
     """Move all *.md except the newest into <project_dir>/hist/.
