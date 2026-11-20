@@ -451,9 +451,9 @@ err_getcurrsigbuf () {
  * increments `errenv.depth`. On normal (first) entry the test value is
  * `0` and the `for` loop runs exactly once; on return from a
  * `siglongjmp` the test value is non-zero (the jump code, currently
- * `ERR_DEFHANDLER_JUMP_CODE` = 10) and the `for` loop body is skipped,
- * but its cleanup (`err_prevcnt()`) still runs — so `depth` is balanced
- * in both paths.
+ * `ERR_DEFHANDLER_JUMP_CODE` = 10) and the `for` loop is skipped
+ * entirely (its `err_prevcnt()` cleanup does not run); `depth` is
+ * balanced because `err_raise()` calls `err_prevcnt()` before `siglongjmp`.
  *
  * **Usage (single level):**
  * @code
