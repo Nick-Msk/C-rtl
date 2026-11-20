@@ -223,14 +223,20 @@ def split_finding_id(fid: str) -> tuple[int, int]:
         return int(a), int(b)
     return 1, TABLE_LOCAL_BASE + int(fid)
 
-def resolved_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
+def resolved_finding_keys(report_path: Path | str,
+                          reopen: frozenset[str] = frozenset()
+                          ) -> set[tuple[int, int]]:
+    """Keys of resolved findings. `reopen` excludes specific statuses
+    from the resolved set, so propose mode can re-process
+    analyze-by-dev / no-action while merged/rejected stay closed."""
     rel = _rel(report_path)
+    q = ("SELECT chunk_id, local_id, status FROM issue "
+         "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
+         f"AND {_RESOLVED_SQL}")
     with connect() as con:
-        rows = con.execute(
-            "SELECT chunk_id, local_id FROM issue "
-            "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
-            f"AND {_RESOLVED_SQL}", (rel,)).fetchall()
-    return {(r["chunk_id"], r["local_id"]) for r in rows}
+        rows = con.execute(q, (rel,)).fetchall()
+    return {(r["chunk_id"], r["local_id"]) for r in rows
+            if r["status"] not in reopen}
 
 
 def resolved_finding_ids(report_path: Path | str) -> set[str]:
@@ -246,7 +252,7 @@ def resolved_finding_ids(report_path: Path | str) -> set[str]:
 def _rel(path: Path | str) -> str:
     """Store report path relative to OUT_ROOT (tool data dir), not ROOT.
     Reports live OUTSIDE the reviewed repo now."""
-    
+
     p = Path(path)
     try:
         return str(p.resolve().relative_to(OUT_ROOT))

@@ -53,6 +53,15 @@ ai-fix-commit:  ## apply + one branch per fix, all projects
 ai-fix-commit-%:  ## apply + commit, one project
 	@$(AI_RUN) src/fix.py --project $* $(AI_FIX_COMMIT)
 
+ai-fix-propose:  ## force-patch analyze-by-dev/no-action, all projects
+	@$(AI_RUN) src/fix.py --all --propose $(AI_FIX_ARGS)
+
+ai-fix-propose-%:  ## dry-run force-patch for one project
+	@$(AI_RUN) src/fix.py --project $* --propose $(AI_FIX_ARGS)
+
+ai-fix-propose-commit-%:  ## force-patch + commit for one project
+	@$(AI_RUN) src/fix.py --project $* --propose --apply $(AI_FIX_ARGS)
+
 ai-merge:  ## merge fixed branches, all projects
 	@$(AI_RUN) src/merge.py --all $(AI_MERGE_ARGS)
 

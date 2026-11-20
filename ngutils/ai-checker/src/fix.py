@@ -137,6 +137,20 @@ EDITS - present if and only if class == "local", 1 or 2 entries:
     _types.h, _machine.json and anything under build/ are context, never edit.
 """
 
+PROPOSE_ADDENDUM = """
+PROPOSE MODE OVERRIDE (highest priority, overrides the class rules above):
+Do NOT answer "no_action" or "needs_review". You MUST answer with
+class "local" and provide "edits" for EVERY finding, even if you believe
+the code is already correct or the concern is minor. Propose the single
+most defensible minimal improvement addressing the finding: a defensive
+NULL/range check, a safer comparison, a format-specifier correction, or a
+clarifying guard. All LOCAL rules still apply: at most 2 paired files,
+edit inside one function body each, no signature changes, no new #include,
+<= @MAX_DIFF@ weighted lines. The patch is a proposal for a human to
+review, NOT an automatic merge — prefer a small safe improvement over
+refusing. In this mode never emit no_action or needs_review.
+"""
+
 def latest_report_for_project(proj: str) -> Path | None:
     d = OUT_ROOT / proj
     if not d.is_dir():
@@ -533,14 +547,14 @@ def _resolve_edits(finding: dict, full_key: str, project: Path,
                    needs_review: list[dict], skipped: list[str]):
     """Return outcome dict, or None if this finding was already
     recorded (skip / failed / needs_review)."""
-    if not (args.refetch or args.reprocess):
+
+    if not (args.refetch or args.reprocess or args.propose):
         pending = _load_pending(report_path, finding)
         if pending is not None:
             return _validate_cached(pending, finding, full_key,
                                     project, report_path, args, ctx, skipped)
-
     return _classify_with_llm(finding, full_key, project, report_path, files,
-                              args, model, ctx, needs_review, skipped)
+                               args, model, ctx, needs_review, skipped)
 
 def _load_pending(report_path: Path, finding: dict) -> dict | None:
     try:
@@ -628,6 +642,12 @@ def _classify_with_llm(finding: dict, full_key: str, project: Path,
     if cls == "no_action":
         print(f"  NO ACTION: {reason}")
         _db_set(report_path, finding, db.STATUS_NO_ACTION, reason=reason)
+        return None
+
+    if ctx.get("propose") and (cls != "local" or not verdict.get("edits")):
+        print(f"  PROPOSE: model refused to propose a patch "
+              f"(class={cls}): {reason}")
+        skipped.append(f"{full_key}: propose refused (class={cls})")
         return None
 
     if cls != "local":
@@ -974,9 +994,10 @@ def _matches_fixlist(finding: dict, matcher) -> bool:
     return k is not None and matcher(k)
 
 
-def _load_resolved(report_path: Path) -> set[tuple[int, int]]:
+def _load_resolved(report_path: Path,
+                   reopen: frozenset[str] = frozenset()) -> set[tuple[int, int]]:
     try:
-        return db.resolved_finding_keys(report_path)
+        return db.resolved_finding_keys(report_path, reopen=reopen)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: db query failed: {exc}", file=sys.stderr)
         return set()
@@ -1005,7 +1026,10 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
     if args.reprocess:
         return findings
 
-    resolved = _load_resolved(report_path)
+    # propose reopens analyze-by-dev / no-action; everything else stays closed
+    reopen = (frozenset({db.STATUS_ANALYZE, db.STATUS_NO_ACTION})
+              if args.propose else frozenset())
+    resolved = _load_resolved(report_path, reopen=reopen)
     if not resolved:
         return findings
 
@@ -1046,6 +1070,7 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "max_source": max_source,
         "max_diff_lines": max_diff,
         "fix_temp": fix_temp,
+        "propose": args.propose,
         "proposed": [],
     }
 
@@ -1223,9 +1248,12 @@ def _run(args, model: str,
     return 0, state["all_usage"]
 
 def classify_system(ctx: dict) -> str:
-    """Render CLASSIFY_SYSTEM with the live fix.max_diff_lines from DB."""
-
-    return CLASSIFY_SYSTEM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
+    """Render CLASSIFY_SYSTEM (+ propose override) with live max_diff_lines."""
+    
+    base = CLASSIFY_SYSTEM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
+    if ctx.get("propose"):
+        base += PROPOSE_ADDENDUM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
+    return base
 
 def main() -> int:
     ap = argparse.ArgumentParser(
@@ -1255,8 +1283,12 @@ def main() -> int:
     ap.add_argument("--reprocess", action="store_true",
                     help="re-process findings already in a terminal "
                          "status (or analyze-by-dev) in the DB")
+    ap.add_argument("--propose", action="store_true",
+                    help="force a patch proposal even for analyze-by-dev/"
+                         "no-action findings (override classifier refusal)")
     ap.add_argument("--refetch", action="store_true",
                     help="ignore cached proposal; re-query the LLM")
+    
     args = ap.parse_args()
 
     args.base_url = llm.resolve_url(args.base_url)
