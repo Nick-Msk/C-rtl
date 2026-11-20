@@ -26,7 +26,7 @@ AI_FIX_BASE   = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                 $(if $(AI_FIX_REPROCESS),--reprocess,)
 AI_FIX_ARGS   = $(AI_FIX_BASE)
 AI_FIX_COMMIT = $(AI_FIX_BASE) --apply
-AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(DELETE),--delete,) \
+AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(KEEP),--keep,) \
                 $(if $(KEY),--key "$(KEY)",)
 
 ai-check:  ## AI review of all projects (LM Studio)

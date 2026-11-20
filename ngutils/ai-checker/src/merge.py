@@ -43,6 +43,8 @@ def run(args) -> int:
             head = gitutil.git("rev-parse", "--short", "HEAD").stdout.strip()
             if not args.dry_run:
                 db.mark_merged(r["id"], head)
+                if not args.keep:
+                    gitutil.delete_branch(br)      # -d, refuses if unmerged
             print(f"  RECORDED {key}  {fix_sha} already in {base}")
             reconciled += 1
             continue
@@ -57,7 +59,7 @@ def run(args) -> int:
         if not gitutil.branch_exists(br):
             gitutil.git("branch", br, fix_sha, check=False)   # ярлык из sha
         try:
-            sha, _ = gitutil.merge_fix(br, delete=args.delete)
+            sha, _ = gitutil.merge_fix(br, delete=not args.keep)
         except RuntimeError as exc:
             print(f"  CONFLICT {key}  {exc}", file=sys.stderr)
             failed += 1
@@ -80,8 +82,8 @@ def main() -> int:
     ap.add_argument("--sync-only", action="store_true",
                     help="reconcile only, never run git merge")
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--delete", action="store_true",
-                    help="git branch -d after a successful merge")
+    ap.add_argument("--keep", action="store_true",
+                    help="keep the fix branch after merge (default: delete)")
     args = ap.parse_args()
 
     lock = acquire_lock()

@@ -23,11 +23,7 @@ def cmd_summary(as_json: bool) -> int:
     
     cols = [s["name"] for s in db.all_statuses()]
 
-    missing = db.STATUSES - set(cols)
-    extra = set(cols) - db.STATUSES
-    if missing or extra:
-        print(f"warn: column list out of sync with db.STATUSES "
-              f"(missing={missing}, extra={extra})", file=sys.stderr)
+    
     # Wider first column: 'project(NN)' + aggregate status
     print(f"{'project':<14} {'status':<14}  "
           + "  ".join(f"{c:>14}" for c in cols))
@@ -82,10 +78,11 @@ def cmd_list(project: str | None, status: str | None,
 
     for r in rows:
         status = r["status"]
-        if status == "fixed" and r.get("fix_commit"):
-            status = f"fixed({r['fix_commit']})"
+        sha = r.get("fix_commit")
+        if status in ("fixed", "merged") and sha:
+            status = f"{status}({sha})"
         print(f"{r['project']:<6} {r['key']:<14} "
-              f"{r['section']:<10} {status:<16} {r['title'][:60]}")
+              f"{r['section']:<10} {status:<18} {r['title'][:60]}")
         if status != r["status"]:
             continue  # fixed, sha already in status — no extra lines
         if r.get("fix_branch"):
