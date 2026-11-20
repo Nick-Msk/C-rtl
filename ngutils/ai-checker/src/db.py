@@ -15,12 +15,8 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from common import (
-    FILE_REF_RE, 
-    OUT_ROOT, 
-    ROOT, 
-    parse_findings
-)
+
+from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 

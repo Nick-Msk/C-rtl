@@ -74,18 +74,19 @@ def cmd_list(project: str | None, status: str | None,
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
 
-    names = [r["fix_branch"] for r in rows if r.get("fix_branch")]
+    names = [r["fix_branch"] for r in rows
+             if r.get("fix_branch") and r["status"] != "merged"]
     alive = gitutil.branches_exist(names) if names else set()
 
     for r in rows:
-        status = r["status"]
+        st = r["status"]
         sha = r.get("fix_commit")
-        if status in ("fixed", "merged") and sha:
-            status = f"{status}({sha})"
+        if st in ("fixed", "merged") and sha:
+            st = f"{st}({sha})"
         print(f"{r['project']:<6} {r['key']:<14} "
-              f"{r['section']:<10} {status:<18} {r['title'][:60]}")
-        if status != r["status"]:
-            continue  # fixed, sha already in status — no extra lines
+              f"{r['section']:<10} {st:<18} {r['title'][:60]}")
+        if st != r["status"]:
+            continue      # fixed/merged: sha already fixed/merged
         if r.get("fix_branch"):
             if r["fix_branch"] in alive:
                 print(f"      {r['fix_branch']}  {r['fix_commit']}")
