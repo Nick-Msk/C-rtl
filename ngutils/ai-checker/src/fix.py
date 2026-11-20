@@ -64,40 +64,60 @@ from sysinfo import system_info
 
 MAX_DIFF_LINES = 20
 
+_LOCAL_RULES_STRICT = """
+ At most 2 files. Two only if they are a paired source/header in the same
+directory with the same stem: X.c + X.h, X.cpp/.cc/.cxx + X.hpp.
+Never 3 files, never two unrelated files, never the same file twice.
+ Within each file the edit stays inside ONE function body, or one #include
+line, or one macro definition, or one comment attached to a declaration.
+ No signature change (parameters, return type, qualifiers); no function,
+struct, union, enum or global added or removed; no struct layout or field
+type change; no public symbol renamed or removed. Updating the matching
+.h does NOT make a signature change local - callers still break.
+ No new #include. Fixing a typo in an existing include is fine.
+ Correct without touching any other file, and idempotent.
+ Total changed lines (added + removed, summed over all entries and
+multiplied by count) <= @MAX_DIFF@.
+If the finding names several functions or files, or says "all callers",
+"everywhere", "across the codebase" -> needs_review. Never emit a partial fix.
+"""
+
+_LOCAL_RULES_FREE = """
+ In PROPOSE mode the locality restrictions are LIFTED. You may propose edits
+spanning several files, touching signatures, adding helpers, or adding
+#include lines, if that is what a correct fix requires. Aim for the smallest
+change that actually resolves the finding, but do not refuse a fix merely
+because it is non-local. The patch is a proposal for a human to review
+before merging, never an automatic merge.
+"""
+
+_CLASS_MODE_STRICT = """Pick exactly one class and answer with JSON only.
+
+CLASSES
+local        - a real defect, fixable by a self-contained edit (rules below).
+needs_review - a real defect, but the fix ripples: a human must design it.
+no_action    - NOT a defect: the premise is factually wrong, the concern is
+already handled in the code or docs, or the finding itself
+says the code is fine. Verify against the sources first and
+name what you checked in "reason". Never use needs_review
+for these.
+"""
+
+_CLASS_MODE_PROPOSE = """You are in PROPOSE mode. Answer with class "local" and provide "edits"
+for EVERY finding. Never answer needs_review or no_action in this mode.
+If you believe the code is already correct, still propose the single most
+defensible micro-improvement (a defensive check, a safer comparison, a
+clarifying guard). The result is a proposal for a human, not a verdict.
+"""
+
 CLASSIFY_SYSTEM = """
 You are a strict C/C++ fix validator for a small systems library.
 You receive ONE code-review finding and the source files it refers to.
-Pick exactly one class and answer with JSON only.
-
-CLASSES
-  local        - a real defect, fixable by a self-contained edit (rules below).
-  needs_review - a real defect, but the fix ripples: a human must design it.
-  no_action    - NOT a defect: the premise is factually wrong, the concern is
-                 already handled in the code or docs, or the finding itself
-                 says the code is fine. Verify against the sources first and
-                 name what you checked in "reason". Never use needs_review
-                 for these.
-
+@CLASS_MODE@
 LOCAL - all rules must hold, otherwise needs_review:
-  1. At most 2 files. Two only if they are a paired source/header in the same
-     directory with the same stem: X.c + X.h, X.cpp/.cc/.cxx + X.hpp.
-     Never 3 files, never two unrelated files, never the same file twice.
-  2. Within each file the edit stays inside ONE function body, or one #include
-     line, or one macro definition, or one comment attached to a declaration.
-  3. No signature change (parameters, return type, qualifiers); no function,
-     struct, union, enum or global added or removed; no struct layout or field
-     type change; no public symbol renamed or removed. Updating the matching
-     .h does NOT make a signature change local - callers still break.
-  4. No new #include. Fixing a typo in an existing include is fine.
-  5. Correct without touching any other file, and idempotent.
-  6. Total changed lines (added + removed, summed over all entries and
-     multiplied by count) <= @MAX_DIFF@.
-
+@LOCAL_RULES@
 Typical local fixes: missing NULL check, missing free/fclose on an error path,
 off-by-one, uninitialised variable, wrong constant or format specifier, typo.
-
-If the finding names several functions or files, or says "all callers",
-"everywhere", "across the codebase" -> needs_review. Never emit a partial fix.
 A one-line change to a provably broken format string in a macro or literal IS
 local: there is no working behaviour to stay compatible with, so do not reject
 it as a "format change".
@@ -126,7 +146,7 @@ OUTPUT - one JSON object, no prose, no markdown fences:
   ]
 }
 
-EDITS - present if and only if class == "local", 1 or 2 entries:
+EDITS - present if and only if class == "local":
   - "count" is how many times old_snippet occurs in that file and must match
     exactly (default 1). Use count > 1 only for identical copy-pasted text
     taking the identical replacement. Different replacements needed in the
@@ -135,20 +155,6 @@ EDITS - present if and only if class == "local", 1 or 2 entries:
     requires: no reformatting, no new comments, no extra blank lines.
   - Editable: <project>/src/, <project>/include/, <project>/test/ only.
     _types.h, _machine.json and anything under build/ are context, never edit.
-"""
-
-PROPOSE_ADDENDUM = """
-PROPOSE MODE OVERRIDE (highest priority, overrides the class rules above):
-Do NOT answer "no_action" or "needs_review". You MUST answer with
-class "local" and provide "edits" for EVERY finding, even if you believe
-the code is already correct or the concern is minor. Propose the single
-most defensible minimal improvement addressing the finding: a defensive
-NULL/range check, a safer comparison, a format-specifier correction, or a
-clarifying guard. All LOCAL rules still apply: at most 2 paired files,
-edit inside one function body each, no signature changes, no new #include,
-<= @MAX_DIFF@ weighted lines. The patch is a proposal for a human to
-review, NOT an automatic merge — prefer a small safe improvement over
-refusing. In this mode never emit no_action or needs_review.
 """
 
 def latest_report_for_project(proj: str) -> Path | None:
@@ -264,25 +270,17 @@ def _is_paired(a: Path, b: Path) -> bool:
 
 
 def validate_edits(edits: list[dict], project: Path,
-                   max_diff_lines: int = MAX_DIFF_LINES
+                   max_diff_lines: int = MAX_DIFF_LINES,
+                   loose: bool = False
                    ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
-    """Validate 1 or 2 edits. Two edits must be a paired .c/.h.
-
-    Returns ([(abs_path, edit), ...], None) on success.
-    """
     if not edits:
         return None, "no edits"
-    if len(edits) > 2:
+    if not loose and len(edits) > 2:
         return None, f"too many files ({len(edits)}, max 2)"
-
     parsed: list[tuple[Path, dict]] = []
     seen: set[Path] = set()
-    total_added = total_removed = 0
-
     for e in edits:
-        rel = e.get("file", "")
-        old = e.get("old_snippet", "")
-        new = e.get("new_snippet", "")
+        rel = e.get("file", ""); old = e.get("old_snippet", ""); new = e.get("new_snippet", "")
         if not rel or not old or not new:
             return None, "missing file/old_snippet/new_snippet"
         if is_forbidden(rel):
@@ -301,51 +299,30 @@ def validate_edits(edits: list[dict], project: Path,
             src = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError) as exc:
             return None, f"cannot read {rel}: {exc}"
-        
         expected = int(e.get("count", 1))
         if expected < 1:
             return None, f"{rel}: count={expected}, must be >= 1"
         n = src.count(old)
         if n != expected:
-            return None, (f"{rel}: old_snippet appears {n} times, "
-                          f"expected {expected}")
-        
+            return None, f"{rel}: old_snippet appears {n} times, expected {expected}"
         if old == new:
             return None, f"{rel}: old_snippet == new_snippet"
-
-        old_h: set[str] = set()
-        new_h: set[str] = set()
-        for line in old.splitlines():
-            h = extract_function_header(line)
-            if h:
-                old_h.add(h)
-        for line in new.splitlines():
-            h = extract_function_header(line)
-            if h:
-                new_h.add(h)
-        added = new_h - old_h
-        if added:
-            return None, f"{rel}: adds function {sorted(added)}"
-        removed = old_h - new_h
-        if removed:
-            return None, f"{rel}: changes/removes function signature {sorted(removed)}"
-
-        a, r = diff_line_counts(old, new)
-        total_added += a
-        total_removed += r
+        if not loose:
+            # строгие рейлы локальности: сигнатуры + лимит диффа
+            old_h = {h for line in old.splitlines() if (h := extract_function_header(line))}
+            new_h = {h for line in new.splitlines() if (h := extract_function_header(line))}
+            if new_h - old_h:
+                return None, f"{rel}: adds function {sorted(new_h - old_h)}"
+            if old_h - new_h:
+                return None, f"{rel}: changes/removes signature {sorted(old_h - new_h)}"
         parsed.append((p, e))
-
-    if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
+    if not loose and len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
         return None, "two files must be a paired X.c + X.h (same dir, same stem)"
-
-    weighted = 0
-    for p, e in parsed:
-        a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
-        weighted += (a + r) * int(e.get("count", 1))
-    if weighted > max_diff_lines:
-        return None, (f"diff too large ({weighted} weighted lines "
-                      f"> {max_diff_lines})")
-    
+    if not loose:
+        weighted = sum((sum(diff_line_counts(e["old_snippet"], e["new_snippet"])))
+                       * int(e.get("count", 1)) for _, e in parsed)
+        if weighted > max_diff_lines:
+            return None, f"diff too large ({weighted} > {max_diff_lines})"
     return parsed, None
 
 def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
@@ -578,7 +555,8 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                 return None
 
     parsed, err = validate_edits(pending["edits"], project,
-                                 max_diff_lines=ctx["max_diff_lines"])
+                                 max_diff_lines=ctx["max_diff_lines"],
+                                 loose=ctx.get("propose", False))
     if err:
         print(f"  STALE proposal ({err})")
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
@@ -665,7 +643,8 @@ def _classify_with_llm(finding: dict, full_key: str, project: Path,
         raw_edits = [single] if single else []
 
     parsed, verr = validate_edits(raw_edits, project,
-                                  max_diff_lines=ctx["max_diff_lines"])
+                                  max_diff_lines=ctx["max_diff_lines"],
+                                  loose=ctx.get("propose", False))
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
         skipped.append(f"{full_key}: {verr}")
@@ -1249,11 +1228,16 @@ def _run(args, model: str,
 
 def classify_system(ctx: dict) -> str:
     """Render CLASSIFY_SYSTEM (+ propose override) with live max_diff_lines."""
-    
-    base = CLASSIFY_SYSTEM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
+
+    md = str(ctx["max_diff_lines"])
     if ctx.get("propose"):
-        base += PROPOSE_ADDENDUM.replace("@MAX_DIFF@", str(ctx["max_diff_lines"]))
-    return base
+        rules, mode = _LOCAL_RULES_FREE, _CLASS_MODE_PROPOSE
+    else:
+        rules, mode = _LOCAL_RULES_STRICT, _CLASS_MODE_STRICT
+    return (CLASSIFY_SYSTEM
+            .replace("@CLASS_MODE@", mode)
+            .replace("@LOCAL_RULES@", rules)
+            .replace("@MAX_DIFF@", md))
 
 def main() -> int:
     ap = argparse.ArgumentParser(
