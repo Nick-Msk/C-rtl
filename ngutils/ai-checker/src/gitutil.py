@@ -201,6 +201,21 @@ def is_merged(name: str, into: str = "HEAD") -> bool:
     return git("merge-base", "--is-ancestor", name, into,
                check=False).returncode == 0
 
+def commit_exists(sha: str) -> bool:
+    """Object is in the object DB. Says nothing about reachability."""
+    return git("cat-file", "-e", f"{sha}^{{commit}}",
+               check=False).returncode == 0
+
+
+def is_ancestor(sha: str, into: str = "HEAD") -> bool:
+    """True if sha is already in `into` history — the merge FACT.
+
+    Unlike is_merged(), does NOT require a branch label: works after
+    _cleanup_old_branches deleted the merged branch. Call
+    commit_exists() first — merge-base returns >1 for a bad object.
+    """
+    return git("merge-base", "--is-ancestor", sha, into,
+               check=False).returncode == 0
 
 def merge_fix(branch: str, *, delete: bool = False) -> tuple[str, bool]:
     """Merge one fix branch into the current base. (sha, did_merge).

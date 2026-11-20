@@ -18,22 +18,6 @@ from common import acquire_lock, release_lock
 def _key(r: dict) -> str:
     return f"{r['runid']}/{r['chunk_id']}/{r['local_id']}"
 
-def commit_exists(sha: str) -> bool:
-    """Object is in the object DB. Says nothing about reachability."""
-    return gitutil.git("cat-file", "-e", f"{sha}^{{commit}}",
-               check=False).returncode == 0
-
-
-def is_ancestor(sha: str, into: str = "HEAD") -> bool:
-    """True if sha is already in `into` history — the merge FACT.
-
-    Unlike is_merged(), does NOT require a branch label: works after
-    _cleanup_old_branches deleted the merged branch. Call
-    commit_exists() first — merge-base returns >1 for a bad object.
-    """
-    return gitutil.git("merge-base", "--is-ancestor", sha, into,
-               check=False).returncode == 0
-
 def run(args) -> int:
     rows = db.fixed_issues(args.project)
     if args.key:
