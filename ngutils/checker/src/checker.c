@@ -60,7 +60,7 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
         }
         va_end(ap);
     } */
-    logsimple("%s", msg);   // logsimple_ap is required TODO:
+    logsimple("%s", msg ? msg : "");   // logsimple_ap is required TODO:
 
 	return cnt;
 }
