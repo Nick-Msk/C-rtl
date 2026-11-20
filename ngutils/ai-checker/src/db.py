@@ -865,16 +865,16 @@ def project_aggregate_status(counts: dict[str, int]) -> str:
     attention = counts.get(STATUS_ANALYZE, 0) + counts.get(STATUS_FAILED, 0)
     active    = counts.get(STATUS_ADDED, 0) + counts.get(STATUS_PROPOSED, 0)
     awaiting  = counts.get(STATUS_FIXED, 0)
-    terminal  = (counts.get(STATUS_FIXED, 0) + counts.get(STATUS_REJECTED, 0)
-                 + counts.get(STATUS_STALE, 0)
-                 + counts.get(STATUS_NO_ACTION, 0))
-    if attention > 0:
+    term      = terminal_statuses()
+    terminal = sum(n for s, n in counts.items() if s in term)
+
+    if attention:
         return "needs-review"
-    if active > 0:
+    if active:
         return "in-progress"
-    if awaiting > 0:  
+    if awaiting:  
         return "ready-to-merge"
-    if terminal > 0:
+    if terminal:
         return "solved"
     return "empty"
 
