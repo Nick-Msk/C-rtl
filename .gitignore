@@ -24,4 +24,5 @@ __pycache__
 check*.db
 check.db-shm
 check.db-wal
+reports/
 
