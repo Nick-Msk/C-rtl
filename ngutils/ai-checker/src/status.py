@@ -7,6 +7,7 @@ import sys
 
 import db
 import gitutil
+from common import OUT_ROOT
 
 
 def cmd_summary(as_json: bool) -> int:
@@ -56,8 +57,8 @@ def cmd_list(project: str | None, status: str | None,
               + (f" for project '{project}'" if project else "")
               + (f" with status '{status}'" if status else ""),
               file=sys.stderr)
-        if project and (db.OUT_ROOT / project).is_dir():
-            print(f"  reports exist on disk: {db.OUT_ROOT / project}\n"
+        if project and (OUT_ROOT / project).is_dir():
+            print(f"  reports exist on disk: {OUT_ROOT / project}\n"
                   f"  they are not ingested yet — run "
                   f"'make ai-fix-{project}' (adopts them, no LLM cost)\n"
                   f"  or 'make ai-check-{project}' for a fresh review",

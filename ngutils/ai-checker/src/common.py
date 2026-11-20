@@ -16,8 +16,9 @@ import workspace
 # ── Paths ────────────────────────────────────────────────────────────
 HERE = Path(__file__).resolve().parent
 ROOT = workspace.root()
-OUT_ROOT = Path(os.environ.get("AI_CHECKER_OUT")
-                or (ROOT / "build" / "ai-checker"))
+AI_ROOT = HERE.parent                            # .../ai-checker
+OUT_ROOT = Path(os.environ.get("AI_CHECKER_OUT") or (AI_ROOT / "reports"))
+
 FIX_DIR = OUT_ROOT / "fixes"
 LOCK_PATH = OUT_ROOT / ".lock"
 

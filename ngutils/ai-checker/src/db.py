@@ -15,8 +15,12 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-
-from common import FILE_REF_RE, ROOT, parse_findings
+from common import (
+    FILE_REF_RE, 
+    OUT_ROOT, 
+    ROOT, 
+    parse_findings
+)
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -244,9 +248,12 @@ def resolved_finding_ids(report_path: Path | str) -> set[str]:
     return {r["finding_id"] for r in rows}
 
 def _rel(path: Path | str) -> str:
+    """Store report path relative to OUT_ROOT (tool data dir), not ROOT.
+    Reports live OUTSIDE the reviewed repo now."""
+    
     p = Path(path)
     try:
-        return str(p.resolve().relative_to(ROOT))
+        return str(p.resolve().relative_to(OUT_ROOT))
     except ValueError:
         return str(p)
 
