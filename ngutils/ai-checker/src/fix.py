@@ -1016,7 +1016,8 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
             kept.append(f)
 
     n = len(findings) - len(kept)
-    names = "/".join(sorted(db.terminal_statuses() | {db.STATUS_ANALYZE}))
+    names = "/".join(sorted(db.resolved_statuses()))
+    
     print(f"  skip {n} already-resolved ({names}); "
           f"use --reprocess to include", file=sys.stderr)
     if not kept:

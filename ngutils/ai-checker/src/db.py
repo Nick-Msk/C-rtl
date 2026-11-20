@@ -643,7 +643,7 @@ def _seed_statuses(con: sqlite3.Connection) -> None:
     translation change). terminal is local policy — a user may flip
     'failed' to 0 to allow retries, and seeding must not undo that.
     """
-    for name, (descr, terminal) in STATUSES_META.items():
+    for name, (descr, terminal, resolved) in STATUSES_META.items():
         con.execute(
             "INSERT INTO statuses (name, descr, terminal) "
             "VALUES (?, ?, ?) "
@@ -725,7 +725,7 @@ def terminal_statuses() -> frozenset[str]:
     на STATUSES_META (БД не должна ронять пайплайн)."""
     global _terminal_cache
     if _terminal_cache is None:
-        fallback = frozenset(n for n, (_, t) in STATUSES_META.items() if t)
+        fallback = frozenset(n for n, (_, t, _r) in STATUSES_META.items() if t)
         try:
             with connect() as con:
                 rows = con.execute(
@@ -740,7 +740,7 @@ def resolved_statuses() -> frozenset[str]:
     на STATUSES_META (БД не должна ронять пайплайн)."""
     global _terminal_cache
     if _terminal_cache is None:
-        fallback = frozenset(n for n, (_, t) in STATUSES_META.items() if t)
+        fallback = frozenset(n for n, (_, t, r) in STATUSES_META.items() if t)
         try:
             with connect() as con:
                 rows = con.execute(
