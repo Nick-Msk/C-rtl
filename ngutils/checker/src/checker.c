@@ -51,7 +51,7 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
     logsimple("ERRNUM_INVARIANT_VIOLATION: [%s] is violated", expr);
 
     // TODO: must do err_put instead!
-    /*if (msg) {
+    if (msg) {
         va_list  ap;
         va_start(ap, msg);
         if (out) {
@@ -59,7 +59,7 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
             cnt += fprintf(out, "\n");
         }
         va_end(ap);
-    } */
+    }
     logsimple("%s", msg ? msg : "");   // logsimple_ap is required TODO:
 
 	return cnt;
