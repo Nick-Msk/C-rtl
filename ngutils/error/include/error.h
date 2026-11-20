@@ -303,7 +303,7 @@ err_pop(void);
 /**
  * @brief Dump the full per-thread error stack (stack trace) to a stream.
  *
- * Each entry is printed as: `[index]: TYPE: [code] message\n`
+ * Each entry is printed as: `[%4d]: TYPE: [code] message\n`
  *
  * @param[out] out  Destination stream (e.g. stderr, stdout, a file).
  * @return Total number of characters written, or a negative value on I/O error.
