@@ -83,12 +83,13 @@ If the finding names several functions or files, or says "all callers",
 """
 
 _LOCAL_RULES_FREE = """
- In PROPOSE mode the locality restrictions are LIFTED. You may propose edits
+ PROPOSE mode: locality and size restrictions are LIFTED. There is NO
+line-count limit and NO file-count limit here. You may propose edits
 spanning several files, touching signatures, adding helpers, or adding
-#include lines, if that is what a correct fix requires. Aim for the smallest
-change that actually resolves the finding, but do not refuse a fix merely
-because it is non-local. The patch is a proposal for a human to review
-before merging, never an automatic merge.
+#include lines — whatever a correct fix requires. Do not shrink a fix
+to fit a diff budget; do not refuse because a change is large or
+non-local. The patch is a proposal for a human to review before merging,
+never an automatic merge. Aim for correctness, not brevity.
 """
 
 _CLASS_MODE_STRICT = """Pick exactly one class and answer with JSON only.
@@ -1229,15 +1230,15 @@ def _run(args, model: str,
 def classify_system(ctx: dict) -> str:
     """Render CLASSIFY_SYSTEM (+ propose override) with live max_diff_lines."""
 
-    md = str(ctx["max_diff_lines"])
     if ctx.get("propose"):
-        rules, mode = _LOCAL_RULES_FREE, _CLASS_MODE_PROPOSE
+        return (CLASSIFY_SYSTEM
+                .replace("@CLASS_MODE@", _CLASS_MODE_PROPOSE)
+                .replace("@LOCAL_RULES@", _LOCAL_RULES_FREE))
     else:
-        rules, mode = _LOCAL_RULES_STRICT, _CLASS_MODE_STRICT
-    return (CLASSIFY_SYSTEM
-            .replace("@CLASS_MODE@", mode)
-            .replace("@LOCAL_RULES@", rules)
-            .replace("@MAX_DIFF@", md))
+        return (CLASSIFY_SYSTEM
+            .replace("@CLASS_MODE@", _CLASS_MODE_STRICT)
+            .replace("@LOCAL_RULES@", _LOCAL_RULES_STRICT)
+            .replace("@MAX_DIFF@", str(ctx["max_diff_lines"]) ) )
 
 def main() -> int:
     ap = argparse.ArgumentParser(
