@@ -1006,13 +1006,28 @@ def _load_resolved(report_path: Path,
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: db query failed: {exc}", file=sys.stderr)
         return set()
+    
 
+def _load_proposed(report_path: Path) -> set[tuple[int, int]]:
+    try:
+        return db.proposed_finding_keys(report_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: db query failed: {exc}", file=sys.stderr)
+        return set()
+    
 
 def _filter_findings(report_path: Path, args) -> list[dict]:
-    """Apply FIXLIST / --limit / resolved-filter. Empty list = skip project."""
+    """Apply FIXLIST (key filter) / --limit / status-filter.
+    
+    Two independent filters:
+      1. FIXLIST: filter by chunk/local keys (always works if specified)
+      2. Status: filter by resolved/proposed (depends on mode)
+    """
+    
     findings = iter_findings(report_path, 0)
-
     only = _parse_fixlist(args.only)
+    
+    # Шаг 1: FIXLIST как фильтр по ключам (независимо от режима)
     if only is not None:
         selected = [f for f in findings if _matches_fixlist(f, only)]
         if not selected:
@@ -1023,35 +1038,49 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
         findings = selected
     elif args.limit:
         findings = findings[:args.limit]
-
+    
     if not findings:
         print("  no findings to process")
         return []
-
+    
+    # Шаг 2: --reprocess отключает фильтр по статусам
     if args.reprocess:
         return findings
-
-    # propose reopens analyze-by-dev / no-action; everything else stays closed
-    reopen = (frozenset({db.STATUS_ANALYZE, db.STATUS_NO_ACTION})
-              if args.propose else frozenset())
-    resolved = _load_resolved(report_path, reopen=reopen)
-    if not resolved:
-        return findings
-
-    kept: list[dict] = []
-    for f in findings:
-        k = _issue_key_or_none(f)
-        if k is None or k not in resolved:
-            kept.append(f)
-
-    n = len(findings) - len(kept)
-    names = "/".join(sorted(db.resolved_statuses()))
     
-    print(f"  skip {n} already-resolved ({names}); "
-          f"use --reprocess to include", file=sys.stderr)
-    if not kept:
-        print("  nothing left after resolved filter")
-    return kept
+    # Шаг 3: фильтр по статусам зависит от режима
+    if args.apply:
+        # Commit режим: только proposed-to-fix
+        proposed = _load_proposed(report_path)
+        if not proposed:
+            print("  no proposed-to-fix findings to commit")
+            return []
+        kept = [f for f in findings if _issue_key_or_none(f) in proposed]
+        if not kept:
+            print("  no proposed-to-fix findings match")
+            return []
+        n = len(findings) - len(kept)
+        if n > 0:
+            print(f"  skip {n} non-proposed findings "
+                  f"(use --reprocess to include)", file=sys.stderr)
+        print(f"  committing {len(kept)} proposed-to-fix finding(s)")
+        return kept
+    else:
+        # Dry-run режим: фильтр по resolved
+        resolved = _load_resolved(report_path)
+        if not resolved:
+            return findings
+        
+        kept = [f for f in findings if _issue_key_or_none(f) not in resolved]
+        n = len(findings) - len(kept)
+        names = "/".join(sorted(db.resolved_statuses()))
+        if n > 0:
+            print(f"  skip {n} already-resolved ({names}); "
+                  f"use --reprocess to include", file=sys.stderr)
+        
+        if not kept:
+            print("  nothing left after resolved filter")
+        
+        return kept
 
 def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     """Per-project accumulator + params from DB."""

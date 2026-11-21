@@ -1073,3 +1073,13 @@ def carry_decisions(project: str, report_path: Path | str) -> list[dict]:
                     })
                     break
     return suppressed
+
+def proposed_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
+    """Keys of findings with status='proposed-to-fix' in this report."""
+    rel = _rel(report_path)
+    with connect() as con:
+        rows = con.execute(
+            "SELECT chunk_id, local_id FROM issue "
+            "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
+            "AND status = ?", (rel, STATUS_PROPOSED)).fetchall()
+    return {(r["chunk_id"], r["local_id"]) for r in rows}
