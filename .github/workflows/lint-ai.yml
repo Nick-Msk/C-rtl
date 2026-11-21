@@ -24,6 +24,6 @@ jobs:
           enable-cache: true
 
       - name: ruff check
-        working-directory: ngutils/ai-checker/src
-        run: uv run ruff check check.py
+        working-directory: ngutils/ai-checker/
+        run: uv run ruff check src/*.py
 
