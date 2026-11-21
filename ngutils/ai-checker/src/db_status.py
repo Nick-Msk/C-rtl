@@ -30,7 +30,7 @@ ACTORS: dict[str, str] = {
     ACT_REJECT:   "decide.py / ai-reject: человек отклоняет находку",
     ACT_CARRY:    "db.carry_decisions: подавление повтора прошлого решения",
     ACT_STALE:    "db.close_period: вытеснение более свежим отчётом",
-
+    ACT_DECIDE:   "decide by developer"
 }
 
 # (source, actor, target, descr) — descr поясняет суть перехода человеку

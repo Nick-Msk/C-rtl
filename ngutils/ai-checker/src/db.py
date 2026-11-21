@@ -52,16 +52,16 @@ MODULES: dict[str, str] = {
 
 SCHEMA_VERSION = 13
 
-STATUS_ADDED    = "added"
-STATUS_PROPOSED = "proposed-to-fix"
-STATUS_ANALYZE  = "analyze-by-dev"
-STATUS_FIXED    = "fixed"
-STATUS_REJECTED = "rejected"
-STATUS_FAILED   = "failed"
-STATUS_STALE    = "stale"
-STATUS_NO_ACTION = "no-action"
-STATUS_SUPPRESSED = "suppressed"
-STATUS_MERGED = "merged"
+STATUS_ADDED        = "added"
+STATUS_PROPOSED     = "proposed-to-fix"
+STATUS_ANALYZE      = "analyze-by-dev"
+STATUS_FIXED        = "fixed"
+STATUS_REJECTED     = "rejected"
+STATUS_FAILED       = "failed"
+STATUS_STALE        = "stale"
+STATUS_NO_ACTION    = "no-action"
+STATUS_SUPPRESSED   = "suppressed"
+STATUS_MERGED       = "merged"
 
 # name -> (descr, terminal). Insertion order = column order in status.py.
 # descr is code-owned documentation (refreshed on every seed).
