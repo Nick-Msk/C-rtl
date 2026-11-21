@@ -126,3 +126,25 @@ CREATE TABLE IF NOT EXISTS params (
     PRIMARY KEY (module, name)
 );
 
+-- Actors: specific operations (pipeline step / Python method)
+-- that transition an issue between statuses. Excludes ai-check,
+-- which creates 'added' directly (INSERT) rather than performing a transition.
+CREATE TABLE actors (
+    name  TEXT PRIMARY KEY,
+    descr TEXT
+);
+
+-- Valid transitions. Step eligibility =
+--   SELECT DISTINCT status WHERE actor = ? AND allowed = 'y'.
+-- allowed is a DB-owned debug flag ('n' disables the transition);
+-- seeding does NOT reset it.
+CREATE TABLE transition_status (
+    status     TEXT NOT NULL REFERENCES statuses(name),
+    actor      TEXT NOT NULL REFERENCES actors(name),
+    new_status TEXT NOT NULL REFERENCES statuses(name),
+    allowed    TEXT NOT NULL DEFAULT 'y' CHECK (allowed IN ('y','n')),
+    descr      TEXT,
+    PRIMARY KEY (status, actor, new_status)
+);
+CREATE INDEX idx_transition_actor ON transition_status(actor);
+

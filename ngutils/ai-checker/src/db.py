@@ -50,7 +50,7 @@ MODULES: dict[str, str] = {
     "report": "Report header formatting",
 }
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 STATUS_ADDED    = "added"
 STATUS_PROPOSED = "proposed-to-fix"
@@ -272,6 +272,8 @@ def connect():
         if v == 0:
             con.executescript(_schema_sql())
             _seed_statuses(con)
+            import db_status
+            db_status.seed(con)
             con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         elif v != SCHEMA_VERSION:
             raise RuntimeError(
@@ -715,6 +717,9 @@ def seed_defaults() -> None:
             _seed_statuses(con)
             _seed_modules(con)
             _seed_params(con)
+            # state machine values
+            import db_status
+            db_status.seed(con)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: seed_defaults failed: {exc}",
               file=sys.stderr)
