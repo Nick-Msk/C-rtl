@@ -788,6 +788,13 @@ def fixed_issues(project: str | None = None) -> list[dict]:
 
 def mark_merged(issue_id: int, merge_commit: str) -> bool:
     """fixed -> merged. Guarded by status so re-runs are idempotent."""
+
+    import db_status
+    if not db_status.can_transition(STATUS_FIXED, db_status.ACT_MERGE,
+                                    STATUS_MERGED):
+        print("  warn: merge transition disabled in transition_status",
+              file=sys.stderr)
+        return False
     now = _now_iso()
     with connect() as con:
         cur = con.execute(

@@ -499,18 +499,23 @@ def _build_commit_msg(finding: dict, rel: str, reason: str,
             f"Full finding:\n{finding['text']}\n\n"
             f"Applied by ai-checker/fix.py\n")
 
-def _db_set_if_not_fixed(report_path: Path, finding: dict,
-                         status: str, **kw) -> None:
-    """_db_set, но не понижает конечный статус (statuses.terminal = 1)."""
-    try:
-        cur = db.get_status(report_path, finding)
-    except Exception:  # noqa: BLE001
-        cur = None
-    if db.is_terminal(cur):
-        return
-    _db_set(report_path, finding, status, **kw)
+def _db_set_if_not_fixed(report_path: Path, finding: dict, status: str, *,
+                         actor: str, **kw) -> None:
+    _db_set(report_path, finding, status, actor=actor, **kw)
 
-def _db_set(report_path: Path, finding: dict, status: str, **kw) -> None:
+def _db_set(report_path: Path, finding: dict, status: str, *,
+            actor: str, **kw) -> None:
+    """Пишет статус ТОЛЬКО если (cur -[actor]-> status) легален по
+    transition_status. нелегальный переход — warning, без записи."""
+    try:
+        cur = db.get_status(report_path, finding) or db.STATUS_ADDED
+    except Exception:  # noqa: BLE001
+        cur = db.STATUS_ADDED
+    if not db_status.can_transition(cur, actor, status):
+        print(f"  warn: illegal transition {cur} -[{actor}]-> {status} "
+              f"({db.finding_key_str(finding)}); write skipped",
+              file=sys.stderr)
+        return
     try:
         ok = db.update_issue_status(report_path, finding, status, **kw)
     except Exception as exc:  # noqa: BLE001
@@ -518,7 +523,7 @@ def _db_set(report_path: Path, finding: dict, status: str, **kw) -> None:
         return
     if not ok:
         print(f"  warn: db update matched no issue "
-              f"({db.finding_key_str(finding)} in {report_path.relative_to(ROOT)}); "
+              f"({db.finding_key_str(finding)} in {report_path.name}); "
               f"report not ingested?", file=sys.stderr)
 
 def _clear_proposal(report_path: Path, finding: dict) -> None:
@@ -552,11 +557,12 @@ def _resolve_edits(finding: dict, full_key: str, project: Path,
     """Return outcome dict, or None if this finding was already
     recorded (skip / failed / needs_review)."""
 
-    if not (args.refetch or args.reprocess or args.propose):
+    if not (args.refetch or args.reprocess or getattr(args, "propose", False)):
         pending = _load_pending(report_path, finding)
         if pending is not None:
             return _validate_cached(pending, finding, full_key,
                                     project, report_path, args, ctx, skipped)
+        
     return _classify_with_llm(finding, full_key, project, report_path, files,
                                args, model, ctx, needs_review, skipped)
 
@@ -571,6 +577,7 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                      project: Path, report_path: Path,
                      args, ctx: dict, skipped: list[str]):
     """Verify cached proposal is still valid; return outcome or None."""
+    actor = db_status.fix_actor(args)        # classify или commit
     if args.apply:
         for e in pending["edits"]:
             msg, reason = _check_file_freshness(e, pending["dt"], full_key)
@@ -578,19 +585,18 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                 print(msg)
                 skipped.append(f"{full_key}: {reason}")
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
-                                     reason=reason)
+                                     actor=actor, reason=reason)
                 return None
-
     parsed, err = validate_edits(pending["edits"], project,
-                                 max_diff_lines=ctx["max_diff_lines"],
-                                 loose=ctx.get("propose", False))
+                                 max_diff_lines=ctx["max_diff_lines"])
     if err:
         print(f"  STALE proposal ({err})")
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
               f"FIXLIST=\"{full_key}\"' to reclassify")
         skipped.append(f"{full_key}: stale: {err}")
         _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
-                             reason=f"stale: {err}")
+                             actor=actor, reason=f"stale: {err}")
+        return None
         return None
 
     explanation = "; ".join(
@@ -629,82 +635,61 @@ def _check_file_freshness(e: dict, dt: str, key: str):
                 "stale: file changed")
     return None, None
 
-def _classify_with_llm(finding: dict, full_key: str, project: Path,
-                       report_path: Path, files: list[Path],
-                       args, model: str, ctx: dict,
-                       needs_review: list[dict], skipped: list[str]):
-    """Ask the model; return outcome for LOCAL, else record and None."""
+def _classify_with_llm(finding, full_key, project, report_path, files,
+                       args, model, ctx, needs_review, skipped):
+    actor = (db_status.ACT_PROPOSE if ctx.get("propose")
+             else db_status.ACT_CLASSIFY)
     verdict, err = _ask_classifier(finding, project, files, args, model, ctx)
     if err is not None:
         print(f"  SKIP: {err}")
         skipped.append(f"{full_key}: {err}")
-        _db_set(report_path, finding, db.STATUS_FAILED, reason=err)
+        _db_set(report_path, finding, db.STATUS_FAILED, actor=actor, reason=err)
         return None
-
     cls = verdict.get("class", "needs_review")
     reason = verdict.get("reason", "")
-
-    if cls == "no_action":
-        print(f"  NO ACTION: {reason}")
-        _db_set(report_path, finding, db.STATUS_NO_ACTION, reason=reason)
-        return None
-
-    if ctx.get("propose") and (cls != "local" or not verdict.get("edits")):
-        print(f"  PROPOSE: model refused to propose a patch "
-              f"(class={cls}): {reason}")
+    # propose: модель обязана дать local; отказалась — статус НЕ трогаем
+    if ctx.get("propose") and cls != "local":
+        print(f"  PROPOSE: model refused (class={cls}): {reason}")
         skipped.append(f"{full_key}: propose refused (class={cls})")
         return None
-
+    if cls == "no_action":
+        print(f"  NO ACTION: {reason}")
+        _db_set(report_path, finding, db.STATUS_NO_ACTION, actor=actor, reason=reason)
+        return None
     if cls != "local":
         print(f"  NEEDS REVIEW: {reason}")
         if verdict.get("direction"):
             print(f"    direction: {verdict['direction']}")
         needs_review.append(finding | {"verdict": verdict})
-        _db_set(report_path, finding, db.STATUS_ANALYZE,
+        _db_set(report_path, finding, db.STATUS_ANALYZE, actor=actor,
                 reason=reason, direction=verdict.get("direction"))
         return None
-
     raw_edits = verdict.get("edits")
     if not raw_edits:
         single = verdict.get("edit")
         raw_edits = [single] if single else []
-
     parsed, verr = validate_edits(raw_edits, project,
-                                  max_diff_lines=ctx["max_diff_lines"],
-                                  loose=ctx.get("propose", False))
+                                  max_diff_lines=ctx["max_diff_lines"])
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
         skipped.append(f"{full_key}: {verr}")
-        _db_set(report_path, finding, db.STATUS_FAILED,
+        _db_set(report_path, finding, db.STATUS_FAILED, actor=actor,
                 reason=f"invalid edit: {verr}")
         return None
-
-    explanation = "; ".join(
-        e.get("explanation", "") for _, e in parsed
-        if e.get("explanation"))
-    
+    explanation = "; ".join(e.get("explanation", "") for _, e in parsed
+                            if e.get("explanation"))
     commit_subject = verdict.get("commit_subject", "")
     rels = [str(p.relative_to(ROOT)) for p, _ in parsed]
-    commit_msg = _build_commit_msg(
-        finding, ", ".join(rels), reason, explanation,
-        commit_subject=commit_subject,
-        project_name=project.name)
-
+    commit_msg = _build_commit_msg(finding, ", ".join(rels), reason, explanation,
+                                   commit_subject=commit_subject,
+                                   project_name=project.name)
     _save_proposal(report_path, finding, parsed, commit_msg, reason,
-                   runid=ctx["check_runid"],
-                   fix_runid=ctx["fix_runid"],
+                   runid=ctx["check_runid"], fix_runid=ctx["fix_runid"],
                    commit_subject=commit_subject)
-    _db_set(report_path, finding, db.STATUS_PROPOSED, reason=reason)
-
-    return {
-        "edits": parsed,
-        "reason": reason,
-        "explanation": explanation,
-        "commit_msg": commit_msg,
-        "commit_subject": commit_subject,
-        "source": "llm",
-        "dt": None,
-    }
+    _db_set(report_path, finding, db.STATUS_PROPOSED, actor=actor, reason=reason)
+    return {"edits": parsed, "reason": reason, "explanation": explanation,
+            "commit_msg": commit_msg, "commit_subject": commit_subject,
+            "source": "llm", "dt": None}
 
 def _ask_classifier(finding: dict, project: Path, files: list[Path],
                     args, model: str, ctx: dict):
@@ -849,7 +834,7 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
             "count": int(e.get("count", 1)),
         } for p, e in parsed],
     })
-    _db_set(report_path, finding, db.STATUS_FIXED,
+    _db_set(report_path, finding, db.STATUS_FIXED, actor=db_status.ACT_COMMIT,
             reason=reason, fix_branch=branch, fix_commit=sha,
             fix_subject=subject_line)
 
@@ -1083,7 +1068,7 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "max_source": max_source,
         "max_diff_lines": max_diff,
         "fix_temp": fix_temp,
-        "propose": args.propose,
+        "propose": getattr(args, "propose", False),
         "proposed": [],
     }
 
