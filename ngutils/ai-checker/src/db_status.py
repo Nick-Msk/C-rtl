@@ -8,6 +8,7 @@ alias. ai-check is the ORIGIN (inserts 'added'), so it has no actor.
 from __future__ import annotations
 
 import sqlite3
+import sys
 
 import db
 
@@ -49,6 +50,7 @@ TRANSITIONS: list[tuple[str, str, str, str]] = [
     (db.STATUS_ANALYZE,   ACT_PROPOSE, db.STATUS_FAILED,   "forced proposal failed validation"),
     (db.STATUS_NO_ACTION, ACT_PROPOSE, db.STATUS_PROPOSED, "forced patch for a not-a-defect finding"),
     (db.STATUS_NO_ACTION, ACT_PROPOSE, db.STATUS_FAILED,   "forced proposal failed validation"),
+    (db.STATUS_FAILED,    ACT_PROPOSE, db.STATUS_PROPOSED, "forced failed to reanalyze"),
     # merge
     (db.STATUS_FIXED, ACT_MERGE, db.STATUS_MERGED, "patch merged into base"),
     # reject (origin-agnostic)
@@ -107,11 +109,30 @@ def report_statuses(report_path) -> dict[tuple[int, int], str]:
             (rel,)).fetchall()
     return {(r["chunk_id"], r["local_id"]): r["status"] for r in rows}
 
+def can_transition_con(con, src: str, actor: str, dst: str) -> bool:
+    """Connection-local: для писателей, уже держащих транзакцию.
+    Не открывает новое соединение (без вложенности/локов)."""
+    
+    return con.execute(
+        "SELECT 1 FROM transition_status "
+        "WHERE status=? AND actor=? AND new_status=? AND allowed='y'",
+        (src, actor, dst)).fetchone() is not None
+
 
 def can_transition(src: str, actor: str, dst: str) -> bool:
     with db.connect() as con:
-        return con.execute(
-            "SELECT 1 FROM transition_status "
-            "WHERE status=? AND actor=? AND new_status=? AND allowed='y'",
-            (src, actor, dst)).fetchone() is not None
-    
+        return can_transition_con(con, src, actor, dst)
+
+
+def transition(report_path, finding, actor: str, new_status: str, **kw) -> bool:
+    """Валидированный писатель одной находки: get_status -> can_transition
+    -> update. Соединения последовательные (flock исключает гонки).
+    Для массовых писателей используй гейт / WHERE-подзапрос, не это."""
+
+    cur = db.get_status(report_path, finding) or db.STATUS_ADDED
+    if not can_transition(cur, actor, new_status):
+        print(f"  warn: illegal transition {cur} -[{actor}]-> {new_status} "
+              f"({db.finding_key_str(finding)}); write skipped",
+              file=sys.stderr)
+        return False
+    return db.update_issue_status(report_path, finding, new_status, **kw)

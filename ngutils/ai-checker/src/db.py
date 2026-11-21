@@ -431,14 +431,16 @@ def close_period(runid: int) -> tuple[int, list[str]]:
                     branches.append(r["fix_branch"])
 
             # Mark stale, clear fix_* refs
+            import db_status
             cur = con.execute(
                 f"UPDATE issue SET status = ?, "
                 f"  fix_branch = NULL, fix_commit = NULL, "
                 f"  fix_subject = NULL, dt = ? WHERE "
                 f"  report_id IN ({ph_old}) "
-                f"  AND status NOT IN "
-                f"      (SELECT name FROM statuses WHERE resolved = 1)",
-                (STATUS_STALE, now, *older))
+                f"  AND status IN (SELECT status FROM transition_status "
+                f"                 WHERE actor = ? AND new_status = ? "
+                f"                   AND allowed = 'y')",
+                (STATUS_STALE, now, *older, db_status.ACT_STALE, STATUS_STALE))
             total += cur.rowcount
 
     return total, branches
@@ -1054,6 +1056,11 @@ def carry_decisions(project: str, report_path: Path | str) -> list[dict]:
         if not r:
             return []
         rid, runid = r["id"], r["run_id"]
+
+        import db_status
+        if not db_status.can_transition_con(
+                con, STATUS_ADDED, db_status.ACT_CARRY, STATUS_SUPPRESSED):
+            return [] 
         
         fresh = con.execute(
             "SELECT id, chunk_id, local_id, title, text FROM issue "
