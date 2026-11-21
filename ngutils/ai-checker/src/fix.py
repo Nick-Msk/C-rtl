@@ -1005,6 +1005,7 @@ def _load_proposed(report_path: Path) -> set[tuple[int, int]]:
 def _filter_findings(report_path: Path, args) -> list[dict]:
     """FIXLIST (key filter) + --limit + eligibility из transition_status.
     Знание о статусах здесь больше не живёт."""
+
     findings = iter_findings(report_path, 0)
     only = _parse_fixlist(args.only)
     if only is not None:
@@ -1020,8 +1021,6 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
     if not findings:
         print("  no findings to process")
         return []
-    if args.reprocess:
-        return findings
 
     actor = db_status.fix_actor(args)
     eligible = db_status.eligible_statuses(actor)
