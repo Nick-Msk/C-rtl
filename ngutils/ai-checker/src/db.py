@@ -1088,3 +1088,9 @@ def proposed_finding_keys(report_path: Path | str) -> set[tuple[int, int]]:
             "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
             "AND status = ?", (rel, STATUS_PROPOSED)).fetchall()
     return {(r["chunk_id"], r["local_id"]) for r in rows}
+
+def llmrun_set_model(runid: int, name: str) -> bool:
+    with connect() as con:
+        cur = con.execute("UPDATE llmruns SET name = ? WHERE runid = ?",
+                          (name, runid))
+    return cur.rowcount > 0

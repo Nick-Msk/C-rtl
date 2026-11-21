@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 import db
+import db_status
 import llm
 from common import (
     DEFAULT_LIMIT,
@@ -1017,17 +1018,10 @@ def _load_proposed(report_path: Path) -> set[tuple[int, int]]:
     
 
 def _filter_findings(report_path: Path, args) -> list[dict]:
-    """Apply FIXLIST (key filter) / --limit / status-filter.
-    
-    Two independent filters:
-      1. FIXLIST: filter by chunk/local keys (always works if specified)
-      2. Status: filter by resolved/proposed (depends on mode)
-    """
-    
+    """FIXLIST (key filter) + --limit + eligibility из transition_status.
+    Знание о статусах здесь больше не живёт."""
     findings = iter_findings(report_path, 0)
     only = _parse_fixlist(args.only)
-    
-    # Шаг 1: FIXLIST как фильтр по ключам (независимо от режима)
     if only is not None:
         selected = [f for f in findings if _matches_fixlist(f, only)]
         if not selected:
@@ -1038,49 +1032,34 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
         findings = selected
     elif args.limit:
         findings = findings[:args.limit]
-    
     if not findings:
         print("  no findings to process")
         return []
-    
-    # Шаг 2: --reprocess отключает фильтр по статусам
     if args.reprocess:
         return findings
-    
-    # Шаг 3: фильтр по статусам зависит от режима
-    if args.apply:
-        # Commit режим: только proposed-to-fix
-        proposed = _load_proposed(report_path)
-        if not proposed:
-            print("  no proposed-to-fix findings to commit")
-            return []
-        kept = [f for f in findings if _issue_key_or_none(f) in proposed]
-        if not kept:
-            print("  no proposed-to-fix findings match")
-            return []
-        n = len(findings) - len(kept)
-        if n > 0:
-            print(f"  skip {n} non-proposed findings "
-                  f"(use --reprocess to include)", file=sys.stderr)
-        print(f"  committing {len(kept)} proposed-to-fix finding(s)")
-        return kept
-    else:
-        # Dry-run режим: фильтр по resolved
-        resolved = _load_resolved(report_path)
-        if not resolved:
-            return findings
-        
-        kept = [f for f in findings if _issue_key_or_none(f) not in resolved]
-        n = len(findings) - len(kept)
-        names = "/".join(sorted(db.resolved_statuses()))
-        if n > 0:
-            print(f"  skip {n} already-resolved ({names}); "
-                  f"use --reprocess to include", file=sys.stderr)
-        
-        if not kept:
-            print("  nothing left after resolved filter")
-        
-        return kept
+
+    actor = db_status.fix_actor(args)
+    eligible = db_status.eligible_statuses(actor)
+    statuses = db_status.report_statuses(report_path)
+
+    kept: list[dict] = []
+    skipped: list[str] = []
+    for f in findings:
+        k = _issue_key_or_none(f)
+        st = statuses.get(k, db.STATUS_ADDED) if k else db.STATUS_ADDED
+        if st in eligible:
+            kept.append(f)
+        else:
+            skipped.append(st)
+
+    if skipped:
+        from collections import Counter
+        detail = ", ".join(f"{s}×{n}" for s, n in sorted(Counter(skipped).items()))
+        print(f"  skip {len(skipped)} not eligible for '{actor}' ({detail})",
+              file=sys.stderr)
+    if not kept:
+        print(f"  nothing eligible for '{actor}'")
+    return kept
 
 def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     """Per-project accumulator + params from DB."""
@@ -1260,25 +1239,31 @@ def _print_final_summary(state: dict) -> None:
     if state.get("projects_done", 0) > 1:
         print("\n" + usage_line("ai-fixer", state["all_usage"]))
 
-def _run(args, model: str, 
-         jobs: list[tuple[str, Path, Path]],
-         runid: int) -> tuple[int, dict]:
-
+def _run(args, jobs: list[tuple[str, Path, Path]], runid: int) -> tuple[int, dict]:
     state = _prepare_run(args)
     state["fix_runid"] = runid
+    state["model"] = None
+    actor = db_status.fix_actor(args)
+    needs_llm = actor in (db_status.ACT_CLASSIFY, db_status.ACT_PROPOSE)
 
     for label, report_path, project in jobs:
-        print(f"\n--- {label}: {report_path.relative_to(ROOT)} ---")
-        _ensure_baseline(report_path, project)      # <-- before _filter_findings
+        print(f"\n--- {label}: {report_path.relative_to(OUT_ROOT)} ---")
+        _ensure_baseline(report_path, project)
         findings = _filter_findings(report_path, args)
         if not findings:
-            continue
+            continue                      # <-- LLM ещё не трогали
+        if needs_llm and state["model"] is None:
+            llm.check_health(args.base_url)          # только теперь
+            state["model"] = llm.resolve_model(args.base_url, args.model)
+            db.llmrun_set_model(runid, state["model"])
+            print(f"[ai-fixer] endpoint={args.base_url} model={state['model']}",
+                  file=sys.stderr)
+        model = state["model"] or "(cached)"
         ctx = _build_ctx(label, args, model, state)
         _process_project(label, report_path, project, findings,
                          args, model, ctx, state)
 
     _print_final_summary(state)
-    
     return 0, state["all_usage"]
 
 def classify_system(ctx: dict) -> str:
@@ -1329,29 +1314,19 @@ def main() -> int:
                     help="ignore cached proposal; re-query the LLM")
     
     args = ap.parse_args()
-
-    args.base_url = llm.resolve_url(args.base_url)
-    llm.check_health(args.base_url)
-    try:
-        model = llm.resolve_model(args.base_url, args.model)
-    except llm.LLMError as e:
-        sys.exit(f"ERROR: {e}")
-    print(f"[ai-fixer] endpoint={args.base_url} model={model}",
-          file=sys.stderr)
-
+    args.base_url = llm.resolve_url(args.base_url)   # без сети
     jobs = _resolve_jobs(args)
     lock_fd = acquire_lock()
     try:
-        runid = db.llmrun_start(kind="fix", url=args.base_url,
-                                name=model)
+        actor = db_status.fix_actor(args)
+        name = "" if actor != db_status.ACT_COMMIT else "(cached)"
+        runid = db.llmrun_start(kind="fix", url=args.base_url, name=name)
         print(f"[ai-fixer] runid={runid}", file=sys.stderr)
-
         try:
-            rc, usage = _run(args, model, jobs, runid)
+            rc, usage = _run(args, jobs, runid)
         except BaseException:
             db.llmrun_finish(runid, status="failed")
             raise
-
         db.llmrun_finish(runid, status="ok",
                          in_tokens=usage["prompt_tokens"],
                          out_tokens=usage["completion_tokens"],
