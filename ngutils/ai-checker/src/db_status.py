@@ -148,3 +148,32 @@ def transition(report_path, finding, actor: str, new_status: str, **kw) -> bool:
               file=sys.stderr)
         return False
     return db.update_issue_status(report_path, finding, new_status, **kw)
+
+DECIDE_ACTOR = {
+    db.STATUS_REJECTED:  ACT_REJECT,
+    db.STATUS_NO_ACTION: ACT_DECIDE,
+    db.STATUS_ADDED:     ACT_DECIDE,
+}
+
+def decide(con, runid: int, chunk: int, local: int,
+           new_status: str, reason: str = "") -> tuple[bool, str]:
+    """Валидированный UPDATE по ключу на соединении вызывающего.
+    Возвращает (ok, message). reason пустой -> не трогаем прежний."""
+    actor = DECIDE_ACTOR.get(new_status)
+    if actor is None:
+        return False, f"no actor for target {new_status!r}"
+    row = con.execute(
+        "SELECT status FROM issue "
+        "WHERE runid=? AND chunk_id=? AND local_id=?",
+        (runid, chunk, local)).fetchone()
+    if row is None:
+        return False, "not found"
+    cur = row["status"]
+    if not can_transition_con(con, cur, actor, new_status):
+        return False, f"illegal transition {cur} -[{actor}]-> {new_status}"
+    con.execute(
+        "UPDATE issue SET status=?, dt=?, "
+        "  reason=COALESCE(NULLIF(?,''), reason) "
+        "WHERE runid=? AND chunk_id=? AND local_id=?",
+        (new_status, db._now_iso(), reason, runid, chunk, local))
+    return True, f"{cur} -> {new_status}"
