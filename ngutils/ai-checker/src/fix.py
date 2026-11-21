@@ -352,14 +352,13 @@ def _ensure_baseline(report_path: Path, project: Path) -> None:
     
 def _parse_fixlist(raw: str):
     """Return matcher(key: tuple[int,int]) -> bool, or None.
-
-    Accepted (comma/space separated), all ids are 'chunk/local_id':
-      1/1           exact
-      1/1-5         local 1..5 in chunk 1
-      1/1001-1011   Мелочи 1..11 in chunk 1
-      1/1-*         local 1..∞ in chunk 1
-      1/*           everything in chunk 1
-      *             everything
+    
+    Accepts both formats:
+      - 'runid/chunk_id/local_id' (e.g. '53/1/1003') — preferred, from ai-status
+      - 'chunk_id/local_id' (e.g. '1/1003') — legacy
+      - '1/1-5' — range
+      - '1/*' — wildcard chunk
+      - '*' — everything
     """
     if not raw or not raw.strip():
         return None
@@ -374,12 +373,38 @@ def _parse_fixlist(raw: str):
         if tok == "*":
             match_all = True
             continue
-        m = re.match(r"^(\d+)/(\*|\d+)(?:-(\d+|\*))?$", tok)
-        if not m:
+        
+        parts = tok.split("/")
+        
+        # 'runid/chunk_id/local_id' -> ignore runid
+        if len(parts) == 3:
+            chunk_part, local_part = parts[1], parts[2]
+        # 'chunk_id/local_id' -> use as-is
+        elif len(parts) == 2:
+            chunk_part, local_part = parts[0], parts[1]
+        else:
+            continue  # invalid format
+        
+        # Parse chunk_id
+        m_chunk = re.match(r"^(\d+|\*)$", chunk_part)
+        if not m_chunk:
             continue
-        chunk = int(m.group(1))
-        a = m.group(2)
-        b = m.group(3)
+        chunk_str = m_chunk.group(1)
+        
+        # Parse local_id with optional range
+        m_local = re.match(r"^(\d+|\*)(?:-(\d+|\*))?$", local_part)
+        if not m_local:
+            continue
+        
+        if chunk_str == "*":
+            # '*/*' or '*/1-5' — wildcard on chunk
+            match_all = True
+            continue
+        
+        chunk = int(chunk_str)
+        a = m_local.group(1)
+        b = m_local.group(2)
+        
         if a == "*":
             wildcards.add(chunk)
         elif b is None:
