@@ -25,5 +25,5 @@ jobs:
 
       - name: ruff check
         working-directory: ngutils/ai-checker/
-        run: uv run ruff check src/*.py
+        run: uv run ruff check src/
 
