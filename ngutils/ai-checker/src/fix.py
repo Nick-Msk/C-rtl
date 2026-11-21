@@ -276,6 +276,18 @@ def validate_edits(edits: list[dict], project: Path,
                    max_diff_lines: int = MAX_DIFF_LINES,
                    loose: bool = False
                    ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
+    """Validate proposed edits.
+
+    Applicability (ALWAYS enforced): editable path inside the project,
+    file exists, no duplicate entries, old_snippet occurs exactly
+    `count` times, old != new. These guarantee the patch applies.
+
+    Locality (strict mode only): <=2 paired files, no signature
+    change, weighted diff <= max_diff_lines. In propose mode
+    (loose=True) these are LIFTED — a human reviews the branch
+    before merging, so a non-local patch is a valid proposal.
+    """
+
     if not edits:
         return None, "no edits"
     if not loose and len(edits) > 2:
@@ -283,7 +295,9 @@ def validate_edits(edits: list[dict], project: Path,
     parsed: list[tuple[Path, dict]] = []
     seen: set[Path] = set()
     for e in edits:
-        rel = e.get("file", ""); old = e.get("old_snippet", ""); new = e.get("new_snippet", "")
+        rel = e.get("file", "")
+        old = e.get("old_snippet", "")
+        new = e.get("new_snippet", "")
         if not rel or not old or not new:
             return None, "missing file/old_snippet/new_snippet"
         if is_forbidden(rel):
@@ -307,26 +321,36 @@ def validate_edits(edits: list[dict], project: Path,
             return None, f"{rel}: count={expected}, must be >= 1"
         n = src.count(old)
         if n != expected:
-            return None, f"{rel}: old_snippet appears {n} times, expected {expected}"
+            return None, (f"{rel}: old_snippet appears {n} times, "
+                          f"expected {expected}")
         if old == new:
             return None, f"{rel}: old_snippet == new_snippet"
         if not loose:
-            # строгие рейлы локальности: сигнатуры + лимит диффа
-            old_h = {h for line in old.splitlines() if (h := extract_function_header(line))}
-            new_h = {h for line in new.splitlines() if (h := extract_function_header(line))}
-            if new_h - old_h:
-                return None, f"{rel}: adds function {sorted(new_h - old_h)}"
-            if old_h - new_h:
-                return None, f"{rel}: changes/removes signature {sorted(old_h - new_h)}"
+            old_h = {h for line in old.splitlines()
+                     if (h := extract_function_header(line))}
+            new_h = {h for line in new.splitlines()
+                     if (h := extract_function_header(line))}
+            added = new_h - old_h
+            if added:
+                return None, f"{rel}: adds function {sorted(added)}"
+            removed = old_h - new_h
+            if removed:
+                return None, (f"{rel}: changes/removes function "
+                              f"signature {sorted(removed)}")
         parsed.append((p, e))
-    if not loose and len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
-        return None, "two files must be a paired X.c + X.h (same dir, same stem)"
     if not loose:
-        weighted = sum((sum(diff_line_counts(e["old_snippet"], e["new_snippet"])))
-                       * int(e.get("count", 1)) for _, e in parsed)
+        if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
+            return None, ("two files must be a paired X.c + X.h "
+                          "(same dir, same stem)")
+        weighted = 0
+        for _p, e in parsed:
+            a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
+            weighted += (a + r) * int(e.get("count", 1))
         if weighted > max_diff_lines:
-            return None, f"diff too large ({weighted} > {max_diff_lines})"
+            return None, (f"diff too large ({weighted} weighted lines "
+                          f"> {max_diff_lines})")
     return parsed, None
+
 
 def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
     """[(path, old, new, count)]. One diff per entry; 'count' shown
@@ -510,8 +534,10 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                                      actor=actor, reason=reason)
                 return None
-    parsed, err = validate_edits(pending["edits"], project,
-                                 max_diff_lines=ctx["max_diff_lines"])
+    parsed, err = validate_edits(pending["edits"], 
+                                 project,
+                                 max_diff_lines=ctx["max_diff_lines"],
+                                 loose=ctx.get("propose", False))
     if err:
         print(f"  STALE proposal ({err})")
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
@@ -591,14 +617,21 @@ def _classify_with_llm(finding, full_key, project, report_path, files,
     if not raw_edits:
         single = verdict.get("edit")
         raw_edits = [single] if single else []
-    parsed, verr = validate_edits(raw_edits, project,
-                                  max_diff_lines=ctx["max_diff_lines"])
+    parsed, verr = validate_edits(raw_edits, 
+                                  project,
+                                  max_diff_lines=ctx["max_diff_lines"],
+                                  loose=ctx.get("propose", False))
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
         skipped.append(f"{full_key}: {verr}")
         _db_set(report_path, finding, db.STATUS_FAILED, actor=actor,
                 reason=f"invalid edit: {verr}")
         return None
+
+    if ctx.get("propose") and len(parsed) > 2:
+        print(f"  ⚠ propose: {len(parsed)} files — non-local patch; "
+              f"verify build and callers before merge")
+    
     explanation = "; ".join(e.get("explanation", "") for _, e in parsed
                             if e.get("explanation"))
     commit_subject = verdict.get("commit_subject", "")
