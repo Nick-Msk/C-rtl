@@ -201,11 +201,13 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
         : 1 )
 
 /**
- * @brief Boolean check; on failure log and raise the given exception
- *        via userraise() (not abort).
+ * @brief Boolean check; on failure log and abort.
+ *
+ * The @p exception parameter is reserved for future use (userraise);
+ * currently the failure path always calls abort(), identical to invraise.
  *
  * Use for *expected* failure conditions (user error, bad state) as
- * opposed to invraise which aborts on invariant violation.
+ * opposed to invraise which is for invariant violations.
  * See error.h for details about exception.
  */
 #define invfatal(exception, expr, msg, ...)      _invraise(exception, true, (expr), (msg), ##__VA_ARGS__)
