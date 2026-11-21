@@ -116,7 +116,7 @@ bool
 inv_ulong_bool(FILE *out, unsigned long res, unsigned long val)
 {
     if (res == val) return true;
-    INV_MISMATCH_PRINT("%ld", res, val);
+    INV_MISMATCH_PRINT("%lu", res, val);
     return false;
 }
 
