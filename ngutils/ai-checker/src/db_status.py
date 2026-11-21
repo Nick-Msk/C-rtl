@@ -19,6 +19,7 @@ ACT_MERGE    = "merge"
 ACT_REJECT   = "reject"
 ACT_CARRY    = "carry"
 ACT_STALE    = "stale"
+ACT_DECIDE   = "decide"
 
 # name -> descr (какой python-метод / шаг это делает)
 ACTORS: dict[str, str] = {
@@ -29,6 +30,7 @@ ACTORS: dict[str, str] = {
     ACT_REJECT:   "decide.py / ai-reject: человек отклоняет находку",
     ACT_CARRY:    "db.carry_decisions: подавление повтора прошлого решения",
     ACT_STALE:    "db.close_period: вытеснение более свежим отчётом",
+
 }
 
 # (source, actor, target, descr) — descr поясняет суть перехода человеку
@@ -64,6 +66,16 @@ TRANSITIONS: list[tuple[str, str, str, str]] = [
     (db.STATUS_ADDED,    ACT_CARRY, db.STATUS_SUPPRESSED, "matches an earlier rejected/no-action"),
     (db.STATUS_ADDED,    ACT_STALE, db.STATUS_STALE, "superseded by newer report"),
     (db.STATUS_PROPOSED, ACT_STALE, db.STATUS_STALE, "superseded by newer report"),
+    # decide
+    (db.STATUS_ADDED,     ACT_DECIDE, db.STATUS_NO_ACTION, "human: not a defect"),
+    (db.STATUS_PROPOSED,  ACT_DECIDE, db.STATUS_NO_ACTION, "human: not a defect"),
+    (db.STATUS_ANALYZE,   ACT_DECIDE, db.STATUS_NO_ACTION, "human: not a defect"),
+    (db.STATUS_FAILED,    ACT_DECIDE, db.STATUS_NO_ACTION, "human: not a defect"),
+    (db.STATUS_REJECTED,  ACT_DECIDE, db.STATUS_ADDED, "human reopen"),
+    (db.STATUS_NO_ACTION, ACT_DECIDE, db.STATUS_ADDED, "human reopen"),
+    (db.STATUS_STALE,     ACT_DECIDE, db.STATUS_ADDED, "human reopen"),
+    (db.STATUS_SUPPRESSED,ACT_DECIDE, db.STATUS_ADDED, "human reopen"),
+    (db.STATUS_FAILED,    ACT_DECIDE, db.STATUS_ADDED, "human reopen"),
 ]
 
 

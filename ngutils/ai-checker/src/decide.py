@@ -5,6 +5,7 @@ import argparse
 import sys
 
 import db
+import db_status
 
 
 def main() -> int:
@@ -23,15 +24,12 @@ def main() -> int:
             continue
         runid, chunk, local = map(int, parts)
         with db.connect() as con:
-            cur = con.execute(
-                "UPDATE issue SET status = ?, dt = ?, "
-                "  reason = COALESCE(NULLIF(?, ''), reason) "
-                "WHERE runid = ? AND chunk_id = ? AND local_id = ?",
-                (a.status, db._now_iso(), a.reason, runid, chunk, local))
-        if cur.rowcount:
+            ok, msg = db_status.decide(con, runid, chunk, local,
+                                       a.status, a.reason)
+        if ok:
             print(f"{key} -> {a.status}")
         else:
-            print(f"{key}: not found", file=sys.stderr)
+            print(f"{key}: {msg}", file=sys.stderr)
             rc = 1
     return rc
 
