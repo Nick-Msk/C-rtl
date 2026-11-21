@@ -45,6 +45,9 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
     if (res)
         return 0;
 
+    if (!expr)
+        expr = "(null)";
+
     if (out) {
         cnt += fprintf(out, "ERRNUM_INVARIANT_VIOLATION: [%s] is violated\n", expr);
     }
