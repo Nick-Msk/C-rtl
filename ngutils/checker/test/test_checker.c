@@ -171,8 +171,8 @@ Test(checker, checkraise_general_error_aborts, .signal = SIGABRT) {
     invfatal(ERR_GENERAL_ERROR, 1 == 2, "must abort");
 }
 
-Test(checker, checkraise_null_ptr_sigint, .signal = SIGABRT) {
-    /* non-GENERAL_ERROR + no TRY → userraise → SIGINT */
+Test(checker, checkraise_null_ptr_sigabrt, .signal = SIGABRT) {
+    /* non-GENERAL_ERROR + no TRY → abort() → SIGABRT */
     const char *p = NULL;
     invfatal(ERR_NULL_INPUT, p != NULL, "p is NULL in test");
 }
