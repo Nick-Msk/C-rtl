@@ -402,3 +402,63 @@ def gather_context_files(finding: dict, project: Path) -> list[Path]:
 def types_digest_path(project_name: str) -> Path:
     return OUT_ROOT / project_name / "_types.h"
 
+
+def parse_fixlist(raw: str):
+    """Matcher over (runid, chunk, local). Shared by fix.py and decide.py.
+
+      93/1/2        exact full key — the form ai-status prints
+      93/1/2-5      locals 2..5 of run 93, chunk 1
+      93/1/1-*      locals 1..∞
+      93/1/*        every local of run 93 chunk 1
+      1/2           chunk/local, ANY run (fix.py works inside one report)
+      1/*           every local of chunk 1, any run
+      *             everything
+    """
+    if not raw or not raw.strip():
+        return None
+    exact: set[tuple[int, int, int]] = set()
+    pairs: set[tuple[int, int]] = set()          # (chunk, local), any run
+    ranges: list[tuple[int | None, int, int, int]] = []
+    wild: set[tuple[int | None, int]] = set()    # (run|None, chunk)
+    match_all = False
+
+    for tok in (t for t in re.split(r"[,\s]+", raw.strip()) if t):
+        if tok == "*":
+            match_all = True
+            continue
+        parts = tok.split("/")
+        if len(parts) == 3:
+            run, c, l = int(parts[0]), parts[1], parts[2]
+        elif len(parts) == 2:
+            run, c, l = None, parts[0], parts[1]
+        else:
+            continue
+        try:
+            chunk = int(c)
+        except ValueError:
+            continue
+        if l == "*":
+            wild.add((run, chunk))
+            continue
+        m = re.match(r"^(\d+)(?:-(\d+|\*))?$", l)
+        if not m:
+            continue
+        lo = int(m.group(1))
+        if m.group(2) is None:
+            if run is None:
+                pairs.add((chunk, lo))
+            else:
+                exact.add((run, chunk, lo))
+        else:
+            hi = 10**9 if m.group(2) == "*" else int(m.group(2))
+            ranges.append((run, chunk, lo, hi))
+
+    def matcher(key: tuple[int, int, int]) -> bool:
+        run, chunk, local = key
+        if match_all or key in exact or (chunk, local) in pairs:
+            return True
+        if (run, chunk) in wild or (None, chunk) in wild:
+            return True
+        return any(r in (None, run) and c == chunk and lo <= local <= hi
+                   for r, c, lo, hi in ranges)
+    return matcher

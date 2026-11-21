@@ -43,6 +43,7 @@ from common import (
     discover_projects,
     gather_context_files,
     iter_findings,
+    parse_fixlist,
     release_lock,
     rotate_reports,
     types_digest_path,
@@ -351,84 +352,6 @@ def _ensure_baseline(report_path: Path, project: Path) -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: cannot adopt report into db: {exc}", file=sys.stderr)
     
-def _parse_fixlist(raw: str):
-    """Return matcher(key: tuple[int,int]) -> bool, or None.
-    
-    Accepts both formats:
-      - 'runid/chunk_id/local_id' (e.g. '53/1/1003') — preferred, from ai-status
-      - 'chunk_id/local_id' (e.g. '1/1003') — legacy
-      - '1/1-5' — range
-      - '1/*' — wildcard chunk
-      - '*' — everything
-    """
-    if not raw or not raw.strip():
-        return None
-
-    tokens = [t for t in re.split(r"[,\s]+", raw.strip()) if t]
-    exact: set[tuple[int, int]] = set()
-    wildcards: set[int] = set()
-    ranges: list[tuple[int, int, int]] = []
-    match_all = False
-
-    for tok in tokens:
-        if tok == "*":
-            match_all = True
-            continue
-        
-        parts = tok.split("/")
-        
-        # 'runid/chunk_id/local_id' -> ignore runid
-        if len(parts) == 3:
-            chunk_part, local_part = parts[1], parts[2]
-        # 'chunk_id/local_id' -> use as-is
-        elif len(parts) == 2:
-            chunk_part, local_part = parts[0], parts[1]
-        else:
-            continue  # invalid format
-        
-        # Parse chunk_id
-        m_chunk = re.match(r"^(\d+|\*)$", chunk_part)
-        if not m_chunk:
-            continue
-        chunk_str = m_chunk.group(1)
-        
-        # Parse local_id with optional range
-        m_local = re.match(r"^(\d+|\*)(?:-(\d+|\*))?$", local_part)
-        if not m_local:
-            continue
-        
-        if chunk_str == "*":
-            # '*/*' or '*/1-5' — wildcard on chunk
-            match_all = True
-            continue
-        
-        chunk = int(chunk_str)
-        a = m_local.group(1)
-        b = m_local.group(2)
-        
-        if a == "*":
-            wildcards.add(chunk)
-        elif b is None:
-            exact.add((chunk, int(a)))
-        else:
-            lo = int(a)
-            hi = 10**9 if b == "*" else int(b)
-            ranges.append((chunk, lo, hi))
-
-    def matcher(key: tuple[int, int]) -> bool:
-        if match_all:
-            return True
-        if key in exact:
-            return True
-        if key[0] in wildcards:
-            return True
-        for c, lo, hi in ranges:
-            if key[0] == c and lo <= key[1] <= hi:
-                return True
-        return False
-
-    return matcher
-
 # ── Main ─────────────────────────────────────────────────────────────
 def _resolve_jobs(args) -> list[tuple[str, Path, Path]]:
     if args.report:
@@ -980,9 +903,9 @@ def _issue_key_or_none(finding: dict) -> tuple[int, int] | None:
         return None
 
 
-def _matches_fixlist(finding: dict, matcher) -> bool:
+def _matches_fixlist(finding: dict, matcher, runid: int) -> bool:
     k = _issue_key_or_none(finding)
-    return k is not None and matcher(k)
+    return k is not None and matcher((runid, k[0], k[1]))
 
 
 def _load_resolved(report_path: Path,
@@ -1007,9 +930,10 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
     Знание о статусах здесь больше не живёт."""
 
     findings = iter_findings(report_path, 0)
-    only = _parse_fixlist(args.only)
+    only = parse_fixlist(args.only)
     if only is not None:
-        selected = [f for f in findings if _matches_fixlist(f, only)]
+        rid = db.report_runid(report_path) or 0
+        selected = [f for f in findings if _matches_fixlist(f, only, rid)]
         if not selected:
             print(f"  warn: FIXLIST matched nothing: {args.only!r}",
                   file=sys.stderr)

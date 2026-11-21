@@ -29,6 +29,11 @@ AI_FIX_COMMIT = $(AI_FIX_BASE) --apply
 AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(KEEP),--keep,) \
                 $(if $(KEY),--key "$(KEY)",)
 
+AI_DECIDE_ARGS = $(if $(FIXLIST),--only "$(FIXLIST)",) \
+                 $(if $(REASON),--reason "$(REASON)",) \
+                 $(if $(ALL_RUNS),--all-runs,) \
+                 $(if $(ALL_PROJECTS),--all-projects,)
+
 ai-check:  ## AI review of all projects (LM Studio)
 	@$(AI_RUN) src/check.py --all $(AI_CHECK_EXTRA)
 
@@ -92,9 +97,24 @@ ai-del-branches:  ## delete merged ai-checker-* branches
 ai-del-branches-%:  ## same, one project
 	@$(AI_RUN) src/gitutil.py --project $* $(DEL_BRANCHES_ARGS)
 
-ai-reject:  ## reject finding: KEY=runid/chunk/local [REASON=...]
-	@$(AI_RUN) src/decide.py --status rejected $(if $(REASON),--reason "$(REASON)",) $(KEY)
+ai-reject:  ## reject issues: FIXLIST=93/1/2 [REASON=...]
+	@$(AI_RUN) src/decide.py --status rejected $(AI_DECIDE_ARGS)
 
+ai-reject-%:  ## reject issues of one project
+	@$(AI_RUN) src/decide.py --status rejected --project $* $(AI_DECIDE_ARGS)
+
+ai-no-action:  ## mark not-a-defect: FIXLIST=...
+	@$(AI_RUN) src/decide.py --status no-action $(AI_DECIDE_ARGS)
+
+ai-no-action-%:  ## same, one project
+	@$(AI_RUN) src/decide.py --status no-action --project $* $(AI_DECIDE_ARGS)
+
+ai-reopen:  ## reopen issues (-> added): FIXLIST=...
+	@$(AI_RUN) src/decide.py --status added $(AI_DECIDE_ARGS)
+
+ai-reopen-%:  ## same, one project
+	@$(AI_RUN) src/decide.py --status added --project $* $(AI_DECIDE_ARGS)
+	
 ai-models:  ## list models loaded in LM Studio
 	@LMSTUDIO_URL="$(LMSTUDIO_URL)" uv run python check.py --models
 
