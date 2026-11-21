@@ -100,7 +100,7 @@ bool
 inv_uint_bool(FILE *out, unsigned res, unsigned int val)
 {
     if (res == val) return true;
-    INV_MISMATCH_PRINT("%d", res, val);
+    INV_MISMATCH_PRINT("%u", res, val);
     return false;
 }
 
