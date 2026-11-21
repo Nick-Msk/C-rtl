@@ -252,6 +252,24 @@ Test(checker, inv_fprintf_int_null_out_no_crash) {
     cr_assert_eq(rc, 0);
 }
 
+Test(checker, inv_fprintf_int_null_msg_no_crash) {
+    /* msg == NULL: skip vfprintf, log empty string */
+    int rc = inv_fprintf_int(NULL, "expr", false, NULL);
+    cr_assert_eq(rc, 0);
+}
+
+Test(checker, inv_fprintf_int_null_expr_no_crash) {
+    /* expr == NULL: replaced with "(null)" */
+    int rc = inv_fprintf_int(NULL, NULL, false, "diagnostic");
+    cr_assert_eq(rc, 0);
+}
+
+Test(checker, inv_fprintf_int_null_expr_and_msg) {
+    /* both expr and msg NULL, out NULL: fully defensive path */
+    int rc = inv_fprintf_int(NULL, NULL, false, NULL);
+    cr_assert_eq(rc, 0);
+}
+
 Test(checker, inv_fprintf_int_writes_to_stream) {
     char path[256];
     test_tmpname(path, sizeof path, "test_checker_fprintf", NULL, "txt");
