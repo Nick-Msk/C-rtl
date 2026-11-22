@@ -11,15 +11,13 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-import workspace
+import workspace as _ws
 
 # ── Paths ────────────────────────────────────────────────────────────
-HERE = Path(__file__).resolve().parent
-ROOT = workspace.root()
-AI_ROOT = HERE.parent                            # .../ai-checker
+AI_ROOT = Path(__file__).resolve().parent.parent      # .../ai-checker
+_WS = _ws.resolve()
+ROOT = _WS.root_path if _WS else Path.cwd()
 OUT_ROOT = Path(os.environ.get("AI_CHECKER_OUT") or (AI_ROOT / "reports"))
-
-FIX_DIR = OUT_ROOT / "fixes"
 LOCK_PATH = OUT_ROOT / ".lock"
 
 # ── Extensions ───────────────────────────────────────────────────────
@@ -88,8 +86,20 @@ def allowed_top_dirs() -> frozenset[str]:
 
     return frozenset(p.name for p in discover_projects())
 
+if _WS is None:
+    print(f"[ai-checker] warn: no *{_ws.SUFFIX} found from {Path.cwd()}; "
+          f"project commands will fail (DB-only commands still work)",
+          file=sys.stderr)
+
+
 def discover_projects() -> list[Path]:
-    names = workspace.project_names()
+    if _WS is None:
+        sys.exit(f"ERROR: no workspace descriptor. Create <name>{_ws.SUFFIX} "
+                 f"in the repo you review, or set AI_CHECKER_WORKSPACE.")
+    return _WS.project_paths()
+
+def discover_projects() -> list[Path]:
+    names = _ws.project_names()
     if names is not None:
         return [ROOT / n for n in names
                 if (ROOT / n).is_dir()
