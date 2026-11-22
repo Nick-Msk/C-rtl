@@ -29,6 +29,12 @@ def run(args) -> int:
     base, _ = gitutil.git_clean_check()
     print(f"[ai-merge] base={base}  {len(rows)} fixed issue(s)")
 
+    targets = [t.strip() for t in
+        db.get_param("fix", "verify_targets",
+                     "test-{project},analyze-{project}").split(",")
+        if t.strip()]
+    verify_on = db.get_param("fix", "verify_on_merge", True)
+
     merged = reconciled = lost = failed = 0
     for r in rows:
         key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
@@ -59,7 +65,12 @@ def run(args) -> int:
         if not gitutil.branch_exists(br):
             gitutil.git("branch", br, fix_sha, check=False)   # ярлык из sha
         try:
-            sha, _ = gitutil.merge_fix(br, delete=not args.keep)
+            _, wt = gitutil.ensure_baseline(r["project"], r["runid"],
+                                                gitutil.head_sha())  # branch уже есть
+            verify = (gitutil.make_verifier(r["project"], targets)
+                      if verify_on else None)
+            sha, _ = gitutil.merge_fix(br, wt=wt, delete=not args.keep, verify=verify)
+            
         except RuntimeError as exc:
             print(f"  CONFLICT {key}  {exc}", file=sys.stderr)
             failed += 1

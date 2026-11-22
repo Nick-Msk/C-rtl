@@ -390,6 +390,11 @@ def _cleanup_old_branches(runid: int) -> None:
         if gitutil.delete_branch(b, force=False):
             print(f"[ai-checker] deleted merged branch {b}",
                   file=sys.stderr)
+        
+    live = {(b["project"], b["run_id"]) for b in db.open_baselines()}
+    for b in db.all_baselines():          # SELECT project, run_id WHERE baseline_branch NOT NULL
+        if (b["project"], b["run_id"]) not in live and b["run_id"] != runid:
+            gitutil.remove_baseline(b["project"], b["run_id"])
 
     if not_merged:
         print(f"\n[ai-checker] note: {len(not_merged)} unmerged "
@@ -398,6 +403,8 @@ def _cleanup_old_branches(runid: int) -> None:
         print("    make ai-del-branches FORCE=1", file=sys.stderr)
         for b in not_merged[:5]:
             print(f"      {b}", file=sys.stderr)
+            live = {(b["project"], b["run_id"]) for b in db.open_baselines()}
+    
         if len(not_merged) > 5:
             print(f"      ... and {len(not_merged) - 5} more",
                   file=sys.stderr)
@@ -539,7 +546,8 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
         db.ingest_report(project=ctx["name"], report_path=ctx["report"],
                          model=ctx["model"], kind=kind,
                          started=ctx["started"], duration_s=total_dur,
-                         findings=findings, runid=runid)
+                         findings=findings, runid=runid,
+                         baseline_branch=ctx["baseline_branch"])
         print(f"[ai-checker] db: ingested {len(findings)} issue(s)",
               file=sys.stderr)
     except Exception as exc:  # noqa: BLE001
@@ -580,12 +588,19 @@ def _print_project_summary(ctx: dict, total_dur: float) -> None:
 
 def _process_project(name: str, files: list[Path], args,
                      runid: int, state: dict) -> None:
+
     ctx = _build_ctx(name, args, state["model"], state)
     chunks = chunk_files(files, budget=state["max_chars"],
                          project_name=name,
                          full_headers=args.full_headers,
                          tag_chars=state["tag_chars"],
                          carry_hint=not args.no_carry)
+
+    base_sha = gitutil.head_sha()
+    baseline, wt = gitutil.ensure_baseline(name, runid, base_sha)
+    print(f"[ai-checker] {name}: baseline {baseline} @ {base_sha[:7]} "
+            f"-> {wt}", file=sys.stderr)
+    ctx["baseline_branch"] = baseline
 
     if args.no_tests and not args.file:
         print(f"[ai-checker] {name}: --no-tests, test/ excluded",

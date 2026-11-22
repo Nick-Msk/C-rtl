@@ -9,12 +9,84 @@ Safety model:
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from common import ROOT
+from common import OUT_ROOT, ROOT
 
+MERGE_AREA = Path(os.environ.get("AI_CHECKER_MERGEAREA")
+                  or (OUT_ROOT.parent / "mergearea"))
+
+def baseline_branch_name(project: str, runid: int) -> str:
+    return f"ai-baseline/{project}-c{runid}"      # НЕ 'ai-checker-...'
+
+def mergearea_path(project: str, runid: int) -> Path:
+    return MERGE_AREA / f"{project}-{runid}"
+
+def git_in(cwd: Path, *args: str, input: str | None = None,
+           check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=cwd, text=True, input=input,
+                          capture_output=True, check=check)
+
+
+def head_sha() -> str:
+    r = git("rev-parse", "HEAD", check=False)
+    if r.returncode != 0:
+        raise RuntimeError("not a git repository (or no commits yet)")
+    return r.stdout.strip()
+
+
+def ensure_baseline(project: str, runid: int, sha: str) -> tuple[str, Path]:
+    """Pin the reviewed state: branch at `sha` + worktree. Idempotent and
+    self-healing: reuses the branch, re-adds a missing worktree.
+    Called by ai-check (sha=HEAD) and lazily by ai-fix for adopted reports
+    (sha=report.base_sha)."""
+    branch = baseline_branch_name(project, runid)
+    path = mergearea_path(project, runid)
+    if not branch_exists(branch):
+        r = git("branch", branch, sha, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(f"cannot pin baseline: {r.stderr.strip()}")
+    if not (path / ".git").exists():
+        MERGE_AREA.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+        git("worktree", "prune", check=False)
+        r = git("worktree", "add", str(path), branch, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(f"worktree add failed: {r.stderr.strip()}")
+    return branch, path
+
+
+def remove_baseline(project: str, runid: int) -> None:
+    path, branch = mergearea_path(project, runid), baseline_branch_name(project, runid)
+    if path.exists():
+        git("worktree", "remove", "--force", str(path), check=False)
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+        git("worktree", "prune", check=False)
+    git("branch", "-D", branch, check=False)   # -D: may be unmerged after rebase
+
+
+def dirty_files() -> set[str]:
+    r = git("status", "--porcelain", check=False)
+    out: set[str] = set()
+    for line in r.stdout.splitlines():
+        if len(line) <= 3:
+            continue
+        p = line[3:].strip()
+        if " -> " in p:
+            p = p.split(" -> ", 1)[1]
+        out.add(p.strip('"'))
+    return out
+
+
+def merge_touched_files(branch: str) -> set[str]:
+    r = git("diff", "--name-only", f"HEAD...{branch}", check=False)
+    return {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
 
 def git(*args: str, input: str | None = None,
         check: bool = True) -> subprocess.CompletedProcess:
@@ -137,55 +209,39 @@ def _apply_edit(path: Path, old: str, new: str) -> bool:
     except OSError:
         return False
 
-
 def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
-                   edits: list[tuple[Path, str, str]], msg: str) -> str:
-    """Create branch from base_sha, apply edits, commit, return to base.
-
-    Invariant: on return (success OR failure) HEAD is back on base.
-    On failure the branch is deleted and the tree reset. reset --hard
-    is safe here: git_clean_check guaranteed a clean tree on entry and
-    we are on a fresh branch pointing at base_sha.
-    """
-    base = base_branch or "master"
-    r = git("checkout", "-b", branch_name, base_sha, check=False)
+                   edits: list[tuple[Path, str, str]], msg: str,
+                   *, wt: Path) -> str:
+    """Build the fix commit inside the baseline worktree. The user's tree
+    is never touched and need NOT be clean. `edits` paths are ROOT-relative
+    and are re-rooted into the worktree, so the commit is exactly
+    base_sha + patch."""
+    r = git_in(wt, "checkout", "-f", "-b", branch_name, base_sha, check=False)
     if r.returncode != 0:
-        raise RuntimeError(f"git checkout -b failed: {r.stderr.strip()}")
-
+        raise RuntimeError(f"checkout -b failed: {r.stderr.strip()}")
     ok = False
     try:
-        rels = [str(p.relative_to(ROOT)) for p, _, _ in edits]
-
+        rels: list[str] = []
         for path, old, new in edits:
-            if not _apply_edit(path, old, new):
+            rel = str(path.relative_to(ROOT))
+            rels.append(rel)
+            if not _apply_edit(wt / rel, old, new):
                 raise RuntimeError(
-                    f"apply_edit failed on {path.relative_to(ROOT)}")
-
-        r = git("add", "--", *rels, check=False)
+                    f"apply_edit failed on {rel} (snippet not found at {base_sha[:7]})")
+        r = git_in(wt, "add", "--", *rels, check=False)
         if r.returncode != 0:
             raise RuntimeError(f"git add failed: {r.stderr.strip()}")
-
-        r = git("commit", "-F", "-", input=msg, check=False)
+        r = git_in(wt, "commit", "-F", "-", input=msg, check=False)
         if r.returncode != 0:
             raise RuntimeError(f"git commit failed: {r.stderr.strip()}")
-
-        r = git("rev-parse", "--short", "HEAD", check=False)
-        sha = r.stdout.strip()
-        if r.returncode != 0 or not sha:
+        sha = git_in(wt, "rev-parse", "--short", "HEAD").stdout.strip()
+        if not sha:
             raise RuntimeError("commit made but cannot resolve sha")
-
-        ok = True                      # <-- без этого ветка удаляется
+        ok = True
         return sha
     finally:
         if not ok:
-            # Сносит и индекс, и рабочее дерево (add мог уже пройти).
-            git("reset", "--hard", "-q", check=False)
-        r = git("checkout", "-q", base, check=False)
-        if r.returncode != 0:
-            print(f"[gitutil] ERROR: cannot return to {base}: "
-                  f"{r.stderr.strip()}; HEAD is left on {branch_name}",
-                  file=sys.stderr)
-        if not ok:
+            git_in(wt, "checkout", "-f", base_branch, check=False)
             git("branch", "-D", branch_name, check=False)
 
 def branch_exists(name: str) -> bool:

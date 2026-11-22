@@ -122,6 +122,9 @@ ai-arch:  ## pack reports into ai-checker-reports.tar.zst
 	@test -d $(REPORTS_DIR) || { echo "nothing to archive"; exit 0; }
 	@tar -C $(ROOT)/build --zstd -cf "$(REPORTS_TAR)" ai-checker
 
+ai-mergearea-clean:  ## remove baselines with no pending work
+	@$(AI_RUN) src/gitutil.py --clean-baselines
+
 .PHONY: ai-help _ai_targets
 
 ai-help:  ## full AI help (knobs, examples, env vars)

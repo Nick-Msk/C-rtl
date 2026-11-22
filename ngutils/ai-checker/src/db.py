@@ -20,7 +20,7 @@ from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 13
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "config" / "check.sql"
 _schema_cache: str | None = None
@@ -314,7 +314,8 @@ def report_id_by_path(report_path: Path | str) -> int | None:
 def ingest_report(*, project: str, report_path: Path, model: str,
                   kind: str, started: datetime, duration_s: float,
                   findings: list[dict],
-                  runid: int | None = None) -> None:
+                  runid: int | None = None,
+                  baseline_branch: str | None = None) -> None:
     """Insert base_commit, report and all findings with default status.
 
     Idempotent w.r.t. report.path: if a report with the same path was
@@ -1188,3 +1189,25 @@ def llmrun_set_model(runid: int, name: str) -> bool:
         cur = con.execute("UPDATE llmruns SET name = ? WHERE runid = ?",
                           (name, runid))
     return cur.rowcount > 0
+
+def report_base(report_path) -> dict | None:
+    """base_sha + baseline_branch + run_id + project for a report."""
+    with connect() as con:
+        r = con.execute(
+            "SELECT project, run_id, base_sha, baseline_branch "
+            "FROM report WHERE path = ?", (_rel(report_path),)).fetchone()
+    return dict(r) if r else None
+
+
+def open_baselines() -> list[dict]:
+    """Baselines still needed: some actor can act on at least one issue.
+    Eligibility comes from transition_status, not a hardcoded list."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT DISTINCT r.project, r.run_id, r.baseline_branch "
+            "FROM report r JOIN issue i ON i.report_id = r.id "
+            "WHERE r.baseline_branch IS NOT NULL AND i.status IN "
+            "  (SELECT status FROM transition_status "
+            "   WHERE actor IN ('classify','commit','propose','merge') "
+            "     AND allowed = 'y')").fetchall()
+    return [dict(r) for r in rows]
