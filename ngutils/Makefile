@@ -288,9 +288,8 @@ asan_leak:
 	fi
 
 # --- AI (delegated to ai-checker/ai-checker.mk ) ---
-#
-AI_CHECKER_DIR := $(abspath ./ai-checker)
-include $(AI_CHECKER_DIR)/ai-checker.mk
+export AI_CHECKER_WORKSPACE := $(CURDIR)/ai-checker.workspace.py
+include ../ai-checker/ai-checker.mk
 
 AI_PROJECTS := $(PROJECTS)
 
