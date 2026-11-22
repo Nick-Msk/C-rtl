@@ -124,6 +124,14 @@ inv_ulong_bool(FILE *out, unsigned long res, unsigned long val)
 }
 
 bool
+inv_ulonglong_bool(FILE *out, unsigned long long res, unsigned long long val)
+{
+    if (res == val) return true;
+    INV_MISMATCH_PRINT("%llu", res, val);
+    return false;
+}
+
+bool
 inv_double_bool(FILE *out, double res, double val)
 {
     /* Exact == is intentional: invariants compare values from the same
