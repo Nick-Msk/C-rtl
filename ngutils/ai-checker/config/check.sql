@@ -39,16 +39,17 @@ CREATE TABLE IF NOT EXISTS llmruns (
 CREATE INDEX IF NOT EXISTS idx_llmruns_start ON llmruns(start_time);
 
 CREATE TABLE IF NOT EXISTS report (
-    run_id      INTEGER REFERENCES llmruns(runid),
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    project     TEXT NOT NULL,
-    path        TEXT NOT NULL UNIQUE,
-    base_sha    TEXT NOT NULL REFERENCES base_commit(sha),
-    model       TEXT,
-    kind        TEXT NOT NULL,
-    started     TEXT NOT NULL,
-    duration_s  REAL,
-    dt          TEXT NOT NULL
+    run_id              INTEGER REFERENCES llmruns(runid),
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    project             TEXT NOT NULL,
+    path                TEXT NOT NULL UNIQUE,
+    base_sha            TEXT NOT NULL REFERENCES base_commit(sha),
+    model               TEXT,
+    kind                TEXT NOT NULL,
+    baseline_branch     TEXT,
+    started             TEXT NOT NULL,
+    duration_s          REAL,
+    dt                  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS issue (
