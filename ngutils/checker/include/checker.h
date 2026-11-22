@@ -86,6 +86,8 @@ bool inv_long_bool(FILE *out, long res, long val);
 
 bool inv_ulong_bool(FILE *out, unsigned long res, unsigned long val);
 
+bool inv_ulonglong_bool(FILE *out, unsigned long long res, unsigned long long val);
+
 bool inv_double_bool(FILE *out, double res, double val);
 
 bool inv_str_bool(FILE *out, const char *res, const char *val);
@@ -104,7 +106,7 @@ bool inv_ptr_bool(FILE *out, const void *res, const void *val);
     long long:          inv_long_bool,            \
     unsigned:           inv_uint_bool,            \
     unsigned long:      inv_ulong_bool,           \
-    unsigned long long: inv_long_bool,            \
+    unsigned long long: inv_ulonglong_bool,       \
     float:              inv_double_bool,          \
     double:             inv_double_bool,          \
     char *:             inv_str_bool,             \
