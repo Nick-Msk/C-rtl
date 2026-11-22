@@ -725,6 +725,17 @@ def seed_defaults() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: seed_defaults failed: {exc}",
               file=sys.stderr)
+        
+    # Validate params AFTER seeding (otherwise validate_params may
+    # read an empty table on first run)
+    errors, critical = validate_params()
+    if critical:
+        for e in critical:
+            print(f"[ai-checker] ERROR: {e}", file=sys.stderr)
+        sys.exit("Parameter validation failed")
+    if errors:
+        for e in errors:
+            print(f"[ai-checker] warn: {e}", file=sys.stderr)
 
 def all_statuses() -> list[dict]:
     """Справочник в порядке вставки — для status.py."""
@@ -844,6 +855,75 @@ def set_param(module: str, name: str, value) -> bool:
             return cur.rowcount > 0
     except Exception:  # noqa: BLE001
         return False
+
+def validate_params() -> list[str]:
+    """Validate parameter constraints. Returns list of errors (empty = ok).
+    
+    Critical errors (tag_context_chars > max_chars) should abort the run;
+    others are warnings. Caller decides severity.
+    """
+    errors: list[str] = []
+    critical: list[str] = []
+    
+    try:
+        with connect() as con:
+            rows = con.execute(
+                "SELECT module, name, value FROM params").fetchall()
+            params = {(r["module"], r["name"]): r["value"] for r in rows}
+    except Exception as exc:  # noqa: BLE001
+        return [f"cannot read params: {exc}"]
+    
+    def get(module: str, name: str, cast=str):
+        v = params.get((module, name))
+        if v is None:
+            return None
+        try:
+            return cast(v)
+        except (ValueError, TypeError):
+            return None
+    
+    # ── Critical: tags must fit in chunk budget ──
+    tag = get("check", "tag_context_chars", int)
+    max_c = get("check", "max_chars", int)
+    if tag is not None and max_c is not None and tag > max_c:
+        critical.append(
+            f"check.tag_context_chars ({tag:,}) > check.max_chars ({max_c:,}); "
+            f"tags will not fit in chunks. "
+            f"Fix: raise check.max_chars or lower check.tag_context_chars")
+    
+    # ── Warnings ──
+    # carry_similarity ∈ [0, 1]
+    sim = get("check", "carry_similarity", float)
+    if sim is not None and not (0.0 <= sim <= 1.0):
+        errors.append(f"check.carry_similarity ({sim}) must be in [0, 1]")
+    
+    # url starts with http:// or https://
+    url = get("llm", "url", str)
+    if url and not (url.startswith("http://") or url.startswith("https://")):
+        errors.append(f"llm.url ({url!r}) must start with http:// or https://")
+    
+    # temperature ∈ [0, 2]
+    for module in ("check", "fix"):
+        temp = get(module, "temperature", float)
+        if temp is not None and not (0.0 <= temp <= 2.0):
+            errors.append(f"{module}.temperature ({temp}) should be in [0, 2]")
+    
+    # max_source_chars > 0
+    src = get("fix", "max_source_chars", int)
+    if src is not None and src <= 0:
+        errors.append(f"fix.max_source_chars ({src}) must be > 0")
+    
+    # max_diff_lines > 0
+    diff = get("fix", "max_diff_lines", int)
+    if diff is not None and diff <= 0:
+        errors.append(f"fix.max_diff_lines ({diff}) must be > 0")
+    
+    # default_limit >= 0
+    lim = get("fix", "default_limit", int)
+    if lim is not None and lim < 0:
+        errors.append(f"fix.default_limit ({lim}) must be >= 0")
+    
+    return critical + errors, critical
 
 def all_params() -> list[dict]:
     with connect() as con:
