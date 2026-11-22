@@ -272,25 +272,42 @@ def _is_paired(a: Path, b: Path) -> bool:
                     {".cc", ".hpp"}, {".cxx", ".hpp"})
 
 
-def validate_edits(edits: list[dict], project: Path,
-                   max_diff_lines: int = MAX_DIFF_LINES,
-                   loose: bool = False
-                   ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
-    """Validate proposed edits.
-
-    Applicability (ALWAYS enforced): editable path inside the project,
-    file exists, no duplicate entries, old_snippet occurs exactly
-    `count` times, old != new. These guarantee the patch applies.
-
-    Locality (strict mode only): <=2 paired files, no signature
-    change, weighted diff <= max_diff_lines. In propose mode
-    (loose=True) these are LIFTED — a human reviews the branch
-    before merging, so a non-local patch is a valid proposal.
-    """
-
+def validate_edits_propose(edits: list[dict], project: Path
+                           ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
+    """Propose mode: NO locality/applicability rails. The human reviews
+    the branch before merge, so keep the model's edits as-is. We only
+    resolve paths and require the file to exist and old/new non-empty —
+    the bare minimum for _apply_edit to run. count, old!=new, signature,
+    pairing, diff-size, duplicate-file are NOT checked here."""
     if not edits:
         return None, "no edits"
-    if not loose and len(edits) > 2:
+    parsed: list[tuple[Path, dict]] = []
+    for e in edits:
+        rel = e.get("file", "")
+        old = e.get("old_snippet", "")
+        new = e.get("new_snippet", "")
+        if not rel or not old or not new:
+            return None, "missing file/old_snippet/new_snippet"
+        p = (ROOT / rel).resolve()
+        try:
+            p.relative_to(project.resolve())
+        except ValueError:
+            return None, f"outside project: {rel}"
+        if not p.is_file():
+            return None, f"file not found: {rel}"
+        parsed.append((p, e))
+    return parsed, None
+
+def validate_edits(edits: list[dict], project: Path,
+                   max_diff_lines: int = MAX_DIFF_LINES
+                   ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
+    """Strict validation for the automatic fix path: 1 or 2 edits,
+    two only as a paired .c/.h. Propose mode does NOT use this —
+    it has validate_edits_propose() with no locality rails.
+    """
+    if not edits:
+        return None, "no edits"
+    if len(edits) > 2:
         return None, f"too many files ({len(edits)}, max 2)"
     parsed: list[tuple[Path, dict]] = []
     seen: set[Path] = set()
@@ -325,30 +342,27 @@ def validate_edits(edits: list[dict], project: Path,
                           f"expected {expected}")
         if old == new:
             return None, f"{rel}: old_snippet == new_snippet"
-        if not loose:
-            old_h = {h for line in old.splitlines()
-                     if (h := extract_function_header(line))}
-            new_h = {h for line in new.splitlines()
-                     if (h := extract_function_header(line))}
-            added = new_h - old_h
-            if added:
-                return None, f"{rel}: adds function {sorted(added)}"
-            removed = old_h - new_h
-            if removed:
-                return None, (f"{rel}: changes/removes function "
-                              f"signature {sorted(removed)}")
+        old_h = {h for line in old.splitlines()
+                 if (h := extract_function_header(line))}
+        new_h = {h for line in new.splitlines()
+                 if (h := extract_function_header(line))}
+        added = new_h - old_h
+        if added:
+            return None, f"{rel}: adds function {sorted(added)}"
+        removed = old_h - new_h
+        if removed:
+            return None, (f"{rel}: changes/removes function signature "
+                          f"{sorted(removed)}")
         parsed.append((p, e))
-    if not loose:
-        if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
-            return None, ("two files must be a paired X.c + X.h "
-                          "(same dir, same stem)")
-        weighted = 0
-        for _p, e in parsed:
-            a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
-            weighted += (a + r) * int(e.get("count", 1))
-        if weighted > max_diff_lines:
-            return None, (f"diff too large ({weighted} weighted lines "
-                          f"> {max_diff_lines})")
+    if len(parsed) == 2 and not _is_paired(parsed[0][0], parsed[1][0]):
+        return None, "two files must be a paired X.c + X.h (same dir, same stem)"
+    weighted = 0
+    for _p, e in parsed:
+        a, r = diff_line_counts(e["old_snippet"], e["new_snippet"])
+        weighted += (a + r) * int(e.get("count", 1))
+    if weighted > max_diff_lines:
+        return None, (f"diff too large ({weighted} weighted lines "
+                      f"> {max_diff_lines})")
     return parsed, None
 
 
@@ -536,8 +550,8 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                 return None
     parsed, err = validate_edits(pending["edits"], 
                                  project,
-                                 max_diff_lines=ctx["max_diff_lines"],
-                                 loose=ctx.get("propose", False))
+                                 max_diff_lines=ctx["max_diff_lines"])
+    
     if err:
         print(f"  STALE proposal ({err})")
         print(f"  rerun 'make ai-fix-log AI_FIX_REFETCH=1 "
@@ -617,10 +631,16 @@ def _classify_with_llm(finding, full_key, project, report_path, files,
     if not raw_edits:
         single = verdict.get("edit")
         raw_edits = [single] if single else []
+
+    if ctx.get("propose"):
+        parsed, verr = validate_edits_propose(raw_edits, project)
+    else:
+        parsed, verr = validate_edits(raw_edits, project,
+                                      max_diff_lines=ctx["max_diff_lines"])
+        
     parsed, verr = validate_edits(raw_edits, 
                                   project,
-                                  max_diff_lines=ctx["max_diff_lines"],
-                                  loose=ctx.get("propose", False))
+                                  max_diff_lines=ctx["max_diff_lines"])
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
         skipped.append(f"{full_key}: {verr}")
