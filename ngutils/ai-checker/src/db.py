@@ -899,7 +899,7 @@ def validate_params() -> list[str]:
     
     # url starts with http:// or https://
     url = get("llm", "url", str)
-    if url and not (url.startswith("http://") or url.startswith("https://")):
+    if url and not url.startswith(("http://", "https://")):
         errors.append(f"llm.url ({url!r}) must start with http:// or https://")
     
     # temperature ∈ [0, 2]
