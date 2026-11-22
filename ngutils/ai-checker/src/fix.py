@@ -472,6 +472,11 @@ def _db_set(report_path: Path, finding: dict, status: str, *,
         cur = db.get_status(report_path, finding) or db.STATUS_ADDED
     except Exception:  # noqa: BLE001
         cur = db.STATUS_ADDED
+
+    if cur == status:
+        # state of machine remains the same
+        return
+
     if not db_status.can_transition(cur, actor, status):
         print(f"  warn: illegal transition {cur} -[{actor}]-> {status} "
               f"({db.finding_key_str(finding)}); write skipped",
