@@ -37,6 +37,8 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("fix",   "default_limit"):     50,
     ("fix",   "max_diff_lines"):    20,
     ("fix",   "temperature"):       0.0,
+    ("fix",   "verify_targets"):    "test-{project},analyze-{project}",
+    ("fix",   "verify_on_merge"):   True,
     ("llm",   "url"):               "http://127.0.0.1:1234",
     ("llm",   "model_name"):        "",
 }

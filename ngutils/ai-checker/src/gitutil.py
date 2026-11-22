@@ -335,6 +335,22 @@ def merged_branches(prefix: str = "ai-checker-") -> list[str]:
             merged.append(b)
     return merged
 
+def make_verifier(project: str, targets: list[str]):
+    """Return verify(wt) running `make <target>` inside the worktree."""
+    def verify(wt: Path) -> None:
+        for tpl in targets:
+            target = tpl.format(project=project)
+            print(f"  VERIFY   make {target} (worktree)", file=sys.stderr)
+            r = subprocess.run(["make", target],
+                                check=False,
+                                cwd=wt, 
+                                text=True,
+                                capture_output=True)
+            if r.returncode != 0:
+                tail = "\n".join((r.stdout + r.stderr).splitlines()[-25:])
+                raise RuntimeError(f"{target} failed:\n{tail}")
+    return verify
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Delete ai-checker fix branches")
