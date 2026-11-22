@@ -19,6 +19,11 @@ _WS = _ws.resolve()
 ROOT = _WS.root_path if _WS else Path.cwd()
 OUT_ROOT = Path(os.environ.get("AI_CHECKER_OUT") or (AI_ROOT / "reports"))
 LOCK_PATH = OUT_ROOT / ".lock"
+FIX_DIR = OUT_ROOT / "fixes"
+
+# ── Finding parsing ──────────────────────────────────────────────────
+PART_HDR_RE = re.compile(r"Part[ \t]+(\d+)/\d+")
+TABLE_LOCAL_BASE = 1000
 
 # ── Extensions ───────────────────────────────────────────────────────
 SRC_EXTS = {".h", ".hpp", ".c", ".cc", ".cpp", ".cxx"}
@@ -86,6 +91,7 @@ def allowed_top_dirs() -> frozenset[str]:
 
     return frozenset(p.name for p in discover_projects())
 
+
 if _WS is None:
     print(f"[ai-checker] warn: no *{_ws.SUFFIX} found from {Path.cwd()}; "
           f"project commands will fail (DB-only commands still work)",
@@ -98,20 +104,6 @@ def discover_projects() -> list[Path]:
                  f"in the repo you review, or set AI_CHECKER_WORKSPACE.")
     return _WS.project_paths()
 
-def discover_projects() -> list[Path]:
-    names = _ws.project_names()
-    if names is not None:
-        return [ROOT / n for n in names
-                if (ROOT / n).is_dir()
-                and ((ROOT / n / "src").is_dir()
-                     or (ROOT / n / "include").is_dir())]
-    out: list[Path] = []                           # legacy auto-discover
-    for p in sorted(ROOT.iterdir()):
-        if not p.is_dir() or p.name in EXCLUDE_DIRS or p.name.startswith("."):
-            continue
-        if (p / "include").is_dir() or (p / "src").is_dir():
-            out.append(p)
-    return out
 
 def rotate_reports(project_dir: Path) -> list[Path]:
     """Move all *.md except the newest into <project_dir>/hist/.
@@ -140,6 +132,7 @@ def rotate_reports(project_dir: Path) -> list[Path]:
         p.rename(target)
         moved.append(target)
     return moved
+
 
 # ── Lock (flock-based; kernel releases on exit incl. SIGKILL) ───────
 def acquire_lock():
@@ -188,6 +181,7 @@ def release_lock(fd) -> None:
 def lang_of(f: Path) -> str:
     return "c" if f.suffix.lower() in (".c", ".h") else "cpp"
 
+
 def _parse_table_rows(body: str) -> list[tuple[str, str]]:
     """Return (id, text) for each data row of the markdown table.
 
@@ -228,9 +222,6 @@ def _parse_table_rows(body: str) -> list[tuple[str, str]]:
         out.append((fid, text))
     return out
 
-# ── Finding parsing ──────────────────────────────────────────────────
-PART_HDR_RE = re.compile(r"Part[ \t]+(\d+)/\d+")
-TABLE_LOCAL_BASE = 1000
 
 def parse_findings(report_text: str) -> list[dict]:
     """Split report into findings with guaranteed-unique ids.
