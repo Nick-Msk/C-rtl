@@ -532,6 +532,29 @@ def _resolve_edits(finding: dict, full_key: str, project: Path,
     return _classify_with_llm(finding, full_key, project, report_path, files,
                                args, model, ctx, needs_review, skipped)
 
+def _resolve_cached_edits(edits: list[dict], project: Path
+                          ) -> tuple[list[tuple[Path, dict]] | None, str | None]:
+    """Resolve cached proposal edits to paths. NO rule validation —
+    the patch was already validated when proposed (strict rules for
+    classify, no rails for propose). Commit trusts the status; we only
+    resolve paths and check the file exists so _apply_edit can read it.
+    """
+
+    parsed: list[tuple[Path, dict]] = []
+    for e in edits:
+        rel = e.get("file", "")
+        if not rel:
+            return None, "missing file"
+        p = (ROOT / rel).resolve()
+        try:
+            p.relative_to(project.resolve())
+        except ValueError:
+            return None, f"outside project: {rel}"
+        if not p.is_file():
+            return None, f"file not found: {rel}"
+        parsed.append((p, e))
+    return parsed, None
+
 def _load_pending(report_path: Path, finding: dict) -> dict | None:
     try:
         return db.load_proposal(report_path, finding)
@@ -553,9 +576,8 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                                      actor=actor, reason=reason)
                 return None
-    parsed, err = validate_edits(pending["edits"], 
-                                 project,
-                                 max_diff_lines=ctx["max_diff_lines"])
+    parsed, err = _resolve_cached_edits(pending["edits"], 
+                                        project)
     
     if err:
         print(f"  STALE proposal ({err})")
@@ -564,7 +586,6 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
         skipped.append(f"{full_key}: stale: {err}")
         _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                              actor=actor, reason=f"stale: {err}")
-        return None
         return None
 
     explanation = "; ".join(
