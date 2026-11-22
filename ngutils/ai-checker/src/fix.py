@@ -643,9 +643,6 @@ def _classify_with_llm(finding, full_key, project, report_path, files,
         parsed, verr = validate_edits(raw_edits, project,
                                       max_diff_lines=ctx["max_diff_lines"])
         
-    parsed, verr = validate_edits(raw_edits, 
-                                  project,
-                                  max_diff_lines=ctx["max_diff_lines"])
     if verr:
         print(f"  SKIP (invalid edit): {verr}")
         skipped.append(f"{full_key}: {verr}")
