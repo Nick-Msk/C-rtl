@@ -306,7 +306,7 @@ Test(checker, inv_fprintf_int_varargs_format) {
     remove(path);
 
     cr_assert_gt(n, 0);
-    cr_assert_str_contains(buf, "x=-3, limit=10");
+    cr_assert_not_null(strstr(buf, "x=-3, limit=10"));
     cr_assert(!strstr(buf, "x=%d"), "format specifiers must be consumed");
 }
 
