@@ -233,6 +233,7 @@ skip_spaces(const char *str) {
  *   - trailing garbage after the number,
  *   - overflow / underflow.
  * On failure the output is untouched.
+ * Leading whitespace (as defined by isspace) is skipped before parsing.
  * ------------------------------------------------------------------------- */
 
 bool try_parse_int   (const char *restrict str, int          *restrict res);
