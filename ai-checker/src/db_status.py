@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-
 import db
+import gitutil
 
 ACT_CLASSIFY = "classify"
 ACT_COMMIT   = "commit"
@@ -163,7 +163,7 @@ def decide(con, runid: int, chunk: int, local: int,
     if actor is None:
         return False, f"no actor for target {new_status!r}"
     row = con.execute(
-        "SELECT status FROM issue "
+        "SELECT status, fix_branch FROM issue "
         "WHERE runid=? AND chunk_id=? AND local_id=?",
         (runid, chunk, local)).fetchone()
     if row is None:
@@ -171,9 +171,15 @@ def decide(con, runid: int, chunk: int, local: int,
     cur = row["status"]
     if not can_transition_con(con, cur, actor, new_status):
         return False, f"illegal transition {cur} -[{actor}]-> {new_status}"
+
+    br = row["fix_branch"]
+    if cur == db.STATUS_FIXED and br:
+        gitutil.delete_branch(br, force=True)
+
     con.execute(
         "UPDATE issue SET status=?, dt=?, "
-        "  reason=COALESCE(NULLIF(?,''), reason) "
+        "  reason=COALESCE(NULLIF(?,''), reason), "
+        "  fix_branch=NULL, fix_commit=NULL, fix_subject=NULL "
         "WHERE runid=? AND chunk_id=? AND local_id=?",
         (new_status, db._now_iso(), reason, runid, chunk, local))
     return True, f"{cur} -> {new_status}"

@@ -7,7 +7,7 @@ import sys
 
 import db
 import gitutil
-from common import OUT_ROOT
+from common import OUT_ROOT, rel_display
 
 
 def cmd_summary(as_json: bool) -> int:
@@ -75,7 +75,7 @@ def cmd_list(project: str | None, status: str | None,
         return 0
 
     names = [r["fix_branch"] for r in rows
-             if r.get("fix_branch") and r["status"] != "merged"]
+             if r.get("fix_branch") and r["status"] == db.STATUS_FIXED]
     alive = gitutil.branches_exist(names) if names else set()
 
     for r in rows:
@@ -85,9 +85,7 @@ def cmd_list(project: str | None, status: str | None,
             st = f"{st}({sha})"
         print(f"{r['project']:<6} {r['key']:<14} "
               f"{r['section']:<10} {st:<18} {r['title'][:60]}")
-        if st != r["status"]:
-            continue      # fixed/merged: sha already fixed/merged
-        if r.get("fix_branch"):
+        if r["status"] == db.STATUS_FIXED and r.get("fix_branch"):
             if r["fix_branch"] in alive:
                 print(f"      {r['fix_branch']}  {r['fix_commit']}")
             else:
@@ -97,6 +95,7 @@ def cmd_list(project: str | None, status: str | None,
         if r.get("carried_key"):
             print(f"      ← carried from {r['carried_key']} "
                   f"(score {r['carry_score']:.2f})")
+
     return 0
 
 def cmd_runs(limit: int, as_json: bool) -> int:
@@ -147,7 +146,7 @@ def main() -> int:
     if args.statuses:
         return cmd_statuses(args.json)
     if not db.has_any_report():
-        rel = db.DB_PATH.relative_to(db.ROOT)
+        rel = rel_display(db.DB_PATH)
         print(f"No data in {rel}.", file=sys.stderr)
         print("Run 'make ai-check' (or 'make ai-check-<project>') first.",
               file=sys.stderr)
