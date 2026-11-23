@@ -66,8 +66,8 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
     if (msg && msg[0])
         logsimple("%s", msg);   // FIXME: use logsimple_ap() so formatted varargs reach the log, not just the raw format string.
 
-	if (cnt < 0)
-		cnt = 0;
+    if (cnt < 0)
+        cnt = 0;
 	return cnt;
 }
 
