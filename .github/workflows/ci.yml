@@ -71,21 +71,6 @@ jobs:
           path: ngutils/*/logs/log_*.log
           if-no-files-found: ignore
 
-  lint-ai-checker:
-    name: Lint ai-checker
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: ruff
-        working-directory: ngutils/ai-checker
-        run: uv run ruff check check.py
-
   sanitize:
     name: Sanitizers (${{ matrix.sanitize }})
     runs-on: ubuntu-latest
