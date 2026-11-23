@@ -31,6 +31,18 @@ def git_in(cwd: Path, *args: str, input: str | None = None,
     return subprocess.run(["git", *args], cwd=cwd, text=True, input=input,
                           capture_output=True, check=check)
 
+def repo_root() -> Path:
+    r = git("rev-parse", "--show-toplevel", check=False)
+    if r.returncode != 0:
+        raise RuntimeError("not a git repository")
+    return Path(r.stdout.strip()).resolve()
+
+
+def work_prefix() -> Path:
+    """ROOT relative to the git toplevel. Worktrees mirror the TOPLEVEL,
+    not ROOT, so every ROOT-relative path needs this prefix inside a
+    worktree."""
+    return ROOT.resolve().relative_to(repo_root())
 
 def head_sha() -> str:
     r = git("rev-parse", "HEAD", check=False)
@@ -220,15 +232,21 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
     if r.returncode != 0:
         raise RuntimeError(f"checkout -b failed: {r.stderr.strip()}")
     ok = False
+    prefix = work_prefix()
     try:
-        rels: list[str] = []
+        targets: list[Path] = []
         for path, old, new in edits:
             rel = str(path.relative_to(ROOT))
-            rels.append(rel)
-            if not _apply_edit(wt / rel, old, new):
+            target = wt / prefix / rel
+            targets.append(target)
+            if not target.is_file():
+                raise RuntimeError(f"file missing in worktree: {prefix / rel}")
+            if not _apply_edit(target, old, new):
                 raise RuntimeError(
-                    f"apply_edit failed on {rel} (snippet not found at {base_sha[:7]})")
-        r = git_in(wt, "add", "--", *rels, check=False)
+                    f"apply_edit failed on {prefix / rel} "
+                    f"(snippet not found at {base_sha[:7]})")
+        r = git_in(wt, "add", "--", *[str(t) for t in targets], check=False)
+        
         if r.returncode != 0:
             raise RuntimeError(f"git add failed: {r.stderr.strip()}")
         r = git_in(wt, "commit", "-F", "-", input=msg, check=False)
