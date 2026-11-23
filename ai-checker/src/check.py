@@ -342,7 +342,7 @@ def format_usage_md(u: dict) -> str:
     return (f"**Token usage:** {p:,} prompt / {c:,} completion / "
             f"{t:,} total  ({u['requests']} request(s))")
 
-
+ 
 def _cleanup_old_branches(runid: int) -> None:
     """After a successful check, close the previous period and clean
     up branches left over from older reports of the same projects.
@@ -369,6 +369,33 @@ def _cleanup_old_branches(runid: int) -> None:
         print(f"[ai-checker] warn: close_period failed: {exc}",
               file=sys.stderr)
         return
+
+    try:
+        n_stale, branches = db.close_period(runid)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: close_period failed: {exc}",
+              file=sys.stderr)
+        return
+
+    if n_stale:
+        print(f"[ai-checker] closed {n_stale} stale issue(s) "
+              f"from previous run(s)", file=sys.stderr)
+
+    # ── 1. Синхронно чистим ВСЕ старые baseline (ветки + папки mergearea/) ──
+    # Делаем это ДО `if not branches: return`, чтобы отработало всегда,
+    # и сканируем git/mergearea, чтобы захватить даже упавшие прогоны без записи в БД.
+    try:
+        checked_projects = {b["project"] for b in db.all_baselines()
+                            if b["run_id"] == runid}
+        for proj in checked_projects:
+            gitutil.cleanup_project_baselines(proj, keep_runid=runid)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: baseline cleanup failed: {exc}",
+              file=sys.stderr)
+
+    if not branches:
+        return
+
 
     if n_stale:
         print(f"[ai-checker] closed {n_stale} stale issue(s) "
