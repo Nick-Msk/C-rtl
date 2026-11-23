@@ -1104,8 +1104,8 @@ def _process_project(label: str, report_path: Path, project: Path,
         base_sha = info.get("base_sha") or head_sha()
 
     rid = info.get("run_id") or ctx["check_runid"]
-    baseline, wt = ensure_baseline_branch(project.name, rid, base_sha, reset=refresh)
-    ctx["base_sha"], ctx["base_branch"], ctx["wt"] = base_sha, baseline, wt
+    baseline = ensure_baseline_branch(project.name, rid, base_sha, reset=refresh)
+    ctx["base_sha"], ctx["base_branch"], ctx["check_runid"] = base_sha, baseline, rid
 
     for idx, finding in enumerate(findings, 1):
         t_finding = time.perf_counter()

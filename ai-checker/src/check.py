@@ -625,9 +625,9 @@ def _process_project(name: str, files: list[Path], args,
                          carry_hint=not args.no_carry)
 
     base_sha = gitutil.head_sha()
-    baseline, wt = gitutil.ensure_baseline_branch(name, runid, base_sha)
+    baseline = gitutil.ensure_baseline_branch(name, runid, base_sha)
     print(f"[ai-checker] {name}: baseline {baseline} @ {base_sha[:7]} "
-            f"-> {wt}", file=sys.stderr)
+            , file=sys.stderr)
     ctx["baseline_branch"] = baseline
 
     gitutil.cleanup_project_baselines(name, keep_runid=runid)
