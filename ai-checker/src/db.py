@@ -944,18 +944,22 @@ def all_modules() -> list[dict]:
             "SELECT name, descr FROM modules ORDER BY name").fetchall()
     return [dict(r) for r in rows]
 
-def summary_by_project_status() -> dict[str, dict[str, int]]:
-    """Returns {project: {status: count}} across all ingested issues."""
+def summary_by_project_status(latest_only: bool = True) -> dict[str, dict[str, int]]:
+    """Returns {project: {status: count}} for the latest report per project."""
+    where = ("WHERE r.id = (SELECT MAX(id) FROM report WHERE project = r.project) "
+             if latest_only else "")
     with connect() as con:
         rows = con.execute(
             "SELECT r.project, i.status, COUNT(*) AS n "
             "FROM issue i JOIN report r ON r.id = i.report_id "
+            f"{where}"
             "GROUP BY r.project, i.status "
             "ORDER BY r.project, i.status").fetchall()
     out: dict[str, dict[str, int]] = {}
     for r in rows:
         out.setdefault(r["project"], {})[r["status"]] = r["n"]
     return out
+
 
 def project_aggregate_status(counts: dict[str, int]) -> str:
     """Single status for a project based on its issue counts.
