@@ -289,7 +289,7 @@ asan_leak:
 
 # --- AI (delegated to ai-checker/ai-checker.mk ) ---
 export AI_CHECKER_WORKSPACE := $(CURDIR)/ai-checker.workspace.py
-include ../ai-checker/ai-checker.mk
+-include ../ai-checker/ai-checker.mk
 
 AI_PROJECTS := $(PROJECTS)
 
