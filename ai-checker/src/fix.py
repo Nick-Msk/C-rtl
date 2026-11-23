@@ -7,7 +7,6 @@ FIX on a dedicated branch ai-checker-<label>-fix<N>.
 
 Safety rails:
   - dry-run by default; --apply to actually write
-  - requires a clean git working tree (no untracked/modified files)
   - edits only C/C++ sources/headers and tests
   - refuses fixes that would ripple: signature change, new function,
     struct/union/enum layout change, new #include, edits spanning
