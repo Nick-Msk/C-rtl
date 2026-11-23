@@ -52,15 +52,24 @@ def head_sha() -> str:
     return r.stdout.strip()
 
 
-def ensure_baseline(project: str, runid: int, sha: str) -> tuple[str, Path]:
+def ensure_baseline(project: str, runid: int, sha: str,
+                    reset: bool = False) -> tuple[str, Path]:
     """Pin the reviewed state: branch at `sha` + worktree. Idempotent and
     self-healing: reuses the branch, re-adds a missing worktree.
     Called by ai-check (sha=HEAD) and lazily by ai-fix for adopted reports
     (sha=report.base_sha)."""
     branch = baseline_branch_name(project, runid)
     path = mergearea_path(project, runid)
-    if not branch_exists(branch):
-        r = git("branch", branch, sha, check=False)
+    wt_exists = (path / ".git").exists()
+
+    if wt_exists and reset:
+        r = git_in(path, "checkout", "-f", "-B", branch, sha, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(f"cannot reset baseline worktree: {r.stderr.strip()}")
+        return branch, path
+
+    if reset or not branch_exists(branch):
+        r = git("branch", "-f", branch, sha, check=False)
         if r.returncode != 0:
             raise RuntimeError(f"cannot pin baseline: {r.stderr.strip()}")
     if not (path / ".git").exists():
@@ -71,6 +80,8 @@ def ensure_baseline(project: str, runid: int, sha: str) -> tuple[str, Path]:
         r = git("worktree", "add", str(path), branch, check=False)
         if r.returncode != 0:
             raise RuntimeError(f"worktree add failed: {r.stderr.strip()}")
+    elif reset:
+        git_in(path, "checkout", "-f", branch, check=False)
     return branch, path
 
 

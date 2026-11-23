@@ -1096,9 +1096,16 @@ def _process_project(label: str, report_path: Path, project: Path,
     ctx["check_runid"] = report_runid or 0
 
     info = db.report_base(report_path) or {}
-    base_sha = info.get("base_sha") or head_sha()
+    refresh = bool(getattr(args, "refetch", False)
+                   or getattr(args, "propose", False))
+    if refresh:
+        base_sha = head_sha()
+        db.update_report_base(report_path, base_sha)
+    else:
+        base_sha = info.get("base_sha") or head_sha()
+
     rid = info.get("run_id") or ctx["check_runid"]
-    baseline, wt = ensure_baseline(project.name, rid, base_sha)
+    baseline, wt = ensure_baseline(project.name, rid, base_sha, reset=refresh)
     ctx["base_sha"], ctx["base_branch"], ctx["wt"] = base_sha, baseline, wt
 
     for idx, finding in enumerate(findings, 1):

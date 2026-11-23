@@ -1227,3 +1227,17 @@ def all_baselines() -> list[dict]:
             "WHERE baseline_branch IS NOT NULL AND run_id IS NOT NULL"
         ).fetchall()
     return [dict(r) for r in rows]
+
+def update_report_base(report_path, sha: str) -> None:
+    """Advance report.base_sha to `sha` (used on --refetch / --propose)."""
+    rel = _rel(report_path)
+    now = _now_iso()
+    _, branch = current_commit()
+    with connect() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO base_commit "
+            "(sha, short_sha, branch, first_dt) VALUES (?, ?, ?, ?)",
+            (sha, sha[:7], branch or "HEAD", now))
+        con.execute(
+            "UPDATE report SET base_sha = ? WHERE path = ?",
+            (sha, rel))
