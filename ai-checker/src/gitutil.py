@@ -387,6 +387,39 @@ def make_verifier(project: str, targets: list[str]):
                 raise RuntimeError(f"{target} failed:\n{tail}")
     return verify
 
+def cleanup_project_baselines(project: str, keep_runid: int) -> None:
+    """Remove all baseline worktrees and branches for `project` except `keep_runid`."""
+    prefix = f"ai-baseline/{project}-c"
+    r = git("for-each-ref", "--format=%(refname:short)",
+            f"refs/heads/{prefix}*", check=False)
+    if r.returncode == 0:
+        for br in r.stdout.splitlines():
+            br = br.strip()
+            if not br.startswith(prefix):
+                continue
+            tail = br[len(prefix):]
+            if tail.isdigit() and int(tail) == keep_runid:
+                continue
+            rid = int(tail) if tail.isdigit() else None
+            if rid is not None:
+                remove_baseline(project, rid)
+            else:
+                git("branch", "-D", br, check=False)
+
+    # На случай осиротевших папок в mergearea/<project>-<N> без ветки
+    if MERGE_AREA.is_dir():
+        dir_prefix = f"{project}-"
+        for p in MERGE_AREA.iterdir():
+            if not p.is_dir() or not p.name.startswith(dir_prefix):
+                continue
+            tail = p.name[len(dir_prefix):]
+            if tail.isdigit() and int(tail) != keep_runid:
+                git("worktree", "remove", "--force", str(p), check=False)
+                if p.exists():
+                    shutil.rmtree(p, ignore_errors=True)
+        git("worktree", "prune", check=False)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Delete ai-checker fix branches")

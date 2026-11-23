@@ -601,6 +601,9 @@ def _process_project(name: str, files: list[Path], args,
     baseline, wt = gitutil.ensure_baseline(name, runid, base_sha)
     print(f"[ai-checker] {name}: baseline {baseline} @ {base_sha[:7]} "
             f"-> {wt}", file=sys.stderr)
+
+    gitutil.cleanup_project_baselines(name, keep_runid=runid)
+    
     ctx["baseline_branch"] = baseline
 
     if args.no_tests and not args.file:
