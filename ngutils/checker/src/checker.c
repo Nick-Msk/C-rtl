@@ -53,22 +53,10 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
     }
     logsimple("ERRNUM_INVARIANT_VIOLATION: [%s] is violated", expr);
 
-    // FIXME: replace vfprintf path with err_put() once the error-logging API is finalised.
-    if (msg && msg[0]) {
-        va_list  ap;
-        va_start(ap, msg);
-        if (out) {
-            cnt += vfprintf(out, msg, ap);
-            cnt += fprintf(out, "\n");
-        }
-        va_end(ap);
-    }
-    if (msg && msg[0])
+    if (msg && *msg)
         logsimple("%s", msg);   // FIXME: use logsimple_ap() so formatted varargs reach the log, not just the raw format string.
 
-    if (cnt < 0)
-        cnt = 0;
-	return cnt;
+	return cnt >= 0? cnt: 0;
 }
 
 /* -------------------------------------------------------------------------
