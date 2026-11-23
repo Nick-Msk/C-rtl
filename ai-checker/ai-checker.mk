@@ -125,6 +125,10 @@ ai-arch:  ## pack reports into ai-checker-reports.tar.zst
 ai-mergearea-clean:  ## remove baselines with no pending work
 	@$(AI_RUN) src/gitutil.py --clean-baselines
 
+install-completion:  ## install shell completion (auto-detects zsh/bash)
+	$(if $(SHELL_KIND),--shell=$(SHELL_KIND),)
+	@bash scripts/install-completion.sh
+
 .PHONY: ai-help _ai_targets
 
 ai-help:  ## full AI help (knobs, examples, env vars)

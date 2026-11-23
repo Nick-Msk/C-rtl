@@ -1,5 +1,38 @@
 #compdef make
-local -a targets
-targets=(${(f)"$(make _targets 2>/dev/null)"})
-_describe 'target' targets
+# Zsh completion for ngutils/ai-checker.
+# Requires AI_CHECKER_DIR and AI_DISPATCHER_DIR (set by install-completion.sh).
+
+_ai_fixlist_candidates() {
+    local project="${1:-}"
+    (cd "${AI_CHECKER_DIR:-.}" 2>/dev/null && \
+     uv run src/fixlist_candidates.py "$project" 2>/dev/null)
+}
+
+_ngutils_make() {
+    local cur="${words[CURRENT]}"
+
+    # FIXLIST=... -> eligible finding keys
+    if [[ "$cur" == FIXLIST=* ]]; then
+        local project="" w
+        for w in "${words[@]}"; do
+            case "$w" in
+                ai-fix-propose-*) project="${w#ai-fix-propose-}" ;;
+                ai-fix-commit-*)  project="${w#ai-fix-commit-}"  ;;
+                ai-fix-*)          project="${w#ai-fix-}"          ;;
+            esac
+        done
+        local -a keys
+        keys=(${(f)"$(_ai_fixlist_candidates "$project")"})
+        compadd -P "FIXLIST=" -- ${(q)keys[@]}
+        return
+    fi
+
+    # default: make targets from the dispatcher
+    local -a targets
+    targets=(${(f)"$(cd "${AI_DISPATCHER_DIR:-.}" 2>/dev/null && \
+                     make _targets 2>/dev/null)"})
+    _describe 'target' targets
+}
+
+_ngutils_make "$@"
 
