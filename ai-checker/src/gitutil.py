@@ -372,13 +372,14 @@ def merged_branches(prefix: str = "ai-checker-") -> list[str]:
 
 def make_verifier(project: str, targets: list[str]):
     """Return verify(wt) running `make <target>` inside the worktree."""
+    sub = work_prefix()
     def verify(wt: Path) -> None:
         for tpl in targets:
             target = tpl.format(project=project)
             print(f"  VERIFY   make {target} (worktree)", file=sys.stderr)
             r = subprocess.run(["make", target],
                                 check=False,
-                                cwd=wt, 
+                                cwd=wt / sub, 
                                 text=True,
                                 capture_output=True)
             if r.returncode != 0:
