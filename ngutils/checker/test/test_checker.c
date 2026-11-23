@@ -177,7 +177,7 @@ Test(checker, checkraise_null_ptr_sigabrt, .signal = SIGABRT) {
     invfatal(ERR_NULL_INPUT, p != NULL, "p is NULL in test");
 }
 
-Test(checker, checkraise_out_of_range_sigint, .signal = SIGABRT) {
+Test(checker, checkraise_out_of_range_sigabrt, .signal = SIGABRT) {
     invfatal(ERR_OUT_OF_RANGE, 0, "value out of range");
 }
 
