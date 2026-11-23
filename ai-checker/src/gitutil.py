@@ -28,6 +28,7 @@ def mergearea_path(project: str, runid: int) -> Path:
 
 def git_in(cwd: Path, *args: str, input: str | None = None,
            check: bool = True) -> subprocess.CompletedProcess:
+    """git в конкретном воркдереве (не в ROOT)."""
     return subprocess.run(["git", *args], cwd=cwd, text=True, input=input,
                           capture_output=True, check=check)
 
@@ -246,7 +247,7 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
                     f"apply_edit failed on {prefix / rel} "
                     f"(snippet not found at {base_sha[:7]})")
         r = git_in(wt, "add", "--", *[str(t) for t in targets], check=False)
-        
+
         if r.returncode != 0:
             raise RuntimeError(f"git add failed: {r.stderr.strip()}")
         r = git_in(wt, "commit", "-F", "-", input=msg, check=False)
@@ -291,32 +292,48 @@ def is_ancestor(sha: str, into: str = "HEAD") -> bool:
     return git("merge-base", "--is-ancestor", sha, into,
                check=False).returncode == 0
 
-def merge_fix(branch: str, *, delete: bool = False) -> tuple[str, bool]:
-    """Merge one fix branch into the current base. (sha, did_merge).
 
-    did_merge=False means it was already an ancestor — caller should
-    just record the fact. HEAD never leaves base: merge does not switch
-    branches, and on conflict we abort and re-raise.
+def merge_fix(branch: str, *, wt: Path, delete: bool = False,
+              verify=None) -> tuple[str, bool]:
+    """Verify the merge result in an isolated worktree (tests run THERE,
+    never in the user's tree), then land it on base in ROOT via ff-only.
+
+    A dirty tree is fine unless it overlaps the files the merge touches.
     """
-    git_clean_check()                      # clean tree, not detached
     if not branch_exists(branch):
         raise RuntimeError(f"no such branch: {branch}")
-
-    head = git("rev-parse", "--short", "HEAD").stdout.strip()
+    target = head_sha()
     if is_merged(branch):
-        return head, False
+        return git("rev-parse", "--short", "HEAD").stdout.strip(), False
 
-    r = git("merge", "--no-ff", "-m",
-            f"Merge {branch}\n\nAI-Branch: {branch}", branch, check=False)
+    overlap = merge_touched_files(branch) & dirty_files()
+    if overlap:
+        raise RuntimeError("local changes overlap the merge — stash them: "
+                           + ", ".join(sorted(overlap)))
+
+    # Our worktree, detached at the user's HEAD (master is checked out in
+    # ROOT — git forbids the same branch in two worktrees).
+    r = git_in(wt, "checkout", "-f", "--detach", target, check=False)
     if r.returncode != 0:
-        git("merge", "--abort", check=False)
-        raise RuntimeError(
-            f"merge conflict: {(r.stderr or r.stdout).strip()}")
+        raise RuntimeError(f"cannot position worktree: {r.stderr.strip()}")
+    r = git_in(wt, "merge", "--no-ff", "-m",
+               f"Merge {branch}\n\nAI-Branch: {branch}", branch, check=False)
+    if r.returncode != 0:
+        git_in(wt, "merge", "--abort", check=False)
+        raise RuntimeError(f"merge conflict: {(r.stderr or r.stdout).strip()}")
+    if verify is not None:
+        verify(wt)                       # make test-<proj> && make analyze-<proj>
+    verified = git_in(wt, "rev-parse", "HEAD").stdout.strip()
 
+    # Land the EXACT verified commit. ff-only: if ROOT's HEAD moved
+    # meanwhile, this fails safely instead of creating an untested merge.
+    r = git("merge", "--ff-only", verified, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(f"cannot fast-forward base: {r.stderr.strip()}")
     sha = git("rev-parse", "--short", "HEAD").stdout.strip()
     if delete:
-        git("branch", "-d", branch, check=False)   # -d: refuses if unmerged
-    return sha, True 
+        git("branch", "-d", branch, check=False)
+    return sha, True
 
 def branches_exist(names: list[str]) -> set[str]:
     """Return the subset of `names` that exist as local branches.
