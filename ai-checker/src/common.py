@@ -104,6 +104,16 @@ def discover_projects() -> list[Path]:
                  f"in the repo you review, or set AI_CHECKER_WORKSPACE.")
     return _WS.project_paths()
 
+def rel_display(p: Path) -> str:
+    """Human-readable path relative to the workspace (AI_ROOT.parent),
+    which holds BOTH the tool and the reviewed repo. Tool artifacts
+    (reports, fix logs) live OUTSIDE ROOT, so relative_to(ROOT) raises."""
+    p = Path(p).resolve()
+    anchor = AI_ROOT.parent
+    try:
+        return str(p.relative_to(anchor))
+    except ValueError:
+        return str(p)
 
 def rotate_reports(project_dir: Path) -> list[Path]:
     """Move all *.md except the newest into <project_dir>/hist/.

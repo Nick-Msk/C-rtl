@@ -44,6 +44,7 @@ from common import (
     gather_context_files,
     iter_findings,
     parse_fixlist,
+    rel_display,
     release_lock,
     rotate_reports,
     types_digest_path,
@@ -893,7 +894,7 @@ def _write_fix_report(label: str, source_report: Path, started: datetime,
 
     mode = "apply" if args.apply else "dry-run"
     body: list[str] = [
-        f"**Source report:** `{source_report.relative_to(ROOT)}`\n",
+        f"**Source report:** `{rel_display(source_report)}`\n",
         f"**Mode:** {mode}\n",
         f"**FIXLIST:** `{args.only or '*'}`\n\n",
         "## Summary\n\n",
@@ -945,7 +946,7 @@ def _write_fix_report(label: str, source_report: Path, started: datetime,
     moved = rotate_reports(out_dir)
     if moved:
         print(f"[ai-fixer] rotated {len(moved)} older fix report(s) "
-              f"-> {out_dir.relative_to(ROOT)}/hist/", file=sys.stderr)
+              f"-> {rel_display(out_dir)}/hist/", file=sys.stderr)
     return out_path
 
 def _prepare_run(args) -> dict:
@@ -1125,7 +1126,7 @@ def _process_project(label: str, report_path: Path, project: Path,
         _print_applied_branches(applied, ctx["base_branch"], ctx["run_id"])
         log_path = _write_json_log(label, state["ts"], ctx, dt,
                                    applied, skipped, needs_review)
-        print(f"[ai-fixer] json log:    {log_path.relative_to(ROOT)}")
+        print(f"[ai-fixer] json log:    {rel_display(log_path)}")
         state["created_all"].append((label, ctx["run_id"], applied))
 
     if needs_review:
@@ -1143,7 +1144,7 @@ def _print_project_summary(label: str, ctx: dict,
           f"{volume_str(ctx['usage'])},  "
           f"{ctx['usage']['prompt_tokens']:,} in / "
           f"{ctx['usage']['completion_tokens']:,} out")
-    print(f"[ai-fixer] report: {report_out.relative_to(ROOT)}")
+    print(f"[ai-fixer] report: {rel_display(report_out)}")
 
 
 def _print_dry_run_hint(label: str, ctx: dict) -> None:
