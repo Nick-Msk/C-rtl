@@ -160,12 +160,14 @@ def decide(con, runid: int, chunk: int, local: int,
            new_status: str, reason: str = "") -> tuple[bool, str]:
     """Валидированный UPDATE по ключу на соединении вызывающего.
     Возвращает (ok, message). reason пустой -> не трогаем прежний."""
+    
     actor = DECIDE_ACTOR.get(new_status)
     if actor is None:
         return False, f"no actor for target {new_status!r}"
     row = con.execute(
-        "SELECT status, fix_branch FROM issue "
-        "WHERE runid=? AND chunk_id=? AND local_id=?",
+        "SELECT i.status, i.fix_branch, r.project "
+        "FROM issue i JOIN report r ON r.id = i.report_id "
+        "WHERE i.runid=? AND i.chunk_id=? AND i.local_id=?",
         (runid, chunk, local)).fetchone()
     if row is None:
         return False, "not found"
@@ -174,8 +176,11 @@ def decide(con, runid: int, chunk: int, local: int,
         return False, f"illegal transition {cur} -[{actor}]-> {new_status}"
 
     br = row["fix_branch"]
-    if cur == db.STATUS_FIXED and br:
-        gitutil.delete_branch(br, force=True)
+    if cur == db.STATUS_FIXED:
+        wt = gitutil.fix_worktree_path(row["project"], runid, chunk, local)
+        gitutil.remove_fix_worktree(wt)
+        if br:
+            gitutil.delete_branch(br, force=True)
 
     con.execute(
         "UPDATE issue SET status=?, dt=?, "

@@ -67,11 +67,15 @@ def run(args) -> int:
         if not gitutil.branch_exists(br):
             gitutil.git("branch", br, fix_sha, check=False)   # ярлык из sha
         try:
-            _, wt = gitutil.ensure_baseline(r["project"], r["runid"],
-                                                gitutil.head_sha())  # branch уже есть
+            # _, wt = gitutil.ensure_baseline(r["project"], r["runid"],
+            #                                     gitutil.head_sha())  # branch уже есть
+            wt = gitutil.ensure_fix_worktree(
+                r["project"], r["runid"], r["chunk_id"], r["local_id"],
+                br, base_sha=fix_sha)
             verify = (gitutil.make_verifier(r["project"], targets)
-                      if verify_on else None)
+                    if verify_on else None)
             sha, _ = gitutil.merge_fix(br, wt=wt, delete=not args.keep, verify=verify)
+
             
         except RuntimeError as exc:
             print(f"  CONFLICT {key}  {exc}", file=sys.stderr)

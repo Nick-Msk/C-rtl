@@ -50,7 +50,7 @@ from common import (
 )
 from gitutil import (
     commit_one_fix,
-    ensure_baseline,
+    ensure_baseline_branch,
     head_sha,
     make_fix_branch_name,
 )
@@ -812,11 +812,10 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
     subject_line = commit_msg.split("\n\n", 1)[0]
 
     try:
-        sha = commit_one_fix(ctx["base_sha"], 
-                             ctx["base_branch"], 
-                             branch,
-                             commit_edits, commit_msg,
-                             wt=ctx["wt"])
+        sha, _ = commit_one_fix(project.name, ctx["check_runid"],
+                         chunk_id, local_id,
+                         ctx["base_sha"], branch,
+                         commit_edits, commit_msg)
     except RuntimeError as exc:
         print(f"  SKIP: {exc}")
         skipped.append(f"{full_key}: {exc}")
@@ -1105,7 +1104,7 @@ def _process_project(label: str, report_path: Path, project: Path,
         base_sha = info.get("base_sha") or head_sha()
 
     rid = info.get("run_id") or ctx["check_runid"]
-    baseline, wt = ensure_baseline(project.name, rid, base_sha, reset=refresh)
+    baseline, wt = ensure_baseline_branch(project.name, rid, base_sha, reset=refresh)
     ctx["base_sha"], ctx["base_branch"], ctx["wt"] = base_sha, baseline, wt
 
     for idx, finding in enumerate(findings, 1):

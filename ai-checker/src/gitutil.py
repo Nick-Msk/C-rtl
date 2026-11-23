@@ -52,6 +52,75 @@ def head_sha() -> str:
     return r.stdout.strip()
 
 
+def fix_worktree_path(project: str, runid: int,
+                      chunk_id: int, local_id: int) -> Path:
+    """mergearea/<project>-<runid>/<project>-<runid>_<chunk>_<local>"""
+    return mergearea_path(project, runid) / f"{project}-{runid}_{chunk_id}_{local_id}"
+
+
+def ensure_baseline_branch(project: str, runid: int, sha: str,
+                           *, reset: bool = False) -> str:
+    """Pin baseline branch at `sha` without checking out a worktree."""
+    branch = baseline_branch_name(project, runid)
+    if reset or not branch_exists(branch):
+        r = git("branch", "-f", branch, sha, check=False)
+        if r.returncode != 0:
+            raise RuntimeError(f"cannot pin baseline: {r.stderr.strip()}")
+    return branch
+
+
+def ensure_fix_worktree(project: str, runid: int,
+                        chunk_id: int, local_id: int,
+                        branch_name: str, base_sha: str | None = None) -> Path:
+    """Mount an isolated worktree for a single fix branch."""
+    wt = fix_worktree_path(project, runid, chunk_id, local_id)
+    if (wt / ".git").exists():
+        return wt
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    if wt.exists():
+        shutil.rmtree(wt, ignore_errors=True)
+    git("worktree", "prune", check=False)
+
+    if branch_exists(branch_name):
+        r = git("worktree", "add", str(wt), branch_name, check=False)
+    else:
+        if not base_sha:
+            raise RuntimeError(f"branch {branch_name} missing and no base_sha given")
+        r = git("worktree", "add", "-b", branch_name, str(wt), base_sha, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(f"fix worktree add failed: {r.stderr.strip()}")
+    return wt
+
+
+def remove_fix_worktree(wt: Path) -> None:
+    """Unmount and delete a single fix worktree."""
+    if wt.exists():
+        git("worktree", "remove", "--force", str(wt), check=False)
+        if wt.exists():
+            shutil.rmtree(wt, ignore_errors=True)
+        git("worktree", "prune", check=False)
+    # Если родительская папка mergearea/<project>-<runid> опустела — удалим и её
+    parent = wt.parent
+    if parent.is_dir() and parent.parent == MERGE_AREA:
+        try:
+            next(parent.iterdir())
+        except StopIteration:
+            parent.rmdir()
+
+
+def remove_baseline(project: str, runid: int) -> None:
+    """Remove all child fix worktrees, container dir, and baseline branch."""
+    container = mergearea_path(project, runid)
+    branch = baseline_branch_name(project, runid)
+    if container.is_dir():
+        for child in list(container.iterdir()):
+            if child.is_dir():
+                git("worktree", "remove", "--force", str(child), check=False)
+        shutil.rmtree(container, ignore_errors=True)
+        git("worktree", "prune", check=False)
+    git("branch", "-D", branch, check=False)
+
+
 def ensure_baseline(project: str, runid: int, sha: str,
                     reset: bool = False) -> tuple[str, Path]:
     """Pin the reviewed state: branch at `sha` + worktree. Idempotent and
@@ -83,16 +152,6 @@ def ensure_baseline(project: str, runid: int, sha: str,
     elif reset:
         git_in(path, "checkout", "-f", branch, check=False)
     return branch, path
-
-
-def remove_baseline(project: str, runid: int) -> None:
-    path, branch = mergearea_path(project, runid), baseline_branch_name(project, runid)
-    if path.exists():
-        git("worktree", "remove", "--force", str(path), check=False)
-        if path.exists():
-            shutil.rmtree(path, ignore_errors=True)
-        git("worktree", "prune", check=False)
-    git("branch", "-D", branch, check=False)   # -D: may be unmerged after rebase
 
 
 def dirty_files() -> set[str]:
@@ -233,16 +292,12 @@ def _apply_edit(path: Path, old: str, new: str) -> bool:
     except OSError:
         return False
 
-def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
-                   edits: list[tuple[Path, str, str]], msg: str,
-                   *, wt: Path) -> str:
-    """Build the fix commit inside the baseline worktree. The user's tree
-    is never touched and need NOT be clean. `edits` paths are ROOT-relative
-    and are re-rooted into the worktree, so the commit is exactly
-    base_sha + patch."""
-    r = git_in(wt, "checkout", "-f", "-b", branch_name, base_sha, check=False)
-    if r.returncode != 0:
-        raise RuntimeError(f"checkout -b failed: {r.stderr.strip()}")
+def commit_one_fix(project: str, runid: int, chunk_id: int, local_id: int,
+                   base_sha: str, branch_name: str,
+                   edits: list[tuple[Path, str, str]], msg: str) -> tuple[str, Path]:
+    """Create an isolated worktree for `branch_name` at `base_sha` and commit edits."""
+    wt = ensure_fix_worktree(project, runid, chunk_id, local_id,
+                             branch_name, base_sha=base_sha)
     ok = False
     prefix = work_prefix()
     try:
@@ -258,7 +313,6 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
                     f"apply_edit failed on {prefix / rel} "
                     f"(snippet not found at {base_sha[:7]})")
         r = git_in(wt, "add", "--", *[str(t) for t in targets], check=False)
-
         if r.returncode != 0:
             raise RuntimeError(f"git add failed: {r.stderr.strip()}")
         r = git_in(wt, "commit", "-F", "-", input=msg, check=False)
@@ -268,11 +322,12 @@ def commit_one_fix(base_sha: str, base_branch: str, branch_name: str,
         if not sha:
             raise RuntimeError("commit made but cannot resolve sha")
         ok = True
-        return sha
+        return sha, wt
     finally:
         if not ok:
-            git_in(wt, "checkout", "-f", base_branch, check=False)
+            remove_fix_worktree(wt)
             git("branch", "-D", branch_name, check=False)
+
 
 def branch_exists(name: str) -> bool:
     r = git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}",
@@ -311,10 +366,13 @@ def merge_fix(branch: str, *, wt: Path, delete: bool = False,
 
     A dirty tree is fine unless it overlaps the files the merge touches.
     """
+
     if not branch_exists(branch):
         raise RuntimeError(f"no such branch: {branch}")
-    target = head_sha()
     if is_merged(branch):
+        remove_fix_worktree(wt)
+        if delete:
+            git("branch", "-d", branch, check=False)
         return git("rev-parse", "--short", "HEAD").stdout.strip(), False
 
     overlap = merge_touched_files(branch) & dirty_files()
@@ -322,28 +380,22 @@ def merge_fix(branch: str, *, wt: Path, delete: bool = False,
         raise RuntimeError("local changes overlap the merge — stash them: "
                            + ", ".join(sorted(overlap)))
 
-    # Our worktree, detached at the user's HEAD (master is checked out in
-    # ROOT — git forbids the same branch in two worktrees).
-    r = git_in(wt, "checkout", "-f", "--detach", target, check=False)
-    if r.returncode != 0:
-        raise RuntimeError(f"cannot position worktree: {r.stderr.strip()}")
-    r = git_in(wt, "merge", "--no-ff", "-m",
-               f"Merge {branch}\n\nAI-Branch: {branch}", branch, check=False)
-    if r.returncode != 0:
-        git_in(wt, "merge", "--abort", check=False)
-        raise RuntimeError(f"merge conflict: {(r.stderr or r.stdout).strip()}")
+    # 1. Гоняем тесты в полной изоляции прямо на ветке фикса (поверх baseline)
     if verify is not None:
-        verify(wt)                       # make test-<proj> && make analyze-<proj>
-    verified = git_in(wt, "rev-parse", "HEAD").stdout.strip()
+        verify(wt)
 
-    # Land the EXACT verified commit. ff-only: if ROOT's HEAD moved
-    # meanwhile, this fails safely instead of creating an untested merge.
-    r = git("merge", "--ff-only", verified, check=False)
+    # 2. Вливаем проверенную ветку фикса в текущую ветку основного репозитория
+    r = git("merge", "--no-ff", "-m",
+            f"Merge {branch}\n\nAI-Branch: {branch}", branch, check=False)
     if r.returncode != 0:
-        raise RuntimeError(f"cannot fast-forward base: {r.stderr.strip()}")
+        git("merge", "--abort", check=False)
+        raise RuntimeError(f"merge conflict: {(r.stderr or r.stdout).strip()}")
+
     sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+    remove_fix_worktree(wt)
     if delete:
         git("branch", "-d", branch, check=False)
+
     return sha, True
 
 def branches_exist(names: list[str]) -> set[str]:
