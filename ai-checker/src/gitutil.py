@@ -113,7 +113,7 @@ def remove_baseline(project: str, runid: int) -> None:
     container = mergearea_path(project, runid)
     branch = baseline_branch_name(project, runid)
     if container.is_dir():
-        for child in list(container.iterdir()):
+        for child in tuple(container.iterdir()):
             if child.is_dir():
                 git("worktree", "remove", "--force", str(child), check=False)
         shutil.rmtree(container, ignore_errors=True)
@@ -185,7 +185,7 @@ def delete_branch(name: str, force: bool = False) -> bool:
     r = git("branch", flag, name, check=False)
     return r.returncode == 0
 
-def list(prefix: str, check_run: int | None = None
+def list_branches(prefix: str, check_run: int | None = None
           ) -> tuple[list[str], list[str]]:
     """Return (merged, unmerged) branches matching '<prefix>*'.
 
@@ -502,7 +502,7 @@ def main() -> int:
 
     prefix = f"ai-checker-{args.project}-" if args.project else "ai-checker-"
 
-    merged, unmerged = list(prefix)
+    merged, unmerged = list_branches(prefix)
     if not merged and not unmerged:
         msg = f"no branches match '{prefix}*'"
         if args.check_run is not None:
