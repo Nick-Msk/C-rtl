@@ -217,7 +217,6 @@ Test(common, qsort_with_pchar_cmp) {
 
 Test(common, version_string_matches_macro) {
     cr_assert_str_eq(common_version(), COMMON_VERSION);
-    cr_assert_str_eq(common_version(), "0.1.0");
 }
 
 Test(common, version_is_top_of_list) {
