@@ -815,7 +815,7 @@ def mark_merged(issue_id: int, merge_commit: str) -> bool:
     with connect() as con:
         cur = con.execute(
             "UPDATE issue SET status = ?, merge_commit = ?, merged_dt = ?, "
-            "  dt = ? WHERE id = ? AND status = ?",
+            " fix_branch = NULL,  dt = ? WHERE id = ? AND status = ?",
             (STATUS_MERGED, merge_commit, now, now, issue_id, STATUS_FIXED))
     return cur.rowcount > 0
 
