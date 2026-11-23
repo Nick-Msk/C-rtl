@@ -341,11 +341,11 @@ def ingest_report(*, project: str, report_path: Path, model: str,
         cur = con.execute(
             "INSERT INTO report "
             "(project, path, base_sha, model, kind, started, "
-            " duration_s, run_id, dt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " duration_s, run_id, baseline_branch, dt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (project, rel, sha, model, kind,
              started.strftime("%Y-%m-%dT%H:%M:%S"), duration_s,
-             runid, now))
+             runid, baseline_branch, now))
         report_id = cur.lastrowid
 
         skipped_dup = 0
@@ -1212,4 +1212,14 @@ def open_baselines() -> list[dict]:
             "  (SELECT status FROM transition_status "
             "   WHERE actor IN ('classify','commit','propose','merge') "
             "     AND allowed = 'y')").fetchall()
+    return [dict(r) for r in rows]
+
+def all_baselines() -> list[dict]:
+    """All reports that still have a pinned baseline branch."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT DISTINCT project, run_id, baseline_branch "
+            "FROM report "
+            "WHERE baseline_branch IS NOT NULL AND run_id IS NOT NULL"
+        ).fetchall()
     return [dict(r) for r in rows]
