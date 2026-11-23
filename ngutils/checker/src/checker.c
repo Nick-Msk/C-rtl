@@ -65,6 +65,8 @@ inv_fprintf_int(FILE *restrict out, const char *restrict expr,
     }
     logsimple("%s", msg ? msg : "");   // logsimple_ap is required TODO:
 
+	if (cnt < 0)
+		cnt = 0;
 	return cnt;
 }
 
