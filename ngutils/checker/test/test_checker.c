@@ -289,6 +289,27 @@ Test(checker, inv_fprintf_int_writes_to_stream) {
     cr_assert_gt(n, 0);
 }
 
+Test(checker, inv_fprintf_int_varargs_format) {
+    char path[256];
+    test_tmpname(path, sizeof path, "test_checker_fprintf_va", NULL, "txt");
+
+    FILE *f = fopen(path, "w");
+    cr_assert_not_null(f);
+
+    int rc = inv_fprintf_int(f, "x > 0", false, "x=%d, limit=%d", -3, 10);
+    fclose(f);
+
+    cr_assert_gt(rc, 0, "expected positive write count");
+
+    char buf[1024];
+    size_t n = test_read_file(path, buf, sizeof buf);
+    remove(path);
+
+    cr_assert_gt(n, 0);
+    cr_assert_str_contains(buf, "x=-3, limit=10");
+    cr_assert(!strstr(buf, "x=%d"), "format specifiers must be consumed");
+}
+
 /* -------------------------------------------------------------------------
  * Version
  * ------------------------------------------------------------------------- */
