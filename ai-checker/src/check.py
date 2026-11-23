@@ -24,6 +24,7 @@ from common import (
     gather_files,
     lang_of,
     parse_findings,
+    rel_display,
     release_lock,
     renumber_findings,
     rotate_reports,
@@ -479,7 +480,7 @@ def _build_ctx(name: str, args, model: str, state: dict) -> dict:
         "model": model,
         "sub": sub,
         "report": report,
-        "report_rel": report.relative_to(ROOT),
+        "report_rel": rel_display(report),
         "usage": new_usage(),
         "chunk_durs": [],
         "chunk_chars": [],
@@ -572,7 +573,7 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
     moved = rotate_reports(ctx["sub"])
     if moved:
         print(f"[ai-checker] rotated {len(moved)} older report(s) "
-              f"-> {ctx['sub'].relative_to(ROOT)}/hist/", file=sys.stderr)
+              f"-> {rel_display(ctx['sub'])}/hist/", file=sys.stderr)
 
 
 def _print_project_summary(ctx: dict, total_dur: float) -> None:
