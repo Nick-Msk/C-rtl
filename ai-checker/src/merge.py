@@ -26,7 +26,9 @@ def run(args) -> int:
         print("nothing awaiting merge")
         return 0
 
-    base, _ = gitutil.git_clean_check()
+    base = gitutil.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    if base == "HEAD":
+        sys.exit("ERROR: detached HEAD, checkout a branch first")
     print(f"[ai-merge] base={base}  {len(rows)} fixed issue(s)")
 
     targets = [t.strip() for t in
