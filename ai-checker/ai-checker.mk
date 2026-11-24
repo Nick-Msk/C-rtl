@@ -31,7 +31,6 @@ AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(KEEP),--keep,) \
 
 AI_DECIDE_ARGS = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                  $(if $(REASON),--reason "$(REASON)",) \
-                 $(if $(ALL_RUNS),--all-runs,) \
                  $(if $(ALL_PROJECTS),--all-projects,)
 
 ai-check:  ## AI review of all projects (LM Studio)
