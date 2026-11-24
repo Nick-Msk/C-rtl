@@ -370,13 +370,6 @@ def _cleanup_old_branches(runid: int) -> None:
               file=sys.stderr)
         return
 
-    try:
-        n_stale, branches = db.close_period(runid)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[ai-checker] warn: close_period failed: {exc}",
-              file=sys.stderr)
-        return
-
     if n_stale:
         print(f"[ai-checker] closed {n_stale} stale issue(s) "
               f"from previous run(s)", file=sys.stderr)
@@ -601,6 +594,7 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
     if moved:
         print(f"[ai-checker] rotated {len(moved)} older report(s) "
               f"-> {rel_display(ctx['sub'])}/hist/", file=sys.stderr)
+    _push_tracker(ctx["name"])
 
 
 def _print_project_summary(ctx: dict, total_dur: float) -> None:
@@ -611,6 +605,21 @@ def _print_project_summary(ctx: dict, total_dur: float) -> None:
           f"{u['prompt_tokens']:,} in / {u['completion_tokens']:,} out]",
           file=sys.stderr)
 
+def _push_tracker(project: str, runid: int) -> None:
+    """Best-effort export/push of this report's findings to the tracker.
+    Runs AFTER _ingest_and_write: rows exist and carry_decisions already
+    suppressed the carried ones, so a suppressed finding is never pushed
+    as a fresh ticket. Never fails the run."""
+    
+    mode = db.get_param("track", "tracker_mode", "off")
+    if mode == "off":
+        return
+    try:
+        import tracker
+        rows = db.list_issues(project=project, latest_only=True)
+        tracker.push_issues(project, rows, dry_run=(mode != "jira"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: tracker push failed: {exc}", file=sys.stderr)
 
 # ── project loop ───────────────────────────────────────────────────
 
