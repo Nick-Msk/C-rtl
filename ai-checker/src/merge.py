@@ -67,8 +67,6 @@ def run(args) -> int:
         if not gitutil.branch_exists(br):
             gitutil.git("branch", br, fix_sha, check=False)   # ярлык из sha
         try:
-            # _, wt = gitutil.ensure_baseline(r["project"], r["runid"],
-            #                                     gitutil.head_sha())  # branch уже есть
             wt = gitutil.ensure_fix_worktree(
                 r["project"], r["runid"], r["chunk_id"], r["local_id"],
                 br, base_sha=fix_sha)

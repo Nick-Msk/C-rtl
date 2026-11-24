@@ -53,6 +53,7 @@ from gitutil import (
     ensure_baseline_branch,
     head_sha,
     make_fix_branch_name,
+    make_verifier,
 )
 from report import (
     add_chunk_usage,
@@ -811,14 +812,22 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
         branch=branch, local_id=local_id)
     subject_line = commit_msg.split("\n\n", 1)[0]
 
+    verify = (make_verifier(project.name, ctx["verify_targets"],
+                            log_dir=FIX_DIR / "logs")
+              if ctx.get("verify_on_commit") and ctx.get("verify_targets")
+              else None)
+
     try:
         sha, _ = commit_one_fix(project.name, ctx["check_runid"],
                          chunk_id, local_id,
                          ctx["base_sha"], branch,
-                         commit_edits, commit_msg)
+                         commit_edits, commit_msg, verify=verify)
     except RuntimeError as exc:
         print(f"  SKIP: {exc}")
         skipped.append(f"{full_key}: {exc}")
+        _db_set(report_path, finding, db.STATUS_FAILED,
+                actor=db_status.ACT_COMMIT,
+                reason=f"commit/verify failed: {str(exc).splitlines()[0]}")
         return
 
     files = [str(p.relative_to(ROOT)) for p, _ in parsed]
@@ -1053,6 +1062,10 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
     max_source = db.get_param("fix", "max_source_chars", MAX_SOURCE_CHARS)
     max_diff = db.get_param("fix", "max_diff_lines", MAX_DIFF_LINES)
     fix_temp = db.get_param("fix", "temperature", 0.0)
+    verify_targets = [t.strip() for t in db.get_param(
+        "fix", "verify_targets",
+        "test-{project},analyze-{project}").split(",") if t.strip()]
+    verify_on_commit = db.get_param("fix", "verify_on_commit", True)
 
     return {
         "run_id": state["fix_runid"],
@@ -1070,6 +1083,8 @@ def _build_ctx(label: str, args, model: str, state: dict) -> dict:
         "fix_temp": fix_temp,
         "propose": getattr(args, "propose", False),
         "proposed": [],
+        "verify_targets": verify_targets,
+        "verify_on_commit": verify_on_commit,
     }
 
 def _process_project(label: str, report_path: Path, project: Path,

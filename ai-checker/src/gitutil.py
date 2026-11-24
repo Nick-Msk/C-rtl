@@ -9,13 +9,19 @@ Safety model:
 from __future__ import annotations
 
 import argparse
+import db
+import re
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-from common import OUT_ROOT, ROOT
+from datetime import datetime
+from common import (
+    OUT_ROOT, 
+    ROOT,
+    rel_display
+)
 
 MERGE_AREA = Path(os.environ.get("AI_CHECKER_MERGEAREA")
                   or (OUT_ROOT.parent / "mergearea"))
@@ -51,6 +57,50 @@ def head_sha() -> str:
         raise RuntimeError("not a git repository (or no commits yet)")
     return r.stdout.strip()
 
+FIX_LOG_SUBDIR = Path("logs") / "result"
+
+
+def fix_logs_dir(project: str) -> Path:
+    """Surviving logs live on the tool side, next to the reports."""
+    return OUT_ROOT / project / "fix-logs"
+
+
+def parse_fix_worktree(wt: Path) -> tuple[str, int, int, int] | None:
+    """Inverse of fix_worktree_path: '<proj>-<runid>_<chunk>_<local>'.
+    None for anything else (baseline container, stray dirs)."""
+    m = re.fullmatch(r"(.+)-(\d+)_(\d+)_(\d+)", wt.name)
+    if not m:
+        return None
+    return m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+
+
+def harvest_fix_logs(wt: Path) -> list[Path]:
+    """Copy test/analyze logs out of a fix worktree before it is deleted.
+    Name: <runid>_<chunk>_<local>_<timestamp>_<original-name>.
+    Best-effort: never raises, a lost log must not break a merge."""
+    ident = parse_fix_worktree(wt)
+    if ident is None:
+        return []
+    project, runid, chunk, local = ident
+    try:
+        src_dir = wt / work_prefix() / project / FIX_LOG_SUBDIR
+    except (RuntimeError, ValueError):
+        return []
+    if not src_dir.is_dir():
+        return []
+    dst_dir = fix_logs_dir(project)
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    saved: list[Path] = []
+    for src in sorted(src_dir.rglob("*.log")):
+        name = "_".join(src.relative_to(src_dir).parts)
+        dst = dst_dir / f"{runid}_{chunk}_{local}_{ts}_{name}"
+        try:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            saved.append(dst)
+        except OSError as exc:
+            print(f"  warn: cannot save log {src.name}: {exc}", file=sys.stderr)
+    return saved
 
 def fix_worktree_path(project: str, runid: int,
                       chunk_id: int, local_id: int) -> Path:
@@ -93,13 +143,14 @@ def ensure_fix_worktree(project: str, runid: int,
 
 
 def remove_fix_worktree(wt: Path) -> None:
-    """Unmount and delete a single fix worktree."""
+    """Save logs, then unmount and delete a single fix worktree."""
     if wt.exists():
+        for p in harvest_fix_logs(wt):
+            print(f"  LOG      {rel_display(p)}", file=sys.stderr)
         git("worktree", "remove", "--force", str(wt), check=False)
         if wt.exists():
             shutil.rmtree(wt, ignore_errors=True)
         git("worktree", "prune", check=False)
-    # Если родительская папка mergearea/<project>-<runid> опустела — удалим и её
     parent = wt.parent
     if parent.is_dir() and parent.parent == MERGE_AREA:
         try:
@@ -115,7 +166,7 @@ def remove_baseline(project: str, runid: int) -> None:
     if container.is_dir():
         for child in tuple(container.iterdir()):
             if child.is_dir():
-                git("worktree", "remove", "--force", str(child), check=False)
+                remove_fix_worktree(child)
         shutil.rmtree(container, ignore_errors=True)
         git("worktree", "prune", check=False)
     git("branch", "-D", branch, check=False)
@@ -294,8 +345,13 @@ def _apply_edit(path: Path, old: str, new: str) -> bool:
 
 def commit_one_fix(project: str, runid: int, chunk_id: int, local_id: int,
                    base_sha: str, branch_name: str,
-                   edits: list[tuple[Path, str, str]], msg: str) -> tuple[str, Path]:
-    """Create an isolated worktree for `branch_name` at `base_sha` and commit edits."""
+                   edits: list[tuple[Path, str, str]], msg: str,
+                   *, verify=None) -> tuple[str, Path]:
+    """Create an isolated worktree at `base_sha`, commit edits, then run
+    `verify(wt)` INSIDE that worktree. A patch that fails verification
+    never survives: the finally-block removes the worktree and deletes
+    the branch, so only green fix branches exist."""
+
     wt = ensure_fix_worktree(project, runid, chunk_id, local_id,
                              branch_name, base_sha=base_sha)
     ok = False
@@ -321,6 +377,8 @@ def commit_one_fix(project: str, runid: int, chunk_id: int, local_id: int,
         sha = git_in(wt, "rev-parse", "--short", "HEAD").stdout.strip()
         if not sha:
             raise RuntimeError("commit made but cannot resolve sha")
+        if verify is not None:
+            verify(wt)          #Raises -> ok stays False -> rollback
         ok = True
         return sha, wt
     finally:
@@ -433,23 +491,30 @@ def merged_branches(prefix: str = "ai-checker-") -> list[str]:
             merged.append(b)
     return merged
 
-def make_verifier(project: str, targets: list[str]):
+def make_verifier(project: str, targets: list[str],
+                  *, log_dir: Path | None = None):
     """Return verify(wt) running `make <target>` inside the worktree."""
+
     sub = work_prefix()
+
     def verify(wt: Path) -> None:
         for tpl in targets:
             target = tpl.format(project=project)
-            print(f"  VERIFY   make {target} (worktree)", file=sys.stderr)
-            r = subprocess.run(["make", target],
-                                check=False,
-                                cwd=wt / sub, 
-                                text=True,
-                                capture_output=True)
+            print(f"  VERIFY   make {target}  [{wt.name}]", file=sys.stderr)
+            r = subprocess.run(["make", target], check=False, cwd=wt / sub,
+                               text=True, capture_output=True)
+            out = (r.stdout or "") + (r.stderr or "")
+            if log_dir is not None:
+                try:
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    (log_dir / f"{wt.name}__{target}.log").write_text(
+                        out, encoding="utf-8")
+                except OSError:
+                    pass
             if r.returncode != 0:
-                tail = "\n".join((r.stdout + r.stderr).splitlines()[-25:])
+                tail = "\n".join(out.splitlines()[-25:])
                 raise RuntimeError(f"{target} failed:\n{tail}")
     return verify
-
 def cleanup_project_baselines(project: str, keep_runid: int) -> None:
     """Remove all baseline worktrees and branches for `project` except `keep_runid`."""
     prefix = f"ai-baseline/{project}-c"
