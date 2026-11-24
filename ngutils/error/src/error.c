@@ -208,6 +208,7 @@ err_put(ErrorType tp, int errcode, const char *msg, va_list ap)
 {
 	int saved_errno = errno;
 	err_ensurebuf();
+	if (!msg) msg = "";
 
     if (!err_increase()) {
 		logsimple("Unable to increase err buffer");
