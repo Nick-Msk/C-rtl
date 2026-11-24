@@ -9,19 +9,15 @@ Safety model:
 from __future__ import annotations
 
 import argparse
-import db
-import re
 import os
+import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 from datetime import datetime
-from common import (
-    OUT_ROOT, 
-    ROOT,
-    rel_display
-)
+from pathlib import Path
+
+from common import OUT_ROOT, ROOT, rel_display
 
 MERGE_AREA = Path(os.environ.get("AI_CHECKER_MERGEAREA")
                   or (OUT_ROOT.parent / "mergearea"))

@@ -13,6 +13,7 @@ import db_status
 import gitutil
 from common import parse_fixlist
 
+
 def _discard_git(r: dict) -> None:
     """A rejected fix must not leave a branch + worktree behind: git
     refuses `branch -D` while a worktree holds the branch."""
