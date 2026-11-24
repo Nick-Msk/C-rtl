@@ -103,7 +103,7 @@ extern const char *const *common_versions(void);
  *
  * Used as a maximum-iteration cap in array iteration helpers.
  */
-static const int G_GLOB_AVERAGE = INT_MAX;
+static const int NO_UPPER_BOUND = INT_MAX;
 
 /* -------------------------------------------------------------------------
  * Size growth strategy
