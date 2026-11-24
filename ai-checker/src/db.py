@@ -18,7 +18,7 @@ from pathlib import Path
 
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -451,11 +451,17 @@ def close_period(runid: int) -> tuple[int, list[str]]:
 
     return total, branches
 
-def update_issue_status(report_path, finding, status, *,
-                        reason=None, direction=None,
-                        fix_branch=None, fix_commit=None,
-                        fix_subject=None) -> bool:
+def update_issue_status(report_path, 
+                        finding, 
+                        status, *,
+                        reason=None, 
+                        direction=None,
+                        fix_branch=None, 
+                        fix_commit=None,
+                        fix_subject=None,
+                        fix_runid=None) -> bool:
     """Update one issue. `finding` is a dict (preferred) or str id."""
+
     if status not in STATUSES:
         raise ValueError(f"unknown status {status!r}")
     try:
@@ -471,11 +477,12 @@ def update_issue_status(report_path, finding, status, *,
             "  direction = COALESCE(?, direction), "
             "  fix_branch = COALESCE(?, fix_branch), "
             "  fix_commit = COALESCE(?, fix_commit), "
-            "  fix_subject = COALESCE(?, fix_subject) "
+            "  fix_subject = COALESCE(?, fix_subject), "
+            " fix_runid = COALESCE(?, fix_runid) "
             "WHERE report_id = (SELECT id FROM report WHERE path = ?) "
             "  AND chunk_id = ? AND local_id = ?",
             (status, _now_iso(), reason, direction,
-             fix_branch, fix_commit, fix_subject,
+             fix_branch, fix_commit, fix_subject, fix_runid,
              rel, chunk_id, local_id))
         return cur.rowcount > 0
 
@@ -1273,6 +1280,6 @@ def restore_config_sql(text: str) -> None:
 
     The file is executed as SQL — same trust level as config/check.sql.
     That is deliberate: a developer may hand-edit it."""
-    
+
     with connect() as con:
         con.executescript("BEGIN;\n" + text + "\nCOMMIT;")

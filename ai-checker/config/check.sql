@@ -53,23 +53,24 @@ CREATE TABLE IF NOT EXISTS report (
 );
 
 CREATE TABLE IF NOT EXISTS issue (
-    runid       INTEGER NOT NULL REFERENCES llmruns(runid),
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    report_id   INTEGER NOT NULL REFERENCES report(id) ON DELETE CASCADE,
-    finding_id  TEXT NOT NULL,
-    chunk_id    INTEGER NOT NULL,
-    local_id    INTEGER NOT NULL,
-    section     TEXT NOT NULL,
-    title       TEXT NOT NULL,
-    text        TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'added' REFERENCES statuses(name),
-    reason      TEXT,
-    direction   TEXT,
-    fix_branch  TEXT,
-    fix_commit  TEXT,
-    merge_commit TEXT,
-    fix_subject TEXT,
-    dt          TEXT NOT NULL,
+    runid           INTEGER NOT NULL REFERENCES llmruns(runid),
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id       INTEGER NOT NULL REFERENCES report(id) ON DELETE CASCADE,
+    finding_id      TEXT NOT NULL,
+    chunk_id        INTEGER NOT NULL,
+    local_id        INTEGER NOT NULL,
+    section         TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'added' REFERENCES statuses(name),
+    reason          TEXT,
+    direction       TEXT,
+    fix_branch      TEXT,
+    fix_commit      TEXT,
+    fix_runid       INTEGER,          -- run of ai-fix
+    merge_commit    TEXT,
+    fix_subject     TEXT,
+    dt              TEXT NOT NULL,
     UNIQUE (report_id, chunk_id, local_id)
 );
 
@@ -148,4 +149,68 @@ CREATE TABLE transition_status (
     PRIMARY KEY (status, actor, new_status)
 );
 CREATE INDEX idx_transition_actor ON transition_status(actor);
+
+-- ── issue_history: аудит переходов статуса ──────────────────────────
+-- Только базовое: old -> new плюс fix_*/merge_commit/reason.
+-- OLD-значения обязательны: mark_merged и close_period обнуляют fix_*,
+-- так что NEW-only потерял бы ветку и sha на самых важных переходах.
+CREATE TABLE IF NOT EXISTS issue_history (
+    id             INTEGER PRIMARY KEY,
+    issue_id       INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
+    dt             TEXT    NOT NULL,
+    old_status     TEXT,                    -- NULL = рождение находки
+    new_status     TEXT    NOT NULL,
+    old_fix_branch TEXT,
+    new_fix_branch TEXT,
+    old_fix_commit TEXT,
+    new_fix_commit TEXT,
+    merge_commit   TEXT,
+    reason         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_issue_history_issue
+    ON issue_history(issue_id, id);
+
+-- Рождение: сохраняет исходный dt, который позже перезатрётся.
+CREATE TRIGGER IF NOT EXISTS issue_history_insert
+AFTER INSERT ON issue
+BEGIN
+    INSERT INTO issue_history (issue_id, dt, old_status, new_status,
+                               new_fix_branch, new_fix_commit, reason)
+    VALUES (NEW.id,
+            COALESCE(NEW.dt,
+                     strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+            NULL, NEW.status, NEW.fix_branch, NEW.fix_commit, NEW.reason);
+END;
+
+-- Переход. WHEN отсекает A -> A: состояние не изменилось — не событие.
+-- 'localtime' обязателен: _now_iso() пишет локальное время, SQLite 'now' — UTC.
+CREATE TRIGGER IF NOT EXISTS issue_history_status
+AFTER UPDATE OF status ON issue
+WHEN OLD.status IS NOT NEW.status
+BEGIN
+    INSERT INTO issue_history (issue_id, dt, old_status, new_status,
+                               old_fix_branch, new_fix_branch,
+                               old_fix_commit, new_fix_commit,
+                               merge_commit, reason)
+    VALUES (NEW.id,
+            COALESCE(NEW.dt,
+                     strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+            OLD.status, NEW.status,
+            OLD.fix_branch, NEW.fix_branch,
+            OLD.fix_commit, NEW.fix_commit,
+            NEW.merge_commit, NEW.reason);
+END;
+
+-- Для чтения в litecli без ручных джойнов.
+CREATE VIEW IF NOT EXISTS issue_history_full AS
+SELECT h.id, h.dt, r.project,
+       i.runid || '/' || i.chunk_id || '/' || i.local_id AS key,
+       h.old_status, h.new_status,
+       h.old_fix_branch, h.new_fix_branch,
+       h.old_fix_commit, h.new_fix_commit,
+       h.merge_commit, h.reason
+FROM issue_history h
+JOIN issue  i ON i.id = h.issue_id
+JOIN report r ON r.id = i.report_id;
 
