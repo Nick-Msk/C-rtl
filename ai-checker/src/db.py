@@ -55,8 +55,6 @@ MODULES: dict[str, str] = {
     "report": "Report header formatting",
 }
 
-SCHEMA_VERSION = 13
-
 STATUS_ADDED        = "added"
 STATUS_PROPOSED     = "proposed-to-fix"
 STATUS_ANALYZE      = "analyze-by-dev"
