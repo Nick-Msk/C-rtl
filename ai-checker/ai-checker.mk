@@ -59,12 +59,29 @@ ai-fix-commit-%:  ## apply + commit, one project
 	@$(AI_RUN) src/fix.py --project $* $(AI_FIX_COMMIT)
 
 ai-fix-propose:  ## force-patch analyze-by-dev/no-action, all projects
+	@test -n "$(FIXLIST)" || { \
+	    echo "ERROR: FIXLIST is required for ai-fix-propose"; \
+	    echo "usage: make ai-fix-propose FIXLIST=\"<runid>/<chunk>/<local>\""; \
+	    echo "       (see 'make ai-status-<proj>' for eligible keys)"; \
+	    exit 1; \
+	}
 	@$(AI_RUN) src/fix.py --all --propose $(AI_FIX_ARGS)
 
 ai-fix-propose-%:  ## dry-run force-patch for one project
+	@test -n "$(FIXLIST)" || { \
+	    echo "ERROR: FIXLIST is required for ai-fix-propose-$*"; \
+	    echo "usage: make ai-fix-propose-$* FIXLIST=\"<runid>/<chunk>/<local>\""; \
+	    echo "       (see 'make ai-status-$*' for eligible keys)"; \
+	    exit 1; \
+	}
 	@$(AI_RUN) src/fix.py --project $* --propose $(AI_FIX_ARGS)
 
 ai-fix-propose-commit-%:  ## force-patch + commit for one project
+	@test -n "$(FIXLIST)" || { \
+	    echo "ERROR: FIXLIST is required for ai-fix-propose-commit-$*"; \
+	    echo "usage: make ai-fix-propose-commit-$* FIXLIST=\"<runid>/<chunk>/<local>\""; \
+	    exit 1; \
+	}
 	@$(AI_RUN) src/fix.py --project $* --propose --apply $(AI_FIX_ARGS)
 
 ai-merge:  ## merge fixed branches, all projects
