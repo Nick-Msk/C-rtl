@@ -44,6 +44,10 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("fix",   "verify_on_commit"):  True,
     ("llm",   "url"):               "http://127.0.0.1:1234",
     ("llm",   "model_name"):        "",
+    ("track", "jira_link"):         "",   # https://yourcompany.atlassian.net
+    ("track", "jira_project"):      "",   # PROJ
+    ("track", "jira_token"):        "",   # API token (or env JIRA_TOKEN)
+    ("track", "jira_dry_run"):      True, # export JSON, don't POST
 }
 
 MODULES: dict[str, str] = {
@@ -53,6 +57,7 @@ MODULES: dict[str, str] = {
     "llm":    "LM Studio endpoint and model selection",
     "common": "Shared constants, regexes, parser, lock",
     "report": "Report header formatting",
+    "track":  "Tracker related params"
 }
 
 STATUS_ADDED        = "added"
@@ -1018,7 +1023,7 @@ def list_issues(project: str | None = None,
     q = ("SELECT r.project, r.id AS report_id, "
          "r.started AS report_started, i.runid AS check_runid, "
          "i.chunk_id, i.local_id, i.section, i.finding_id, i.status, "
-         "i.title, i.fix_branch, i.fix_commit, i.fix_subject, i.dt, "
+         "i.title, i.text, i.fix_branch, i.fix_commit, i.fix_subject, i.dt, "
          "i.carried_from, i.carry_score, "
          "(SELECT s.runid || '/' || s.chunk_id || '/' || s.local_id "
          " FROM issue s WHERE s.id = i.carried_from) AS carried_key "
