@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from pathlib import Path
 
 import db
 from common import OUT_ROOT, rel_display
@@ -65,8 +64,8 @@ def push_issues(project: str, issues: list[dict], *, dry_run: bool = True) -> No
         print(f"[tracker] dry-run: {len(payloads)} issue(s) -> {rel_display(out_path)}")
         
         # Если json-server запущен, отправь туда же
-        import urllib.request
         import urllib.error
+        import urllib.request
         server_url = "http://localhost:3001/issues"
         try:
             urllib.request.urlopen(f"{server_url.rsplit('/', 1)[0]}/", timeout=1)
@@ -82,8 +81,8 @@ def push_issues(project: str, issues: list[dict], *, dry_run: bool = True) -> No
         return
     
     # Live mode: POST to Jira
-    import urllib.request
     import urllib.error
+    import urllib.request
     
     token = os.environ.get("JIRA_TOKEN") or db.get_param("check", "jira_token", "")
     if not token:
