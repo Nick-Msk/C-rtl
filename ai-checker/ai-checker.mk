@@ -1,4 +1,5 @@
 _AI_MK := $(lastword $(MAKEFILE_LIST))
+
 AI_CHECKER_DIR    ?= $(abspath $(dir $(_AI_MK)))
 AI_CHECKER_ROOT   ?= $(CURDIR)
 AI_CHECKER_CONFIG ?= $(wildcard $(CURDIR)/ai-checker.workspace.py)
@@ -32,6 +33,12 @@ AI_MERGE_ARGS = $(if $(DRY_RUN),--dry-run,) $(if $(KEEP),--keep,) \
 AI_DECIDE_ARGS = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                  $(if $(REASON),--reason "$(REASON)",) \
                  $(if $(ALL_PROJECTS),--all-projects,)
+
+AI_TRANS_ARGS = $(if $(ACTOR),--actor $(ACTOR),) \
+                $(if $(STATUS),--status $(STATUS),) \
+                $(if $(NEW_STATUS),--new-status $(NEW_STATUS),) \
+                $(if $(ENABLED),--enabled-only,)
+
 
 ai-check:  ## AI review of all projects (LM Studio)
 	@$(AI_RUN) src/check.py --all $(AI_CHECK_EXTRA)
@@ -106,6 +113,18 @@ ai-config:  ## list tunable params from check.db
 
 ai-config-set:  ## set param: MODULE= NAME= VALUE=
 	@$(AI_RUN) src/params.py set $(MODULE) $(NAME) $(VALUE)
+
+ai-config-transitions:  ## show status machine (ACTOR=, STATUS=, ENABLED=1)
+	@$(AI_RUN) src/params.py --transitions $(AI_TRANS_ARGS)
+
+ai-config-disable:  ## disable one transition or a whole actor
+	@$(AI_RUN) src/params.py $(if $(ACTOR),$(if $(STATUS),--set-allowed n,--actor-off),--actor-off) $(AI_TRANS_ARGS)
+
+ai-config-enable:  ## enable one transition or a whole actor
+	@$(AI_RUN) src/params.py $(if $(ACTOR),$(if $(STATUS),--set-allowed y,--actor-on),--actor-on) $(AI_TRANS_ARGS)
+
+ai-config-reset-transitions:  ## restore every allowed='y'
+	@$(AI_RUN) src/params.py --reset-transitions
 
 ai-del-branches:  ## delete merged ai-checker-* branches
 	@$(AI_RUN) src/gitutil.py --all $(DEL_BRANCHES_ARGS)

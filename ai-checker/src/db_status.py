@@ -189,3 +189,63 @@ def decide(con, runid: int, chunk: int, local: int,
         "WHERE runid=? AND chunk_id=? AND local_id=?",
         (new_status, db._now_iso(), reason, runid, chunk, local))
     return True, f"{cur} -> {new_status}"
+
+def all_actors() -> list[dict]:
+    """Actors with their descr and how many transitions are enabled."""
+    with db.connect() as con:
+        rows = con.execute(
+            "SELECT a.name, a.descr, "
+            "  SUM(CASE WHEN t.allowed = 'y' THEN 1 ELSE 0 END) AS enabled, "
+            "  COUNT(t.status) AS total "
+            "FROM actors a LEFT JOIN transition_status t ON t.actor = a.name "
+            "GROUP BY a.name ORDER BY a.name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def all_transitions(actor: str | None = None, status: str | None = None,
+                    enabled_only: bool = False) -> list[dict]:
+    """transition_status rows for ai-config, newest policy first-hand.
+    `allowed` is DB-owned: seed() refreshes descr but never resets it."""
+    q = ("SELECT t.status, t.actor, t.new_status, t.allowed, t.descr "
+         "FROM transition_status t WHERE 1=1 ")
+    params: list = []
+    if actor:
+        q += "AND t.actor = ? "
+        params.append(actor)
+    if status:
+        q += "AND t.status = ? "
+        params.append(status)
+    if enabled_only:
+        q += "AND t.allowed = 'y' "
+    q += "ORDER BY t.actor, t.status, t.new_status"
+    with db.connect() as con:
+        return [dict(r) for r in con.execute(q, params)]
+
+
+def set_allowed(status: str, actor: str, new_status: str,
+                allowed: bool) -> bool:
+    """Flip ONE transition. False if no such row (typo in the key)."""
+    with db.connect() as con:
+        cur = con.execute(
+            "UPDATE transition_status SET allowed = ? "
+            "WHERE status = ? AND actor = ? AND new_status = ?",
+            ("y" if allowed else "n", status, actor, new_status))
+    return cur.rowcount > 0
+
+
+def set_actor_allowed(actor: str, allowed: bool) -> int:
+    """Flip EVERY transition of an actor — the blunt test switch.
+    Returns rows touched (0 = unknown actor)."""
+    with db.connect() as con:
+        cur = con.execute(
+            "UPDATE transition_status SET allowed = ? WHERE actor = ?",
+            ("y" if allowed else "n", actor))
+    return cur.rowcount
+
+
+def reset_allowed() -> int:
+    """Restore every transition to 'y' after a debugging session."""
+    with db.connect() as con:
+        cur = con.execute(
+            "UPDATE transition_status SET allowed = 'y' WHERE allowed = 'n'")
+    return cur.rowcount
