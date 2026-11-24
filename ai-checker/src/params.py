@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import db_status
 import json
 import sys
 
 import db
+import db_status
 
 
 def cmd_list(as_json: bool, long: bool) -> int:
