@@ -3,18 +3,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-import db
-import db_status
 import re
+import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from common import (
-    AI_ROOT, 
-    rel_display
-)
+import db
+import db_status
+from common import AI_ROOT, rel_display
 
 DEFAULT_SAVE = AI_ROOT / "config" / "ai-config-save.sql"
 
@@ -199,7 +196,7 @@ def cmd_restore(path: str | None) -> int:
         return 1
     text = p.read_text(encoding="utf-8")
     counts = Counter(t.lower() for t in
-                     re.findall(r"INSERT\s+INTO\s+(\w+)", text, re.I))
+                     re.findall(r"INSERT\s+INTO\s+(\w+)", text, re.IGNORECASE))
     if not counts:
         print(f"ERROR: no INSERT statements in {p}", file=sys.stderr)
         return 1
