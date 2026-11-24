@@ -123,6 +123,12 @@ ai-config-disable:  ## disable one transition or a whole actor
 ai-config-enable:  ## enable one transition or a whole actor
 	@$(AI_RUN) src/params.py $(if $(ACTOR),$(if $(STATUS),--set-allowed y,--actor-on),--actor-on) $(AI_TRANS_ARGS)
 
+ai-config-save:  ## dump DB-owned config as SQL inserts (FILENAME=...)
+	@$(AI_RUN) src/params.py --save $(if $(FILENAME),"$(abspath $(FILENAME))",)
+
+ai-config-restore:  ## apply a config dump (FILENAME=...)
+	@$(AI_RUN) src/params.py --restore $(if $(FILENAME),"$(abspath $(FILENAME))",)
+
 ai-config-reset-transitions:  ## restore every allowed='y'
 	@$(AI_RUN) src/params.py --reset-transitions
 

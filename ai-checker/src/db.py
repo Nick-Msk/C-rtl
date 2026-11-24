@@ -18,12 +18,14 @@ from pathlib import Path
 
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
-DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
-
 SCHEMA_VERSION = 13
+
+DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "config" / "check.sql"
 _schema_cache: str | None = None
+
+CONFIG_TABLES = ("statuses", "params", "transition_status")
 
 
 DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
@@ -1247,3 +1249,30 @@ def update_report_base(report_path, sha: str) -> None:
         con.execute(
             "UPDATE report SET base_sha = ? WHERE path = ?",
             (sha, rel))
+
+def config_snapshot() -> dict[str, list[dict]]:
+    """DB-owned configuration for ai-config-save. descr/default_value
+    come along for readability only — restore never applies them."""
+    import db_status
+    with connect() as con:
+        statuses = [dict(r) for r in con.execute(
+            "SELECT name, descr, terminal, resolved "
+            "FROM statuses ORDER BY rowid")]
+        params = [dict(r) for r in con.execute(
+            "SELECT module, name, value, default_value, dt "
+            "FROM params ORDER BY module, name")]
+    return {"statuses": statuses, "params": params,
+            "transition_status": db_status.all_transitions()}
+
+
+def restore_config_sql(text: str) -> None:
+    """Apply a dump as ONE transaction: a half-applied config is worse
+    than none. executescript() commits any pending txn first, so the
+    explicit BEGIN/COMMIT is what makes it atomic; on error connect()
+    rolls the whole thing back.
+
+    The file is executed as SQL — same trust level as config/check.sql.
+    That is deliberate: a developer may hand-edit it."""
+    
+    with connect() as con:
+        con.executescript("BEGIN;\n" + text + "\nCOMMIT;")
