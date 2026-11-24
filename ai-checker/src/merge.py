@@ -19,7 +19,7 @@ def _key(r: dict) -> str:
     return f"{r['runid']}/{r['chunk_id']}/{r['local_id']}"
 
 def run(args) -> int:
-    rows = db.fixed_issues(args.project)
+    rows = db.fixed_issues(args.project, latest_only=args.latest_only)
     if args.key:
         rows = [r for r in rows if _key(r) in set(args.key.split())]
     if not rows:
@@ -40,6 +40,11 @@ def run(args) -> int:
     merged = reconciled = lost = failed = 0
     for r in rows:
         key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
+
+        latest = db.latest_runid_by_project().get(r["project"])
+        if latest and r["runid"] != latest:
+            print(f"  STALE    {key}  baseline run {r['runid']}, "
+                  f"latest {latest} — conflict likely", file=sys.stderr)
 
         if not fix_sha or not gitutil.commit_exists(fix_sha):
             print(f"  GONE     {key}  {fix_sha or '(no sha)'} "
@@ -78,7 +83,7 @@ def run(args) -> int:
         except RuntimeError as exc:
             print(f"  CONFLICT {key}  {exc}", file=sys.stderr)
             failed += 1
-            break
+            continue
         db.mark_merged(r["id"], sha)
         print(f"  MERGED   {key}  {sha}")
         merged += 1
@@ -99,6 +104,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--keep", action="store_true",
                     help="keep the fix branch after merge (default: delete)")
+    ap.add_argument("--latest-only", action="store_true",
+                help="only fixes from the newest report per project")
     args = ap.parse_args()
 
     lock = acquire_lock()

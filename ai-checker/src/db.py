@@ -788,8 +788,10 @@ def is_terminal(status: str | None) -> bool:
 def _db_set_if_not_fixed(status: str | None) -> bool:
     return status is not None and status not in resolved_statuses()
 
-def fixed_issues(project: str | None = None) -> list[dict]:
+def fixed_issues(project: str | None = None,
+                 latest_only: bool = False) -> list[dict]:
     """Issues awaiting merge, oldest first (merge in commit order)."""
+
     q = ("SELECT i.id, i.runid, i.chunk_id, i.local_id, i.section, "
          "       i.title, i.fix_branch, i.fix_commit, r.project "
          "FROM issue i JOIN report r ON r.id = i.report_id "
@@ -798,6 +800,9 @@ def fixed_issues(project: str | None = None) -> list[dict]:
     if project:
         q += "AND r.project = ? "
         params.append(project)
+    if latest_only:
+        q += ("AND r.id = (SELECT MAX(id) FROM report "
+              "WHERE project = r.project) ")
     q += "ORDER BY r.project, i.runid, i.chunk_id, i.local_id"
     with connect() as con:
         return [dict(r) for r in con.execute(q, params)]
