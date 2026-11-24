@@ -845,9 +845,15 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
             "count": int(e.get("count", 1)),
         } for p, e in parsed],
     })
-    _db_set(report_path, finding, db.STATUS_FIXED, actor=db_status.ACT_COMMIT,
-            reason=reason, fix_branch=branch, fix_commit=sha,
-            fix_subject=subject_line)
+    _db_set(report_path, 
+            finding, 
+            db.STATUS_FIXED, 
+            actor=db_status.ACT_COMMIT,
+            reason=reason, 
+            fix_branch=branch, 
+            fix_commit=sha,
+            fix_subject=subject_line, 
+            fix_runid=ctx["fix_runid"])
 
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, report_path: Path, files: list[Path],
