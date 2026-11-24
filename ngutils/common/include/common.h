@@ -505,13 +505,14 @@ static inline const char *str_orempty(const char *c) {
  * If @p out is non-NULL the message is also written there via @c fprintf .
  * In both cases the message is forwarded to @c logsimpleerr (non-fatal level).
  *
- * @param out  Optional @c FILE*; ignored when NULL.
+ * @param out  Optional @c FILE*; ignored when NULL. Evaluated exactly once.
  * @param msg  @c printf -style format string.
  * @param ...  Format arguments.
  */
 #define LOGNPRINTF(out, msg, ...) \
-({ if (out) \
-    fprintf(out, (msg), ##__VA_ARGS__); \
+({ FILE *_out = (out); \
+   if (_out) \
+    fprintf(_out, (msg), ##__VA_ARGS__); \
   logsimpleerr(false, (msg), ##__VA_ARGS__); \
 })
 
