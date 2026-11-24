@@ -141,6 +141,12 @@ ai-arch:  ## pack reports into ai-checker-reports.tar.zst
 ai-mergearea-clean:  ## remove baselines with no pending work
 	@$(AI_RUN) src/gitutil.py --clean-baselines
 
+ai-clean:  ## nuke mergearea + branches of EVERY project (logs preserved)
+	@$(AI_RUN) src/gitutil.py --clean --all $(if $(DRY_RUN),--dry-run,)
+
+ai-clean-%:  ## nuke mergearea + branches of one project (logs preserved)
+	@$(AI_RUN) src/gitutil.py --clean --project $* $(if $(DRY_RUN),--dry-run,)
+
 install-completion:  ## install shell completion (auto-detects zsh/bash)
 	$(if $(SHELL_KIND),--shell=$(SHELL_KIND),)
 	@bash scripts/install-completion.sh

@@ -22,6 +22,8 @@ from common import OUT_ROOT, ROOT, rel_display
 MERGE_AREA = Path(os.environ.get("AI_CHECKER_MERGEAREA")
                   or (OUT_ROOT.parent / "mergearea"))
 
+FIX_LOG_SUBDIR = Path("logs") / "result"
+
 def baseline_branch_name(project: str, runid: int) -> str:
     return f"ai-baseline/{project}-c{runid}"      # НЕ 'ai-checker-...'
 
@@ -53,7 +55,7 @@ def head_sha() -> str:
         raise RuntimeError("not a git repository (or no commits yet)")
     return r.stdout.strip()
 
-FIX_LOG_SUBDIR = Path("logs") / "result"
+
 
 
 def fix_logs_dir(project: str) -> Path:
@@ -138,10 +140,15 @@ def ensure_fix_worktree(project: str, runid: int,
     return wt
 
 
-def remove_fix_worktree(wt: Path) -> None:
-    """Save logs, then unmount and delete a single fix worktree."""
+def remove_fix_worktree(wt: Path) -> list[Path]:
+    """Harvest logs, then unmount and delete one fix worktree. Returns
+    saved log paths. THE single teardown route — merge, reject and clean
+    all get log preservation for free."""
+
+    saved: list[Path] = []
     if wt.exists():
-        for p in harvest_fix_logs(wt):
+        saved = harvest_fix_logs(wt)
+        for p in saved:
             print(f"  LOG      {rel_display(p)}", file=sys.stderr)
         git("worktree", "remove", "--force", str(wt), check=False)
         if wt.exists():
@@ -153,6 +160,7 @@ def remove_fix_worktree(wt: Path) -> None:
             next(parent.iterdir())
         except StopIteration:
             parent.rmdir()
+    return saved
 
 
 def remove_baseline(project: str, runid: int) -> None:
@@ -543,27 +551,91 @@ def cleanup_project_baselines(project: str, keep_runid: int) -> None:
                     shutil.rmtree(p, ignore_errors=True)
         git("worktree", "prune", check=False)
 
+def project_worktree_dirs(project: str) -> list[Path]:
+    """mergearea/<project>-<runid> containers of this project."""
+    if not MERGE_AREA.is_dir():
+        return []
+    prefix = f"{project}-"
+    return [p for p in sorted(MERGE_AREA.iterdir())
+            if p.is_dir() and p.name.startswith(prefix)
+            and p.name[len(prefix):].isdigit()]
 
-def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Delete ai-checker fix branches")
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--project",
-                   help="only branches for this project")
-    g.add_argument("--all", action="store_true",
-                   help="all ai-checker-* branches (default)")
-    ap.add_argument("--check-run", type=int, default=None,
-                    help="only branches from this check-run "
-                         "(name contains '-c<N>-')")
-    ap.add_argument("--force", action="store_true",
-                    help="also delete unmerged branches (-D instead of -d)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print what would be deleted, do nothing")
-    args = ap.parse_args()
 
+def project_branches(project: str) -> tuple[list[str], list[str]]:
+    """(fix branches, baseline branches) of one project."""
+    r = git("for-each-ref", "--format=%(refname:short)",
+            "refs/heads/", check=False)
+    if r.returncode != 0:
+        return [], []
+    names = [b.strip() for b in r.stdout.splitlines() if b.strip()]
+    return ([b for b in names if b.startswith(f"ai-checker-{project}-")],
+            [b for b in names if b.startswith(f"ai-baseline/{project}-c")])
+
+
+def clean_project(project: str, *, dry_run: bool = False) -> dict:
+    """Nuke EVERY git artifact of one project. Logs are harvested first;
+    reports/ and the DB are NOT touched. Branches go with -D: 'clean'
+    means clean, an unmerged fix is exactly what is being thrown away."""
+    stats = {"logs": 0, "worktrees": 0, "branches": 0, "dirs": 0}
+    fix_br, base_br = project_branches(project)
+    containers = project_worktree_dirs(project)
+    print(f"[ai-clean] {project}: {len(containers)} mergearea dir(s), "
+          f"{len(fix_br)} fix branch(es), {len(base_br)} baseline branch(es)")
+
+    # Children FIRST: a fix worktree lives inside the container, and the
+    # parent must not be torn down while a child is still mounted.
+    for container in containers:
+        for child in sorted(container.iterdir()):
+            if not child.is_dir():
+                continue
+            if dry_run:
+                print(f"  WOULD    harvest + remove {child.name}")
+            else:
+                stats["logs"] += len(remove_fix_worktree(child))
+            stats["worktrees"] += 1
+        if dry_run:
+            print(f"  WOULD    remove {container.name}/")
+        else:
+            # Legacy: the container itself may be a baseline worktree.
+            git("worktree", "remove", "--force", str(container), check=False)
+            if container.exists():
+                shutil.rmtree(container, ignore_errors=True)
+        stats["dirs"] += 1
+
+    if not dry_run:
+        git("worktree", "prune", check=False)
+
+    for b in fix_br + base_br:
+        if dry_run:
+            print(f"  WOULD    git branch -D {b}")
+            stats["branches"] += 1
+        elif delete_branch(b, force=True):
+            print(f"  deleted  {b}")
+            stats["branches"] += 1
+        else:
+            print(f"  FAILED   {b}", file=sys.stderr)
+    return stats
+
+
+def _warn_orphan_issues(project: str) -> None:
+    """Branches are gone, but DB rows may still say 'fixed'. merge.py
+    recreates a missing branch from fix_commit, so until gc collects the
+    object ai-merge would RESURRECT what clean just deleted."""
+    import db
+    rows = db.fixed_issues(project)
+    if not rows:
+        return
+    keys = " ".join(f"{r['runid']}/{r['chunk_id']}/{r['local_id']}" for r in rows)
+    print(f"[ai-clean] warn: {len(rows)} issue(s) still 'fixed' in DB — "
+          f"ai-merge can resurrect them from sha until gc runs.\n"
+          f"           close them:  make ai-reject-{project} FIXLIST=\"{keys}\"",
+          file=sys.stderr)
+
+def run_branch_cleanup(args) -> int:
+    """Delete ai-checker-* branches by prefix: merged ones, plus
+    unmerged with --force. Worktrees are NOT touched here."""
     prefix = f"ai-checker-{args.project}-" if args.project else "ai-checker-"
-
-    merged, unmerged = list_branches(prefix)
+    merged, unmerged = list_branches(prefix, args.check_run)
     if not merged and not unmerged:
         msg = f"no branches match '{prefix}*'"
         if args.check_run is not None:
@@ -582,26 +654,94 @@ def main() -> int:
     if not to_delete:
         print("\nnothing to delete (use FORCE=1 to also delete unmerged)")
         return 0
-
     if args.dry_run:
         print(f"\n[dry-run] would delete {len(to_delete)} branch(es)")
         return 0
 
-    flag = "-D" if args.force else "-d"
-    deleted = 0
-    failed = 0
+    deleted = failed = 0
     print()
     for b in to_delete:
-        r = git("branch", flag, b, check=False)
-        if r.returncode != 0:
-            print(f"  FAILED:  {b}: {r.stderr.strip()}", file=sys.stderr)
-            failed += 1
-        else:
+        if delete_branch(b, force=args.force):
             print(f"  deleted: {b}")
             deleted += 1
-
+        else:
+            print(f"  FAILED:  {b}", file=sys.stderr)
+            failed += 1
     print(f"\n{deleted} deleted, {failed} failed")
     return 0 if failed == 0 else 1
+
+
+def run_clean(args) -> int:
+    """Nuke mergearea dirs + ALL branches (fix and baseline) per project.
+    Logs are harvested first; reports/ and the DB are untouched."""
+    from common import acquire_lock, discover_projects, release_lock
+    projects = ([args.project] if args.project
+                else [p.name for p in discover_projects()])
+    rc = 0
+    lock = acquire_lock()
+    try:
+        for name in projects:
+            st = clean_project(name, dry_run=args.dry_run)
+            print(f"[ai-clean] {name}: {st['logs']} log(s) saved, "
+                  f"{st['worktrees']} worktree(s), "
+                  f"{st['branches']} branch(es), {st['dirs']} dir(s)")
+            if not args.dry_run:
+                _warn_orphan_issues(name)
+    finally:
+        release_lock(lock)
+    return rc
+
+
+def run_clean_baselines(args) -> int:
+    """Remove baselines whose issues no actor can act on anymore.
+    Eligibility comes from transition_status via db.open_baselines()."""
+    import db
+    from common import acquire_lock, release_lock
+    live = {(b["project"], b["run_id"]) for b in db.open_baselines()}
+    lock = acquire_lock()
+    try:
+        removed = 0
+        for b in db.all_baselines():
+            if (b["project"], b["run_id"]) in live:
+                continue
+            if args.dry_run:
+                print(f"  WOULD    {b['baseline_branch']} + mergearea dir")
+            else:
+                remove_baseline(b["project"], b["run_id"])
+                print(f"  removed  {b['baseline_branch']}")
+            removed += 1
+        print(f"[ai-clean-baselines] {removed} baseline(s)"
+              f"{' would be removed' if args.dry_run else ' removed'}")
+    finally:
+        release_lock(lock)
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="ai-checker git artifacts: branch cleanup and worktree teardown")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--project", help="only this project")
+    g.add_argument("--all", action="store_true",
+                   help="every project (default)")
+    ap.add_argument("--check-run", type=int, default=None,
+                    help="only branches from this check-run ('-c<N>-')")
+    ap.add_argument("--force", action="store_true",
+                    help="also delete unmerged branches (-D instead of -d)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print the plan, change nothing")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--clean", action="store_true",
+                      help="nuke mergearea + ALL branches (logs harvested first)")
+    mode.add_argument("--clean-baselines", action="store_true",
+                      help="remove baselines with no pending work")
+    args = ap.parse_args()
+
+    if args.clean:
+        return run_clean(args)
+    if args.clean_baselines:
+        return run_clean_baselines(args)
+    return run_branch_cleanup(args)
 
 
 if __name__ == "__main__":
