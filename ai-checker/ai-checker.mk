@@ -34,11 +34,22 @@ AI_DECIDE_ARGS = $(if $(FIXLIST),--only "$(FIXLIST)",) \
                  $(if $(REASON),--reason "$(REASON)",) \
                  $(if $(ALL_PROJECTS),--all-projects,)
 
-AI_TRANS_ARGS = $(if $(ACTOR),--actor $(ACTOR),) \
-                $(if $(STATUS),--status $(STATUS),) \
-                $(if $(NEW_STATUS),--new-status $(NEW_STATUS),) \
+# ── transition policy ───────────────────────────────────────────────
+# ACTOR=<name>                    -> flip EVERY transition of the actor
+# ACTOR + STATUS + NEW_STATUS     -> flip exactly ONE transition
+AI_TRANS_ARGS = $(if $(ACTOR),--actor "$(ACTOR)",) \
+                $(if $(STATUS),--status "$(STATUS)",) \
+                $(if $(NEW_STATUS),--new-status "$(NEW_STATUS)",) \
                 $(if $(ENABLED),--enabled-only,)
 
+define require_actor
+	@test -n "$(ACTOR)" || { \
+	    echo "ERROR: ACTOR is required for $@"; \
+	    echo "usage: make $@ ACTOR=<name> [STATUS=<src> NEW_STATUS=<dst>]"; \
+	    echo "       actors/transitions: make ai-config-transitions"; \
+	    exit 1; \
+	}
+endef
 
 ai-check:  ## AI review of all projects (LM Studio)
 	@$(AI_RUN) src/check.py --all $(AI_CHECK_EXTRA)
@@ -117,12 +128,14 @@ ai-config-set:  ## set param: MODULE= NAME= VALUE=
 ai-config-transitions:  ## show status machine (ACTOR=, STATUS=, ENABLED=1)
 	@$(AI_RUN) src/params.py --transitions $(AI_TRANS_ARGS)
 
-ai-config-disable:  ## disable one transition or a whole actor
-	@$(AI_RUN) src/params.py $(if $(ACTOR),$(if $(STATUS),--set-allowed n,--actor-off),--actor-off) $(AI_TRANS_ARGS)
+ai-config-disable:  ## disable an actor or one transition (ACTOR=, STATUS=, NEW_STATUS=)
+	$(require_actor)
+	@$(AI_RUN) src/params.py $(if $(STATUS),--set-allowed n $(AI_TRANS_ARGS),--actor-off "$(ACTOR)")
 
-ai-config-enable:  ## enable one transition or a whole actor
-	@$(AI_RUN) src/params.py $(if $(ACTOR),$(if $(STATUS),--set-allowed y,--actor-on),--actor-on) $(AI_TRANS_ARGS)
-
+ai-config-enable:  ## enable an actor or one transition
+	$(require_actor)
+	@$(AI_RUN) src/params.py $(if $(STATUS),--set-allowed y $(AI_TRANS_ARGS),--actor-on "$(ACTOR)")
+	
 ai-config-save:  ## dump DB-owned config as SQL inserts (FILENAME=...)
 	@$(AI_RUN) src/params.py --save $(if $(FILENAME),"$(abspath $(FILENAME))",)
 
