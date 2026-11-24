@@ -214,3 +214,23 @@ FROM issue_history h
 JOIN issue  i ON i.id = h.issue_id
 JOIN report r ON r.id = i.report_id;
 
+-- ── tracker integration (Jira / GitHub Issues / etc.) ──────────────
+CREATE TABLE IF NOT EXISTS tracker_mapping (
+    status         TEXT NOT NULL REFERENCES statuses(name),
+    remote_status  TEXT NOT NULL,   -- 'To Do', 'In Progress', 'Done', etc.
+    PRIMARY KEY (status, remote_status)
+);
+
+-- Seed defaults (Jira workflow)
+INSERT OR IGNORE INTO tracker_mapping (status, remote_status) VALUES
+    ('added',           'To Do'),
+    ('proposed-to-fix', 'In Progress'),
+    ('analyze-by-dev',  'In Progress'),
+    ('fixed',           'In Review'),
+    ('merged',          'Done'),
+    ('rejected',        'Done'),
+    ('no-action',       'Done'),
+    ('failed',          'To Do'),
+    ('stale',           'Done'),
+    ('suppressed',      'Done');
+
