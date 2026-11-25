@@ -13,13 +13,8 @@ import os
 import sys
 
 import db
-from tracker_common import (
-    PushResult, 
-    Ticket, 
-    Tracker, 
-    get_json,
-    post_json
-)
+from tracker_common import PushResult, Ticket, Tracker, get_json, post_json
+
 
 def _no_api(err: str) -> bool:
     return any(c in err for c in ("HTTP 404", "HTTP 405", "HTTP 501"))
