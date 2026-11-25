@@ -123,6 +123,8 @@ typedef enum {
  *
  * @param val  Input value.
  * @return     Next power of two above @p val, or 0 if @p val is 0.
+ * @note       If @p val has its most-significant bit set, the left-shift
+ *             overflows and the result is 0.
  */
 static inline unsigned long
 round_up_2(unsigned long val)
