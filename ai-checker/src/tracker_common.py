@@ -118,13 +118,6 @@ def remote_status(backend: str, status: str) -> str:
     return row["remote_status"] if row else ""
 
 
-def marker(r: dict) -> str:
-    """Status suffix for ai-status: '^' pushed, '~' dry only, '' none."""
-    if not r.get("remote_backend"):
-        return ""
-    return "~" if r.get("remote_dry") else "^"
-
-
 def artifact_path(project: str, backend: str) -> Path:
     return OUT_ROOT / project / f"tracker-{backend}.json"
 
@@ -199,6 +192,18 @@ def push_project(project: str, *, force: bool = False,
           f"{skipped} already linked, {failed} failed -> {rel_display(out)}")
     return 1 if failed else 0
 
+def marker(r: dict) -> str:
+    """Status suffix for ai-status:
+       '^<remote_id>'  pushed (gitea: issue number, jira: PROJ-42)
+       '~'             dry-run payload only, no ticket exists
+       ''              never pushed
+    """
+    if not r.get("remote_backend"):
+        return ""
+    if r.get("remote_dry"):
+        return "~"
+    rid = str(r.get("remote_id") or "")
+    return f"^{rid}" if rid else "^"
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Push findings to the bug tracker")
