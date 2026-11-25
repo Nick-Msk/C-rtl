@@ -57,7 +57,11 @@ def run(args) -> int:
             if not args.dry_run:
                 db.mark_merged(r["id"], head)
                 if not args.keep:
-                    gitutil.delete_branch(br)      # -d, refuses if unmerged
+                    if not gitutil.discard_fix(
+                            r["project"], r["runid"],
+                            r["chunk_id"], r["local_id"], br):
+                        print(f"  warn: cannot delete branch {br}",
+                              file=sys.stderr)
             print(f"  RECORDED {key}  {fix_sha} already in {base}")
             reconciled += 1
             continue

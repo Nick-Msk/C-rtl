@@ -17,10 +17,13 @@ from common import parse_fixlist
 def _discard_git(r: dict) -> None:
     """A rejected fix must not leave a branch + worktree behind: git
     refuses `branch -D` while a worktree holds the branch."""
-    wt = gitutil.fix_worktree_path(r["project"], r["check_runid"],
-                                   r["chunk_id"], r["local_id"])
-    gitutil.remove_fix_worktree(wt)      # harvest logs, then unmount
-    if gitutil.delete_branch(r["fix_branch"], force=True):
+    
+    if gitutil.discard_fix(r["project"], 
+                           r["check_runid"],
+                           r["chunk_id"], 
+                           r["local_id"],
+                           r["fix_branch"], 
+                           force=True):
         print(f"         discarded {r['fix_branch']} + worktree")
     else:
         print(f"  warn: cannot delete branch {r['fix_branch']}",

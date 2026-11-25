@@ -482,6 +482,7 @@ def merged_branches(prefix: str = "ai-checker-") -> list[str]:
     (unlike `git branch --merged --format`, which returns empty on
     some macOS builds).
     """
+    
     r = git("for-each-ref", "--format=%(refname:short)",
             "refs/heads/", check=False)
     if r.returncode != 0:
@@ -519,8 +520,22 @@ def make_verifier(project: str, targets: list[str],
                 tail = "\n".join(out.splitlines()[-25:])
                 raise RuntimeError(f"{target} failed:\n{tail}")
     return verify
+
+
+def discard_fix(project: str, runid: int, chunk_id: int, local_id: int,
+                branch: str, *, force: bool = False) -> bool:
+    """Unmount the fix worktree FIRST — git refuses branch deletion
+    while any worktree holds the branch — then delete the branch.
+    Logs are harvested by remove_fix_worktree on the way out."""
+
+    wt = fix_worktree_path(project, runid, chunk_id, local_id)
+    remove_fix_worktree(wt)
+    return delete_branch(branch, force=force)
+
+
 def cleanup_project_baselines(project: str, keep_runid: int) -> None:
     """Remove all baseline worktrees and branches for `project` except `keep_runid`."""
+
     prefix = f"ai-baseline/{project}-c"
     r = git("for-each-ref", "--format=%(refname:short)",
             f"refs/heads/{prefix}*", check=False)
