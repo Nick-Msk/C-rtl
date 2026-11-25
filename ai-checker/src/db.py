@@ -18,7 +18,7 @@ from pathlib import Path
 
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -1364,3 +1364,40 @@ def remote_links(project: str, backend: str) -> dict[int, dict]:
             "WHERE r.project = ? AND rm.backend = ?",
             (project, backend)).fetchall()
     return {r["issue_id"]: dict(r) for r in rows}
+
+def projects_for_run(runid: int) -> list[str]:
+    with connect() as con:
+        return [r["project"] for r in con.execute(
+            "SELECT DISTINCT project FROM report WHERE run_id = ?",
+            (runid,)).fetchall()]
+
+
+def remote_tickets_to_close(project: str, keep_runid: int) -> list[dict]:
+    """Live (non-dry, not-yet-closed) remote tickets of OLDER runs of
+    this project. Local status is irrelevant: a new baseline supersedes
+    the whole previous period, fixed/merged included."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT rm.issue_id, rm.backend, rm.remote_id, rm.remote_url, "
+            "       i.runid, i.chunk_id, i.local_id, i.status "
+            "FROM issue_remote rm "
+            "JOIN issue i ON i.id = rm.issue_id "
+            "JOIN report r ON r.id = i.report_id "
+            "WHERE r.project = ? AND r.run_id != ? "
+            "  AND rm.closed = 0 AND rm.dry = 0 AND rm.remote_id != ''",
+            (project, keep_runid)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["key"] = f"{r['runid']}/{r['chunk_id']}/{r['local_id']}"
+        out.append(d)
+    return out
+
+
+def mark_remote_closed(issue_id: int, backend: str, remote_status: str) -> None:
+    with connect() as con:
+        con.execute(
+            "UPDATE issue_remote SET closed = 1, remote_status = ?, dt = ? "
+            "WHERE issue_id = ? AND backend = ?",
+            (remote_status, _now_iso(), issue_id, backend))
+        

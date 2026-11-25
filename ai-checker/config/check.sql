@@ -229,6 +229,7 @@ CREATE TABLE IF NOT EXISTS issue_remote (
     remote_url    TEXT,
     remote_status TEXT,
     dry           INTEGER NOT NULL DEFAULT 0,
+    closed        INTEGER NOT NULL DEFAULT 0,
     dt            TEXT    NOT NULL,
     PRIMARY KEY (issue_id, backend)
 );

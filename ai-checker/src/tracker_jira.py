@@ -15,8 +15,14 @@ import base64
 import os
 
 import db
-from tracker_common import PushResult, Ticket, Tracker, post_json
-
+from tracker_common import (
+    PushResult, 
+    Ticket, 
+    Tracker, 
+    get_json, 
+    patch_json,
+    post_json,
+)
 
 class JiraTracker(Tracker):
     name = "jira"
@@ -85,6 +91,31 @@ class JiraTracker(Tracker):
                           remote_url=f"{self.link}/browse/{key}" if key else "",
                           remote_status=t.remote_status)
 
+    closed_status = "Done"
+    def close(self, link: dict, comment: str) -> str | None:
+        rid = link["remote_id"]
+        if self.api == "plain":
+            _, err = patch_json(f"{self.link}/issues/{rid}",
+                                {"state": "closed"}, self._headers())
+            return err
+        hdr = self._headers()
+        # transition to a done-category status, then comment
+        data, err = get_json(f"{self.link}/rest/api/2/issue/{rid}/transitions", hdr)
+        if err:
+            return err
+        transitions = data.get("transitions", []) if isinstance(data, dict) else []
+        done = next((t for t in transitions
+                     if (t.get("to", {}).get("statusCategory", {}).get("key")
+                         == "done")), None)
+        if done is None:
+            return "no done-category transition available"
+        _, err = post_json(f"{self.link}/rest/api/2/issue/{rid}/transitions",
+                           {"transition": {"id": done["id"]}}, hdr)
+        if err:
+            return err
+        _, err = post_json(f"{self.link}/rest/api/2/issue/{rid}/comment",
+                           {"body": comment}, hdr)
+        return err
 
 def tracker() -> Tracker:
     return JiraTracker()

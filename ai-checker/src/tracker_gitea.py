@@ -13,8 +13,14 @@ import os
 import sys
 
 import db
-from tracker_common import PushResult, Ticket, Tracker, get_json, post_json
-
+from tracker_common import (
+    PushResult, 
+    Ticket, 
+    Tracker, 
+    get_json, 
+    patch_json,
+    post_json,
+)
 
 def _no_api(err: str) -> bool:
     return any(c in err for c in ("HTTP 404", "HTTP 405", "HTTP 501"))
@@ -107,6 +113,17 @@ class GiteaTracker(Tracker):
                           remote_url=data.get("html_url", ""),
                           remote_status=t.remote_status or "open")
 
+    closed_status = "closed"
+
+    def close(self, link: dict, comment: str) -> str | None:
+        base, hdr = self._base(), self._headers()
+        num = link["remote_id"]
+        _, err = patch_json(f"{base}/issues/{num}", {"state": "closed"}, hdr)
+        if err:
+            return err
+        _, err = post_json(f"{base}/issues/{num}/comments",
+                           {"body": comment}, hdr)
+        return err
 
 def tracker() -> Tracker:
     return GiteaTracker()

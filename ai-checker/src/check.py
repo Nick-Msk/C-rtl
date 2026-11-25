@@ -374,6 +374,12 @@ def _cleanup_old_branches(runid: int) -> None:
         print(f"[ai-checker] closed {n_stale} stale issue(s) "
               f"from previous run(s)", file=sys.stderr)
 
+    try:
+        import tracker_common
+        tracker_common.close_old_tickets(runid)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: tracker close failed: {exc}", file=sys.stderr)
+    
     # ── 1. Синхронно чистим ВСЕ старые baseline (ветки + папки mergearea/) ──
     # Делаем это ДО `if not branches: return`, чтобы отработало всегда,
     # и сканируем git/mergearea, чтобы захватить даже упавшие прогоны без записи в БД.
@@ -688,6 +694,7 @@ def _run_checks(args, model: str, runid: int) -> tuple[int, dict]:
     if done > 1:
         print(usage_line("ai-checker", state["all_usage"]), file=sys.stderr)
     return 0, state["all_usage"]
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
