@@ -611,7 +611,7 @@ def _push_tracker(project: str) -> None:
     Runs LAST in _ingest_and_write: ingest + carry are done, so
     suppressed findings are already marked and won't be pushed as
     fresh tickets. Never fails the run."""
-    mode = db.get_param("check", "tracker_mode", "off")
+    mode = db.get_param("track", "mode", "off")
     if mode == "off":
         return
     try:

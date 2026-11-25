@@ -63,21 +63,26 @@ def push_issues(project: str, issues: list[dict], *, dry_run: bool = True) -> No
                             encoding="utf-8")
         print(f"[tracker] dry-run: {len(payloads)} issue(s) -> {rel_display(out_path)}")
         
-        # Если json-server запущен, отправь туда же
-        import urllib.error
-        import urllib.request
-        server_url = "http://localhost:3001/issues"
-        try:
-            urllib.request.urlopen(f"{server_url.rsplit('/', 1)[0]}/", timeout=1)
-            for p in payloads:
-                data = json.dumps(p).encode("utf-8")
-                req = urllib.request.Request(server_url, data=data,
-                                            headers={"Content-Type": "application/json"},
-                                            method="POST")
-                urllib.request.urlopen(req, timeout=5)
-            print(f"[tracker] also posted to {server_url}")
-        except urllib.error.URLError:
-            pass  # json-server не запущен — тихо пропустить
+        # Если jira_link задан, отправь туда же (для тестирования с json-server)
+        link = db.get_param("track", "jira_link", "")
+        if link:
+            import urllib.error
+            import urllib.request
+            # Для json-server: POST на link/issues
+            # Для Jira: POST на link/rest/api/2/issue
+            server_url = link if link.endswith("/issues") else f"{link.rstrip('/')}/issues"
+            try:
+                urllib.request.urlopen(f"{server_url.rsplit('/', 1)[0]}/", timeout=1)
+                for p in payloads:
+                    data = json.dumps(p).encode("utf-8")
+                    req = urllib.request.Request(server_url, data=data,
+                                                headers={"Content-Type": "application/json"},
+                                                method="POST")
+                    urllib.request.urlopen(req, timeout=5)
+                print(f"[tracker] also posted to {server_url}")
+            except urllib.error.URLError as exc:
+                print(f"[tracker] warn: cannot reach {server_url}: {exc}",
+                      file=sys.stderr)
         return
     
     # Live mode: POST to Jira

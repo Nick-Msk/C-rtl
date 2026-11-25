@@ -48,6 +48,7 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("track", "jira_project"):      "",   # PROJ
     ("track", "jira_token"):        "",   # API token (or env JIRA_TOKEN)
     ("track", "jira_dry_run"):      True, # export JSON, don't POST
+    ("track", "mode"):              "dry",      # off|dry|jira
 }
 
 MODULES: dict[str, str] = {
