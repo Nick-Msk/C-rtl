@@ -26,4 +26,6 @@ check.db-shm
 check.db-wal
 reports/
 mergearea/
+#gitea
+gitea_ping.sh
 
