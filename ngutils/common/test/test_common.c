@@ -475,7 +475,7 @@ Test(common, qsort_using_pint_revcmp) {
  * Direct comparison tests
  * ========================================================================= */
 
-Test(common, pcsrr_cmp_basic) {
+Test(common, pcstr_cmp_basic) {
     const char *a = "apple";
     const char *b = "banana";
     const char *c = "apple";
@@ -486,7 +486,7 @@ Test(common, pcsrr_cmp_basic) {
     CHECK_EQ("apple == apple", pcstr_cmp(&a, &c), 0);
 }
 
-Test(common, pcsrr_icmp_basic) {
+Test(common, pcstr_icmp_basic) {
     const char *a = "Apple";
     const char *b = "apple";
     const char *c = "BANANA";
@@ -496,7 +496,7 @@ Test(common, pcsrr_icmp_basic) {
     CHECK_TRUE("BANANA > Apple (ci)", pcstr_icmp(&c, &a) > 0);
 }
 
-Test(common, pcsrr_cmp_empty_strings) {
+Test(common, pcstr_cmp_empty_strings) {
     const char *a = "";
     const char *b = "a";
     const char *c = "";
@@ -510,7 +510,7 @@ Test(common, pcsrr_cmp_empty_strings) {
  * qsort integration
  * ========================================================================= */
 
-Test(common, pcsrr_cmp_qsort) {
+Test(common, pcstr_cmp_qsort) {
     const char *arr[] = { "cherry", "apple", "date", "banana" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
 
@@ -522,7 +522,7 @@ Test(common, pcsrr_cmp_qsort) {
     CHECK_STR_EQ("3", arr[3], "date");
 }
 
-Test(common, pcsrr_icmp_qsort) {
+Test(common, pcstr_icmp_qsort) {
     const char *arr[] = { "Cherry", "apple", "Date", "banana" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
 
@@ -538,7 +538,7 @@ Test(common, pcsrr_icmp_qsort) {
  * bsearch integration
  * ========================================================================= */
 
-Test(common, pcsrr_cmp_bsearch) {
+Test(common, pcstr_cmp_bsearch) {
     /* Sorted array for bsearch */
     const char *arr[] = { "apple", "banana", "cherry", "date" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
@@ -555,7 +555,7 @@ Test(common, pcsrr_cmp_bsearch) {
     CHECK_NULL("not found", not_found);
 }
 
-Test(common, pcsrr_icmp_bsearch) {
+Test(common, pcstr_icmp_bsearch) {
     /* Sorted case-insensitively */
     const char *arr[] = { "Apple", "banana", "Cherry", "date" };
     size_t n = sizeof(arr) / sizeof(arr[0]);
