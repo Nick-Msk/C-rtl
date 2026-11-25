@@ -16,13 +16,14 @@ import os
 
 import db
 from tracker_common import (
-    PushResult, 
-    Ticket, 
-    Tracker, 
-    get_json, 
+    PushResult,
+    Ticket,
+    Tracker,
+    get_json,
     patch_json,
     post_json,
 )
+
 
 class JiraTracker(Tracker):
     name = "jira"
