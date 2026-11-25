@@ -478,11 +478,15 @@ extern int pitem_cmp(const void *restrict d1, const void *restrict d2, size_t sz
  * @brief Compare two pointers to C-strings with @c strcmp (ascending).
  *
  * @c *s1 and @c *s2 are treated as @c const char* pointers.
+ *
+ * @warning Neither @p s1 nor @p s2 nor the strings they point to may be NULL.
  */
 extern int pcstr_cmp(const void *restrict s1, const void *restrict s2);
 
 /**
  * @brief Compare two pointers to C-strings case-insensitively with @c strcasecmp.
+ *
+ * @warning Neither @p s1 nor @p s2 nor the strings they point to may be NULL.
  */
 extern int pcstr_icmp(const void *restrict s1, const void *restrict s2);
 
