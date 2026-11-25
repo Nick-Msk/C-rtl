@@ -71,6 +71,36 @@
         }
       },
       "id": "uhfbabFtrWw"
+    },
+    {
+      "local_key": "166/1/1001",
+      "project": "common",
+      "section": "Важно",
+      "local_status": "added",
+      "remote_status": "To Do",
+      "summary": "[common] `calcnewsize(SIZE_NONE, -1)` → ожидается `-1`",
+      "description": "`calcnewsize(SIZE_NONE, -1)` → ожидается `-1`",
+      "id": "JsW3g2a0tSk"
+    },
+    {
+      "local_key": "166/1/1002",
+      "project": "common",
+      "section": "Важно",
+      "local_status": "added",
+      "remote_status": "To Do",
+      "summary": "[common] `calcnewsize(SIZE_POWER2, 0)` → ожидается `0`",
+      "description": "`calcnewsize(SIZE_POWER2, 0)` → ожидается `0`",
+      "id": "gCYw9PXd5Is"
+    },
+    {
+      "local_key": "166/1/1003",
+      "project": "common",
+      "section": "Важно",
+      "local_status": "added",
+      "remote_status": "To Do",
+      "summary": "[common] Неизвестный `Tincrease` (например, `(Tincrease)99`) → ожидается `-1`",
+      "description": "Неизвестный `Tincrease` (например, `(Tincrease)99`) → ожидается `-1`\n\nЭто единственные ветки `switch`, которые не покрыты.\n\n**3. Тест-утилиты из `test_common.h` не имеют собственных тестов**\n\n`test_mute_stderr` / `test_restore_stderr`, `test_read_file`, `test_buf_contains`, `test_tmpname` — ни одного `Test(...)` для них в `test_common.c`. Для `test_buf_contains` это особенно ощутимо: функция с неочевидной семантикой (NUL-байты в буфере, пустая игла → `false`) не проверена. Минимальный набор:\n\n```c\nTest(test_common, buf_contains_basic) { /* \"hello\" in \"xxhelloxx\" */ }\nTest(test_common, buf_contains_null_in_buf) { /* needle with \\0 */ }\nTest(test_common, buf_contains_empty_needle) { /* → false */ }\nTest(test_common, buf_contains_needle_longer_than_buf) { /* → false */ }\n```",
+      "id": "OqOSeraW7S8"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"
