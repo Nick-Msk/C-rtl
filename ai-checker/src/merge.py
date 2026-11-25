@@ -56,12 +56,11 @@ def run(args) -> int:
             head = gitutil.git("rev-parse", "--short", "HEAD").stdout.strip()
             if not args.dry_run:
                 db.mark_merged(r["id"], head)
-                if not args.keep:
-                    if not gitutil.discard_fix(
+                if not args.keep and not gitutil.discard_fix(
                             r["project"], r["runid"],
                             r["chunk_id"], r["local_id"], br):
-                        print(f"  warn: cannot delete branch {br}",
-                              file=sys.stderr)
+                    print(f"  warn: cannot delete branch {br}",
+                            file=sys.stderr)
             print(f"  RECORDED {key}  {fix_sha} already in {base}")
             reconciled += 1
             continue
