@@ -18,7 +18,7 @@ from pathlib import Path
 
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 DB_PATH = Path(__file__).resolve().parent / "config" / "check.db"
 
@@ -44,12 +44,24 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("fix",   "verify_on_commit"):  True,
     ("llm",   "url"):               "http://127.0.0.1:1234",
     ("llm",   "model_name"):        "",
-    ("track", "jira_link"):         "",   # https://yourcompany.atlassian.net
-    ("track", "jira_project"):      "",   # PROJ
-    ("track", "jira_token"):        "",   # API token (or env JIRA_TOKEN)
-    ("track", "jira_dry_run"):      True, # export JSON, don't POST
-    ("track", "mode"):              "dry",      # off|dry|jira
+    ("track", "mode"):              "off",     # off | dry | live
+    ("track", "backend"):           "jira",    # jira | gitea
+    ("track", "jira_link"):         "",
+    ("track", "jira_project"):      "",
+    ("track", "jira_token"):        "",
+    ("track", "jira_auth"):         "bearer",  # bearer | basic
+    ("track", "jira_user"):         "",
+    ("track", "jira_issuetype"):    "Bug",
+    ("track", "jira_api"):          "rest",    # rest | plain (json-server)
+    ("track", "jira_dry_run"):      True,
+    ("track", "gitea_link"):        "",
+    ("track", "gitea_owner"):       "",
+    ("track", "gitea_repo"):        "",
+    ("track", "gitea_token"):       "",
+    ("track", "gitea_labels"):      "",
+    ("track", "gitea_dry_run"):     True,
 }
+
 
 MODULES: dict[str, str] = {
     "check":  "AI review pipeline: chunk size, model, prompt budget",
@@ -88,6 +100,36 @@ STATUSES_META: dict[str, tuple[str, bool, bool]] = {
     STATUS_SUPPRESSED: ("matches an earlier rejected/no-action finding",True,  True),
 }
 STATUSES = set(STATUSES_META)      # argparse choices, update_issue_status
+
+TRACKER_MAP: dict[tuple[str, str], str] = {
+    ("jira", STATUS_ADDED):      "To Do",
+    ("jira", STATUS_PROPOSED):   "In Progress",
+    ("jira", STATUS_ANALYZE):    "In Progress",
+    ("jira", STATUS_FIXED):      "In Review",
+    ("jira", STATUS_MERGED):     "Done",
+    ("jira", STATUS_REJECTED):   "Done",
+    ("jira", STATUS_NO_ACTION):  "Done",
+    ("jira", STATUS_FAILED):     "To Do",
+    ("jira", STATUS_STALE):      "Done",
+    ("jira", STATUS_SUPPRESSED): "Done",
+    ("gitea", STATUS_ADDED):     "open",
+    ("gitea", STATUS_PROPOSED):  "open",
+    ("gitea", STATUS_ANALYZE):   "open",
+    ("gitea", STATUS_FIXED):     "open",
+    ("gitea", STATUS_MERGED):    "closed",
+    ("gitea", STATUS_REJECTED):  "closed",
+    ("gitea", STATUS_NO_ACTION): "closed",
+    ("gitea", STATUS_FAILED):    "open",
+    ("gitea", STATUS_STALE):     "closed",
+    ("gitea", STATUS_SUPPRESSED): "closed",
+}
+
+
+def _seed_tracker_mapping(con: sqlite3.Connection) -> None:
+    for (backend, status), remote in TRACKER_MAP.items():
+        con.execute("INSERT OR IGNORE INTO tracker_mapping "
+                    "(backend, status, remote_status) VALUES (?, ?, ?)",
+                    (backend, status, remote))
 
 _RESOLVED_SQL = "status IN (SELECT name FROM statuses WHERE resolved = 1)"
 
@@ -734,6 +776,7 @@ def seed_defaults() -> None:
     try:
         with connect() as con:
             _seed_statuses(con)
+            _seed_tracker_mapping(con)
             _seed_modules(con)
             _seed_params(con)
             # state machine values
@@ -1021,14 +1064,21 @@ def list_issues(project: str | None = None,
     per project, so superseded ('stale') runs don't drown the view.
     Each dict has an extra 'key' = '<chunk_id>/<local_id>'.
     """
-    q = ("SELECT r.project, r.id AS report_id, "
+    q = ("SELECT r.project, r.id AS report_id, i.id, "
          "r.started AS report_started, i.runid AS check_runid, "
          "i.chunk_id, i.local_id, i.section, i.finding_id, i.status, "
          "i.title, i.text, i.fix_branch, i.fix_commit, i.fix_subject, i.dt, "
          "i.carried_from, i.carry_score, "
+         "rm.backend AS remote_backend, rm.remote_id, rm.remote_url, "
+         "rm.dry AS remote_dry, "
          "(SELECT s.runid || '/' || s.chunk_id || '/' || s.local_id "
          " FROM issue s WHERE s.id = i.carried_from) AS carried_key "
-         "FROM issue i JOIN report r ON r.id = i.report_id WHERE 1=1 ")
+         "FROM issue i JOIN report r ON r.id = i.report_id "
+         "LEFT JOIN issue_remote rm ON rm.issue_id = i.id "
+         "  AND rm.rowid = (SELECT r2.rowid FROM issue_remote r2 "
+         "                  WHERE r2.issue_id = i.id "
+         "                  ORDER BY r2.dry ASC, r2.rowid DESC LIMIT 1) "
+         "WHERE 1=1 ")
     params: list = []
 
     if project:
@@ -1287,3 +1337,30 @@ def restore_config_sql(text: str) -> None:
 
     with connect() as con:
         con.executescript("BEGIN;\n" + text + "\nCOMMIT;")
+
+def mark_pushed(issue_id: int, backend: str, *, remote_id: str = "",
+                remote_url: str = "", remote_status: str = "",
+                dry: bool = False) -> bool:
+    with connect() as con:
+        con.execute(
+            "INSERT INTO issue_remote (issue_id, backend, remote_id, "
+            "  remote_url, remote_status, dry, dt) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(issue_id, backend) DO UPDATE SET "
+            "  remote_id = excluded.remote_id, remote_url = excluded.remote_url, "
+            "  remote_status = excluded.remote_status, dry = excluded.dry, "
+            "  dt = excluded.dt",
+            (issue_id, backend, remote_id, remote_url, remote_status,
+             int(bool(dry)), _now_iso()))
+    return True
+
+
+def remote_links(project: str, backend: str) -> dict[int, dict]:
+    """issue_id -> link row, for idempotency of repeated pushes."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT rm.* FROM issue_remote rm "
+            "JOIN issue i ON i.id = rm.issue_id "
+            "JOIN report r ON r.id = i.report_id "
+            "WHERE r.project = ? AND rm.backend = ?",
+            (project, backend)).fetchall()
+    return {r["issue_id"]: dict(r) for r in rows}

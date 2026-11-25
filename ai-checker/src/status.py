@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tracker_common
 
 import db
 import gitutil
@@ -79,12 +80,12 @@ def cmd_list(project: str | None, status: str | None,
     alive = gitutil.branches_exist(names) if names else set()
 
     for r in rows:
-        st = r["status"]
+        st = f"{r['status']}{tracker_common.marker(r)}"
         sha = r.get("fix_commit")
         if st in ("fixed", "merged") and sha:
             st = f"{st}({sha})"
         print(f"{r['project']:<6} {r['key']:<14} "
-              f"{r['section']:<10} {st:<18} {r['title'][:60]}")
+              f"{r['section']:<10} {st:<20} {r['title'][:60]}")
         if r["status"] == db.STATUS_FIXED and r.get("fix_branch"):
             if r["fix_branch"] in alive:
                 print(f"      {r['fix_branch']}  {r['fix_commit']}")
@@ -95,7 +96,8 @@ def cmd_list(project: str | None, status: str | None,
         if r.get("carried_key"):
             print(f"      ← carried from {r['carried_key']} "
                   f"(score {r['carry_score']:.2f})")
-
+            
+    print("\n^ pushed to tracker    ~ dry-run payload only")
     return 0
 
 def cmd_runs(limit: int, as_json: bool) -> int:

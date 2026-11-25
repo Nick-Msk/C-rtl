@@ -185,6 +185,12 @@ ai-clean:  ## nuke mergearea + branches of EVERY project (logs preserved)
 ai-clean-%:  ## nuke mergearea + branches of one project (logs preserved)
 	@$(AI_RUN) src/gitutil.py --clean --project $* $(if $(DRY_RUN),--dry-run,)
 
+ai-push:  ## push findings of EVERY project to the tracker
+	@$(AI_RUN) src/tracker_common.py --all $(if $(DRY_RUN),--dry-run,) $(if $(FORCE),--force,)
+
+ai-push-%:  ## push findings of one project (DRY_RUN=1, FORCE=1)
+	@$(AI_RUN) src/tracker_common.py --project $* $(if $(DRY_RUN),--dry-run,) $(if $(FORCE),--force,)
+
 install-completion:  ## install shell completion (auto-detects zsh/bash)
 	$(if $(SHELL_KIND),--shell=$(SHELL_KIND),)
 	@bash scripts/install-completion.sh

@@ -607,22 +607,14 @@ def _print_project_summary(ctx: dict, total_dur: float) -> None:
 
 
 def _push_tracker(project: str) -> None:
-    """Best-effort export/push of this project's findings to the tracker.
-    Runs LAST in _ingest_and_write: ingest + carry are done, so
-    suppressed findings are already marked and won't be pushed as
-    fresh tickets. Never fails the run."""
-    mode = db.get_param("track", "mode", "off")
-    if mode == "off":
-        return
+    """Best-effort. Runs LAST: suppressed/stale already marked, so they
+    are never pushed as fresh tickets. Never fails the run."""
     try:
-        import tracker
-        rows = db.list_issues(project=project, latest_only=True)
-        rows = [r for r in rows
-                if r["status"] not in (db.STATUS_SUPPRESSED, db.STATUS_STALE)]
-        tracker.push_issues(project, rows, dry_run=(mode != "jira"))
+        import tracker_common
+        tracker_common.push_project(project)
     except Exception as exc:  # noqa: BLE001
-        print(f"[ai-checker] warn: tracker push failed: {exc}",
-              file=sys.stderr)
+        print(f"[ai-checker] warn: tracker push failed: {exc}", file=sys.stderr)
+        
         
 # ── project loop ───────────────────────────────────────────────────
 
