@@ -67,6 +67,12 @@ class Tracker:
         """POST payload; fill remote_id/remote_url, or error."""
         raise NotImplementedError
 
+    def ensure_project(self, project: str) -> str | None:
+        """Make sure the remote container for this ai-checker project
+        exists (Gitea: a project board). Default: no-op. Return error
+        string, or None."""
+        return None
+
 
 def load(name: str) -> Tracker:
     return importlib.import_module(f"tracker_{name}").tracker()
@@ -89,6 +95,20 @@ def post_json(url: str, payload: dict, headers: dict | None = None,
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return {}, str(exc)
 
+def get_json(url: str, headers: dict | None = None,
+             timeout: int = 15) -> tuple[list, str]:
+    hdr = {"Accept": "application/json"}
+    hdr.update(headers or {})
+    req = urllib.request.Request(url, headers=hdr, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", "replace")
+        return (json.loads(body) if body.strip() else []), ""
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        return [], f"HTTP {exc.code} {exc.reason}: {detail}"
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return [], str(exc)
 
 def remote_status(backend: str, status: str) -> str:
     with db.connect() as con:
@@ -120,10 +140,18 @@ def push_project(project: str, *, force: bool = False,
     except (ImportError, AttributeError) as exc:
         print(f"[tracker] unknown backend {name!r}: {exc}", file=sys.stderr)
         return 1
+    
     err = be.configure()
     if err:
         print(f"[tracker] {name}: {err}", file=sys.stderr)
         return 1
+    
+    err = be.ensure_project(project)
+    if err:
+        print(f"[tracker] {name}: ensure_project({project}): {err}",
+              file=sys.stderr)
+        return 1
+    
     dry = dry_override or mode == "dry" or be.force_dry()
 
     rows = [r for r in db.list_issues(project=project, latest_only=True)
