@@ -4,10 +4,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tracker_common
 
 import db
 import gitutil
+import tracker_common
 from common import OUT_ROOT, rel_display
 
 
