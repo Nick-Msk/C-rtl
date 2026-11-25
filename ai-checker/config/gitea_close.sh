@@ -1,27 +1,46 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env -S uv run --script
+import sys
+import urllib.error
+from _gitea_api import REPO_ISSUES_URL, api_request
 
-DIR="$(cd "$(dirname "${BASH_SOURCE}")" && pwd)"
-TOKEN=$(tr -d '[:space:]' < "$DIR/GITEA_TOKEN")
-REPO_URL="http://localhost:3000/api/v1/repos/skelet/test1/issues"
+if len(sys.argv) < 2:
+    print("Usage: config/gitea_close.sh <num | 1-6 | 4,6,7-11 | '*'> ['Comment']", file=sys.stderr)
+    sys.exit(1)
 
-ISSUE_NUM="${1:?Укажи номер тикета первым аргументом (например: 1)}"
-COMMENT="${2:-}"
+target = sys.argv[1].strip()
+comment = sys.argv[2] if len(sys.argv) > 2 else ""
 
-# Если передан комментарий вторым аргументом — сначала постим его в тикет
-if [ -n "$COMMENT" ]; then
-  COMMENT_PAYLOAD=$(python3 -c 'import sys, json; print(json.dumps({"body": sys.argv}))' "$COMMENT")
-  curl -sf -X POST "$REPO_URL/$ISSUE_NUM/comments" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: token $TOKEN" \
-    -d "$COMMENT_PAYLOAD" > /dev/null
-fi
 
-# Закрываем сам тикет
-curl -sf -X PATCH "$REPO_URL/$ISSUE_NUM" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: token $TOKEN" \
-  -d '{"state": "closed"}' > /dev/null
+def parse_targets(spec: str) -> list[int]:
+    if spec == "*":
+        items, _ = api_request(f"{REPO_ISSUES_URL}?state=open&type=issues&limit=100")
+        return sorted(i["number"] for i in items)
 
-echo "Closed #$ISSUE_NUM"
+    nums: set[int] = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, b = map(int, part.split("-", 1))
+            nums.update(range(min(a, b), max(a, b) + 1))
+        else:
+            nums.add(int(part))
+    return sorted(nums)
+
+
+numbers = parse_targets(target)
+if not numbers:
+    print("No opened tickets.")
+    sys.exit(0)
+
+for num in numbers:
+    try:
+        if comment:
+            api_request(f"{REPO_ISSUES_URL}/{num}/comments", method="POST", payload={"body": comment})
+        api_request(f"{REPO_ISSUES_URL}/{num}", method="PATCH", payload={"state": "closed"})
+        print(f"Closed #{num}")
+    except urllib.error.HTTPError as e:
+        print(f"Skip #{num} (HTTP {e.code})", file=sys.stderr)
+
 

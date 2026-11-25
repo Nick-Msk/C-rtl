@@ -1,13 +1,11 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env -S uv run --script
+import sys
+from _gitea_api import BASE_URL, api_request
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOKEN=$(tr -d '[:space:]' < "$DIR/GITEA_TOKEN")
-
-if curl -sf -H "Authorization: token $TOKEN" "http://localhost:3000/api/v1/user" > /dev/null; then
-  echo "OK"
-else
-  echo "FAIL: Gitea недоступна или неверный токен" >&2
-  exit 1
-fi
+try:
+    api_request(f"{BASE_URL}/user")
+    print("OK")
+except Exception as e:
+    print(f"FAIL: {e}", file=sys.stderr)
+    sys.exit(1)
 

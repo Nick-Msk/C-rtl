@@ -1,19 +1,14 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env -S uv run --script
+import sys
+from _gitea_api import REPO_ISSUES_URL, api_request
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOKEN=$(tr -d '[:space:]' < "$DIR/GITEA_TOKEN")
-REPO_URL="http://localhost:3000/api/v1/repos/skelet/test1/issues"
+if len(sys.argv) < 2 or not sys.argv[1].strip():
+    print("Usage: config/gitea_create.sh 'Header' ['Desc']", file=sys.stderr)
+    sys.exit(1)
 
-TITLE="${1:?Укажи заголовок тикета первым аргументом}"
-BODY="${2:-}"
+title = sys.argv[1]
+body = sys.argv[2] if len(sys.argv) > 2 else ""
 
-PAYLOAD=$(python3 -c 'import sys, json; print(json.dumps({"title": sys.argv[1], "body": sys.argv[2]}))' "$TITLE" "$BODY")
-
-RESPONSE=$(curl -sf -X POST "$REPO_URL" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: token $TOKEN" \
-  -d "$PAYLOAD")
-
-echo "$RESPONSE" | python3 -c 'import sys, json; d = json.load(sys.stdin); print("Created #" + str(d["number"]) + ": " + d["html_url"])'
+issue, _ = api_request(REPO_ISSUES_URL, method="POST", payload={"title": title, "body": body})
+print(f"Created #{issue['number']}: {issue['html_url']}")
 
