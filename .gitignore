@@ -27,5 +27,5 @@ check.db-wal
 reports/
 mergearea/
 #gitea
-gitea_ping.sh
+GITEA_TOKEN
 
