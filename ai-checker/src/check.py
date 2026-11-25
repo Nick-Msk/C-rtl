@@ -487,13 +487,16 @@ def _resolve_jobs(args) -> list[tuple[str, list[Path]]]:
 def _build_ctx(name: str, args, model: str, state: dict) -> dict:
     """Per-project accumulator. Report paths are pure path math here —
     no directory is created until _process_project decides to write."""
+
     tag = "_notest" if (args.no_tests and not args.file) else ""
+    prefix = f"{state['runid']}_{state['ts']}"
+
     if args.file:
         sub = OUT_ROOT / "_files"
         report = sub / f"{state['ts']}_{name}{tag}.md"
     else:
         sub = OUT_ROOT / name
-        report = sub / f"{state['ts']}{tag}.md"
+        report = sub / f"{prefix}_{name}{tag}.md"
 
     return {
         "name": name,
@@ -614,7 +617,7 @@ def _push_tracker(project: str) -> None:
         tracker_common.push_project(project)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: tracker push failed: {exc}", file=sys.stderr)
-        
+
         
 # ── project loop ───────────────────────────────────────────────────
 
@@ -667,6 +670,7 @@ def _process_project(name: str, files: list[Path], args,
 def _run_checks(args, model: str, runid: int) -> tuple[int, dict]:
     state = _prepare_run(args)
     state["model"] = model
+    state["runid"] = runid
 
     jobs = _resolve_jobs(args)
     if not jobs:
