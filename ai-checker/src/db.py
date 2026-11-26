@@ -15,8 +15,9 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from db_validate import validate_params
+
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
+from db_validate import validate_params
 
 SCHEMA_VERSION = 16
 

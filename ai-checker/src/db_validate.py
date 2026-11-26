@@ -11,8 +11,8 @@ Return contract (unchanged for db.seed_defaults):
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 CRITICAL = "critical"
 WARNING = "warning"
@@ -172,7 +172,7 @@ def _tracker_mode_backend(cfg: Config) -> list[Issue]:
 # ── orchestration ───────────────────────────────────────────────────
 
 def _load() -> Config:
-    import db                      # lazy: db imports us at module load
+    import db  # lazy: db imports us at module load
     with db.connect() as con:
         rows = con.execute(
             "SELECT module, name, value FROM params").fetchall()
