@@ -656,6 +656,15 @@ log_close(void)
 			registry_remove_by_inode(st.st_dev, st.st_ino);
 			pthread_mutex_unlock(&g_file_registry_mtx);
 		} else {
+			int fd = fileno(g_logfile);
+			pthread_mutex_lock(&g_file_registry_mtx);
+			for (int k = 0; k < g_file_registry_count; k++) {
+				if (g_file_registry[k].fd == fd) {
+					g_file_registry[k] = g_file_registry[--g_file_registry_count];
+					break;
+				}
+			}
+			pthread_mutex_unlock(&g_file_registry_mtx);
 			fclose(g_logfile);
 		}
 	}
