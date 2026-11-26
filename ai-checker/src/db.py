@@ -15,7 +15,7 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-
+from db_validate import validate_params
 from common import FILE_REF_RE, OUT_ROOT, ROOT, parse_findings
 
 SCHEMA_VERSION = 16
@@ -921,74 +921,6 @@ def set_param(module: str, name: str, value) -> bool:
     except Exception:  # noqa: BLE001
         return False
 
-def validate_params() -> list[str]:
-    """Validate parameter constraints. Returns list of errors (empty = ok).
-    
-    Critical errors (tag_context_chars > max_chars) should abort the run;
-    others are warnings. Caller decides severity.
-    """
-    errors: list[str] = []
-    critical: list[str] = []
-    
-    try:
-        with connect() as con:
-            rows = con.execute(
-                "SELECT module, name, value FROM params").fetchall()
-            params = {(r["module"], r["name"]): r["value"] for r in rows}
-    except Exception as exc:  # noqa: BLE001
-        return [f"cannot read params: {exc}"]
-    
-    def get(module: str, name: str, cast=str):
-        v = params.get((module, name))
-        if v is None:
-            return None
-        try:
-            return cast(v)
-        except (ValueError, TypeError):
-            return None
-    
-    # ── Critical: tags must fit in chunk budget ──
-    tag = get("check", "tag_context_chars", int)
-    max_c = get("check", "max_chars", int)
-    if tag is not None and max_c is not None and tag > max_c:
-        critical.append(
-            f"check.tag_context_chars ({tag:,}) > check.max_chars ({max_c:,}); "
-            f"tags will not fit in chunks. "
-            f"Fix: raise check.max_chars or lower check.tag_context_chars")
-    
-    # ── Warnings ──
-    # carry_similarity ∈ [0, 1]
-    sim = get("check", "carry_similarity", float)
-    if sim is not None and not (0.0 <= sim <= 1.0):
-        errors.append(f"check.carry_similarity ({sim}) must be in [0, 1]")
-    
-    # url starts with http:// or https://
-    url = get("llm", "url", str)
-    if url and not url.startswith(("http://", "https://")):
-        errors.append(f"llm.url ({url!r}) must start with http:// or https://")
-    
-    # temperature ∈ [0, 2]
-    for module in ("check", "fix"):
-        temp = get(module, "temperature", float)
-        if temp is not None and not (0.0 <= temp <= 2.0):
-            errors.append(f"{module}.temperature ({temp}) should be in [0, 2]")
-    
-    # max_source_chars > 0
-    src = get("fix", "max_source_chars", int)
-    if src is not None and src <= 0:
-        errors.append(f"fix.max_source_chars ({src}) must be > 0")
-    
-    # max_diff_lines > 0
-    diff = get("fix", "max_diff_lines", int)
-    if diff is not None and diff <= 0:
-        errors.append(f"fix.max_diff_lines ({diff}) must be > 0")
-    
-    # default_limit >= 0
-    lim = get("fix", "default_limit", int)
-    if lim is not None and lim < 0:
-        errors.append(f"fix.default_limit ({lim}) must be >= 0")
-    
-    return critical + errors, critical
 
 def all_params() -> list[dict]:
     with connect() as con:
@@ -1400,4 +1332,29 @@ def mark_remote_closed(issue_id: int, backend: str, remote_status: str) -> None:
             "UPDATE issue_remote SET closed = 1, remote_status = ?, dt = ? "
             "WHERE issue_id = ? AND backend = ?",
             (remote_status, _now_iso(), issue_id, backend))
-        
+
+def tracker_params(tracker: str) -> dict[str, str]:
+    """All params for a tracker as {param: value}."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT param, value FROM tracker_params WHERE tracker = ?",
+            (tracker,)).fetchall()
+    return {r["param"]: r["value"] for r in rows}
+
+
+def tracker_labels(tracker: str) -> list[dict]:
+    """Labels for a tracker: [{name, color, descr}]."""
+    with connect() as con:
+        return [dict(r) for r in con.execute(
+            "SELECT label_name AS name, color, descr FROM tracker_labels "
+            "WHERE tracker = ?", (tracker,)).fetchall()]
+
+
+def tracker_milestones(tracker: str) -> list[str]:
+    """Milestone names for a tracker."""
+    with connect() as con:
+        return [r["milestone_name"] for r in con.execute(
+            "SELECT milestone_name FROM tracker_milestones WHERE tracker = ?",
+            (tracker,)).fetchall()]
+
+    
