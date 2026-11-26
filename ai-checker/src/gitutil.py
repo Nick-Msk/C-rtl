@@ -732,6 +732,18 @@ def run_clean_baselines(args) -> int:
     return 0
 
 
+def remote_web_url(remote: str = "origin") -> str:
+    """https://github.com/owner/repo from the origin URL, or ''."""
+    r = git("remote", "get-url", remote, check=False)
+    url = r.stdout.strip()
+    if not url:
+        return ""
+    m = re.match(r"git@([^:]+):(.+?)(?:\.git)?$", url)
+    if m:
+        return f"https://{m.group(1)}/{m.group(2)}"
+    return re.sub(r"\.git$", "", url)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="ai-checker git artifacts: branch cleanup and worktree teardown")

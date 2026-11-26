@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 import db
-from common import OUT_ROOT, discover_projects, rel_display
+from common import OUT_ROOT, discover_projects
 
 MODES = ("off", "dry", "live")
 
