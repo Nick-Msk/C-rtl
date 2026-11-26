@@ -1438,4 +1438,8 @@ def tracker_milestones(tracker: str) -> list[str]:
             "SELECT milestone_name FROM tracker_milestones WHERE tracker = ?",
             (tracker,)).fetchall()]
 
-    
+def known_projects() -> list[str]:
+    with connect() as con:
+        return [r["project"] for r in con.execute(
+            "SELECT DISTINCT project FROM report ORDER BY project")]
+        

@@ -95,7 +95,6 @@ def run(args) -> int:
           f"{lost} lost, {failed} conflict(s)")
     return 1 if failed else 0
 
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     g = ap.add_mutually_exclusive_group(required=True)
@@ -110,6 +109,12 @@ def main() -> int:
     ap.add_argument("--latest-only", action="store_true",
                 help="only fixes from the newest report per project")
     args = ap.parse_args()
+
+    if args.project:
+        known = db.known_projects()
+        if args.project not in known:
+            sys.exit(f"ERROR: unknown project {args.project!r}; "
+                     f"known: {', '.join(known)}")
 
     lock = acquire_lock()
     try:
