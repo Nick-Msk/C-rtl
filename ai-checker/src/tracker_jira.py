@@ -33,10 +33,13 @@ class JiraTracker(Tracker):
         self.project = db.get_param("track", "jira_project", "")
         self.token = (os.environ.get("JIRA_TOKEN")
                       or db.get_param("track", "jira_token", ""))
-        self.auth = db.get_param("track", "jira_auth", "bearer")
+        
+        params = db.tracker_params("jira")
+        self.issuetype = params.get("issuetype", "Bug")
+        self.api = params.get("api", "rest")
+        self.auth = params.get("auth", "bearer")
         self.user = db.get_param("track", "jira_user", "")
-        self.issuetype = db.get_param("track", "jira_issuetype", "Bug")
-        self.api = db.get_param("track", "jira_api", "rest")
+        
         if not self.link:
             return "track.jira_link is empty"
         if self.api == "rest":
@@ -48,6 +51,27 @@ class JiraTracker(Tracker):
                 return "track.jira_user is empty (basic auth)"
         return None
 
+    def build(self, t: Ticket) -> dict:
+        summary = f"[{t.project}] {t.title}"[:255]
+        if self.api == "plain":
+            return {"local_key": t.key, "project": t.project,
+                    "section": t.section, "local_status": t.status,
+                    "remote_status": t.remote_status or "To Do",
+                    "summary": summary, "description": t.text}
+        
+        # Labels from tracker_labels table
+        label_specs = db.tracker_labels("jira")
+        label_names = {r["name"] for r in label_specs}
+        labels = [n for n in ("ai-checker", t.section) if n in label_names]
+        
+        return {"fields": {
+            "project": {"key": self.project},
+            "summary": summary,
+            "description": t.text,
+            "issuetype": {"name": self.issuetype},
+            "labels": labels,
+        }}
+
     def force_dry(self) -> bool:
         return db.get_param("track", "jira_dry_run", False)
 
@@ -58,22 +82,6 @@ class JiraTracker(Tracker):
             raw = f"{self.user}:{self.token}".encode()
             return {"Authorization": "Basic " + base64.b64encode(raw).decode()}
         return {"Authorization": f"Bearer {self.token}"}
-
-    def build(self, t: Ticket) -> dict:
-        summary = f"[{t.project}] {t.title}"[:255]
-        if self.api == "plain":
-            return {"local_key": t.key, "project": t.project,
-                    "section": t.section, "local_status": t.status,
-                    "remote_status": t.remote_status or "To Do",
-                    "summary": summary, "description": t.text}
-        return {"fields": {
-            "project": {"key": self.project},
-            "summary": summary,
-            "description": t.text,
-            "issuetype": {"name": self.issuetype},
-            "labels": ["ai-checker", t.project,
-                       "key-" + t.key.replace("/", "-")],
-        }}
 
     def create(self, t: Ticket, payload: dict) -> PushResult:
         url = (f"{self.link}/issues" if self.api == "plain"

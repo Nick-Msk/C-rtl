@@ -35,10 +35,14 @@ class GiteaTracker(Tracker):
         self.repo = db.get_param("track", "gitea_repo", "")
         self.token = (os.environ.get("GITEA_TOKEN")
                       or db.get_param("track", "gitea_token", ""))
-        raw = db.get_param("track", "gitea_labels", "")
-        self.labels = [int(x) for x in raw.split(",") if x.strip().isdigit()]
-        self.board_template = db.get_param(
-            "track", "gitea_board_template", "basic_kanban")
+        
+        # Backend-specific params from DB
+        params = db.tracker_params("gitea")
+        raw_labels = params.get("labels", "")
+        self.labels = [x.strip() for x in raw_labels.split(",") if x.strip()]
+        self.milestone = params.get("milestone", "")
+        self.board_template = params.get("board_template", "basic_kanban")
+
         self._proj_id = None
         self._col_id = None
 
@@ -58,8 +62,14 @@ class GiteaTracker(Tracker):
                 f"project: `{t.project}`  section: {t.section}\n"
                 f"local status: `{t.status}`\n\n{t.text}\n")
         payload = {"title": f"[{t.project}] {t.title}"[:255], "body": body}
-        if self.labels:
-            payload["labels"] = self.labels
+        # Attach labels: ai-checker + section + any from self.labels
+        label_names = ["ai-checker", t.section] + self.labels
+        labels = [self._label_ids[n] for n in label_names
+                  if self._label_ids.get(n)]
+        if labels:
+            payload["labels"] = labels
+        if self._milestone_id:
+            payload["milestone"] = self._milestone_id
         return payload
 
     def _headers(self):
@@ -95,6 +105,49 @@ class GiteaTracker(Tracker):
         cols, err = get_json(f"{base}/projects/{pid}/columns", hdr)
         self._col_id = cols[0]["id"] if (not err and cols) else None
         return None
+
+    def _ensure_labels(self, base: str, hdr: dict) -> None:
+        """Create labels from tracker_labels table if missing."""
+        rows, err = get_json(f"{base}/labels?limit=100", hdr)
+        have = {r["name"]: r["id"] for r in rows} if not err else {}
+        
+        # Labels to create: intersection of (self.labels ∪ tracker_labels) - have
+        label_specs = db.tracker_labels("gitea")
+        label_map = {r["name"]: r for r in label_specs}
+        
+        for name in self.labels + list(label_map):
+            if name in have:
+                continue
+            spec = label_map.get(name, {"color": "ededed", "descr": ""})
+            data, err = post_json(f"{base}/labels", {
+                "name": name, "color": spec["color"],
+                "description": spec.get("descr", "")
+            }, hdr)
+            if err:
+                print(f"[tracker] warn: label {name}: {err}", file=sys.stderr)
+            elif data.get("id") is not None:
+                have[name] = data["id"]
+        self._label_ids = have
+
+    def _ensure_milestone(self, base: str, hdr: dict) -> None:
+        if not self.milestone:
+            self._milestone_id = None
+            return
+        rows, err = get_json(f"{base}/milestones?state=open&limit=100", hdr)
+        mid = (next((m["id"] for m in rows if m.get("title") == self.milestone), None)
+               if not err else None)
+        if mid is None:
+            data, err = post_json(f"{base}/milestones", {
+                "title": self.milestone,
+                "description": "ai-checker auto-fix pipeline"
+            }, hdr)
+            if err:
+                print(f"[tracker] warn: milestone {self.milestone}: {err}",
+                      file=sys.stderr)
+            else:
+                mid = data.get("id")
+        self._milestone_id = mid
+
 
     def create(self, t: Ticket, payload: dict) -> PushResult:
         base, hdr = self._base(), self._headers()
