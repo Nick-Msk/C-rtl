@@ -61,6 +61,7 @@ DEFAULTS: dict[tuple[str, str], int | float | bool | str] = {
     ("track", "gitea_token"):       "",
     ("track", "gitea_labels"):      "",
     ("track", "gitea_dry_run"):     True,
+    ("track", "autoupload"):        False,   # ai-check auto-pushes at end; ai-push ignores this
 }
 
 

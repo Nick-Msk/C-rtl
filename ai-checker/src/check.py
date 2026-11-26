@@ -344,49 +344,49 @@ def format_usage_md(u: dict) -> str:
 
  
 def _cleanup_old_branches(runid: int) -> None:
-    """After a successful check, close the previous period and clean
-    up branches left over from older reports of the same projects.
-
-    - DB: mark stale issues (except 'fixed'), return all fix_branch
-      refs (fixed + non-fixed) for the caller.
-    - git: delete branches that are ancestors of HEAD (safe merge);
-      print a hint for unmerged ones.
-    """
-    # Promote hand-merged branches BEFORE close_period collects and
-    # deletes them — otherwise a 'fixed' issue loses its branch.
+    """After a successful check: close the previous period (DB stale +
+    remote tickets), then clean git leftovers of older reports."""
+    
+    # 1. Promote hand-merged fixes BEFORE close_period nulls fix_branch;
+    #    unmount worktree first or branch -d refuses ('+' in git br).
     try:
         for r in db.fixed_issues():
             if gitutil.is_merged(r["fix_branch"]):
                 sha = gitutil.git("rev-parse", "--short", "HEAD").stdout.strip()
-                db.mark_merged(r["id"], sha)
+                if db.mark_merged(r["id"], sha):
+                    gitutil.remove_fix_worktree(gitutil.fix_worktree_path(
+                        r["project"], r["runid"], r["chunk_id"], r["local_id"]))
+                    gitutil.delete_branch(r["fix_branch"])
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: merge reconcile failed: {exc}",
               file=sys.stderr)
-        
+
+    # 2. Period boundary in DB.
     try:
         n_stale, branches = db.close_period(runid)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: close_period failed: {exc}",
               file=sys.stderr)
         return
-
     if n_stale:
         print(f"[ai-checker] closed {n_stale} stale issue(s) "
               f"from previous run(s)", file=sys.stderr)
 
+    # 3. Period boundary in tracker: ALL old-period tickets lose meaning
+    #    now. Independent of autoupload (that gates uploading NEW only).
+    #    Lives HERE, not in gitutil: git layer must stay network-free.
     try:
         import tracker_common
         tracker_common.close_old_tickets(runid)
     except Exception as exc:  # noqa: BLE001
-        print(f"[ai-checker] warn: tracker close failed: {exc}", file=sys.stderr)
-    
-    # ── 1. Синхронно чистим ВСЕ старые baseline (ветки + папки mergearea/) ──
-    # Делаем это ДО `if not branches: return`, чтобы отработало всегда,
-    # и сканируем git/mergearea, чтобы захватить даже упавшие прогоны без записи в БД.
+        print(f"[ai-checker] warn: tracker close failed: {exc}",
+              file=sys.stderr)
+
+    # 4. git: baselines of this run's projects (covers crashed runs too).
     try:
-        checked_projects = {b["project"] for b in db.all_baselines()
-                            if b["run_id"] == runid}
-        for proj in checked_projects:
+        checked = {b["project"] for b in db.all_baselines()
+                   if b["run_id"] == runid}
+        for proj in checked:
             gitutil.cleanup_project_baselines(proj, keep_runid=runid)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: baseline cleanup failed: {exc}",
@@ -395,34 +395,18 @@ def _cleanup_old_branches(runid: int) -> None:
     if not branches:
         return
 
-
-    if n_stale:
-        print(f"[ai-checker] closed {n_stale} stale issue(s) "
-              f"from previous run(s)", file=sys.stderr)
-
-    if not branches:
-        return
-
+    # 5. git: fix branches of the closed period.
     try:
         merged = set(gitutil.merged_branches("ai-checker-"))
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: cannot list branches: {exc}",
               file=sys.stderr)
         return
-
     to_delete = [b for b in branches if b in merged]
     not_merged = [b for b in branches if b not in merged]
-
     for b in to_delete:
         if gitutil.delete_branch(b, force=False):
-            print(f"[ai-checker] deleted merged branch {b}",
-                  file=sys.stderr)
-        
-    live = {(b["project"], b["run_id"]) for b in db.open_baselines()}
-    for b in db.all_baselines():          # SELECT project, run_id WHERE baseline_branch NOT NULL
-        if (b["project"], b["run_id"]) not in live and b["run_id"] != runid:
-            gitutil.remove_baseline(b["project"], b["run_id"])
-
+            print(f"[ai-checker] deleted merged branch {b}", file=sys.stderr)
     if not_merged:
         print(f"\n[ai-checker] note: {len(not_merged)} unmerged "
               f"ai-checker branch(es) preserved; cleanup with:",
@@ -430,12 +414,9 @@ def _cleanup_old_branches(runid: int) -> None:
         print("    make ai-del-branches FORCE=1", file=sys.stderr)
         for b in not_merged[:5]:
             print(f"      {b}", file=sys.stderr)
-            live = {(b["project"], b["run_id"]) for b in db.open_baselines()}
-    
         if len(not_merged) > 5:
             print(f"      ... and {len(not_merged) - 5} more",
                   file=sys.stderr)
-
 # ── run setup ──────────────────────────────────────────────────────
 
 def _prepare_run(args) -> dict:
@@ -615,8 +596,18 @@ def _print_project_summary(ctx: dict, total_dur: float) -> None:
 
 
 def _push_tracker(project: str) -> None:
-    """Best-effort. Runs LAST: suppressed/stale already marked, so they
-    are never pushed as fresh tickets. Never fails the run."""
+    """Auto-upload at end of ai-check, gated by track.autoupload.
+    Explicit `make ai-push-<proj>` ignores this flag. When off but the
+    integration is enabled, print a reminder so a forgotten push is
+    visible instead of silently leaving the tracker stale."""
+
+    mode = db.get_param("track", "mode", "off")
+    if mode not in ("dry", "live"):
+        return
+    if not db.get_param("track", "autoupload", False):
+        print(f"[ai-checker] {project}: tracker autoupload OFF — "
+              f"run make ai-push-{project}", file=sys.stderr)
+        return
     try:
         import tracker_common
         tracker_common.push_project(project)

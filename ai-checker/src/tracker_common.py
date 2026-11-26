@@ -241,9 +241,7 @@ def push_project(project: str, *, force: bool = False,
         {"project": project, "backend": name, "mode": mode, "dry": dry,
          "dt": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
          "issues": entries}, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"[tracker] {project}: {pushed} {'rendered' if dry else 'pushed'}, "
-          f"{skipped} already linked, {failed} failed -> {rel_display(out)}")
-    return 1 if failed else 0
+    return 0
 
 def comment_ticket(issue_id: int, text: str, *, new_status: str = "") -> bool:
     """Forward-sync: comment on the ticket this issue was pushed to.
