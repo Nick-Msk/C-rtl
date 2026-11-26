@@ -104,11 +104,14 @@ ai-fix-propose-commit-%:  ## force-patch + commit for one project
 ai-merge:  ## merge fixed branches, all projects
 	@$(AI_RUN) src/merge.py --all $(AI_MERGE_ARGS)
 
+ai-merge-sync:  ## reconcile only, every project (never git merge)
+	@$(AI_RUN) src/merge.py --all --sync-only $(AI_MERGE_ARGS)
+
+ai-merge-sync-%:  ## reconcile only, one project
+	@$(AI_RUN) src/merge.py --project $* --sync-only $(AI_MERGE_ARGS)
+
 ai-merge-%:  ## merge fixed branches of one project
 	@$(AI_RUN) src/merge.py --project $* $(AI_MERGE_ARGS)
-
-ai-merge-sync:  ## reconcile only: record hand-merged branches
-	@$(AI_RUN) src/merge.py --all --sync-only
 
 ai-status:  ## per-project status summary from check.db
 	@$(AI_RUN) src/status.py $(AI_STATUS_ARGS)
