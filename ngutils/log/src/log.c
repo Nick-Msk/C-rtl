@@ -412,11 +412,20 @@ log_modsave(const char *name)
 		return false;
 	}
 
-	fprintf(f, TOTAL_MOD, g_modcount);				// not sure, may be better to use literal.
+	if (fprintf(f, TOTAL_MOD, g_modcount) < 0)
+	{
+		fclose(f);
+		return false;
+	}
 	for (int i = 0; i < g_modcount; i++)
-		fprintf(f, MODULE_DESC, i, g_modules[i].module, g_modules[i].level);
+		if (fprintf(f, MODULE_DESC, i, g_modules[i].module, g_modules[i].level) < 0)
+		{
+			fclose(f);
+			return false;
+		}
 
-	fclose(f);
+	if (fclose(f) != 0)
+		return false;
 	return true;
 }
 
