@@ -61,7 +61,7 @@ static 			const int 		LOG_MAXMODS 		= 4096;
 typedef struct {
     dev_t   st_dev;
     ino_t   st_ino;
-    int     fd;
+    int     fd;             /* reserved: written for future use, not read */
     char    path[LOG_MAX_SZ];
 } LogFileEntry;
 
