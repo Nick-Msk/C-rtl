@@ -43,6 +43,10 @@ class GiteaTracker(Tracker):
         self.milestone = params.get("milestone", "")
         self.board_template = params.get("board_template", "basic_kanban")
 
+        self._label_ids: dict[str, int] = {}
+        self._milestone_id = None
+        self._proj_id = None
+
         self._proj_id = None
         self._col_id = None
 
@@ -104,6 +108,10 @@ class GiteaTracker(Tracker):
         self._proj_id = pid
         cols, err = get_json(f"{base}/projects/{pid}/columns", hdr)
         self._col_id = cols[0]["id"] if (not err and cols) else None
+        # labels/milestone — всегда, независимо от доски
+        self._ensure_labels(base, hdr)
+        self._ensure_milestone(base, hdr)
+        
         return None
 
     def _ensure_labels(self, base: str, hdr: dict) -> None:
