@@ -809,10 +809,12 @@ log_msg_ap(
 		return g_offset;
 
 	if (msg) // print user message if any
-		vfprintf(g_logfile, msg, ap);
+		if (vfprintf(g_logfile, msg, ap) < 0)
+			return -1;
 
 	if (!no_newline)
-		fputc('\n', g_logfile);		// goto next line
+		if (fputc('\n', g_logfile) == EOF)
+			return -1;
 
 	return g_offset;
 }
