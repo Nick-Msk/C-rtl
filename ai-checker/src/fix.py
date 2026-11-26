@@ -854,6 +854,15 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
             fix_commit=sha,
             fix_subject=subject_line, 
             fix_runid=ctx["fix_runid"])
+    _notify_tracker_commit(report_path, 
+                           finding, 
+                           full_key, 
+                           sha, 
+                           branch,
+                           files, 
+                           reason, 
+                           explanation, 
+                           diff)
 
 def _handle_finding(idx: int, total: int, finding: dict,
                     project: Path, report_path: Path, files: list[Path],
@@ -1297,6 +1306,23 @@ def classify_system(ctx: dict) -> str:
             .replace("@CLASS_MODE@", _CLASS_MODE_STRICT)
             .replace("@LOCAL_RULES@", _LOCAL_RULES_STRICT)
             .replace("@MAX_DIFF@", str(ctx["max_diff_lines"]) ) )
+
+def _notify_tracker_commit(report_path, finding, full_key, sha, branch,
+                           files, reason, explanation, diff) -> None:
+    try:
+        import tracker_common
+        iid = db.issue_id_by_key(report_path, finding)
+        if iid is None:
+            return
+        body = (f"**ai-checker: status → fixed**  `{full_key}`\n\n"
+                f"commit `{sha}` on `{branch}`\n"
+                f"files: {', '.join(files)}\n\n"
+                f"**Reason:** {reason}\n"
+                f"**Change:** {explanation}\n\n"
+                f"```diff\n{diff}\n```\n")
+        tracker_common.comment_ticket(iid, body, new_status=db.STATUS_FIXED)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: tracker comment failed: {exc}", file=sys.stderr)
 
 def main() -> int:
     ap = argparse.ArgumentParser(

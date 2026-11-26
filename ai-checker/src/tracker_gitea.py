@@ -179,5 +179,11 @@ class GiteaTracker(Tracker):
                            {"body": comment}, hdr)
         return err
 
+    def comment(self, link: dict, text: str) -> str | None:
+        _, err = post_json(
+            f"{self._base()}/issues/{link['remote_id']}/comments",
+            {"body": text}, self._headers())
+        return err
+
 def tracker() -> Tracker:
     return GiteaTracker()

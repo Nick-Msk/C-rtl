@@ -79,6 +79,11 @@ class Tracker:
         Return an error string, or None on success."""
         raise NotImplementedError
 
+    def comment(self, link: dict, text: str) -> str | None:
+        """Append a comment to an existing remote ticket.
+        Return error string, or None on success."""
+        raise NotImplementedError
+
 def _request(method: str, url: str, payload: dict | None,
              headers: dict | None = None, timeout: int = 15) -> tuple[object, str]:
     hdr = {"Accept": "application/json"}
@@ -239,6 +244,41 @@ def push_project(project: str, *, force: bool = False,
     print(f"[tracker] {project}: {pushed} {'rendered' if dry else 'pushed'}, "
           f"{skipped} already linked, {failed} failed -> {rel_display(out)}")
     return 1 if failed else 0
+
+def comment_ticket(issue_id: int, text: str, *, new_status: str = "") -> bool:
+    """Forward-sync: comment on the ticket this issue was pushed to.
+    Uses the backend the ticket ACTUALLY lives in, not track.backend.
+    Best-effort: never raises into the caller."""
+    mode = str(db.get_param("track", "mode", "off")).strip().lower()
+    if mode not in ("dry", "live"):
+        return False
+    link = db.remote_link(issue_id)
+    if not link or not link["remote_id"]:
+        return False                      # never pushed -> nothing to comment
+    name = link["backend"]
+    try:
+        be = load(name)
+    except (ImportError, AttributeError) as exc:
+        print(f"[tracker] unknown backend {name!r}: {exc}", file=sys.stderr)
+        return False
+    err = be.configure()
+    if err:
+        print(f"[tracker] {name}: {err}", file=sys.stderr)
+        return False
+    if mode == "dry" or be.force_dry():
+        print(f"[tracker] WOULD COMMENT {name}:{link['remote_id']}")
+        return True
+    err = be.comment(link, text)
+    if err:
+        print(f"[tracker] FAILED comment {name}:{link['remote_id']}: {err}",
+              file=sys.stderr)
+        return False
+    if new_status:
+        rs = remote_status(name, new_status)
+        if rs:
+            db.mark_remote_status(issue_id, name, rs)
+    print(f"[tracker] COMMENT {name}:{link['remote_id']}")
+    return True
 
 def marker(r: dict) -> str:
     """Status suffix for ai-status:
