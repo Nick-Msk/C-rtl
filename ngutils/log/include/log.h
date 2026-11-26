@@ -282,7 +282,7 @@ log_format(LogFormat);
  * @param lineno    `__LINE__`.
  * @param fmt       printf-style format string.
  * @param ...       Format arguments.
- * @return 0 on success, negative errno-like on I/O failure.
+ * @return Current indentation offset on success, -1 on I/O failure.
  */
 extern
 int
