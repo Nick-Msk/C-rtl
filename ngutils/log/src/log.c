@@ -269,8 +269,17 @@ log_preambule(
 	act &= ~LOG_SIMPLE;
 	act &= ~LOG_NOPREAMBULE;
 
-	if (getlevel(modname) < msglevel || g_logfile == NULL) {   // no logging in this case			// TODO: not actually used right now, possibly incorrect — need to compute the correct lg_lv
-        fprintf(stderr, "Mod %s NOT FOUND!!!\n", modname);
+	if (g_logfile == NULL) {
+		fprintf(stderr, "log: not initialized\n");
+		return false;
+	}
+	int modlevel = getlevel(modname);
+	if (modlevel < 0) {
+		fprintf(stderr, "Mod %s NOT FOUND!!!\n", modname);
+		return false;
+	}
+	if (modlevel < msglevel) {
+		fprintf(stderr, "Mod %s level too low\n", modname);
 		return false;
 	}
 
