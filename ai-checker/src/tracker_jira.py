@@ -101,30 +101,40 @@ class JiraTracker(Tracker):
                           remote_status=t.remote_status)
 
     closed_status = "Done"
-    def close(self, link: dict, comment: str) -> str | None:
+    def close(self, link: dict, comment: str) -> tuple[str | None, bool]:
         rid = link["remote_id"]
         if self.api == "plain":
             _, err = patch_json(f"{self.link}/issues/{rid}",
                                 {"state": "closed"}, self._headers())
-            return err
+            return err, False  # plain mock doesn't track state
         hdr = self._headers()
-        # transition to a done-category status, then comment
-        data, err = get_json(f"{self.link}/rest/api/2/issue/{rid}/transitions", hdr)
+        # Check current status
+        issue, err = get_json(f"{self.link}/rest/api/2/issue/{rid}", hdr)
         if err:
-            return err
-        transitions = data.get("transitions", []) if isinstance(data, dict) else []
-        done = next((t for t in transitions
-                     if (t.get("to", {}).get("statusCategory", {}).get("key")
-                         == "done")), None)
-        if done is None:
-            return "no done-category transition available"
-        _, err = post_json(f"{self.link}/rest/api/2/issue/{rid}/transitions",
-                           {"transition": {"id": done["id"]}}, hdr)
-        if err:
-            return err
+            return err, False
+        is_done = issue.get("fields", {}).get("status", {}).get(
+            "statusCategory", {}).get("key") == "done"
+        if not is_done:
+            data, err = get_json(
+                f"{self.link}/rest/api/2/issue/{rid}/transitions", hdr)
+            if err:
+                return err, False
+            transitions = data.get("transitions", []) if isinstance(data, dict) else []
+            done = next((t for t in transitions
+                         if (t.get("to", {}).get("statusCategory", {}).get("key")
+                             == "done")), None)
+            if done is None:
+                return "no done-category transition available", False
+            _, err = post_json(
+                f"{self.link}/rest/api/2/issue/{rid}/transitions",
+                {"transition": {"id": done["id"]}}, hdr)
+            if err:
+                return err, False
         _, err = post_json(f"{self.link}/rest/api/2/issue/{rid}/comment",
                            {"body": comment}, hdr)
-        return err
+        if err:
+            return err, is_done
+        return None, is_done
 
 def tracker() -> Tracker:
     return JiraTracker()

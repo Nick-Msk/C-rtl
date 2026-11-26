@@ -74,9 +74,11 @@ class Tracker:
         string, or None."""
         return None
 
-    def close(self, link: dict, comment: str) -> str | None:
+    def close(self, link: dict, comment: str) -> tuple[str | None, bool]:
         """Close the remote ticket and append `comment`.
-        Return an error string, or None on success."""
+        Returns (error, was_already_closed).
+        If the ticket was already closed, skip the state change but
+        still add the comment (for audit trail)."""
         raise NotImplementedError
 
     def comment(self, link: dict, text: str) -> str | None:
@@ -161,14 +163,15 @@ def close_old_tickets(keep_runid: int) -> int:
                     print(f"[tracker] WOULD CLOSE {name}:{link['remote_id']} "
                           f"({link['key']})")
                     continue
-                err = be.close(link, comment)
+                err, was_closed = be.close(link, comment)
                 if err:
                     print(f"[tracker] FAILED close {name}:{link['remote_id']}: "
                           f"{err}", file=sys.stderr)
                     failed += 1
                     continue
                 db.mark_remote_closed(link["issue_id"], name, be.closed_status)
-                print(f"[tracker] CLOSED {name}:{link['remote_id']} "
+                status = "already closed" if was_closed else "CLOSED"
+                print(f"[tracker] {status} {name}:{link['remote_id']} "
                       f"({link['key']})")
                 closed += 1
     if closed or failed:

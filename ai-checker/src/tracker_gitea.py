@@ -169,15 +169,24 @@ class GiteaTracker(Tracker):
 
     closed_status = "closed"
 
-    def close(self, link: dict, comment: str) -> str | None:
+    def close(self, link: dict, comment: str) -> tuple[str | None, bool]:
         base, hdr = self._base(), self._headers()
         num = link["remote_id"]
-        _, err = patch_json(f"{base}/issues/{num}", {"state": "closed"}, hdr)
+        # Check current state BEFORE attempting to close
+        data, err = get_json(f"{base}/issues/{num}", hdr)
         if err:
-            return err
+            return err, False
+        is_closed = data.get("state") == "closed"
+        if not is_closed:
+            _, err = patch_json(f"{base}/issues/{num}",
+                                {"state": "closed"}, hdr)
+            if err:
+                return err, False
         _, err = post_json(f"{base}/issues/{num}/comments",
                            {"body": comment}, hdr)
-        return err
+        if err:
+            return err, is_closed
+        return None, is_closed
 
     def comment(self, link: dict, text: str) -> str | None:
         _, err = post_json(
