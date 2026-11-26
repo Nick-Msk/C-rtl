@@ -466,7 +466,7 @@ log_modload(const char *name)
 	for (int i = 0; i < modcnt; i++)
 	{
 		int	lv, idx;
-		if (fscanf(f, MODULE_DESC_IN, &idx, g_modules[i].module, &lv) < 3 || lv > (int)LOGALL || lv < (int)LOGOFF)
+		if (fscanf(f, MODULE_DESC_IN, &idx, g_modules[i].module, &lv) < 3 || idx != i || lv > (int)LOGALL || lv < (int)LOGOFF)
 		{
 			fprintf(stderr, "Wrong input in line %d (by pattern [%s])\n", i + 1, MODULE_DESC);
 			fclose(f);
