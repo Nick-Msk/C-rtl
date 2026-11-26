@@ -892,7 +892,7 @@ def _write_fix_report(label: str, source_report: Path, started: datetime,
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = started.strftime("%Y-%m-%d_%H-%M-%S")
     suffix = "_commit" if args.apply else ""
-    out_path = out_dir / f"{ts}{suffix}.md"
+    out_path = out_dir / f"{ctx['fix_runid']}_{ts}{suffix}.md"
 
     header = format_header_md(
         f"AI fix report: {label}",
@@ -1223,7 +1223,7 @@ def _print_needs_review(needs_review: list[dict]) -> None:
 def _write_json_log(label: str, ts: str, ctx: dict, dt: float,
                     applied: list[dict], skipped: list[str],
                     needs_review: list[dict]) -> Path:
-    log_path = FIX_DIR / f"{ts}_{label}.json"
+    log_path = FIX_DIR / f"{ctx['fix_runid']}_{ts}_{label}.json"
     log_path.write_text(json.dumps({
         "project": label,
         "base_branch": ctx["base_branch"],
