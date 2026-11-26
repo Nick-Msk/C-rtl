@@ -234,3 +234,32 @@ CREATE TABLE IF NOT EXISTS issue_remote (
     PRIMARY KEY (issue_id, backend)
 );
 
+CREATE TABLE IF NOT EXISTS trackers (
+    tracker TEXT PRIMARY KEY,
+    descr   TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS tracker_params (
+    tracker TEXT NOT NULL REFERENCES trackers(tracker),
+    param   TEXT NOT NULL,
+    value   TEXT,
+    descr   TEXT,
+    PRIMARY KEY (tracker, param)
+);
+
+CREATE TABLE IF NOT EXISTS tracker_labels (
+    tracker    TEXT NOT NULL REFERENCES trackers(tracker),
+    label_name TEXT NOT NULL,
+    color      TEXT NOT NULL,     -- hex без #
+    descr      TEXT,
+    PRIMARY KEY (tracker, label_name)
+);
+
+CREATE TABLE IF NOT EXISTS tracker_milestones (
+    tracker        TEXT NOT NULL REFERENCES trackers(tracker),
+    milestone_name TEXT NOT NULL,
+    descr          TEXT,
+    PRIMARY KEY (tracker, milestone_name)
+);
+
