@@ -1442,4 +1442,34 @@ def known_projects() -> list[str]:
     with connect() as con:
         return [r["project"] for r in con.execute(
             "SELECT DISTINCT project FROM report ORDER BY project")]
+
+def issue_id_by_key(report_path, finding) -> int | None:
+    try:
+        _fid, chunk, local = _key_for(finding)
+    except (ValueError, TypeError):
+        return None
+    with connect() as con:
+        r = con.execute(
+            "SELECT id FROM issue WHERE report_id = "
+            "(SELECT id FROM report WHERE path = ?) "
+            "AND chunk_id = ? AND local_id = ?",
+            (_rel(report_path), chunk, local)).fetchone()
+    return r["id"] if r else None
+
+
+def remote_link(issue_id: int) -> dict | None:
+    """The live link if any, else the dry one (same priority as ai-status)."""
+    with connect() as con:
+        r = con.execute(
+            "SELECT * FROM issue_remote WHERE issue_id = ? "
+            "ORDER BY dry ASC, rowid DESC LIMIT 1", (issue_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def mark_remote_status(issue_id: int, backend: str, remote_status: str) -> None:
+    with connect() as con:
+        con.execute(
+            "UPDATE issue_remote SET remote_status = ?, dt = ? "
+            "WHERE issue_id = ? AND backend = ?",
+            (remote_status, _now_iso(), issue_id, backend))
         
