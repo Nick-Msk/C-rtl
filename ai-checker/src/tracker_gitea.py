@@ -111,7 +111,7 @@ class GiteaTracker(Tracker):
         # labels/milestone — всегда, независимо от доски
         self._ensure_labels(base, hdr)
         self._ensure_milestone(base, hdr)
-        
+
         return None
 
     def _ensure_labels(self, base: str, hdr: dict) -> None:
@@ -201,6 +201,26 @@ class GiteaTracker(Tracker):
             f"{self._base()}/issues/{link['remote_id']}/comments",
             {"body": text}, self._headers())
         return err
+
+    def set_status(self, link: dict, remote_status: str) -> str | None:
+        """Move issue to the project column matching remote_status."""
+        if not self._proj_id:
+            return None  # no project board -> nothing to update
+        cols, err = get_json(
+            f"{self._base()}/projects/{self._proj_id}/columns",
+            self._headers())
+        if err:
+            return err
+        col = next((c for c in cols if c.get("title") == remote_status), None)
+        if not col:
+            return f"column {remote_status!r} not found in project"
+        # Move issue to this column
+        _, err = post_json(
+            f"{self._base()}/projects/{self._proj_id}/issues/"
+            f"{link['remote_id']}/move",
+            {"column_id": col["id"]}, self._headers())
+        return err
+    
 
 def tracker() -> Tracker:
     return GiteaTracker()

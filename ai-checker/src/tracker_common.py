@@ -86,6 +86,11 @@ class Tracker:
         Return error string, or None on success."""
         raise NotImplementedError
 
+    def set_status(self, link: dict, remote_status: str) -> str | None:
+        """Update the remote ticket status (Gitea: project column,
+        Jira: workflow transition). Return error string, or None."""
+        raise NotImplementedError
+
 def _request(method: str, url: str, payload: dict | None,
              headers: dict | None = None, timeout: int = 15) -> tuple[object, str]:
     hdr = {"Accept": "application/json"}
@@ -293,6 +298,61 @@ def marker(r: dict) -> str:
         return "~"
     rid = str(r.get("remote_id") or "")
     return f"^{rid}" if rid else "^"
+
+def sync_statuses(project: str) -> int:
+    """Forward-sync: update remote ticket status to match local.
+    Compares issue.status with issue_remote.remote_status (mapped via
+    tracker_mapping), calls be.set_status for mismatches.
+    Returns count of updated tickets."""
+    
+    mode = str(db.get_param("track", "mode", "off")).strip().lower()
+    if mode not in ("dry", "live"):
+        return 0
+    name = str(db.get_param("track", "backend", "jira")).strip().lower()
+    try:
+        be = load(name)
+    except (ImportError, AttributeError):
+        return 0
+    err = be.configure()
+    if err:
+        return 0
+    dry = mode == "dry" or be.force_dry()
+
+    # Load mapping
+    with db.connect() as con:
+        rows = con.execute(
+            "SELECT status, remote_status FROM tracker_mapping "
+            "WHERE backend = ?", (name,)).fetchall()
+    mapping = {r["status"]: r["remote_status"] for r in rows}
+
+    # Load issues + remote links
+    issues = db.list_issues(project=project, latest_only=True)
+    updated = 0
+    for r in issues:
+        link = db.remote_link(r["id"])
+        if not link or link["dry"] or not link["remote_id"]:
+            continue
+        local = r["status"]
+        remote_expected = mapping.get(local, "")
+        if not remote_expected:
+            continue
+        if link["remote_status"] == remote_expected:
+            continue  # already in sync
+        if dry:
+            print(f"[tracker] WOULD SYNC {name}:{link['remote_id']} "
+                  f"{link['remote_status']} → {remote_expected}")
+            updated += 1
+            continue
+        err = be.set_status(link, remote_expected)
+        if err:
+            print(f"[tracker] FAILED sync {name}:{link['remote_id']}: {err}",
+                  file=sys.stderr)
+            continue
+        db.mark_remote_status(r["id"], name, remote_expected)
+        print(f"[tracker] SYNC {name}:{link['remote_id']} "
+              f"{link['remote_status']} → {remote_expected}")
+        updated += 1
+    return updated
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Push findings to the bug tracker")

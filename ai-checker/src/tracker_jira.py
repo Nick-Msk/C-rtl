@@ -136,5 +136,26 @@ class JiraTracker(Tracker):
             return err, is_done
         return None, is_done
 
+    def set_status(self, link: dict, remote_status: str) -> str | None:
+        if self.api == "plain":
+            return None  # mock doesn't support transitions
+        rid = link["remote_id"]
+        hdr = self._headers()
+        # Get available transitions
+        data, err = get_json(
+            f"{self.link}/rest/api/2/issue/{rid}/transitions", hdr)
+        if err:
+            return err
+        transitions = data.get("transitions", []) if isinstance(data, dict) else []
+        # Find transition to target status
+        target = next((t for t in transitions
+                       if t.get("to", {}).get("name") == remote_status), None)
+        if not target:
+            return f"no transition to {remote_status!r}"
+        _, err = post_json(
+            f"{self.link}/rest/api/2/issue/{rid}/transitions",
+            {"transition": {"id": target["id"]}}, hdr)
+        return err
+
 def tracker() -> Tracker:
     return JiraTracker()

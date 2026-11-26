@@ -585,6 +585,14 @@ def _ingest_and_write(ctx: dict, state: dict, args, runid: int,
         print(f"[ai-checker] rotated {len(moved)} older report(s) "
               f"-> {rel_display(ctx['sub'])}/hist/", file=sys.stderr)
 
+    _push_tracker(ctx["name"])
+    try:
+        import tracker_common
+        tracker_common.sync_statuses(ctx["name"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai-checker] warn: tracker sync failed: {exc}",
+              file=sys.stderr)    
+
 
 def _print_project_summary(ctx: dict, total_dur: float) -> None:
     u = ctx["usage"]

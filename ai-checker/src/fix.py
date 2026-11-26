@@ -1379,6 +1379,14 @@ def main() -> int:
                          in_tokens=usage["prompt_tokens"],
                          out_tokens=usage["completion_tokens"],
                          requests=usage["requests"])
+        # Sync statuses after all fixes
+        for proj_name, _ in jobs:
+            try:
+                import tracker_common
+                tracker_common.sync_statuses(proj_name)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[ai-fixer] warn: tracker sync {proj_name}: {exc}",
+                        file=sys.stderr)
         return rc
     finally:
         release_lock(lock_fd)
