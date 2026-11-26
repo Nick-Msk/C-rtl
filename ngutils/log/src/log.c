@@ -850,7 +850,7 @@ log_numbers(LogAction            act,
             )
 {
 	act &= ~LOG_NONEWLINE;
-	if (!g_logfile)
+	if (!g_logfile && !log_init(0, false, LOG_FORMAT_ALL))
 		return -1;
 	if (!log_preambule(act, lv, msglevel, modname, filename, funcname, lineno))
 		return -1;
