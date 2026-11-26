@@ -848,6 +848,8 @@ log_numbers(LogAction            act,
             )
 {
 	act &= ~LOG_NONEWLINE;
+	if (!g_logfile)
+		return -1;
 	if (!log_preambule(act, lv, msglevel, modname, filename, funcname, lineno))
 		return -1;
 
