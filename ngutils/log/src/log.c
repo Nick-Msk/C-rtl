@@ -184,7 +184,10 @@ print_time(void)
 {
 	time_t t = time(0);
 	struct tm now;
-	localtime_r(&t, &now);
+	if (!localtime_r(&t, &now)) {
+		snprintf(g_time_buf, LOG_TIME_SZ, "--:--:--");
+		return g_time_buf;
+	}
 	strftime(g_time_buf, LOG_TIME_SZ, "%H:%M:%S", &now);
 	return g_time_buf;
 }
