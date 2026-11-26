@@ -325,7 +325,7 @@ log_msg_ap(LogAction            act,
  * @param lineno    `__LINE__`.
  * @param bytes     Pointer to the buffer.
  * @param sz        Number of bytes to print.
- * @return 0 on success.
+ * @return sz+1 on success, -1 if preambule suppressed the output.
  */
 extern int
 log_numbers(LogAction            act,
