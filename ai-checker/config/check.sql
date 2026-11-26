@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS issue_history (
     id             INTEGER PRIMARY KEY,
     issue_id       INTEGER NOT NULL REFERENCES issue(id) ON DELETE CASCADE,
     dt             TEXT    NOT NULL,
-    old_status     TEXT,                    -- NULL = рождение находки
+    old_status     TEXT,                    -- NULL = new item
     new_status     TEXT    NOT NULL,
     old_fix_branch TEXT,
     new_fix_branch TEXT,
@@ -171,7 +171,6 @@ CREATE TABLE IF NOT EXISTS issue_history (
 CREATE INDEX IF NOT EXISTS idx_issue_history_issue
     ON issue_history(issue_id, id);
 
--- Рождение: сохраняет исходный dt, который позже перезатрётся.
 CREATE TRIGGER IF NOT EXISTS issue_history_insert
 AFTER INSERT ON issue
 BEGIN
@@ -202,7 +201,7 @@ BEGIN
             NEW.merge_commit, NEW.reason);
 END;
 
--- Для чтения в litecli без ручных джойнов.
+-- for litecli.
 CREATE VIEW IF NOT EXISTS issue_history_full AS
 SELECT h.id, h.dt, r.project,
        i.runid || '/' || i.chunk_id || '/' || i.local_id AS key,
@@ -251,7 +250,7 @@ CREATE TABLE IF NOT EXISTS tracker_params (
 CREATE TABLE IF NOT EXISTS tracker_labels (
     tracker    TEXT NOT NULL REFERENCES trackers(tracker),
     label_name TEXT NOT NULL,
-    color      TEXT NOT NULL,     -- hex без #
+    color      TEXT NOT NULL,     -- hex without #
     descr      TEXT,
     PRIMARY KEY (tracker, label_name)
 );

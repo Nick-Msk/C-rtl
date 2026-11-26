@@ -125,12 +125,37 @@ TRACKER_MAP: dict[tuple[str, str], str] = {
     ("gitea", STATUS_SUPPRESSED): "closed",
 }
 
+TRACKERS_META: dict[str, str] = {
+    "jira":  "Atlassian Jira Cloud / Server (REST or json-server mock)",
+    "gitea": "Gitea self-hosted: issues, labels, milestones, boards",
+}
 
-def _seed_tracker_mapping(con: sqlite3.Connection) -> None:
-    for (backend, status), remote in TRACKER_MAP.items():
-        con.execute("INSERT OR IGNORE INTO tracker_mapping "
-                    "(backend, status, remote_status) VALUES (?, ?, ?)",
-                    (backend, status, remote))
+# (tracker, param) -> (default_value, descr)
+TRACKER_PARAMS: dict[tuple[str, str], tuple[str, str]] = {
+    ("jira", "issuetype"):       ("Bug",          "Jira issue type name"),
+    ("jira", "api"):             ("rest",         "rest | plain (json-server)"),
+    ("jira", "auth"):            ("bearer",       "bearer | basic"),
+    ("gitea", "labels"):         ("",             "extra label names, comma-sep"),
+    ("gitea", "milestone"):      ("auto-fix",     "milestone title; '' = none"),
+    ("gitea", "board_template"): ("basic_kanban", "basic_kanban|bug_triage|none"),
+}
+
+# Один источник меток; раскладывается по всем бэкендам автоматически.
+_LABEL_SPEC: dict[str, tuple[str, str]] = {
+    "ai-checker":  ("1d76db", "created by ai-checker integration"),
+    "Критично":    ("b60205", "ai-checker section: critical"),
+    "Важно":       ("d93f0b", "ai-checker section: important"),
+    "Мелочи":      ("fbca04", "ai-checker section: minor"),
+    "ai-accepted": ("0e8a16", "human confirmed: defect, fix wanted"),
+    "ai-rejected": ("535353", "human declined: not a defect / won't fix"),
+}
+TRACKER_LABELS: dict[tuple[str, str], tuple[str, str]] = {
+    (t, name): spec for t in TRACKERS_META for name, spec in _LABEL_SPEC.items()
+}
+
+TRACKER_MILESTONES: dict[tuple[str, str], str] = {
+    ("gitea", "auto-fix"): "ai-checker auto-fix pipeline",
+}
 
 _RESOLVED_SQL = "status IN (SELECT name FROM statuses WHERE resolved = 1)"
 
@@ -323,7 +348,7 @@ def connect():
         v = con.execute("PRAGMA user_version").fetchone()[0]
         if v == 0:
             con.executescript(_schema_sql())
-            _seed_statuses(con)
+            _seed_all(con)
             import db_status
             db_status.seed(con)
             con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -730,6 +755,55 @@ def _seed_modules(con: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO modules (name, descr) VALUES (?, ?)",
             (name, descr))
 
+def _seed_tracker_mapping(con: sqlite3.Connection) -> None:
+    for (backend, status), remote in TRACKER_MAP.items():
+        con.execute("INSERT OR IGNORE INTO tracker_mapping "
+                    "(backend, status, remote_status) VALUES (?, ?, ?)",
+                    (backend, status, remote))
+
+def _seed_trackers(con: sqlite3.Connection) -> None:
+    """descr code-owned (refreshed); enabled DB-owned (preserved).
+    On FIRST seed exactly one backend is enabled — the code default
+    from DEFAULTS['track','backend'] — so the single-enabled validator
+    passes on a fresh DB. Existing rows keep their enabled flag."""
+    default_backend = str(DEFAULTS.get(("track", "backend"), "jira"))
+    for name, descr in TRACKERS_META.items():
+        con.execute(
+            "INSERT INTO trackers (tracker, descr, enabled) VALUES (?, ?, ?) "
+            "ON CONFLICT(tracker) DO UPDATE SET descr = excluded.descr",
+            (name, descr, int(name == default_backend)))
+
+
+def _seed_tracker_params(con: sqlite3.Connection) -> None:
+    """value DB-owned (insert-if-missing, never reset); descr code-owned."""
+    for (tracker, param), (default, descr) in TRACKER_PARAMS.items():
+        con.execute(
+            "INSERT INTO tracker_params (tracker, param, value, descr) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(tracker, param) DO UPDATE SET descr = excluded.descr",
+            (tracker, param, default, descr))
+
+
+def _seed_tracker_labels(con: sqlite3.Connection) -> None:
+    """color DB-owned (user may recolor); descr code-owned."""
+    for (tracker, name), (color, descr) in TRACKER_LABELS.items():
+        con.execute(
+            "INSERT INTO tracker_labels (tracker, label_name, color, descr) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(tracker, label_name) DO UPDATE SET descr = excluded.descr",
+            (tracker, name, color, descr))
+
+
+def _seed_tracker_milestones(con: sqlite3.Connection) -> None:
+    for (tracker, name), descr in TRACKER_MILESTONES.items():
+        con.execute(
+            "INSERT INTO tracker_milestones (tracker, milestone_name, descr) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(tracker, milestone_name) DO UPDATE SET descr = excluded.descr",
+            (tracker, name, descr))
+
+        
+
 def _param_str(value) -> str:
     """Canonical storage form: booleans as '1'/'0' (never 'True'/'False'),
     so value and default_value render identically in ai-config."""
@@ -776,13 +850,7 @@ def seed_defaults() -> None:
     """
     try:
         with connect() as con:
-            _seed_statuses(con)
-            _seed_tracker_mapping(con)
-            _seed_modules(con)
-            _seed_params(con)
-            # state machine values
-            import db_status
-            db_status.seed(con)
+            _seed_all(con)
     except Exception as exc:  # noqa: BLE001
         print(f"[ai-checker] warn: seed_defaults failed: {exc}",
               file=sys.stderr)
@@ -797,6 +865,18 @@ def seed_defaults() -> None:
     if errors:
         for e in errors:
             print(f"[ai-checker] warn: {e}", file=sys.stderr)
+
+def _seed_all(con: sqlite3.Connection) -> None:
+    _seed_statuses(con)
+    _seed_tracker_mapping(con)
+    _seed_trackers(con)          # parents before child (FK)
+    _seed_tracker_params(con)
+    _seed_tracker_labels(con)
+    _seed_tracker_milestones(con)
+    _seed_modules(con)
+    _seed_params(con)
+    import db_status
+    db_status.seed(con)
 
 def all_statuses() -> list[dict]:
     """Справочник в порядке вставки — для status.py."""
