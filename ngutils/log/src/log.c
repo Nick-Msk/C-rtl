@@ -826,6 +826,7 @@ log_numbers(LogAction            act,
             int                  sz
             )
 {
+	act &= ~LOG_NONEWLINE;
 	if (!log_preambule(act, lv, msglevel, modname, filename, funcname, lineno))
 		return -1;
 
