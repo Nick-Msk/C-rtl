@@ -278,14 +278,23 @@ log_preambule(
     {
         case LOG_ENTER:
 			lv = g_offset;  // that is why we need g_offset
-			if (!simple)
+			if (!simple) {
+				if (g_offset < 0) {
+					fprintf(stderr, "log: negative g_offset %d for ENTER\n", g_offset);
+					return false;
+				}
                 g_offset += g_offset_inc;
+			}
             act_msg = "ENTER";
 		break;
 		case LOG_LEAVE: case LOG_ERR:
-			if (!simple)
+			if (!simple) {
+				if (lv < g_offset_inc) {
+					fprintf(stderr, "log: lv %d < offset_inc %d for LEAVE/ERR\n", lv, g_offset_inc);
+					return false;
+				}
                 g_offset = lv -= g_offset_inc;
-			else
+			} else
                 lv = g_offset;
             act_msg = (act == LOG_LEAVE) ? "LEAVE" : "ERROR";
 		break;
