@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import emulate
 import hashlib
 import json
 import re
@@ -697,6 +698,13 @@ def _ask_classifier(finding: dict, project: Path, files: list[Path],
                     args, model: str, ctx: dict):
     """Return (verdict_dict, None) or (None, error_string)."""
 
+    if emulate.enabled():
+        try:
+            return emulate.classifier_verdict(project.name,
+                                              finding["id"]), None
+        except emulate.MissingFixture as exc:
+            return None, str(exc)
+
     chunk_usage: dict = {}
 
     system = classify_system(ctx)
@@ -1284,12 +1292,17 @@ def _run(args, jobs: list[tuple[str, Path, Path]], runid: int) -> tuple[int, dic
         findings = _filter_findings(report_path, args)
         if not findings:
             continue                      # <-- LLM ещё не трогали
+        
         if needs_llm and state["model"] is None:
-            llm.check_health(args.base_url)          # только теперь
-            state["model"] = llm.resolve_model(args.base_url, args.model)
+            if emulate.enabled():
+                state["model"] = "emulated"
+            else:
+                llm.check_health(args.base_url)
+                state["model"] = llm.resolve_model(args.base_url, args.model)
             db.llmrun_set_model(runid, state["model"])
-            print(f"[ai-fixer] endpoint={args.base_url} model={state['model']}",
-                  file=sys.stderr)
+            print(f"[ai-fixer] endpoint={args.base_url} "
+                  f"model={state['model']}", file=sys.stderr)
+            
         model = state["model"] or "(cached)"
         ctx = _build_ctx(label, args, model, state)
         _process_project(label, report_path, project, findings,
