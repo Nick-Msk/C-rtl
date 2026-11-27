@@ -337,6 +337,7 @@ log_preambule(
 			case LOG_FORMAT_EMPTY:
 			break;
 			case LOG_FORMAT_ALL:
+				if (!modname) modname = DEFAULT_MOD;
 				if (*act_msg)
 					fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s(%s): ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
 						 filename, funcname, lineno, act_msg, print_time());
