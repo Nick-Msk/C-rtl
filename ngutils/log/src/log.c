@@ -368,7 +368,7 @@ log_preambule(
  * @return true on success.
  */
 bool
-log_modinit(LogModlevel *modlist)
+log_modinit(const LogModlevel *modlist)
 {
 	FILE   *out = g_logfile ? g_logfile : stderr;
 	int		cnt = 0;
