@@ -306,6 +306,7 @@ log_preambule(
 					return false;
 				}
                 g_offset = lv -= g_offset_inc;
+                if (g_offset < 0) g_offset = 0;
 			} else
                 lv = g_offset;
             act_msg = (act == LOG_LEAVE) ? "LEAVE" : "ERROR";
