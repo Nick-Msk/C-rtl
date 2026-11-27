@@ -345,7 +345,10 @@ log_preambule(
 						 filename, funcname, lineno, print_time());
 			break;
 			case LOG_FORMAT_SIMPLE:
-				fprintf(g_logfile, "%*c%s(%d)]:%s%c ", lv + 1, '[', funcname, lineno, act_msg, *act_msg != '\0' ? ':' : ' ');
+				if (*act_msg)
+					fprintf(g_logfile, "%*c%s(%s): ", lv + 1, '[', act_msg, print_time());
+				else
+					fprintf(g_logfile, "%*c%s: ", lv + 1, '[', print_time());
 			break;
 			case LOG_FORMAT_ONLY_FUNC:
 				fprintf(g_logfile, "%*c%s(%d)]:%s%c ", lv + 1, '[', funcname, lineno, act_msg, *act_msg != '\0' ? ':' : ' ');
