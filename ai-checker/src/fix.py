@@ -49,6 +49,7 @@ from common import (
 )
 from gitutil import (
     commit_one_fix,
+    commit_patch,
     ensure_baseline_branch,
     head_sha,
     make_fix_branch_name,
@@ -787,6 +788,8 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
             print(f"  [dry-run] cached proposal from {outcome['dt']}")
         else:
             print("  [dry-run] not applied (saved as proposal)")
+        _notify_tracker_proposal(report_path, finding, full_key,
+                                 explanation, diff)
         ctx["ready"] += 1
         ctx["proposed"].append(full_key)
         return
@@ -1317,13 +1320,33 @@ def _notify_tracker_commit(report_path, finding, full_key, sha, branch,
             return
         web = remote_web_url()
         sha_md = f"[`{sha}`]({web}/commit/{sha})" if web else f"`{sha}`"
-        body = (f"**ai-checker: status → fixed**  `{full_key}`\n\n"
+        patch = commit_patch(sha) or diff   # fallback: proposal, если git недоступен
+        
+        body = (f"**ai-checker: committed**  `{full_key}`\n\n"
+            f"status → fixed\n"
             f"commit {sha_md} on `{branch}`\n"
             f"files: {', '.join(files)}\n\n"
             f"**Reason:** {reason}\n"
             f"**Change:** {explanation}\n\n"
-            f"```diff\n{diff}\n```\n")
+            f"```diff\n{patch}\n```\n")
         tracker_common.comment_ticket(iid, body, new_status=db.STATUS_FIXED)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: tracker comment failed: {exc}", file=sys.stderr)
+
+def _notify_tracker_proposal(report_path, finding, full_key,
+                             explanation, diff) -> None:
+    try:
+        import tracker_common
+        iid = db.issue_id_by_key(report_path, finding)
+        if iid is None:
+            return
+        body = (f"**ai-checker: fix proposed automatically**  "
+                f"`{full_key}`\n\n"
+                f"status → proposed-to-fix (not committed yet)\n"
+                f"**Change:** {explanation}\n\n"
+                f"```diff\n{diff}\n```\n")
+        tracker_common.comment_ticket(iid, body,
+                                      new_status=db.STATUS_PROPOSED)
     except Exception as exc:  # noqa: BLE001
         print(f"  warn: tracker comment failed: {exc}", file=sys.stderr)
 

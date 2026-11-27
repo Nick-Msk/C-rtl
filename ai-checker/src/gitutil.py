@@ -743,6 +743,10 @@ def remote_web_url(remote: str = "origin") -> str:
         return f"https://{m.group(1)}/{m.group(2)}"
     return re.sub(r"\.git$", "", url)
 
+def commit_patch(sha: str) -> str:
+    """The actual committed diff, without commit metadata."""
+    r = git("show", "--format=", "--no-color", sha, check=False)
+    return r.stdout.strip() if r.returncode == 0 else ""
 
 def main() -> int:
     ap = argparse.ArgumentParser(
