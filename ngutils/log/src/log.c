@@ -364,6 +364,8 @@ log_preambule(
 			break;
 		 }
 	}
+	if (ferror(g_logfile))
+		return false;
 	return true;
 }
 
