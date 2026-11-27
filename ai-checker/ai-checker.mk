@@ -101,6 +101,12 @@ ai-fix-propose-commit-%:  ## force-patch + commit for one project
 	}
 	@$(AI_RUN) src/fix.py --project $* --propose --apply $(AI_FIX_ARGS)
 
+ai-fix-forcepropose:  ## force-propose every project (analyze-by-dev + no-action)
+	@$(AI_RUN) src/fix.py --all --propose --force-propose $(AI_FIX_ARGS)
+
+ai-fix-forcepropose-%:  ## force-propose one project (analyze-by-dev + no-action)
+	@$(AI_RUN) src/fix.py --project $* --propose --force-propose $(AI_FIX_ARGS)
+
 ai-merge:  ## merge fixed branches, all projects
 	@$(AI_RUN) src/merge.py --all $(AI_MERGE_ARGS)
 

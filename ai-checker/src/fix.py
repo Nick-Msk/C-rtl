@@ -1084,6 +1084,9 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
 
     actor = db_status.fix_actor(args)
     eligible = db_status.eligible_statuses(actor)
+    if getattr(args, "force_propose", False):   # support --force-propose
+        eligible = set(eligible) | {db.STATUS_ANALYZE, db.STATUS_NO_ACTION}
+
     statuses = db_status.report_statuses(report_path)
 
     kept: list[dict] = []
@@ -1417,6 +1420,9 @@ def main() -> int:
     ap.add_argument("--propose", action="store_true",
                     help="force a patch proposal even for analyze-by-dev/"
                          "no-action findings (override classifier refusal)")
+    ap.add_argument("--force-propose", action="store_true",
+                    help="with --propose: also reopen analyze-by-dev and "
+                         "no-action findings (failed stays manual)")
     ap.add_argument("--refetch", action="store_true",
                     help="ignore cached proposal; re-query the LLM")
     
