@@ -378,9 +378,9 @@ def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
         header = f"a/{rel}"
         if count > 1:
             header += f"  (replace all {count} occurrence(s))"
-        parts.append("".join(difflib.unified_diff(
+        parts.append("\n".join(difflib.unified_diff(
             old.splitlines(), new.splitlines(),
-            fromfile=header, tofile=f"b/{rel}", n=2)))
+            fromfile=header, tofile=f"b/{rel}", n=2, lineterm="")) + "\n")
     return "".join(parts)
 
 def _ensure_baseline(report_path: Path, project: Path) -> None:
