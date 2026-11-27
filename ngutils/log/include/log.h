@@ -103,10 +103,10 @@ typedef enum {
 typedef enum {
 	LOG_FORMAT_EMPTY		= 0			/**< Nothing — just the message. */
   , LOG_FORMAT_ALL						/**< File + func + line. */
-  , LOG_FORMAT_ONLY_FILE				/**< File only. */
+  , LOG_FORMAT_ONLY_FILE				/**< Module + file + line. */
   , LOG_FORMAT_ONLY_FUNC				/**< Function only. */
   , LOG_FORMAT_SIMPLE					/**< Minimal (func). */
-  , LOG_FORMAT_ONLY_TIME				/**< Minimal + timestamp. */
+  , LOG_FORMAT_ONLY_TIME				/**< Func + line + timestamp. */
 } LogFormat;
 
 /**
