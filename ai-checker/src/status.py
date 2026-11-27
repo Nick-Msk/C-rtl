@@ -133,8 +133,7 @@ def cmd_list(project: str | None, status: str | None,
                   f"(score {r['carry_score']:.2f})")
             
     _print_rows(rows)
-    print("\n^N  pushed to tracker, N = remote issue id    "
-      "~  dry-run payload only")
+
     return 0
 
 def cmd_runs(limit: int, as_json: bool) -> int:
