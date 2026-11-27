@@ -594,7 +594,10 @@ log_init(const char *restrict logname
 	pthread_mutex_unlock(&g_file_registry_mtx);
 
 	/* Outside mutex: per-thread write + possible fprintf(stderr). */
-	log_format(logformat);
+	if (!log_format(logformat)) {
+		log_close();
+		return false;
+	}
 
 	if (setvbuf(g_logfile, 0, _IONBF, 0) != 0)		// unable to setup unbuf mode, put warning
 		fprintf(g_logfile, "WARNING: unable to setup unbuffered mode!\n");
