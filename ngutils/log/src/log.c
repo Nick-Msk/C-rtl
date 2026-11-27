@@ -715,6 +715,7 @@ log_close(void)
 	g_format_schema = LOG_FORMAT_ALL;
 	g_offset = 0;			// reset indentation
 	g_offset_inc = OFFSET_INC;
+	g_logon_mode = true;		// reset on/off switch
 	// free modules
 	log_modclear();
 	/* g_logname is intentionally NOT cleared:
