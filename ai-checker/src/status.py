@@ -66,11 +66,6 @@ def _print_rows(rows: list[dict]) -> None:
                 print(f"      {r['fix_commit']}  (branch deleted)")
             if r.get("fix_subject"):
                 print(f"      {r['fix_subject']}")
-        if r.get("remote_backend"):
-            rid = r.get("remote_id") or "?"
-            mark = "~" if r.get("remote_dry") else "^"
-            print(f"      {r['remote_backend']}{mark}{rid}  "
-                  f"{r.get('remote_url') or ''}")
         if r.get("carried_key"):
             print(f"      ← carried from {r['carried_key']} "
                   f"(score {r['carry_score']:.2f})")
@@ -82,7 +77,6 @@ def cmd_list(project: str | None, status: str | None,
              all_runs: bool) -> int:
     rows = db.list_issues(project=project, status=status,
                           latest_only=not all_runs)
-
     if not rows and not (as_json or keys_only):
         print("no issues in db"
               + (f" for project '{project}'" if project else "")
@@ -95,43 +89,14 @@ def cmd_list(project: str | None, status: str | None,
                   f"  or 'make ai-check-{project}' for a fresh review",
                   file=sys.stderr)
         return 0
-
     if keys_only:
         for r in rows:
             print(r["key"])
         return 0
-
     if as_json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
-
-    names = [r["fix_branch"] for r in rows
-             if r.get("fix_branch") and r["status"] == db.STATUS_FIXED]
-    alive = gitutil.branches_exist(names) if names else set()
-
-    for r in rows:
-        st = f"{r['status']}{tracker_common.marker(r)}"
-        sha = r.get("fix_commit")
-        if st in ("fixed", "merged") and sha:
-            st = f"{st}({sha})"
-        print(f"{r['project']:<6} {r['key']:<14} "
-              f"{r['section']:<10} {st:<22} {r['title'][:60]}")
-        if r["status"] == db.STATUS_FIXED and r.get("fix_branch"):
-            if r["fix_branch"] in alive:
-                print(f"      {r['fix_branch']}  {r['fix_commit']}")
-            else:
-                print(f"      {r['fix_commit']}  (branch deleted)")
-            if r.get("fix_subject"):
-                print(f"      {r['fix_subject']}")
-        if r.get("remote_backend"):
-            rid = r.get("remote_id") or "?"
-            mark = "~" if r.get("remote_dry") else "^"
-            print(f"      {r['remote_backend']}{mark}{rid}  "
-                  f"{r.get('remote_url') or ''}")
-        if r.get("carried_key"):
-            print(f"      ← carried from {r['carried_key']} "
-                  f"(score {r['carry_score']:.2f})")
-            
+    
     _print_rows(rows)
 
     return 0
@@ -170,6 +135,7 @@ def _unmerged_rows(project: str | None) -> list[dict]:
     """All non-terminal findings whose commit (if any) is not in HEAD.
     Includes: added, analyze-by-dev, proposed-to-fix, failed, fixed.
     Excludes: merged, rejected, no-action, suppressed, stale."""
+
     import gitutil
     out = []
     rows = db.list_issues(project=project, latest_only=True)
