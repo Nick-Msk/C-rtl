@@ -1380,8 +1380,7 @@ def main() -> int:
                          out_tokens=usage["completion_tokens"],
                          requests=usage["requests"])
         # Sync statuses after all fixes
-        projects = {p.parent.name for p in jobs}
-        for proj_name in projects:
+        for proj_name in db.known_projects():
             try:
                 import tracker_common
                 tracker_common.sync_statuses(proj_name)
