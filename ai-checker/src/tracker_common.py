@@ -390,6 +390,14 @@ def sync_statuses(project: str) -> int:
         updated += 1
     return updated
 
+def comment_status(issue_id: int, status: str, reason: str = "") -> bool:
+    """Forward-sync journal line: local status transition -> comment.
+    Body of the ticket stays a creation-time snapshot by design;
+    comments are the log."""
+    body = (f"**ai-checker: status → {status}**\n\n"
+            f"**Reason:** {reason or '(none)'}\n")
+    return comment_ticket(issue_id, body, new_status=status)
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Push findings to the bug tracker")
     g = ap.add_mutually_exclusive_group()

@@ -495,6 +495,16 @@ def _db_set(report_path: Path, finding: dict, status: str, *,
         print(f"  warn: db update matched no issue "
               f"({db.finding_key_str(finding)} in {report_path.name}); "
               f"report not ingested?", file=sys.stderr)
+    if status in (db.STATUS_FAILED, db.STATUS_ANALYZE, db.STATUS_NO_ACTION):
+        try:
+            import tracker_common
+            iid = db.issue_id_by_key(report_path, finding)
+            if iid is not None:
+                tracker_common.comment_status(
+                    iid, status, kw.get("reason", ""))
+        except Exception as exc:  # noqa: BLE001
+            print(f"  warn: tracker comment failed: {exc}",
+                  file=sys.stderr)
 
 def _clear_proposal(report_path: Path, finding: dict) -> None:
     """Best-effort proposal cleanup. Currently unused in _handle_finding
