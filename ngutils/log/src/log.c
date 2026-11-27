@@ -834,7 +834,7 @@ log_msg_ap(
 		va_list				 ap
 	   )
 {
-	if (!g_logfile && !log_init(0, false, LOG_FORMAT_ALL))		// TODO: it's qwestion about default mode here
+	if (!g_logfile && !log_init(0, false, g_format_schema))
 		return -1;
 
 	bool    no_newline 		= (act & LOG_NONEWLINE) != 0;
@@ -885,7 +885,7 @@ log_numbers(LogAction            act,
             )
 {
 	act &= ~LOG_NONEWLINE;
-	if (!g_logfile && !log_init(0, false, LOG_FORMAT_ALL))
+	if (!g_logfile && !log_init(0, false, g_format_schema))
 		return -1;
 	if (!log_preambule(act, lv, msglevel, modname, filename, funcname, lineno))
 		return -1;
