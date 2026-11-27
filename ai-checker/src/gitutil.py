@@ -751,6 +751,11 @@ def commit_patch(sha: str) -> str:
     r = git("show", "--format=", "--no-color", sha, check=False)
     return r.stdout.strip() if r.returncode == 0 else ""
 
+def blob_text(sha: str, rel: str) -> str | None:
+    r = git("show", f"{sha}:{rel}", check=False)
+    return r.stdout if r.returncode == 0 else None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="ai-checker git artifacts: branch cleanup and worktree teardown")

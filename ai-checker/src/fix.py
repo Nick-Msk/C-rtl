@@ -49,6 +49,7 @@ from common import (
     types_digest_path,
 )
 from gitutil import (
+    blob_text,
     commit_one_fix,
     commit_patch,
     ensure_baseline_branch,
@@ -583,9 +584,10 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
     actor = db_status.fix_actor(args)        # classify или commit
     if args.apply:
         for e in pending["edits"]:
-            msg, reason = _check_file_freshness(e, pending["dt"], full_key)
-            if msg is not None:
-                print(msg)
+            blob = blob_text(ctx["base_sha"], e["file"])
+            if blob is None or e["old_snippet"] not in blob:
+                reason = f"stale: snippet absent at baseline {ctx['base_sha']}"
+                print(f"  STALE proposal ({reason}); rerun propose for {full_key}")
                 skipped.append(f"{full_key}: {reason}")
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                                      actor=actor, reason=reason)
