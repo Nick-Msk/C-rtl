@@ -308,7 +308,8 @@ def git_clean_check() -> tuple[str, str]:
 
 def make_fix_branch_name(project: str, fix_runid: int, seq: int,
                          chunk_id: int, local_id: int,
-                         check_runid: int = 0) -> str:
+                         check_runid: int = 0,
+                         ticket_id: int | None = None) -> str:
     """ai-checker-<proj>-c<check>-f<fix>-<seq>/<chunk>-<local>
 
     - c<check>        = check-run (llmruns.runid, kind='check'),
@@ -325,6 +326,8 @@ def make_fix_branch_name(project: str, fix_runid: int, seq: int,
     (legacy reports with no llmruns entry).
     """
     parts = [f"ai-checker-{project}"]
+    if ticket_id:
+        parts.append(f"t{ticket_id}")
     if check_runid:
         parts.append(f"c{check_runid}")
     parts.append(f"f{fix_runid}-{seq}/{chunk_id}-{local_id}")

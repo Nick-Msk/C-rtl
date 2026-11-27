@@ -812,6 +812,18 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
         ctx["proposed"].append(full_key)
         return
 
+    # Resolve ticket id (if any) for the branch name.
+    # Best-effort: if db query fails or no link exists, ticket_id stays None.
+    ticket_id = None
+    try:
+        iid = db.issue_id_by_key(report_path, finding)
+        if iid is not None:
+            link = db.remote_link(iid)
+            if link and not link["dry"] and link["remote_id"]:
+                ticket_id = int(link["remote_id"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: ticket id lookup failed: {exc}", file=sys.stderr)
+
     ctx["seq"] += 1
     try:
         chunk_id, local_id = db.issue_key(finding)
@@ -820,7 +832,8 @@ def _apply_or_report(outcome: dict, finding: dict, full_key: str,
     branch = make_fix_branch_name(
                         project.name, ctx["fix_runid"], ctx["seq"],
                         chunk_id, local_id,
-                        check_runid=ctx.get("check_runid", 0))
+                        check_runid=ctx.get("check_runid", 0),
+                        ticket_id=ticket_id)
     
     commit_edits = [(p, e["old_snippet"], e["new_snippet"])
                     for p, e in parsed]
