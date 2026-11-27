@@ -12,11 +12,7 @@ import sys
 
 import db
 import gitutil
-from common import (
-    acquire_lock, 
-    parse_fixlist,
-    release_lock
-)
+from common import acquire_lock, parse_fixlist, release_lock
 
 
 def _key(r: dict) -> str:
