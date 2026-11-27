@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import emulate
 import hashlib
 import json
 import re
@@ -29,6 +28,7 @@ from pathlib import Path
 
 import db
 import db_status
+import emulate
 import llm
 from common import (
     DEFAULT_LIMIT,
