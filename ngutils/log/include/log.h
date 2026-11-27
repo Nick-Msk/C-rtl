@@ -250,6 +250,9 @@ log_offset(void);
  * @brief Globally switch logging on/off at runtime.
  * @param logon_mode  true = enable, false = silence everything.
  * @return The previous on/off state (1 = was on, 0 = was off).
+ * @note Indentation tracking (g_offset) continues while disabled;
+ *       the LOG_MAX_OFFSET cap may clamp depth if many ENTER/LEAVE
+ *       pairs execute while off.
  */
 extern int
 log_prog_switch(bool logon_mode);
