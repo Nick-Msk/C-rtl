@@ -39,10 +39,10 @@ API:
 #define 		TOTAL_MOD		"Total modules[%d]\n"
 
 /** Format string for one module entry in saved files (output). */
-#define 		MODULE_DESC		"Modname(%d) %s: level[%d]\n"
+#define 		MODULE_DESC		"Modname(%d) %s : level[%d]\n"
 
 /** Input variant with width-limited %19s to prevent buffer overflow on read. */
-#define 		MODULE_DESC_IN	"Modname(%d) %19s: level[%d]\n"
+#define 		MODULE_DESC_IN	"Modname(%d) %19s : level[%d]\n"
 
 /** Maximum length of the log file name buffer. */
 enum { LOG_MAX_SZ = 4096 };			// better to use POSIX or SC limitation instead of this constant
