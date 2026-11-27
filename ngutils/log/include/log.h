@@ -300,6 +300,7 @@ log_msg(LogAction            act,
 /**
  * @brief va_list variant of @ref log_msg.
  * Caller must `va_end(ap)` if not consumed by the engine.
+ * @param msg  printf format string; may be NULL (preambule + newline only).
  */
 extern
 int
