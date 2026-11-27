@@ -52,6 +52,7 @@ enum { LOG_TIME_SZ = 100 };
 
 /** Spaces added per indent level. */
 static			const int		OFFSET_INC			= 4;
+static			const int		LOG_MAX_OFFSET		= 1024;
 static 			const int 		LOG_MAXMODS 		= 4096;
 
 // ── File registry (prevents same-inode double-open across threads) ──────────
@@ -293,6 +294,8 @@ log_preambule(
 					return false;
 				}
                 g_offset += g_offset_inc;
+                if (g_offset > LOG_MAX_OFFSET)
+                    g_offset = LOG_MAX_OFFSET;
 			}
             act_msg = "ENTER";
 		break;
