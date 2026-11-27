@@ -209,7 +209,7 @@ log_mkdir(const char *dir);
  * @return true on success.
  */
 extern bool
-log_modinit(LogModlevel *modlist);
+log_modinit(const LogModlevel *modlist);
 
 /**
  * @brief Persist the current module list to a text file.
