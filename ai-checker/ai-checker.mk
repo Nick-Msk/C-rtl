@@ -119,6 +119,12 @@ ai-merge-%:  ## merge fix branches of one project (FIXLIST required)
 	}
 	@$(AI_RUN) src/merge.py --project $* $(AI_MERGE_ARGS)
 
+ai-status-unmerged:  ## fixed findings awaiting merge, every project
+	@$(AI_RUN) src/status.py --unmerged
+
+ai-status-unmerged-%:  ## fixed findings awaiting merge, one project
+	@$(AI_RUN) src/status.py --project $* --unmerged
+
 ai-status:  ## per-project status summary from check.db
 	@$(AI_RUN) src/status.py $(AI_STATUS_ARGS)
 
