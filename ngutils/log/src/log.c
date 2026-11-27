@@ -337,8 +337,12 @@ log_preambule(
 			case LOG_FORMAT_EMPTY:
 			break;
 			case LOG_FORMAT_ALL:
-				fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s(%s): ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
-					 filename, funcname, lineno, act_msg, print_time());
+				if (*act_msg)
+					fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s(%s): ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
+						 filename, funcname, lineno, act_msg, print_time());
+				else
+					fprintf(g_logfile, "%*c%s:%s:%s(%d)]:%s: ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname,
+						 filename, funcname, lineno, print_time());
 			break;
 			case LOG_FORMAT_SIMPLE:
 				fprintf(g_logfile, "%*c%s(%d)]:%s%c ", lv + 1, '[', funcname, lineno, act_msg, *act_msg != '\0' ? ':' : ' ');
@@ -347,7 +351,10 @@ log_preambule(
 				fprintf(g_logfile, "%*c%s(%d)]:%s%c ", lv + 1, '[', funcname, lineno, act_msg, *act_msg != '\0' ? ':' : ' ');
 			break;
 			case LOG_FORMAT_ONLY_TIME:
-				fprintf(g_logfile, "%*c%s(%d)]:%s(%s): ", lv + 1, '[', funcname, lineno, act_msg, print_time());
+				if (*act_msg)
+					fprintf(g_logfile, "%*c%s(%d)]:%s(%s): ", lv + 1, '[', funcname, lineno, act_msg, print_time());
+				else
+					fprintf(g_logfile, "%*c%s(%d)]:%s: ", lv + 1, '[', funcname, lineno, print_time());
 			break;
 			case LOG_FORMAT_ONLY_FILE:
 				fprintf(g_logfile, "%*c%s:%s(%d)]:%s%c ", lv + 1, '[', (strcmp(modname, DEFAULT_MOD) == 0) ? "": modname, filename, lineno, act_msg, *act_msg != '\0' ? ':' : ' ');
