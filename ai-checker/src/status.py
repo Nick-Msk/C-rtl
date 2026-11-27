@@ -164,7 +164,7 @@ def cmd_runs(limit: int, as_json: bool) -> int:
     return 0
 
 def _key(r: dict) -> str:
-    return f"{r['runid']}/{r['chunk_id']}/{r['local_id']}"
+    return f"{r['check_runid']}/{r['chunk_id']}/{r['local_id']}"
 
 
 def _unmerged_rows(project: str | None) -> list[dict]:
@@ -198,26 +198,26 @@ def cmd_unmerged(project: str | None, as_json: bool) -> int:
     _print_rows(rows)
     latest = db.latest_runid_by_project()
     stale = [r["key"] for r in rows
-             if latest.get(r["project"]) != r["runid"]]
+             if latest.get(r["project"]) != r["check_runid"]]
     if stale:
         print(f"\nstale (conflict likely): {', '.join(stale)}")
     ready = [r for r in rows
              if r["status"] in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
     pending = [r for r in rows
                if r["status"] not in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
-    if ready:
-        by_proj: dict[str, list[str]] = {}
-        for r in ready:
-            by_proj.setdefault(r["project"], []).append(r["key"])
-        for proj, ks in by_proj.items():
-            print(f"merge:   make ai-merge-{proj} "
-                  f"FIXLIST=\"{','.join(ks)}\"")
-    if pending:
-        print(f"\npending (need propose/commit): {len(pending)} issue(s)")
-        for r in pending[:5]:
-            print(f"  {r['key']}  {r['status']}")
-        if len(pending) > 5:
-            print(f"  ... and {len(pending) - 5} more")
+    # if ready:
+    #     by_proj: dict[str, list[str]] = {}
+    #     for r in ready:
+    #         by_proj.setdefault(r["project"], []).append(r["key"])
+    #     for proj, ks in by_proj.items():
+    #         print(f"merge:   make ai-merge-{proj} "
+    #               f"FIXLIST=\"{','.join(ks)}\"")
+    # if pending:
+    #     print(f"\npending (need propose/commit): {len(pending)} issue(s)")
+    #     for r in pending[:5]:
+    #         print(f"  {r['key']}  {r['status']}")
+    #     if len(pending) > 5:
+    #         print(f"  ... and {len(pending) - 5} more")
     return 0
 
 def main() -> int:
