@@ -12,7 +12,11 @@ import sys
 
 import db
 import gitutil
-from common import acquire_lock, release_lock
+from common import (
+    acquire_lock, 
+    parse_fixlist,
+    release_lock
+)
 
 
 def _key(r: dict) -> str:
@@ -21,7 +25,14 @@ def _key(r: dict) -> str:
 def run(args) -> int:
     rows = db.fixed_issues(args.project, latest_only=args.latest_only)
     if args.key:
-        rows = [r for r in rows if _key(r) in set(args.key.split())]
+        matcher = parse_fixlist(args.key)
+        if matcher is None:
+            sys.exit(f"ERROR: cannot parse --key {args.key!r}")
+        rows = [r for r in rows
+                if matcher((r["runid"], r["chunk_id"], r["local_id"]))]
+        if not rows:
+            print(f"[ai-merge] nothing matches --key {args.key!r}")
+            return 0
     if not rows:
         print("nothing awaiting merge")
         return 0
@@ -41,10 +52,16 @@ def run(args) -> int:
     for r in rows:
         key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
 
-        latest = db.latest_runid_by_project().get(r["project"])
-        if latest and r["runid"] != latest:
-            print(f"  STALE    {key}  baseline run {r['runid']}, "
-                  f"latest {latest} — conflict likely", file=sys.stderr)
+        merged = reconciled = lost = failed = skipped = 0
+        for r in rows:
+            key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
+            latest = db.latest_runid_by_project().get(r["project"])
+            if latest and r["runid"] != latest:
+                print(f"  STALE    {key}  baseline run {r['runid']}, "
+                    f"latest {latest} — conflict likely", file=sys.stderr)
+                if not args.key:
+                    skipped += 1
+                    continue
 
         if not fix_sha or not gitutil.commit_exists(fix_sha):
             print(f"  GONE     {key}  {fix_sha or '(no sha)'} "
@@ -91,8 +108,9 @@ def run(args) -> int:
         print(f"  MERGED   {key}  {sha}")
         merged += 1
 
+    tail = f", {skipped} stale skipped" if skipped else ""
     print(f"\n[ai-merge] {merged} merged, {reconciled} recorded, "
-          f"{lost} lost, {failed} conflict(s)")
+          f"{lost} lost, {failed} conflict(s){tail}")
     return 1 if failed else 0
 
 def main() -> int:
@@ -100,7 +118,8 @@ def main() -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--all", action="store_true")
     g.add_argument("--project")
-    ap.add_argument("--key", default="", help="only these runid/chunk/local")
+    ap.add_argument("--key", default="",
+                    help="FIXLIST: '93/1/2', '93/1/2-5', '1/*', '*'")
     ap.add_argument("--sync-only", action="store_true",
                     help="reconcile only, never run git merge")
     ap.add_argument("--dry-run", action="store_true")

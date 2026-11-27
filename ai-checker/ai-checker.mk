@@ -110,7 +110,13 @@ ai-merge-sync:  ## reconcile only, every project (never git merge)
 ai-merge-sync-%:  ## reconcile only, one project
 	@$(AI_RUN) src/merge.py --project $* --sync-only $(AI_MERGE_ARGS)
 
-ai-merge-%:  ## merge fixed branches of one project
+ai-merge-%:  ## merge fix branches of one project (FIXLIST required)
+	@test -n "$(FIXLIST)" || { \
+	    echo "ERROR: FIXLIST is required for ai-merge-$*"; \
+	    echo "usage: make ai-merge-$* FIXLIST=\"<runid>/<chunk>/<local>\""; \
+	    echo "       (see 'make ai-status-$*' for fixed keys)"; \
+	    exit 1; \
+	}
 	@$(AI_RUN) src/merge.py --project $* $(AI_MERGE_ARGS)
 
 ai-status:  ## per-project status summary from check.db
