@@ -18,6 +18,26 @@ from common import acquire_lock, parse_fixlist, release_lock
 def _key(r: dict) -> str:
     return f"{r['runid']}/{r['chunk_id']}/{r['local_id']}"
 
+def _notify_merged(r: dict, sha: str, base: str) -> None:
+    try:
+        import tracker_common
+        tracker_common.close_merged_ticket(
+            r["id"],
+            f"Merged into `{base}` as `{sha}` by ai-merge "
+            f"(ai-checker key `{_key(r)}`).")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  warn: tracker close failed: {exc}", file=sys.stderr)
+
+def _cleanup_fix(r: dict, br: str, args) -> None:
+    """Unmount worktree, then delete branch. Silent when the branch is
+    already gone (merge_fix(delete=True) removes it itself)."""
+    if args.keep:
+        return
+    gitutil.remove_fix_worktree(gitutil.fix_worktree_path(
+        r["project"], r["runid"], r["chunk_id"], r["local_id"]))
+    if gitutil.branch_exists(br) and not gitutil.delete_branch(br):
+        print(f"  warn: cannot delete branch {br}", file=sys.stderr)
+
 def run(args) -> int:
     rows = db.fixed_issues(args.project, latest_only=args.latest_only)
     if args.key:
@@ -32,53 +52,43 @@ def run(args) -> int:
     if not rows:
         print("nothing awaiting merge")
         return 0
-
     base = gitutil.git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if base == "HEAD":
         sys.exit("ERROR: detached HEAD, checkout a branch first")
     print(f"[ai-merge] base={base}  {len(rows)} fixed issue(s)")
-
     targets = [t.strip() for t in
-        db.get_param("fix", "verify_targets",
-                     "test-{project},analyze-{project}").split(",")
-        if t.strip()]
+               db.get_param("fix", "verify_targets",
+                            "test-{project},analyze-{project}").split(",")
+               if t.strip()]
     verify_on = db.get_param("fix", "verify_on_merge", True)
-
-    merged = reconciled = lost = failed = 0
+    merged = reconciled = lost = failed = skipped = 0
+    seen: set[int] = set()
     for r in rows:
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
         key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
-
-        merged = reconciled = lost = failed = skipped = 0
-        for r in rows:
-            key, fix_sha, br = _key(r), r["fix_commit"], r["fix_branch"]
-            latest = db.latest_runid_by_project().get(r["project"])
-            if latest and r["runid"] != latest:
-                print(f"  STALE    {key}  baseline run {r['runid']}, "
-                    f"latest {latest} — conflict likely", file=sys.stderr)
-                if not args.key:
-                    skipped += 1
-                    continue
-
+        latest = db.latest_runid_by_project().get(r["project"])
+        if latest and r["runid"] != latest:
+            print(f"  STALE    {key}  baseline run {r['runid']}, "
+                  f"latest {latest} — conflict likely", file=sys.stderr)
+            if not args.key:
+                skipped += 1
+                continue
         if not fix_sha or not gitutil.commit_exists(fix_sha):
             print(f"  GONE     {key}  {fix_sha or '(no sha)'} "
                   f"(commit unreachable — never merged, branch deleted)")
             lost += 1
             continue
-
         if gitutil.is_ancestor(fix_sha):
             head = gitutil.git("rev-parse", "--short", "HEAD").stdout.strip()
             if not args.dry_run:
                 db.mark_merged(r["id"], head)
-                if not args.keep and not gitutil.discard_fix(
-                            r["project"], r["runid"],
-                            r["chunk_id"], r["local_id"], br):
-                    print(f"  warn: cannot delete branch {br}",
-                            file=sys.stderr)
+                _cleanup_fix(r, br, args)
+                _notify_merged(r, head, base)
             print(f"  RECORDED {key}  {fix_sha} already in {base}")
             reconciled += 1
             continue
-
-        # Коммит жив, но не в HEAD — мержить нечего веткой, мержим sha.
         if args.sync_only:
             print(f"  PENDING  {key}  {fix_sha} (not in {base})")
             continue
@@ -86,28 +96,28 @@ def run(args) -> int:
             print(f"  WOULD    {key}  git merge --no-ff {fix_sha}")
             continue
         if not gitutil.branch_exists(br):
-            gitutil.git("branch", br, fix_sha, check=False)   # ярлык из sha
+            gitutil.git("branch", br, fix_sha, check=False)
         try:
             wt = gitutil.ensure_fix_worktree(
                 r["project"], r["runid"], r["chunk_id"], r["local_id"],
                 br, base_sha=fix_sha)
             verify = (gitutil.make_verifier(r["project"], targets)
-                    if verify_on else None)
-            sha, _ = gitutil.merge_fix(br, wt=wt, delete=not args.keep, verify=verify)
-
-            
+                      if verify_on else None)
+            sha, _ = gitutil.merge_fix(br, wt=wt, delete=not args.keep,
+                                       verify=verify)
         except RuntimeError as exc:
             print(f"  CONFLICT {key}  {exc}", file=sys.stderr)
             failed += 1
             continue
         db.mark_merged(r["id"], sha)
+        _notify_merged(r, sha, base)
         print(f"  MERGED   {key}  {sha}")
         merged += 1
-
     tail = f", {skipped} stale skipped" if skipped else ""
     print(f"\n[ai-merge] {merged} merged, {reconciled} recorded, "
           f"{lost} lost, {failed} conflict(s){tail}")
     return 1 if failed else 0
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])

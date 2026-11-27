@@ -286,6 +286,42 @@ def comment_ticket(issue_id: int, text: str, *, new_status: str = "") -> bool:
     print(f"[tracker] COMMENT {name}:{link['remote_id']}")
     return True
 
+def close_merged_ticket(issue_id: int, comment: str) -> bool:
+    """Forward-sync on merge: close the ticket with a 'merged as <sha>'
+    comment. Uses the backend the ticket ACTUALLY lives in.
+    Best-effort: never raises into the caller."""
+
+    mode = str(db.get_param("track", "mode", "off")).strip().lower()
+    if mode not in ("dry", "live"):
+        return False
+    link = db.remote_link(issue_id)
+    if not link or link["dry"] or not link["remote_id"]:
+        return False
+    name = link["backend"]
+    try:
+        be = load(name)
+    except (ImportError, AttributeError) as exc:
+        print(f"[tracker] unknown backend {name!r}: {exc}", file=sys.stderr)
+        return False
+    if link.get("closed"):
+        return False
+    err = be.configure()
+    if err:
+        print(f"[tracker] {name}: {err}", file=sys.stderr)
+        return False
+    if mode == "dry" or be.force_dry():
+        print(f"[tracker] WOULD CLOSE {name}:{link['remote_id']} (merged)")
+        return True
+    err, was_closed = be.close(link, comment)
+    if err:
+        print(f"[tracker] FAILED close {name}:{link['remote_id']}: {err}",
+              file=sys.stderr)
+        return False
+    db.mark_remote_closed(issue_id, name, be.closed_status)
+    print(f"[tracker] {'already closed' if was_closed else 'CLOSED'} "
+          f"{name}:{link['remote_id']} (merged)")
+    return True
+
 def marker(r: dict) -> str:
     """Status suffix for ai-status:
        '^<remote_id>'  pushed (gitea: issue number, jira: PROJ-42)
