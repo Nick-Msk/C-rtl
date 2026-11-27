@@ -201,10 +201,10 @@ def cmd_unmerged(project: str | None, as_json: bool) -> int:
              if latest.get(r["project"]) != r["check_runid"]]
     if stale:
         print(f"\nstale (conflict likely): {', '.join(stale)}")
-    ready = [r for r in rows
-             if r["status"] in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
-    pending = [r for r in rows
-               if r["status"] not in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
+    # ready = [r for r in rows
+    #          if r["status"] in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
+    # pending = [r for r in rows
+    #            if r["status"] not in (db.STATUS_FIXED, db.STATUS_PROPOSED)]
     # if ready:
     #     by_proj: dict[str, list[str]] = {}
     #     for r in ready:
