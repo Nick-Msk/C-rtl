@@ -412,7 +412,6 @@ log_modinit(const LogModlevel *modlist)
 		 g_modules[i] = modlist[i];
 
 	g_modcount = cnt;
-	g_logon_mode = true;
 
 	// sort data by module name
 	qsort(g_modules, g_modcount, sizeof(LogModlevel), cmp);
@@ -519,7 +518,6 @@ log_modload(const char *name)
 		g_modules[i].level = lv;
 	}
 	g_modcount = modcnt;
-	g_logon_mode = true;
 	qsort(g_modules, g_modcount, sizeof(LogModlevel), cmp);
     fclose(f);
 
