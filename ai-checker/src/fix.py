@@ -379,7 +379,7 @@ def make_diff(edits: list[tuple[Path, str, str, int]]) -> str:
         if count > 1:
             header += f"  (replace all {count} occurrence(s))"
         parts.append("".join(difflib.unified_diff(
-            old.splitlines(keepends=True), new.splitlines(keepends=True),
+            old.splitlines(), new.splitlines(),
             fromfile=header, tofile=f"b/{rel}", n=2)))
     return "".join(parts)
 
