@@ -1473,4 +1473,32 @@ def mark_remote_status(issue_id: int, backend: str, remote_status: str) -> None:
             "UPDATE issue_remote SET remote_status = ?, dt = ? "
             "WHERE issue_id = ? AND backend = ?",
             (remote_status, _now_iso(), issue_id, backend))
-        
+
+def keys_by_remote(ref: str, project: str | None = None
+                   ) -> list[tuple[int, int, int]]:
+    """Resolve a tracker ticket ref ('30', 'gitea:30', 'PROJ-42') to
+    issue keys. Only LIVE links count: dry=0 and remote_id != ''."""
+    backend, _, rid = ref.partition(":")
+    if not rid:
+        backend, rid = "", backend
+    q = ("SELECT i.runid, i.chunk_id, i.local_id "
+         "FROM issue_remote rm JOIN issue i ON i.id = rm.issue_id "
+         "JOIN report r ON r.id = i.report_id "
+         "WHERE rm.remote_id = ? AND rm.dry = 0 AND rm.remote_id != '' ")
+    params: list = [rid]
+    if backend:
+        q += "AND rm.backend = ? "
+        params.append(backend)
+    if project:
+        q += "AND r.project = ? "
+        params.append(project)
+    with connect() as con:
+        rows = con.execute(q, params).fetchall()
+    return [(r["runid"], r["chunk_id"], r["local_id"]) for r in rows]
+
+
+def fixlist_matcher(raw: str, project: str | None = None):
+    """parse_fixlist with tracker-ticket resolution wired in."""
+    from common import parse_fixlist
+    return parse_fixlist(
+        raw, ticket_resolver=lambda ref: keys_by_remote(ref, project))

@@ -42,7 +42,6 @@ from common import (
     discover_projects,
     gather_context_files,
     iter_findings,
-    parse_fixlist,
     rel_display,
     release_lock,
     rotate_reports,
@@ -1032,7 +1031,7 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
     Знание о статусах здесь больше не живёт."""
 
     findings = iter_findings(report_path, 0)
-    only = parse_fixlist(args.only)
+    only = db.fixlist_matcher(args.key, project=args.project)
     if only is not None:
         rid = db.report_runid(report_path) or 0
         selected = [f for f in findings if _matches_fixlist(f, only, rid)]

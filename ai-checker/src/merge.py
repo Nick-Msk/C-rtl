@@ -12,7 +12,7 @@ import sys
 
 import db
 import gitutil
-from common import acquire_lock, parse_fixlist, release_lock
+from common import acquire_lock, release_lock
 
 
 def _key(r: dict) -> str:
@@ -41,7 +41,7 @@ def _cleanup_fix(r: dict, br: str, args) -> None:
 def run(args) -> int:
     rows = db.fixed_issues(args.project, latest_only=args.latest_only)
     if args.key:
-        matcher = parse_fixlist(args.key)
+        matcher = db.fixlist_matcher(args.key, project=args.project)
         if matcher is None:
             sys.exit(f"ERROR: cannot parse --key {args.key!r}")
         rows = [r for r in rows

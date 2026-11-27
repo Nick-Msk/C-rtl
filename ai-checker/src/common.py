@@ -414,7 +414,7 @@ def types_digest_path(project_name: str) -> Path:
     return OUT_ROOT / project_name / "_types.h"
 
 
-def parse_fixlist(raw: str):
+def parse_fixlist(raw: str, ticket_resolver=None):
     """Matcher over (runid, chunk, local). Shared by fix.py and decide.py.
 
       93/1/2        exact full key — the form ai-status prints
@@ -424,6 +424,8 @@ def parse_fixlist(raw: str):
       1/2           chunk/local, ANY run (fix.py works inside one report)
       1/*           every local of chunk 1, any run
       *             everything
+      ^30 / #30     tracker ticket id (resolved via ticket_resolver)
+      ^gitea:30     same, backend pinned
     """
     if not raw or not raw.strip():
         return None
@@ -436,6 +438,16 @@ def parse_fixlist(raw: str):
     for tok in (t for t in re.split(r"[,\s]+", raw.strip()) if t):
         if tok == "*":
             match_all = True
+            continue
+        if tok[0] in "^#":
+            if ticket_resolver is None:
+                continue
+            keys = ticket_resolver(tok[1:])
+            if not keys:
+                print(f"[ai-checker] warn: FIXLIST {tok}: no live tracker "
+                      f"link (never pushed, or dry-run only)",
+                      file=sys.stderr)
+            exact.update(keys)
             continue
         parts = tok.split("/")
         if len(parts) == 3:

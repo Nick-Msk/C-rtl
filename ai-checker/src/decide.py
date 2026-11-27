@@ -11,8 +11,6 @@ import sys
 import db
 import db_status
 import gitutil
-from common import parse_fixlist
-
 
 def _discard_git(r: dict) -> None:
     """A rejected fix must not leave a branch + worktree behind: git
@@ -36,7 +34,7 @@ def run(args) -> int:
 
     rows = db.list_issues(project=args.project, latest_only=False)
 
-    matcher = parse_fixlist(args.only)
+    matcher = db.fixlist_matcher(args.key, project=args.project)
     if matcher is not None:
         rows = [r for r in rows
                 if matcher((r["check_runid"], r["chunk_id"], r["local_id"]))]
