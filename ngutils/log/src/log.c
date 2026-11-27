@@ -859,7 +859,7 @@ log_msg_ap(
  *
  * Prints digits as-is, other bytes as characters. Always appends a newline.
  *
- * @note Uses isdigit() for a simple printable-digit filter.
+ * @note Uses a range check (c <= 9) for a simple printable-digit filter.
  *
  * @param act       LogAction flags.
  * @param lv        Level / indent hint.
