@@ -254,7 +254,7 @@ resetmod(void)
 static bool
 log_preambule(
 	LogAction            act,
-	int                  lv,                // offset of logging (must be mutlipied to g_offset_inc to make effective level)
+	int                  lv,                // current indentation offset in spaces (used directly as print width)
 	Loglevel             msglevel,          // level of logging type, always = LOGALL now
 	const char *restrict modname,
 	const char *restrict filename,
