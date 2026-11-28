@@ -304,19 +304,13 @@ def validate_edits_propose(edits: list[dict], project: Path
         if not p.is_file():
             return None, f"file not found: {rel}"
         
-        # Verify old_snippet exists in the file NOW
         try:
             src = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError) as exc:
             return None, f"cannot read {rel}: {exc}"
         if old not in src:
-            # Show first divergent line for debugging
-            lines = old.splitlines()
-            for i, ln in enumerate(lines):
-                if ln not in src:
-                    return None, (f"{rel}: old_snippet line {i+1} not found "
-                                  f"(whitespace mismatch?); got {ln!r}")
-            return None, f"{rel}: old_snippet not found (whitespace mismatch?)"
+            return None, (f"{rel}: old_snippet mismatch: "
+                          f"{_snippet_mismatch_detail(old, src)}")
         
         parsed.append((p, e))
     return parsed, None
@@ -601,15 +595,42 @@ def _validate_cached(pending: dict, finding: dict, full_key: str,
     """Verify cached proposal is still valid; return outcome or None."""
     actor = db_status.fix_actor(args)        # classify или commit
     if args.apply:
+        # 1. File freshness: SHA-256 against what propose saw
         for e in pending["edits"]:
-            blob = blob_text(ctx["base_sha"], e["file"])
-            if blob is None or e["old_snippet"] not in blob:
-                reason = f"stale: snippet absent at baseline {ctx['base_sha']}"
-                print(f"  STALE proposal ({reason}); rerun propose for {full_key}")
+            msg, reason = _check_file_freshness(e, pending["dt"], full_key)
+            if msg is not None:
+                print(msg)
                 skipped.append(f"{full_key}: {reason}")
                 _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
                                      actor=actor, reason=reason)
                 return None
+        
+        # 2. NEW: snippet presence at baseline (catches whitespace
+        #    mismatches the freshness check cannot see — propose reads
+        #    working tree, commit applies against ctx["base_sha"])
+        for e in pending["edits"]:
+            p = (ROOT / e["file"]).resolve()
+            blob = blob_text(ctx["base_sha"], p)
+            if blob is None:
+                reason = (f"stale: cannot read {e['file']} at baseline "
+                          f"{ctx['base_sha'][:8]}")
+                print(f"  STALE proposal ({reason})")
+                skipped.append(f"{full_key}: {reason}")
+                _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
+                                     actor=actor, reason=reason)
+                return None
+            if e["old_snippet"] not in blob:
+                reason = (f"stale: snippet mismatch at baseline "
+                          f"{ctx['base_sha'][:8]}: "
+                          f"{_snippet_mismatch_detail(e['old_snippet'], blob)}")
+                print(f"  STALE proposal ({reason})")
+                print(f"  rerun 'make ai-fix-propose-{project.name} "
+                      f"FIXLIST=\"{full_key}\" AI_FIX_REFETCH=1'")
+                skipped.append(f"{full_key}: {reason}")
+                _db_set_if_not_fixed(report_path, finding, db.STATUS_FAILED,
+                                     actor=actor, reason=reason)
+                return None
+    
     parsed, err = _resolve_cached_edits(pending["edits"], 
                                         project)
     
@@ -657,6 +678,27 @@ def _check_file_freshness(e: dict, dt: str, key: str):
                 f"FIXLIST=\"{key}\"' to reclassify"),
                 "stale: file changed")
     return None, None
+
+def _snippet_mismatch_detail(old: str, blob: str) -> str:
+    """First divergence between old_snippet and file content:
+    line no, column no, expected vs closest actual line, both in
+    repr() so tabs/spaces are visible."""
+    blob_lines = blob.splitlines()
+    for i, ln in enumerate(old.splitlines()):
+        if ln in blob_lines:
+            continue
+        close = difflib.get_close_matches(ln, blob_lines, n=1, cutoff=0.5)
+        if not close:
+            return (f"line {i+1} not found, nothing similar; "
+                    f"expected {ln!r}")
+        got = close[0]
+        pos = next((k for k in range(min(len(ln), len(got)))
+                    if ln[k] != got[k]), min(len(ln), len(got)))
+        return (f"line {i+1}, column {pos+1}: expected "
+                f"{ln[pos:pos+16]!r}... vs file {got[pos:pos+16]!r}...; "
+                f"full expected {ln!r} / full file {got!r}")
+    return ("all lines exist individually but not consecutively "
+            "(order or interleaved lines differ)")
 
 def _classify_with_llm(finding, full_key, project, report_path, files,
                        args, model, ctx, needs_review, skipped):

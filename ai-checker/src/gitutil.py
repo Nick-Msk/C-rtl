@@ -751,10 +751,23 @@ def commit_patch(sha: str) -> str:
     r = git("show", "--format=", "--no-color", sha, check=False)
     return r.stdout.strip() if r.returncode == 0 else ""
 
-def blob_text(sha: str, rel: str) -> str | None:
+def git_toplevel() -> Path:
+    """Absolute repo root (git root, NOT the workspace ROOT)."""
+    return Path(git("rev-parse", "--show-toplevel").stdout.strip())
+
+
+def blob_text(sha: str, path: Path) -> str | None:
+    """File content at commit `sha`, or None if unreadable.
+    `path` must be absolute (or git-root-relative); resolved
+    against the git root internally, so workspace-relative
+    'log/src/log.c' never reaches `git show` bare."""
+    p = Path(path).resolve()
+    try:
+        rel = p.relative_to(git_toplevel())
+    except ValueError:
+        return None
     r = git("show", f"{sha}:{rel}", check=False)
     return r.stdout if r.returncode == 0 else None
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(
