@@ -274,6 +274,9 @@ log_preambule(
 		fprintf(stderr, "log: not initialized\n");
 		return false;
 	}
+	if (!modname)  modname  = DEFAULT_MOD;
+	if (!funcname) funcname = "";
+	if (!filename) filename = "";
 	int modlevel = getlevel(modname);
 	if (modlevel < 0) {
 		fprintf(stderr, "Mod %s NOT FOUND!!!\n", modname);
