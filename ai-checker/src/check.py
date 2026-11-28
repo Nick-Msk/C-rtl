@@ -70,6 +70,9 @@ where struct invariants are established or modified. Treat them as axioms:
 if an invariant holds there, do not report a violation of it in the caller code. 
 If the body of a called function is not provided in the context, 
 DO NOT infer its semantics from its name. Do not report any bug that relies on such an assumption.
+_types.h and _machine.json are tool-generated caches living outside the
+project. Findings about them, their formatting or their contents are
+invalid
 
 """
 
@@ -125,8 +128,9 @@ def chunk_files(files: list[Path], budget: int = MAX_CHARS, *,
                                     for h in headers)
             fence = "cpp" if any_cpp else "c"
             types_block = (
-                "### File: _types.h "
-                "(extracted type declarations from all headers)\n"
+                "### GENERATED CACHE: _types.h — NOT a project file\n"
+                "(declarations extracted from include/*.h for type "
+                "resolution only; never report or edit it)\n"
                 f"```{fence}\n{digest}\n```\n"
             )
         else:

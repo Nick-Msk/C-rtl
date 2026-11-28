@@ -80,6 +80,14 @@ _NO_OP_RE = re.compile(
 FILE_REF_RE = re.compile(
     r"\b([\w./-]+\.(?:c|h|hpp|cc|cpp|cxx))(?::\d+)?")
 
+ARTIFACT_NAMES = {"_types.h", "_machine.json"}
+
+def _artifact_only(text: str) -> bool:
+    """True if every file reference in the finding is a tool-generated
+    cache: the model reviewed our own scratch file, not project code."""
+    refs = FILE_REF_RE.findall(text)
+    return bool(refs) and all(Path(r).name in ARTIFACT_NAMES for r in refs)
+
 @lru_cache(maxsize=1)
 def allowed_top_dirs() -> frozenset[str]:
     """Top-level dirs the fixer may touch = discovered projects.
@@ -274,6 +282,8 @@ def parse_findings(report_text: str) -> list[dict]:
             if len(text) < 20:
                 return
             fid = next_id(kind)          # reserve the id even if we drop it
+            if _artifact_only(text):
+                return
             if _NO_OP_RE.search(text):
                 return
             findings.append({"section": _name,

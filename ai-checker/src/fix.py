@@ -202,8 +202,9 @@ def build_prompt(finding: dict, project: Path, files: list[Path],
     if types_path.is_file():
         try:
             types_text = types_path.read_text(encoding="utf-8")
-            block = ("### File: _types.h "
-                     "(extracted type declarations from all headers)\n"
+            block = ("### GENERATED CACHE: _types.h — NOT a project file\n"
+                     "(declarations extracted from include/*.h for type "
+                     "resolution only; never report or edit it)\n"
                      f"```c\n{types_text}\n```\n")
             parts.append(block)
             budget -= len(block)
