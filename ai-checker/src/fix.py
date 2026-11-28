@@ -146,7 +146,7 @@ OUTPUT - one JSON object, no prose, no markdown fences:
   "edits": [
     {
       "file": "path relative to repo root, one of the sources provided",
-      "old_snippet": "exact text copied from that file, 1-3 lines of context",
+      "old_snippet": "EXACT verbatim copy from the file, 1-3 lines, including ALL whitespace",
       "new_snippet": "replacement, same indentation",
       "explanation": "one line",
       "count": 1
@@ -217,6 +217,9 @@ def build_prompt(finding: dict, project: Path, files: list[Path],
             text = f.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        # Add line numbers for better context
+        # numbered = "\n".join(f"{i+1:4d}: {line}" for i, line in enumerate(text.splitlines()))
+        # block = f"### {f.relative_to(ROOT)}\n```\n{numbered}\n```\n"
         block = f"### {f.relative_to(ROOT)}\n```\n{text}\n```\n"
         if len(block) > budget:
             block = block[:budget] + "\n... (truncated)\n```\n"
@@ -300,6 +303,21 @@ def validate_edits_propose(edits: list[dict], project: Path
             return None, f"outside project: {rel}"
         if not p.is_file():
             return None, f"file not found: {rel}"
+        
+        # Verify old_snippet exists in the file NOW
+        try:
+            src = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            return None, f"cannot read {rel}: {exc}"
+        if old not in src:
+            # Show first divergent line for debugging
+            lines = old.splitlines()
+            for i, ln in enumerate(lines):
+                if ln not in src:
+                    return None, (f"{rel}: old_snippet line {i+1} not found "
+                                  f"(whitespace mismatch?); got {ln!r}")
+            return None, f"{rel}: old_snippet not found (whitespace mismatch?)"
+        
         parsed.append((p, e))
     return parsed, None
 
