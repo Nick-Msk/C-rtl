@@ -1134,7 +1134,14 @@ def _filter_findings(report_path: Path, args) -> list[dict]:
         selected = [f for f in findings if _matches_fixlist(f, only, rid)]
         if not selected:
             print(f"  warn: FIXLIST matched nothing: {args.only!r}",
-                  file=sys.stderr)
+                    file=sys.stderr)
+            sample = [k for f in findings[:5]
+                if (k := _issue_key_or_none(f))]
+            if sample:
+                hint = ", ".join(f"{rid}/{c}/{l}" for c, l in sample)
+                print(f"  keys in this report look like: {hint} ...  "
+                      f"(forms: R/C/L, R/C/L-L, R/C/*, R/*/*, C/L, C/*, *)",
+                      file=sys.stderr)
             print("  no findings match FIXLIST")
             return []
         findings = selected

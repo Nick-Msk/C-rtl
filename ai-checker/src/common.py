@@ -433,6 +433,7 @@ def parse_fixlist(raw: str, ticket_resolver=None):
     pairs: set[tuple[int, int]] = set()          # (chunk, local), any run
     ranges: list[tuple[int | None, int, int, int]] = []
     wild: set[tuple[int | None, int]] = set()    # (run|None, chunk)
+    run_only: set[int] = set()
     match_all = False
 
     for tok in (t for t in re.split(r"[,\s]+", raw.strip()) if t):
@@ -451,6 +452,12 @@ def parse_fixlist(raw: str, ticket_resolver=None):
             continue
         parts = tok.split("/")
         if len(parts) == 3:
+            if parts[1] == "*" and parts[2] == "*":
+                try:
+                    run_only.add(int(parts[0]))
+                except ValueError:
+                    continue
+                continue
             run, c, l = int(parts[0]), parts[1], parts[2]
         elif len(parts) == 2:
             run, c, l = None, parts[0], parts[1]
@@ -479,6 +486,8 @@ def parse_fixlist(raw: str, ticket_resolver=None):
     def matcher(key: tuple[int, int, int]) -> bool:
         run, chunk, local = key
         if match_all or key in exact or (chunk, local) in pairs:
+            return True
+        if run in run_only:
             return True
         if (run, chunk) in wild or (None, chunk) in wild:
             return True
