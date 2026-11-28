@@ -713,9 +713,26 @@ def _classify_with_llm(finding, full_key, project, report_path, files,
         return None
     cls = verdict.get("class", "needs_review")
     reason = verdict.get("reason", "")
-    # propose: модель обязана дать local; отказалась — статус НЕ трогаем
+    
     if ctx.get("propose") and cls != "local":
-        print(f"  PROPOSE: model refused (class={cls}): {reason}")
+        # Propose mode: model refused to propose. Update status based
+        # on the class — no_action/needs_review are legitimate verdicts,
+        # not failures.
+        if cls == "no_action":
+            print(f"  PROPOSE: model refused (class=no_action): {reason}")
+            _db_set(report_path, finding, db.STATUS_NO_ACTION,
+                    actor=actor, reason=reason)
+        elif cls == "needs_review":
+            print(f"  PROPOSE: model refused (class=needs_review): {reason}")
+            if verdict.get("direction"):
+                print(f"    direction: {verdict['direction']}")
+            _db_set(report_path, finding, db.STATUS_ANALYZE,
+                    actor=actor, reason=reason,
+                    direction=verdict.get("direction"))
+        else:
+            print(f"  PROPOSE: model refused (class={cls}): {reason}")
+            _db_set(report_path, finding, db.STATUS_FAILED,
+                    actor=actor, reason=f"propose refused (class={cls})")
         skipped.append(f"{full_key}: propose refused (class={cls})")
         return None
     if cls == "no_action":

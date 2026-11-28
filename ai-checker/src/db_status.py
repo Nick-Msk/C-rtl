@@ -57,6 +57,12 @@ TRANSITIONS: list[tuple[str, str, str, str]] = [
     (db.STATUS_NO_ACTION, ACT_PROPOSE,  db.STATUS_PROPOSED,     "forced patch for a not-a-defect finding"),
     (db.STATUS_NO_ACTION, ACT_PROPOSE,  db.STATUS_FAILED,       "forced proposal failed validation"),
     (db.STATUS_FAILED,    ACT_PROPOSE,  db.STATUS_PROPOSED,     "forced failed to reanalyze"),
+    # NEW: propose mode can confirm no_action/needs_review after refetch
+    (db.STATUS_FAILED,    ACT_PROPOSE,  db.STATUS_NO_ACTION,     "propose confirmed not a defect"),
+    (db.STATUS_FAILED,    ACT_PROPOSE,  db.STATUS_ANALYZE,       "propose confirmed non-local defect"),
+    (db.STATUS_ANALYZE,   ACT_PROPOSE,  db.STATUS_NO_ACTION,     "propose refetch confirmed not a defect"),
+    (db.STATUS_PROPOSED,  ACT_PROPOSE,  db.STATUS_NO_ACTION,     "propose refetch confirmed not a defect"),
+    (db.STATUS_PROPOSED,  ACT_PROPOSE,  db.STATUS_ANALYZE,       "propose refetch confirmed non-local"),
     # merge
     (db.STATUS_FIXED, ACT_MERGE,        db.STATUS_MERGED,       "patch merged into base"),
     # reject (origin-agnostic)
