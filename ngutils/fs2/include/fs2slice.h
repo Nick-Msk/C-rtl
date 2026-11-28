@@ -1063,5 +1063,9 @@ fs2slice_lpadstr_new(const fs2slice *restrict sl, size_t len, const char *restri
     return *fs2_lpadstr(&r, len, padstr);
 }
 
+// ----------------------------------- Finders -----------------------------------
+
+
+
  #endif /* !FS2SLICE_H */
 
